@@ -1,0 +1,234 @@
+{% extends 'layout/base.html' %}
+{% set current_page = 'homepage' %}
+{% set page_title = _('Home') %}
+
+{% block body %}
+
+{# Hero Section #}
+<section id="home" class="hero">
+  <div class="container">
+    <img src="{{ url_for_site_file('style/eule_logo.png') }}" alt="Eule Logo" class="hero-logo">
+    <h2>genial verpLANt</h2>
+    <p class="hero-subtitle">Die größte LAN-Party der Wesermarsch</p>
+    <div class="hero-buttons">
+      <a href="{{ url_for('shop_order.order_form') }}" class="btn-primary">Jetzt Anmelden</a>
+      <a href="#about" class="btn-secondary">Mehr Erfahren</a>
+    </div>
+
+    {%- if g.party %}
+    <div class="event-counter">
+      <div class="event-counter-label">Nächstes Event</div>
+      <div class="event-counter-title">{{ g.party.title }}</div>
+      <div class="event-counter-location">Großsporthalle Brake</div>
+      {%- if ticket_sale_stats is defined and ticket_sale_stats.tickets_max is not none %}
+      <div class="event-counter-capacity">
+        <svg class="icon" viewBox="0 0 24 24">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+          <circle cx="9" cy="7" r="4"></circle>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+        </svg>
+        <span>{{ ticket_sale_stats.tickets_sold }} / {{ ticket_sale_stats.tickets_max }} Plätze</span>
+      </div>
+      {%- endif %}
+    </div>
+    {%- endif %}
+  </div>
+</section>
+
+{# News Section #}
+{%- if news_teasers is not none and news_teasers %}
+<section class="section-alt">
+  <div class="container">
+    <h3 class="section-title"><span>Neuigkeiten</span></h3>
+    <div class="grid grid-3">
+      {%- for teaser in news_teasers[-3:] %}
+      <div class="news-card">
+        {%- if teaser.featured_image %}
+        <div class="news-card-image" style="background-image: url('{{ teaser.featured_image.url_path }}');">
+        </div>
+        {%- else %}
+        <div class="news-card-image {{ ['orange', 'blue', 'green'][loop.index0 % 3] }}">
+          <svg class="icon icon-lg" viewBox="0 0 24 24">
+            {%- if loop.index0 % 3 == 0 %}
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="16" y1="2" x2="16" y2="6"></line>
+            <line x1="8" y1="2" x2="8" y2="6"></line>
+            <line x1="3" y1="10" x2="21" y2="10"></line>
+            {%- elif loop.index0 % 3 == 1 %}
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+            <circle cx="9" cy="7" r="4"></circle>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+            {%- else %}
+            <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path>
+            <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path>
+            <path d="M4 22h16"></path>
+            <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"></path>
+            <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"></path>
+            <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"></path>
+            {%- endif %}
+          </svg>
+        </div>
+        {%- endif %}
+        <div class="news-card-content">
+          <div class="news-card-date">{{ teaser.published_at|dateformat('short') }}</div>
+          <h4 class="news-card-title">{{ teaser.title }}</h4>
+          <a href="{{ url_for('news.view', slug=teaser.slug) }}" class="news-card-link">Weiterlesen →</a>
+        </div>
+      </div>
+      {%- endfor %}
+    </div>
+  </div>
+</section>
+{%- endif %}
+
+{# Events Section #}
+{%- if g.party %}
+<section id="events">
+  <div class="container">
+    <h3 class="section-title"><span>Kommende Events</span></h3>
+    <div class="event-card">
+      <div class="event-card-inner">
+        <div class="event-card-header">
+          <div>
+            <h4 class="event-card-title">{{ g.party.title }}</h4>
+            <p class="event-card-location">Großsporthalle Brake</p>
+          </div>
+          {%- if ticket_sale_stats is defined and ticket_sale_stats.tickets_max is not none %}
+          <div class="event-card-capacity">
+            <div class="event-card-capacity-number">{{ ticket_sale_stats.tickets_max - ticket_sale_stats.tickets_sold }}</div>
+            <div class="event-card-capacity-label">Plätze verfügbar</div>
+          </div>
+          {%- endif %}
+        </div>
+        <div class="event-details">
+          <div class="event-detail">
+            <svg class="icon event-detail-icon" viewBox="0 0 24 24">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            <div>
+              <div class="event-detail-label">Datum</div>
+              <div class="event-detail-value">{{ g.party.starts_at|dateformat('short') }} - {{ g.party.ends_at|dateformat('short') }}</div>
+            </div>
+          </div>
+          {%- if ticket_sale_stats is defined and ticket_sale_stats.tickets_max is not none %}
+          <div class="event-detail">
+            <svg class="icon event-detail-icon" viewBox="0 0 24 24">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+              <circle cx="9" cy="7" r="4"></circle>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+            </svg>
+            <div>
+              <div class="event-detail-label">Teilnehmer</div>
+              <div class="event-detail-value">{{ ticket_sale_stats.tickets_sold }} / {{ ticket_sale_stats.tickets_max }} angemeldet</div>
+            </div>
+          </div>
+          {%- endif %}
+        </div>
+        <a href="{{ url_for('shop_order.order_form') }}" class="btn-primary" style="width: 100%; text-align: center; display: block; text-decoration: none;">Jetzt Ticket sichern</a>
+      </div>
+    </div>
+  </div>
+</section>
+{%- endif %}
+
+{# About Section #}
+<section id="about" class="section-alt">
+  <div class="container">
+    <h3 class="section-title"><span>Über Uns</span></h3>
+    <div class="about-content">
+      <img src="{{ url_for_site_file('style/eule_logo.png') }}" alt="Eule Logo" class="about-logo">
+      <p class="about-text">
+        <span class="highlight">total verpLANt e.V.</span> ist der erste eSports- und Gaming-Club
+        in der Wesermarsch. Wir veranstalten die größte LAN-Party der Region und ziehen Gamer aus ganz Deutschland an.
+      </p>
+      <p class="about-text-secondary">
+        Unsere "genial verpLANt" Events bringen bis zu 240 Teilnehmer zusammen für ein unvergessliches
+        Gaming-Wochenende voller Turniere, Spaß und Gemeinschaft.
+      </p>
+      <div class="stats">
+        <div class="stat-card">
+          <div class="stat-number">34</div>
+          <div class="stat-label">LAN-Parties</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number">240</div>
+          <div class="stat-label">Max. Teilnehmer</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number">#1</div>
+          <div class="stat-label">in der Wesermarsch</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+{# Shop Section #}
+<section id="shop">
+  <div class="container">
+    <h3 class="section-title"><span>Shop</span></h3>
+    <div class="grid grid-3">
+      <div class="shop-card">
+        <div class="shop-card-image gray">
+          <svg class="icon icon-lg" style="color: #ff8c00;" viewBox="0 0 24 24">
+            <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path>
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <path d="M16 10a4 4 0 0 1-8 0"></path>
+          </svg>
+        </div>
+        <div class="shop-card-content">
+          <h4 class="shop-card-title">Event Ticket</h4>
+          <p class="shop-card-description">Einzel-Ticket für genial verpLANt</p>
+          <div class="shop-card-price">€30,00</div>
+          <a href="{{ url_for('shop_order.order_form') }}" class="btn-shop">In den Warenkorb</a>
+        </div>
+      </div>
+
+      <div class="shop-card">
+        <div class="shop-card-image orange">
+          <svg class="icon icon-lg" style="color: white;" viewBox="0 0 24 24">
+            <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path>
+            <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path>
+            <path d="M4 22h16"></path>
+            <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"></path>
+            <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"></path>
+            <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"></path>
+          </svg>
+        </div>
+        <div class="shop-card-content">
+          <h4 class="shop-card-title">Merchandise</h4>
+          <p class="shop-card-description">Limited Edition Event-Artikel (Foto von Simon)</p>
+          <div class="shop-card-price">€20,00</div>
+          <a href="{{ url_for('shop_order.order_form') }}" class="btn-shop">In den Warenkorb</a>
+        </div>
+      </div>
+
+      <div class="shop-card">
+        <div class="shop-card-image blue">
+          <svg class="icon icon-lg" style="color: white;" viewBox="0 0 24 24">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+            <circle cx="9" cy="7" r="4"></circle>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+          </svg>
+        </div>
+        <div class="shop-card-content">
+          <h4 class="shop-card-title">Mitgliedschaft</h4>
+          <p class="shop-card-description">Jahres-Mitgliedschaft im Verein</p>
+          <div class="shop-card-price">€30,00</div>
+          <a href="{{ url_for('shop_order.order_form') }}" class="btn-shop">Mitglied werden</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+{{ render_snippet('homepage', ignore_if_unknown=True)|safe }}
+
+{%- endblock %}
