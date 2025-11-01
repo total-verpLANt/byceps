@@ -15,6 +15,8 @@ from flask.cli import AppGroup
 from .commands.create_database_tables import create_database_tables
 from .commands.create_superuser import create_superuser
 from .commands.delete_party import delete_party
+from .commands.delete_seats import delete_seats
+from .commands.delete_site import delete_site
 from .commands.export_roles import export_roles
 from .commands.generate_secret_key import generate_secret_key
 from .commands.import_roles import import_roles
@@ -37,6 +39,8 @@ for func in [
     create_database_tables,
     create_superuser,
     delete_party,
+    delete_seats,
+    delete_site,
     export_roles,
     generate_secret_key,
     import_roles,
