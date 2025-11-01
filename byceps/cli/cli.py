@@ -14,6 +14,7 @@ from flask.cli import AppGroup
 
 from .commands.create_database_tables import create_database_tables
 from .commands.create_superuser import create_superuser
+from .commands.delete_brand import delete_brand
 from .commands.delete_party import delete_party
 from .commands.delete_seats import delete_seats
 from .commands.delete_site import delete_site
@@ -38,6 +39,7 @@ def cli():
 for func in [
     create_database_tables,
     create_superuser,
+    delete_brand,
     delete_party,
     delete_seats,
     delete_site,
