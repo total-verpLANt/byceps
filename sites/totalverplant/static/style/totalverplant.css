@@ -1456,3 +1456,65 @@ input::placeholder, textarea::placeholder {
   height: 26px !important;
   width: 26px !important;
 }
+/* Minimal icon fix */
+.icon,
+.icon-lg,
+.event-detail-icon {
+  stroke-width: 2 !important;
+  fill: none !important;
+}
+/* ========================================
+   SVG Icon Fix - Optimized for icons.svg sprite
+   ======================================== */
+
+/* Icons from sprite (log-in, etc.) - 512x512 viewBox */
+.icon {
+  stroke: currentColor !important;
+  stroke-width: 30px !important;  /* Optimized for 512x512 viewBox */
+  stroke-linecap: round !important;
+  stroke-linejoin: round !important;
+  display: inline-block !important;
+  vertical-align: -0.125em !important;
+}
+
+/* Make icon spacing consistent in buttons */
+.button .icon,
+.header-user-nav .button .icon {
+  margin-right: 0.5em !important;
+  width: 1.125em !important;
+  height: 1.125em !important;
+}
+
+/* Inline SVGs (Feather-style with viewBox 0 0 24 24) */
+.icon-lg,
+.event-detail-icon,
+.event-counter-capacity .icon,
+.shop-card-image .icon,
+.news-card-image .icon {
+  stroke: currentColor !important;
+  stroke-width: 2 !important;  /* Correct for 24x24 viewBox */
+  stroke-linecap: round !important;
+  stroke-linejoin: round !important;
+  fill: none !important;
+  display: inline-block !important;
+}
+
+.icon-lg {
+  width: 64px !important;
+  height: 64px !important;
+}
+
+.event-detail-icon,
+.event-counter-capacity .icon {
+  width: 24px !important;
+  height: 24px !important;
+  flex-shrink: 0;
+}
+
+/* Dropdown icons */
+.dropdown-toggle .icon {
+  width: 1em !important;
+  height: 1em !important;
+  margin-left: 0.35em !important;
+}
+
