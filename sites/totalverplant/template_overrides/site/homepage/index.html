@@ -7,11 +7,13 @@
 {# Hero Section #}
 <section id="home" class="hero">
   <div class="container">
-    <img src="{{ url_for_site_file('style/eule_logo.png') }}" alt="Eule Logo" class="hero-logo">
+    <img src="{{ url_for_site_file('style/eule_logo.png') }}" alt="Eule Logo"
+         class="hero-logo">
     <h2>genial verpLANt</h2>
     <p class="hero-subtitle">Die größte LAN-Party der Wesermarsch</p>
     <div class="hero-buttons">
-      <a href="{{ url_for('shop_order.order_form') }}" class="btn-primary">Jetzt Anmelden</a>
+      <a href="{{ url_for('shop_order.order_form') }}" class="btn-primary">Jetzt
+        Anmelden</a>
       <a href="#about" class="btn-secondary">Mehr Erfahren</a>
     </div>
 
@@ -20,7 +22,8 @@
       <div class="event-counter-label">Nächstes Event</div>
       <div class="event-counter-title">{{ g.party.title }}</div>
       <div class="event-counter-location">Großsporthalle Brake</div>
-      {%- if ticket_sale_stats is defined and ticket_sale_stats.tickets_max is not none %}
+      {%- if ticket_sale_stats is defined and ticket_sale_stats.tickets_max is
+      not none %}
       <div class="event-counter-capacity">
         <svg class="icon" viewBox="0 0 24 24">
           <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
@@ -44,40 +47,46 @@
     <div class="grid grid-3">
       {%- for teaser in news_teasers[-3:] %}
       <a href="{{ url_for('news.view', slug=teaser.slug) }}">
-      <div class="news-card">
-        {%- if teaser.featured_image %}
-        <div class="news-card-image" style="background-image: url('{{ teaser.featured_image.url_path }}');">
+        <div class="news-card">
+          {%- if teaser.featured_image %}
+          <div class="news-card-image"
+               style="background-image: url('{{ teaser.featured_image.url_path }}');">
+          </div>
+          {%- else %}
+          <div
+            class="news-card-image {{ ['orange', 'blue', 'green'][loop.index0 % 3] }}">
+            <svg class="icon icon-lg" viewBox="0 0 24 24">
+              {%- if loop.index0 % 3 == 0 %}
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+              {%- elif loop.index0 % 3 == 1 %}
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+              <circle cx="9" cy="7" r="4"></circle>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+              {%- else %}
+              <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path>
+              <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path>
+              <path d="M4 22h16"></path>
+              <path
+                d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"></path>
+              <path
+                d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"></path>
+              <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"></path>
+              {%- endif %}
+            </svg>
+          </div>
+          {%- endif %}
+          <div class="news-card-content">
+            <div class="news-card-date">{{
+              teaser.published_at|dateformat('short') }}
+            </div>
+            <h4 class="news-card-title">{{ teaser.title }}</h4>
+            <span class="news-card-link">Weiterlesen →</span>
+          </div>
         </div>
-        {%- else %}
-        <div class="news-card-image {{ ['orange', 'blue', 'green'][loop.index0 % 3] }}">
-          <svg class="icon icon-lg" viewBox="0 0 24 24">
-            {%- if loop.index0 % 3 == 0 %}
-            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-            <line x1="16" y1="2" x2="16" y2="6"></line>
-            <line x1="8" y1="2" x2="8" y2="6"></line>
-            <line x1="3" y1="10" x2="21" y2="10"></line>
-            {%- elif loop.index0 % 3 == 1 %}
-            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-            <circle cx="9" cy="7" r="4"></circle>
-            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-            {%- else %}
-            <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path>
-            <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path>
-            <path d="M4 22h16"></path>
-            <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"></path>
-            <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"></path>
-            <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"></path>
-            {%- endif %}
-          </svg>
-        </div>
-        {%- endif %}
-        <div class="news-card-content">
-          <div class="news-card-date">{{ teaser.published_at|dateformat('short') }}</div>
-          <h4 class="news-card-title">{{ teaser.title }}</h4>
-          <span class="news-card-link">Weiterlesen →</span>
-        </div>
-      </div>
       </a>
       {%- endfor %}
     </div>
@@ -97,9 +106,12 @@
             <h4 class="event-card-title">{{ g.party.title }}</h4>
             <p class="event-card-location">Großsporthalle Brake</p>
           </div>
-          {%- if ticket_sale_stats is defined and ticket_sale_stats.tickets_max is not none %}
+          {%- if ticket_sale_stats is defined and ticket_sale_stats.tickets_max
+          is not none %}
           <div class="event-card-capacity">
-            <div class="event-card-capacity-number">{{ ticket_sale_stats.tickets_max - ticket_sale_stats.tickets_sold }}</div>
+            <div class="event-card-capacity-number">{{
+              ticket_sale_stats.tickets_max - ticket_sale_stats.tickets_sold }}
+            </div>
             <div class="event-card-capacity-label">Plätze verfügbar</div>
           </div>
           {%- endif %}
@@ -114,10 +126,14 @@
             </svg>
             <div>
               <div class="event-detail-label">Datum</div>
-              <div class="event-detail-value">{{ g.party.starts_at|dateformat('short') }} - {{ g.party.ends_at|dateformat('short') }}</div>
+              <div class="event-detail-value">{{
+                g.party.starts_at|dateformat('short') }} - {{
+                g.party.ends_at|dateformat('short') }}
+              </div>
             </div>
           </div>
-          {%- if ticket_sale_stats is defined and ticket_sale_stats.tickets_max is not none %}
+          {%- if ticket_sale_stats is defined and ticket_sale_stats.tickets_max
+          is not none %}
           <div class="event-detail">
             <svg class="icon event-detail-icon" viewBox="0 0 24 24">
               <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
@@ -127,12 +143,16 @@
             </svg>
             <div>
               <div class="event-detail-label">Teilnehmer</div>
-              <div class="event-detail-value">{{ ticket_sale_stats.tickets_sold }} / {{ ticket_sale_stats.tickets_max }} angemeldet</div>
+              <div class="event-detail-value">{{ ticket_sale_stats.tickets_sold
+                }} / {{ ticket_sale_stats.tickets_max }} angemeldet
+              </div>
             </div>
           </div>
           {%- endif %}
         </div>
-        <a href="{{ url_for('shop_order.order_form') }}" class="btn-primary" style="width: 100%; text-align: center; display: block; text-decoration: none;">Jetzt Ticket sichern</a>
+        <a href="{{ url_for('shop_order.order_form') }}" class="btn-primary"
+           style="width: 100%; text-align: center; display: block; text-decoration: none;">Jetzt
+          Ticket sichern</a>
       </div>
     </div>
   </div>
@@ -144,13 +164,17 @@
   <div class="container">
     <h3 class="section-title"><span>Über Uns</span></h3>
     <div class="about-content">
-      <img src="{{ url_for_site_file('style/eule_logo.png') }}" alt="Eule Logo" class="about-logo">
+      <img src="{{ url_for_site_file('style/eule_logo.png') }}" alt="Eule Logo"
+           class="about-logo">
       <p class="about-text">
-        <span class="highlight">total verpLANt e.V.</span> ist der erste eSports- und Gaming-Club
-        in der Wesermarsch. Wir veranstalten die größte LAN-Party der Region und ziehen Gamer aus ganz Deutschland an.
+        <span class="highlight">total verpLANt e.V.</span> ist der erste
+        eSports- und Gaming-Club
+        in der Wesermarsch. Wir veranstalten die größte LAN-Party der Region und
+        ziehen Gamer aus ganz Deutschland an.
       </p>
       <p class="about-text-secondary">
-        Unsere "genial verpLANt" Events bringen bis zu 240 Teilnehmer zusammen für ein unvergessliches
+        Unsere "genial verpLANt" Events bringen bis zu 240 Teilnehmer zusammen
+        für ein unvergessliches
         Gaming-Wochenende voller Turniere, Spaß und Gemeinschaft.
       </p>
       <div class="stats">
@@ -177,34 +201,61 @@
     <h3 class="section-title"><span>Unsere Sponsoren</span></h3>
     <div class="sponsors-container">
       <div class="sponsor-logo">
-        <img src="{{ url_for_site_file('style/sponsoren/brake_600x250.png') }}" alt="Stadt Brake">
+        <a href="https://brake.de/">
+        <img src="{{ url_for_site_file('style/sponsoren/brake_600x250.png') }}"
+             alt="Stadt Brake"></a>
       </div>
       <div class="sponsor-logo">
-        <img src="{{ url_for_site_file('style/sponsoren/depa_600x250.png') }}" alt="DEPA">
+        <a href="https://depa-event.de/">
+        <img src="{{ url_for_site_file('style/sponsoren/depa_600x250.png') }}"
+             alt="DEPA"></a>
       </div>
       <div class="sponsor-logo">
-        <img src="{{ url_for_site_file('style/sponsoren/fahrrad_gruss_600x250.png') }}" alt="Fahrrad Gruss">
+        <a href="https://www.fahrradgruss.de/"><img
+          src="{{ url_for_site_file('style/sponsoren/fahrrad_gruss_600x250.png') }}"
+          alt="Fahrrad Gruss">
+        </a></div>
+      <div class="sponsor-logo">
+        <a href="https://freundeskreis-zwiesel.de/">
+          <img
+            src="{{ url_for_site_file('style/sponsoren/Freundeskreis_Zwiesel_600x250.png') }}"
+            alt="Freundeskreis Zwiesel">
+        </a></div>
+      <div class="sponsor-logo">
+        <a href="https://hi-score.org/">
+          <img
+            src="{{ url_for_site_file('style/sponsoren/hiscore_600x250.png') }}"
+            alt="HiScore"></a>
       </div>
       <div class="sponsor-logo">
-        <img src="{{ url_for_site_file('style/sponsoren/Freundeskreis_Zwiesel_600x250.png') }}" alt="Freundeskreis Zwiesel">
+        <a href="https://www.inter-tech.de/home_de.html">
+          <img
+            src="{{ url_for_site_file('style/sponsoren/Inter-tech_600x250.png') }}"
+            alt="Inter-Tech"></a>
       </div>
       <div class="sponsor-logo">
-        <img src="{{ url_for_site_file('style/sponsoren/hiscore_600x250.png') }}" alt="HiScore">
+        <a href="https://senchii.de/">
+          <img
+            src="{{ url_for_site_file('style/sponsoren/senchii_600x250.png') }}"
+            alt="Senchii"></a>
       </div>
       <div class="sponsor-logo">
-        <img src="{{ url_for_site_file('style/sponsoren/Inter-tech_600x250.png') }}" alt="Inter-Tech">
+        <a href="https://www.thermal-grizzly.com/">
+          <img
+            src="{{ url_for_site_file('style/sponsoren/thermalgrizzly_600x250.png') }}"
+            alt="Thermal Grizzly"></a>
       </div>
       <div class="sponsor-logo">
-        <img src="{{ url_for_site_file('style/sponsoren/senchii_600x250.png') }}" alt="Senchii">
+        <a href="https://www.virtualounge.de/">
+          <img
+            src="{{ url_for_site_file('style/sponsoren/virtualounge_600x250.png') }}"
+            alt="Virtual Lounge"></a>
       </div>
       <div class="sponsor-logo">
-        <img src="{{ url_for_site_file('style/sponsoren/thermalgrizzly_600x250.png') }}" alt="Thermal Grizzly">
-      </div>
-      <div class="sponsor-logo">
-        <img src="{{ url_for_site_file('style/sponsoren/virtualounge_600x250.png') }}" alt="Virtual Lounge">
-      </div>
-      <div class="sponsor-logo">
-        <img src="{{ url_for_site_file('style/sponsoren/voltcola_600x250.png') }}" alt="Volt Cola">
+        <a href="https://voltcola.de/">
+          <img
+            src="{{ url_for_site_file('style/sponsoren/voltcola_600x250.png') }}"
+            alt="Volt Cola"></a>
       </div>
     </div>
   </div>

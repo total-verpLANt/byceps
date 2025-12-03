@@ -1319,6 +1319,21 @@ table th {
   background-color: #ff8800;
 }
 
+:is(.button, .notification).color-warning {
+  background-color: #bca218;
+  border-color: var(--color-warning);
+}
+
+:is(.button, .notification).color-danger {
+  background-color: #8e2929;
+  border-color: var(--color-danger);
+}
+
+:is(.button, .notification).color-success {
+  background-color: #62BF50;
+  border-color: var(--color-success);
+}
+
 /* Progress bars */
 .progress {
   background-color: rgba(31, 41, 55, 0.5);
@@ -1441,6 +1456,19 @@ select:focus {
 
 input::placeholder, textarea::placeholder {
   color: #9ca3af !important;
+}
+
+/* Form validation errors */
+form .form-form-errors, form .invalid {
+  --padding: 0.375rem;
+  background-color: #ff6969;
+  border: #ff1a1a solid 1px;
+  border-radius: var(--border-radius);
+  padding: var(--padding);
+}
+
+#login-failed-notice {
+  max-height: none !important;
 }
 
 /* Dropdown menus */
