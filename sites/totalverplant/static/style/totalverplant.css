@@ -703,6 +703,8 @@ section {
   font-weight: bold;
   color: #ff8c00;
   margin-bottom: 16px;
+  margin-top: 0;
+  font-size: 1rem;
 }
 
 .footer-list {
