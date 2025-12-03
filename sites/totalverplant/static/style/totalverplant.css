@@ -34,7 +34,7 @@ body {
 
 /* Container for modern layout */
 .container {
-  max-width: 1200px;
+  max-width: 1300px;
   margin: 0 auto;
   padding: 0 24px;
 }
@@ -689,11 +689,14 @@ section {
 .footer-logo-text {
   font-weight: bold;
   color: #ff8c00;
+  font-size: 1rem;
+  margin: 0;
 }
 
 .footer-description {
   color: #9ca3af;
-  font-size: 14px;
+  margin-top: 0;
+  font-size: 1rem;
 }
 
 .footer-title {
