@@ -43,6 +43,7 @@
     <h3 class="section-title"><span>Neuigkeiten</span></h3>
     <div class="grid grid-3">
       {%- for teaser in news_teasers[-3:] %}
+      <a href="{{ url_for('news.view', slug=teaser.slug) }}">
       <div class="news-card">
         {%- if teaser.featured_image %}
         <div class="news-card-image" style="background-image: url('{{ teaser.featured_image.url_path }}');">
@@ -74,9 +75,10 @@
         <div class="news-card-content">
           <div class="news-card-date">{{ teaser.published_at|dateformat('short') }}</div>
           <h4 class="news-card-title">{{ teaser.title }}</h4>
-          <a href="{{ url_for('news.view', slug=teaser.slug) }}" class="news-card-link">Weiterlesen →</a>
+          <span class="news-card-link">Weiterlesen →</span>
         </div>
       </div>
+      </a>
       {%- endfor %}
     </div>
   </div>
