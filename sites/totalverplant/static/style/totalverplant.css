@@ -657,6 +657,40 @@ section {
 }
 
 /* ========================================
+   Sponsors Section
+   ======================================== */
+.sponsors-container {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 32px;
+  padding: 24px;
+  background: rgba(31, 41, 55, 0.3);
+  border-radius: 16px;
+  border: 1px solid rgba(255, 140, 0, 0.1);
+}
+
+.sponsor-logo {
+  flex: 0 1 auto;
+  transition: all 0.3s ease;
+}
+
+.sponsor-logo img {
+  height: 80px;
+  width: auto;
+  max-width: 200px;
+  object-fit: contain;
+  filter: grayscale(100%) brightness(0.8);
+  transition: all 0.3s ease;
+}
+
+.sponsor-logo:hover img {
+  filter: grayscale(0%) brightness(1);
+  transform: scale(1.1);
+}
+
+/* ========================================
    Modern Footer
    ======================================== */
 .page-footer-modern {
@@ -988,6 +1022,17 @@ section {
     gap: 16px;
   }
 
+  /* Sponsors */
+  .sponsors-container {
+    gap: 24px;
+    padding: 16px;
+  }
+
+  .sponsor-logo img {
+    height: 60px;
+    max-width: 150px;
+  }
+
   /* Footer */
   .page-footer-modern {
     padding: 32px 16px;
@@ -1162,6 +1207,17 @@ section {
   /* Stats */
   .stat-number {
     font-size: 28px;
+  }
+
+  /* Sponsors */
+  .sponsors-container {
+    gap: 16px;
+    padding: 12px;
+  }
+
+  .sponsor-logo img {
+    height: 50px;
+    max-width: 120px;
   }
 
   /* Footer */
