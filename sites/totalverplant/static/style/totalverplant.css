@@ -1539,6 +1539,213 @@ form .form-form-errors, form .invalid {
 }
 
 /* ========================================
+   Facts Table Styles
+   ======================================== */
+.facts-table-container {
+  max-width: 1100px;
+  margin: 0 auto;
+  background: rgba(31, 41, 55, 0.5);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 140, 0, 0.2);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.facts-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.facts-table thead {
+  background: rgba(255, 102, 0, 0.15);
+  border-bottom: 2px solid rgba(255, 140, 0, 0.3);
+}
+
+.facts-table th {
+  padding: 16px 20px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #ff8c00;
+}
+
+.facts-table tbody tr {
+  border-bottom: 1px solid rgba(255, 140, 0, 0.1);
+  transition: all 0.2s ease;
+}
+
+.facts-table tbody tr:last-child {
+  border-bottom: none;
+}
+
+.facts-table tbody tr:hover {
+  background: rgba(255, 140, 0, 0.05);
+}
+
+.facts-table td {
+  padding: 20px;
+  vertical-align: top;
+  color: #ffffff;
+  line-height: 1.6;
+}
+
+/* Icon column */
+.facts-table .facts-icon-cell {
+  width: 60px;
+  text-align: center;
+  padding-right: 16px;
+}
+
+.facts-table .facts-table-icon {
+  width: 32px;
+  height: 32px;
+  stroke: #ff8c00;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  display: inline-block;
+}
+
+/* Label column */
+.facts-table .facts-label-cell {
+  width: 180px;
+  font-weight: 600;
+  color: #d1d5db;
+  font-size: 15px;
+}
+
+/* Value column */
+.facts-table .facts-value-cell {
+  color: #ffffff;
+  font-size: 15px;
+}
+
+.facts-table .facts-value-cell a {
+  color: #ff8c00;
+  text-decoration: none;
+  font-weight: 600;
+  transition: color 0.2s;
+}
+
+.facts-table .facts-value-cell a:hover {
+  color: #ff9900;
+  text-decoration: underline;
+}
+
+.facts-table .facts-value-cell strong {
+  color: #ff8c00;
+  font-weight: 600;
+}
+
+/* Mobile responsive - convert table to cards */
+@media (max-width: 768px) {
+  .facts-table-container {
+    border-radius: 12px;
+  }
+
+  .facts-table thead {
+    display: none;
+  }
+
+  .facts-table,
+  .facts-table tbody,
+  .facts-table tr {
+    display: block;
+  }
+
+  .facts-table tbody tr {
+    margin-bottom: 16px;
+    border: 1px solid rgba(255, 140, 0, 0.2);
+    border-radius: 12px;
+    overflow: hidden;
+    background: rgba(31, 41, 55, 0.3);
+  }
+
+  .facts-table tbody tr:last-child {
+    margin-bottom: 0;
+  }
+
+  .facts-table tbody tr:hover {
+    background: rgba(255, 140, 0, 0.08);
+  }
+
+  .facts-table td {
+    display: block;
+    padding: 16px;
+    border: none;
+    text-align: left;
+  }
+
+  .facts-table .facts-icon-cell {
+    width: 100%;
+    text-align: center;
+    padding: 16px 16px 8px 16px;
+    background: rgba(255, 102, 0, 0.1);
+    border-bottom: 1px solid rgba(255, 140, 0, 0.2);
+  }
+
+  .facts-table .facts-table-icon {
+    width: 40px;
+    height: 40px;
+  }
+
+  .facts-table .facts-label-cell {
+    width: 100%;
+    text-align: center;
+    padding: 12px 16px;
+    font-size: 16px;
+    font-weight: 700;
+    color: #ff8c00;
+    background: rgba(255, 102, 0, 0.05);
+    border-bottom: 1px solid rgba(255, 140, 0, 0.1);
+  }
+
+  .facts-table .facts-value-cell {
+    padding: 16px;
+    font-size: 14px;
+    line-height: 1.7;
+  }
+}
+
+@media (max-width: 480px) {
+  .facts-table-container {
+    border-radius: 8px;
+  }
+
+  .facts-table tbody tr {
+    margin-bottom: 12px;
+    border-radius: 8px;
+  }
+
+  .facts-table td {
+    padding: 14px;
+  }
+
+  .facts-table .facts-icon-cell {
+    padding: 14px 14px 6px 14px;
+  }
+
+  .facts-table .facts-table-icon {
+    width: 36px;
+    height: 36px;
+  }
+
+  .facts-table .facts-label-cell {
+    padding: 10px 14px;
+    font-size: 15px;
+  }
+
+  .facts-table .facts-value-cell {
+    padding: 14px;
+    font-size: 13px;
+  }
+}
+
+/* ========================================
    Seating Override
    ======================================== */
 .seat {
