@@ -2,271 +2,515 @@
 {% set current_page = 'homepage' %}
 {% set page_title = _('Home') %}
 
+{% block head %}
+<link rel="stylesheet" href="{{ url_for_site_file('style/homepage.css') }}">
+{% endblock %}
+
 {% block body %}
+{#
+  Template Variables Used (Story 1.2):
+  - g.party.starts_at: DateTime - Event start date/time
+  - g.party.ends_at: DateTime - Event end date/time
+  - g.party (optional): Party object for defensive checks
 
-{# Hero Section #}
-<section id="home" class="hero">
-  <div class="container">
-    <img src="{{ url_for_site_file('style/eule_logo.png') }}" alt="Eule Logo"
-         class="hero-logo">
-    <h2>genial verpLANt</h2>
-    <p class="hero-subtitle">Die größte LAN-Party der Wesermarsch</p>
-    <div class="hero-buttons">
-      <a href="{{ url_for('shop_order.order_form') }}" class="btn-primary">Jetzt
-        Anmelden</a>
-      <a href="#about" class="btn-secondary">Mehr Erfahren</a>
-    </div>
+  Future Stories (1.3+) will add:
+  - Ticket availability variables (sold count, total capacity) - Story 1.3
+  - News items array - Story 1.6
+  - Gallery images array - Story 1.7
+#}
 
-    {%- if g.party %}
-    <div class="event-counter">
-      <div class="event-counter-label">Nächstes Event</div>
-      <div class="event-counter-title">{{ g.party.title }}</div>
-      <div class="event-counter-location">Großsporthalle Brake</div>
-      {%- if ticket_sale_stats is defined and ticket_sale_stats.tickets_max is
-      not none %}
-      <div class="event-counter-capacity">
-        <svg class="icon" viewBox="0 0 24 24">
-          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-          <circle cx="9" cy="7" r="4"></circle>
-          <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-          <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-        </svg>
-        <span>{{ ticket_sale_stats.tickets_sold }} / {{ ticket_sale_stats.tickets_max }} Plätze</span>
-      </div>
-      {%- endif %}
-    </div>
-    {%- endif %}
-  </div>
-</section>
+<main class="landing">
 
-{# News Section #}
-{%- if news_teasers is not none and news_teasers %}
-<section class="section-alt">
-  <div class="container">
-    <h3 class="section-title"><span>Neuigkeiten</span></h3>
-    <div class="grid grid-3">
-      {%- for teaser in news_teasers[-3:] %}
-      <a href="{{ url_for('news.view', slug=teaser.slug) }}">
-        <div class="news-card">
-          {%- if teaser.featured_image %}
-          <div class="news-card-image"
-               style="background-image: url('{{ teaser.featured_image.url_path }}');">
-          </div>
-          {%- else %}
-          <div
-            class="news-card-image {{ ['orange', 'blue', 'green'][loop.index0 % 3] }}">
-            <svg class="icon icon-lg" viewBox="0 0 24 24">
-              {%- if loop.index0 % 3 == 0 %}
-              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-              <line x1="16" y1="2" x2="16" y2="6"></line>
-              <line x1="8" y1="2" x2="8" y2="6"></line>
-              <line x1="3" y1="10" x2="21" y2="10"></line>
-              {%- elif loop.index0 % 3 == 1 %}
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-              <circle cx="9" cy="7" r="4"></circle>
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-              <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-              {%- else %}
-              <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path>
-              <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path>
-              <path d="M4 22h16"></path>
-              <path
-                d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"></path>
-              <path
-                d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"></path>
-              <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"></path>
-              {%- endif %}
-            </svg>
-          </div>
-          {%- endif %}
-          <div class="news-card-content">
-            <div class="news-card-date">{{
-              teaser.published_at|dateformat('short') }}
+  {# ========== HERO SECTION ========== #}
+  <section class="landing-hero">
+    <div class="landing-hero__inner">
+
+      {# Left column: Branding and primary info #}
+      <div class="landing-hero__branding">
+        <img src="{{ url_for_site_file('style/eule_logo.png') }}"
+             alt="genial verpLANt - total verpLANt e.V. LAN-Party Logo"
+             class="landing-hero__logo">
+
+        <p class="landing-hero__eyebrow">
+          total verpLANt e.V. präsentiert
+        </p>
+
+        <h1 class="landing-hero__title">
+          genial verpLANt
+        </h1>
+
+        <p class="landing-hero__subtitle">
+          Die größte LAN-Party der Wesermarsch. Ein Wochenende voller Gaming,
+          Turniere, Community und guter Laune.
+        </p>
+
+        <div class="landing-hero__meta">
+          <div class="landing-hero__meta-item">
+            <span class="landing-hero__meta-icon"><i class="fa fa-calendar"></i></span>
+            <div>
+              <span class="landing-hero__meta-label">Wann?</span>
+              <span class="landing-hero__meta-value">
+                {% if g.party and g.party.starts_at and g.party.ends_at -%}
+                  {{ g.party.starts_at|dateformat('d.MM.yyyy') }} bis {{ g.party.ends_at|dateformat('d.MM.yyyy') }}
+                {%- else -%}
+                  27.03.2026 bis 29.03.2026
+                {%- endif %}
+              </span>
             </div>
-            <h4 class="news-card-title">{{ teaser.title }}</h4>
-            <span class="news-card-link">Weiterlesen →</span>
+          </div>
+          <div class="landing-hero__meta-item">
+            <span class="landing-hero__meta-icon"><i class="fa fa-map-marker"></i></span>
+            <div>
+              <span class="landing-hero__meta-label">Wo?</span>
+              <span class="landing-hero__meta-value">
+                Großsporthalle Brake<br>
+                Philosophenweg 8, 26919 Brake
+              </span>
+            </div>
           </div>
         </div>
-      </a>
-      {%- endfor %}
-    </div>
-  </div>
-</section>
-{%- endif %}
 
-{# Events Section #}
-{%- if g.party %}
-<section id="events">
-  <div class="container">
-    <h3 class="section-title"><span>Kommende Events</span></h3>
-    <div class="event-card">
-      <div class="event-card-inner">
-        <div class="event-card-header">
+        <div class="landing-hero__cta">
+          <a href="{{ url_for('shop_order.order_form') }}" class="btn btn-primary btn-lg">
+            <i class="fa fa-ticket"></i>
+            <span>Ticket sichern</span>
+          </a>
+          <a href="#event-infos" class="btn btn-secondary btn-lg">
+            <i class="fa fa-info-circle"></i>
+            <span>Event-Infos</span>
+          </a>
+        </div>
+
+        {# NOTE: Ticket data below is hardcoded for Story 1.2 - Will be made dynamic in Story 1.3 #}
+        <div class="landing-hero__facts">
+          <div class="fact-tile">
+            <span class="fact-tile__label">Plätze</span>
+            <span class="fact-tile__value">240</span>
+          </div>
+          <div class="fact-tile">
+            <span class="fact-tile__label">Teilnehmer</span>
+            <span class="fact-tile__value">41 / 240</span>
+          </div>
+          <div class="fact-tile">
+            <span class="fact-tile__label">Tickets ab</span>
+            <span class="fact-tile__value">35 €</span>
+          </div>
+          <div class="fact-tile">
+            <span class="fact-tile__label">Mindestalter</span>
+            <span class="fact-tile__value">18+</span>
+          </div>
+        </div>
+      </div>
+
+      {# Right column: Event status card #}
+      {# NOTE: Ticket availability section below is preview for Story 1.3 - Currently uses hardcoded data #}
+      <aside class="landing-hero__aside-card">
+        <div class="landing-hero__aside-header">
           <div>
-            <h4 class="event-card-title">{{ g.party.title }}</h4>
-            <p class="event-card-location">Großsporthalle Brake</p>
+            <h2 class="landing-hero__aside-title">genial verpLANt</h2>
+            <p class="landing-hero__aside-sub">
+              {% if g.party and g.party.starts_at and g.party.ends_at -%}
+                {{ g.party.starts_at|dateformat('d.MM.yyyy') }} bis {{ g.party.ends_at|dateformat('d.MM.yyyy') }} · Großsporthalle Brake<br>
+              {%- else -%}
+                27.03.2026 bis 29.03.2026 · Großsporthalle Brake<br>
+              {%- endif %}
+              Philosophenweg 8, 26919 Brake
+            </p>
           </div>
-          {%- if ticket_sale_stats is defined and ticket_sale_stats.tickets_max
-          is not none %}
-          <div class="event-card-capacity">
-            <div class="event-card-capacity-number">{{
-              ticket_sale_stats.tickets_max - ticket_sale_stats.tickets_sold }}
-            </div>
-            <div class="event-card-capacity-label">Plätze verfügbar</div>
+          {# Dynamic badge and progress bar calculations - Story 1.3 (Code Review fixes) #}
+          {%- if ticket_sale_stats is defined and ticket_sale_stats.tickets_max is not none %}
+            {# Calculate once, reuse everywhere (DRY principle) #}
+            {%- set sold = ticket_sale_stats.tickets_sold %}
+            {%- set total = ticket_sale_stats.tickets_max %}
+            {%- set raw_percentage = (sold / total * 100) if total > 0 else 0 %}
+            {%- set percentage = [raw_percentage, 100]|min|round(0) %}  {# Clamp to 100% max #}
+            {%- set available = [total - sold, 0]|max %}  {# Prevent negative values #}
+
+            {# Dynamic badge based on urgency thresholds #}
+            {%- if percentage >= 90 %}
+          <span class="badge badge--urgent">
+            <i class="fa fa-circle"></i>
+            {{ _('Fast ausverkauft') }}
+          </span>
+            {%- elif percentage >= 80 %}
+          <span class="badge badge--warning">
+            <i class="fa fa-circle"></i>
+            {{ _('Nur noch wenige Tickets') }}
+          </span>
+            {%- else %}
+          <span class="badge">
+            <i class="fa fa-circle"></i>
+            {{ _('Tickets verfügbar') }}
+          </span>
+            {%- endif %}
+          {%- else %}
+          <span class="badge">
+            <i class="fa fa-circle"></i>
+            {{ _('Tickets verfügbar') }}
+          </span>
+          {%- endif %}
+        </div>
+
+        <div class="landing-hero__aside-meta">
+          <span>LAN-Party, 3 Tage, 200+ Gamerinnen und Gamer</span>
+          <span>Tickets ab 35 €</span>
+        </div>
+
+        <div class="landing-hero__aside-progress">
+          {# Dynamic ticket availability - Story 1.3 (Code Review fixes) #}
+          {%- if ticket_sale_stats is defined %}
+            {%- with tickets_total_max_specified = (ticket_sale_stats.tickets_max is not none) %}
+              {%- if tickets_total_max_specified %}
+                {# Reuse variables calculated above - no redeclaration needed #}
+
+          <div class="progress-bar" role="progressbar" aria-valuenow="{{ sold }}" aria-valuemin="0" aria-valuemax="{{ total }}" aria-label="{{ _('Ticket-Verfügbarkeit') }}: {{ sold }} {{ _('von') }} {{ total }} {{ _('verkauft') }}">
+            <div class="progress-bar__fill" style="width: {{ percentage }}%;"></div>
+          </div>
+          <div class="landing-hero__aside-stats">
+            <span>{{ sold|numberformat }} {{ _('von') }} {{ total|numberformat }} {{ _('Plätze belegt') }}</span>
+            <span>{{ available|numberformat }} {{ _('Plätze frei') }}</span>
+          </div>
+              {%- else %}
+          {# Fallback when tickets_max is not specified #}
+          <div class="progress-bar" role="progressbar" aria-valuenow="{{ ticket_sale_stats.tickets_sold }}" aria-valuemin="0" aria-valuemax="0" aria-label="{{ _('Ticket-Verfügbarkeit') }}">
+            <div class="progress-bar__fill" style="width: 0%;"></div>
+          </div>
+          <div class="landing-hero__aside-stats">
+            <span>{{ ticket_sale_stats.tickets_sold|numberformat }} {{ _('Plätze belegt') }}</span>
+            <span>-</span>
+          </div>
+              {%- endif %}
+            {%- endwith %}
+          {%- else %}
+          {# Fallback when ticket_sale_stats is not available #}
+          <div class="progress-bar" role="progressbar" aria-valuenow="41" aria-valuemin="0" aria-valuemax="240" aria-label="{{ _('Ticket-Verfügbarkeit') }}">
+            <div class="progress-bar__fill" style="width: 17%;"></div>
+          </div>
+          <div class="landing-hero__aside-stats">
+            <span>41 {{ _('von') }} 240 {{ _('Plätze belegt') }}</span>
+            <span>199 {{ _('Plätze frei') }}</span>
           </div>
           {%- endif %}
         </div>
-        <div class="event-details">
-          <div class="event-detail">
-            <svg class="icon event-detail-icon" viewBox="0 0 24 24">
-              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-              <line x1="16" y1="2" x2="16" y2="6"></line>
-              <line x1="8" y1="2" x2="8" y2="6"></line>
-              <line x1="3" y1="10" x2="21" y2="10"></line>
-            </svg>
-            <div>
-              <div class="event-detail-label">Datum</div>
-              <div class="event-detail-value">{{
-                g.party.starts_at|dateformat('short') }} - {{
-                g.party.ends_at|dateformat('short') }}
-              </div>
-            </div>
-          </div>
-          {%- if ticket_sale_stats is defined and ticket_sale_stats.tickets_max
-          is not none %}
-          <div class="event-detail">
-            <svg class="icon event-detail-icon" viewBox="0 0 24 24">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-              <circle cx="9" cy="7" r="4"></circle>
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-              <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-            </svg>
-            <div>
-              <div class="event-detail-label">Teilnehmer</div>
-              <div class="event-detail-value">{{ ticket_sale_stats.tickets_sold
-                }} / {{ ticket_sale_stats.tickets_max }} angemeldet
-              </div>
-            </div>
-          </div>
-          {%- endif %}
-        </div>
-        <a href="{{ url_for('shop_order.order_form') }}" class="btn-primary"
-           style="width: 100%; text-align: center; display: block; text-decoration: none;">Jetzt
-          Ticket sichern</a>
-      </div>
-    </div>
-  </div>
-</section>
-{%- endif %}
 
-{# About Section #}
-<section id="about" class="section-alt">
-  <div class="container">
-    <h3 class="section-title"><span>Über Uns</span></h3>
-    <div class="about-content">
-      <img src="{{ url_for_site_file('style/eule_logo.png') }}" alt="Eule Logo"
-           class="about-logo">
-      <p class="about-text">
-        <span class="highlight">total verpLANt e.V.</span> ist der erste
-        eSports- und Gaming-Club
-        in der Wesermarsch. Wir veranstalten die größte LAN-Party der Region und
-        ziehen Gamer aus ganz Deutschland an.
-      </p>
-      <p class="about-text-secondary">
-        Unsere "genial verpLANt" Events bringen bis zu 240 Teilnehmer zusammen
-        für ein unvergessliches
-        Gaming-Wochenende voller Turniere, Spaß und Gemeinschaft.
-      </p>
-      <div class="stats">
-        <div class="stat-card">
-          <div class="stat-number">34</div>
-          <div class="stat-label">LAN-Parties</div>
+        <div class="landing-hero__aside-footer">
+          <span>Nächste LAN in:</span>
+          <span>ca. 120 Tagen</span>
         </div>
-        <div class="stat-card">
-          <div class="stat-number">240</div>
-          <div class="stat-label">Max. Teilnehmer</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-number">#1</div>
-          <div class="stat-label">in der Wesermarsch</div>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
+      </aside>
 
-{# Sponsoring Section #}
-<section class="section-alt">
-  <div class="container">
-    <h3 class="section-title"><span>Unsere Sponsoren</span></h3>
-    <div class="sponsors-container">
-      <div class="sponsor-logo">
-        <a href="https://brake.de/">
-        <img src="{{ url_for_site_file('style/sponsoren/brake_600x250.png') }}"
-             alt="Stadt Brake"></a>
+    </div>
+  </section>
+
+
+  {# ========== FEATURES SECTION ========== #}
+  <section class="landing-section landing-section--light" id="event-infos">
+    <div class="landing-section__inner">
+      <h2 class="landing-section__title">
+        <i class="fa fa-gamepad"></i>
+        Was dich erwartet
+      </h2>
+      <p class="landing-section__intro">
+        Ein ganzes Wochenende voller Gaming, Turniere, Musik, Bühne, Cocktailbar und einer Community,
+        die sich schon seit Jahren kennt. Bring deinen Rechner mit und mach es dir an deinem Platz bequem.
+        Wir kümmern uns um Netz, Strom und Programm.
+      </p>
+
+      <div class="feature-grid">
+        <article class="feature">
+          <h3 class="feature__title">
+            <i class="fa fa-plug"></i>
+            Stabiles Gigabit-LAN
+          </h3>
+          <p class="feature__text">
+            Eigener Switchport, stabiles Backbone und genug Bandbreite
+            für deine Games, Downloads und LAN-Klassiker ohne Kompromisse.
+          </p>
+        </article>
+
+        <article class="feature">
+          <h3 class="feature__title">
+            <i class="fa fa-trophy"></i>
+            Wettbewerbe und Spaßformate
+          </h3>
+          <p class="feature__text">
+            Von ernsthaften Wettbewerben bis hin zu lockeren Fun-Aktionen ist alles dabei.
+            Egal ob Teamplayer oder Solo, du findest das passende Format.
+          </p>
+        </article>
+
+        <article class="feature">
+          <h3 class="feature__title">
+            <i class="fa fa-glass"></i>
+            Catering und Getränke
+          </h3>
+          <p class="feature__text">
+            Frühstück, Snacks, kalte Getränke und unsere Cocktailbar sorgen dafür,
+            dass du dich das ganze Wochenende über versorgt fühlst.
+          </p>
+        </article>
+
+        <article class="feature">
+          <h3 class="feature__title">
+            <i class="fa fa-users"></i>
+            Community und Chillout
+          </h3>
+          <p class="feature__text">
+            Ruhezonen, Couch-Ecken und eine familiäre Atmosphäre.
+            Hier lernst du neue Leute kennen oder triffst bekannte Gesichter wieder.
+          </p>
+        </article>
       </div>
-      <div class="sponsor-logo">
-        <a href="https://depa-event.de/">
-        <img src="{{ url_for_site_file('style/sponsoren/depa_600x250.png') }}"
-             alt="DEPA"></a>
-      </div>
-      <div class="sponsor-logo">
-        <a href="https://www.fahrradgruss.de/"><img
-          src="{{ url_for_site_file('style/sponsoren/fahrrad_gruss_600x250.png') }}"
-          alt="Fahrrad Gruss">
-        </a></div>
-      <div class="sponsor-logo">
-        <a href="https://freundeskreis-zwiesel.de/">
-          <img
-            src="{{ url_for_site_file('style/sponsoren/Freundeskreis_Zwiesel_600x250.png') }}"
-            alt="Freundeskreis Zwiesel">
-        </a></div>
-      <div class="sponsor-logo">
-        <a href="https://hi-score.org/">
-          <img
-            src="{{ url_for_site_file('style/sponsoren/hiscore_600x250.png') }}"
-            alt="HiScore"></a>
-      </div>
-      <div class="sponsor-logo">
-        <a href="https://www.inter-tech.de/home_de.html">
-          <img
-            src="{{ url_for_site_file('style/sponsoren/Inter-tech_600x250.png') }}"
-            alt="Inter-Tech"></a>
-      </div>
-      <div class="sponsor-logo">
-        <a href="https://senchii.de/">
-          <img
-            src="{{ url_for_site_file('style/sponsoren/senchii_600x250.png') }}"
-            alt="Senchii"></a>
-      </div>
-      <div class="sponsor-logo">
-        <a href="https://www.thermal-grizzly.com/">
-          <img
-            src="{{ url_for_site_file('style/sponsoren/thermalgrizzly_600x250.png') }}"
-            alt="Thermal Grizzly"></a>
-      </div>
-      <div class="sponsor-logo">
-        <a href="https://www.virtualounge.de/">
-          <img
-            src="{{ url_for_site_file('style/sponsoren/virtualounge_600x250.png') }}"
-            alt="Virtual Lounge"></a>
-      </div>
-      <div class="sponsor-logo">
-        <a href="https://voltcola.de/">
-          <img
-            src="{{ url_for_site_file('style/sponsoren/voltcola_600x250.png') }}"
-            alt="Volt Cola"></a>
-      </div>
-      <div class="sponsor-logo">
-        <a href="https://www.noctua.at/">
-          <img
-            src="{{ url_for_site_file('style/sponsoren/noctua_600x250.png') }}"
-            alt="Noctua"></a>
+
+      <div class="landing-section__more">
+        <a href="#event-infos" class="btn btn-outline">
+          <i class="fa fa-info-circle"></i>
+          <span>Alle Details zum Ablauf</span>
+        </a>
       </div>
     </div>
-  </div>
-</section>
+  </section>
+
+
+  {# ========== TOURNAMENTS SECTION ========== #}
+  <section class="landing-section" id="tournaments">
+    <div class="landing-section__inner">
+      <h2 class="landing-section__title">
+        <i class="fa fa-trophy"></i>
+        Turniere und Programm
+      </h2>
+      <p class="landing-section__intro">
+        Ob du lieber kompetitiv spielst oder einfach aus Spaß dabei bist, unser Programm bietet dir
+        eine Mischung aus organisierten Turnieren, spontanen Aktionen und Side-Events.
+      </p>
+
+      <div class="tournament-teaser-grid">
+        <article class="tournament-teaser">
+          <h3 class="tournament-teaser__title">
+            <i class="fa fa-desktop"></i>
+            PC-Turniere
+          </h3>
+          <p class="tournament-teaser__text">
+            Geplante Turniere auf dem PC mit klaren Regeln, festen Zeiten
+            und Siegerehrung. Perfekt für alle, die sich mit anderen messen wollen.
+          </p>
+        </article>
+
+        <article class="tournament-teaser">
+          <h3 class="tournament-teaser__title">
+            <i class="fa fa-smile-o"></i>
+            Fun- und Community-Events
+          </h3>
+          <p class="tournament-teaser__text">
+            Lockerere Formate, verrückte Modi und Aktionen, bei denen der Spaß
+            im Vordergrund steht. Ideal zum Auflockern zwischen den Matches.
+          </p>
+        </article>
+
+        <article class="tournament-teaser">
+          <h3 class="tournament-teaser__title">
+            <i class="fa fa-television"></i>
+            Konsolen- und Side-Events
+          </h3>
+          <p class="tournament-teaser__text">
+            Couch-Multiplayer, kleine Challenges und zusätzliche Angebote neben dem Hauptprogramm,
+            bei denen du einfach einsteigen und mitspielen kannst.
+          </p>
+        </article>
+      </div>
+
+      <div class="landing-section__more">
+        <a href="#tournaments" class="btn btn-outline">
+          <i class="fa fa-list-ul"></i>
+          <span>Alle Turniere</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+
+  {# ========== NEWS SECTION ========== #}
+  <section class="landing-section" id="news">
+    <div class="landing-section__inner">
+      <h2 class="landing-section__title">
+        <i class="fa fa-newspaper-o"></i>
+        Neuigkeiten
+      </h2>
+
+      <div class="news-list">
+        <article class="news-item">
+          <header class="news-item__header">
+            <p class="news-item__date">11.03.2025</p>
+            <h3 class="news-item__title">
+              <a href="#news-1">Neue Sponsoren für genial verpLANt</a>
+            </h3>
+          </header>
+          <p class="news-item__excerpt">
+            Wir freuen uns, weitere Partner an Bord zu haben, die unsere LAN-Party unterstützen
+            und das Wochenende für euch noch besser machen.
+          </p>
+          <a href="#news-1" class="link-arrow">
+            Weiterlesen
+          </a>
+        </article>
+
+        <article class="news-item">
+          <header class="news-item__header">
+            <p class="news-item__date">01.03.2025</p>
+            <h3 class="news-item__title">
+              <a href="#news-2">Anmeldung für genial verpLANt gestartet</a>
+            </h3>
+          </header>
+          <p class="news-item__excerpt">
+            Die Anmeldung ist eröffnet. Sicher dir jetzt deinen Platz, bevor alle Sitze vergeben sind,
+            und freu dich auf ein unvergessliches Wochenende.
+          </p>
+          <a href="#news-2" class="link-arrow">
+            Weiterlesen
+          </a>
+        </article>
+      </div>
+    </div>
+  </section>
+
+
+  {# ========== ABOUT SECTION ========== #}
+  <section class="landing-section landing-section--dark" id="about">
+    <div class="landing-section__inner">
+      <h2 class="landing-section__title">
+        <i class="fa fa-users"></i>
+        Über uns
+      </h2>
+      <p class="landing-section__intro">
+        total verpLANt e.V. ist der erste eSports- und Gaming-Club in der Wesermarsch
+        und veranstaltet seit vielen Jahren LAN-Partys und Gaming-Events für die Region.
+      </p>
+
+      <div class="stats-grid">
+        <div class="stat">
+          <span class="stat__value">34</span>
+          <span class="stat__label">LAN-Partys</span>
+        </div>
+        <div class="stat">
+          <span class="stat__value">240</span>
+          <span class="stat__label">Maximale Teilnehmende</span>
+        </div>
+        <div class="stat">
+          <span class="stat__value">#1</span>
+          <span class="stat__label">in der Wesermarsch</span>
+        </div>
+      </div>
+
+      <div class="landing-section__more">
+        <a href="#about" class="btn btn-outline">
+          <i class="fa fa-info-circle"></i>
+          <span>Mehr über unseren Verein</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+
+  {# ========== GALLERY SECTION ========== #}
+  <section class="landing-section" id="gallery">
+    <div class="landing-section__inner">
+      <h2 class="landing-section__title">
+        <i class="fa fa-camera"></i>
+        Eindrücke vergangener Events
+      </h2>
+
+      <div class="gallery-teaser-grid">
+        <a href="#galerie" class="gallery-teaser__item">
+          <img src="https://via.placeholder.com/400x250?text=Foto+1" alt="Impression von der LAN">
+        </a>
+        <a href="#galerie" class="gallery-teaser__item">
+          <img src="https://via.placeholder.com/400x250?text=Foto+2" alt="Impression von der LAN">
+        </a>
+        <a href="#galerie" class="gallery-teaser__item">
+          <img src="https://via.placeholder.com/400x250?text=Foto+3" alt="Impression von der LAN">
+        </a>
+      </div>
+
+      <div class="landing-section__more">
+        <a href="#gallery" class="btn btn-outline">
+          <i class="fa fa-picture-o"></i>
+          <span>Zur Galerie</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+
+  {# ========== SPONSORS SECTION ========== #}
+  <section class="landing-section landing-section--dark" id="sponsors">
+    <div class="landing-section__inner">
+      <h2 class="landing-section__title">
+        <i class="fa fa-handshake-o"></i>
+        Unsere Sponsoren
+      </h2>
+
+      <div class="sponsor-logo-grid">
+        <div class="sponsor-logo">
+          <a href="https://brake.de/">
+            <img src="{{ url_for_site_file('style/sponsoren/brake_600x250.png') }}" alt="Stadt Brake">
+          </a>
+        </div>
+        <div class="sponsor-logo">
+          <a href="https://depa-event.de/">
+            <img src="{{ url_for_site_file('style/sponsoren/depa_600x250.png') }}" alt="DEPA">
+          </a>
+        </div>
+        <div class="sponsor-logo">
+          <a href="https://www.fahrradgruss.de/">
+            <img src="{{ url_for_site_file('style/sponsoren/fahrrad_gruss_600x250.png') }}" alt="Fahrrad Gruss">
+          </a>
+        </div>
+        <div class="sponsor-logo">
+          <a href="https://freundeskreis-zwiesel.de/">
+            <img src="{{ url_for_site_file('style/sponsoren/Freundeskreis_Zwiesel_600x250.png') }}" alt="Freundeskreis Zwiesel">
+          </a>
+        </div>
+        <div class="sponsor-logo">
+          <a href="https://hi-score.org/">
+            <img src="{{ url_for_site_file('style/sponsoren/hiscore_600x250.png') }}" alt="HiScore">
+          </a>
+        </div>
+        <div class="sponsor-logo">
+          <a href="https://www.inter-tech.de/home_de.html">
+            <img src="{{ url_for_site_file('style/sponsoren/Inter-tech_600x250.png') }}" alt="Inter-Tech">
+          </a>
+        </div>
+        <div class="sponsor-logo">
+          <a href="https://senchii.de/">
+            <img src="{{ url_for_site_file('style/sponsoren/senchii_600x250.png') }}" alt="Senchii">
+          </a>
+        </div>
+        <div class="sponsor-logo">
+          <a href="https://www.thermal-grizzly.com/">
+            <img src="{{ url_for_site_file('style/sponsoren/thermalgrizzly_600x250.png') }}" alt="Thermal Grizzly">
+          </a>
+        </div>
+        <div class="sponsor-logo">
+          <a href="https://www.virtualounge.de/">
+            <img src="{{ url_for_site_file('style/sponsoren/virtualounge_600x250.png') }}" alt="Virtual Lounge">
+          </a>
+        </div>
+        <div class="sponsor-logo">
+          <a href="https://voltcola.de/">
+            <img src="{{ url_for_site_file('style/sponsoren/voltcola_600x250.png') }}" alt="Volt Cola">
+          </a>
+        </div>
+        <div class="sponsor-logo">
+          <a href="https://www.noctua.at/">
+            <img src="{{ url_for_site_file('style/sponsoren/noctua_600x250.png') }}" alt="Noctua">
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
 
 {{ render_snippet('homepage', ignore_if_unknown=True)|safe }}
 
-{%- endblock %}
+{% endblock %}
