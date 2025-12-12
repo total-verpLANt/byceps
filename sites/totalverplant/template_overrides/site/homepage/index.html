@@ -212,69 +212,58 @@
 
 
   {# ========== FEATURES SECTION ========== #}
-  <section class="landing-section landing-section--light" id="event-infos">
+  {# Story 1.5: TRUST layer of Function → Trust → Emotion hierarchy #}
+  {# Positioned after hero (FUNCTION) to build confidence before emotional engagement (gallery) #}
+  <section class="landing-section landing-section--light" id="features" aria-labelledby="features-heading" aria-label="{{ _('Abschnitt: Was dich erwartet') }}">
     <div class="landing-section__inner">
-      <h2 class="landing-section__title">
-        <i class="fa fa-gamepad"></i>
-        Was dich erwartet
+      <h2 class="landing-section__title" id="features-heading">
+        <i class="fa fa-gamepad" aria-hidden="true"></i>
+        {{ _('Was dich erwartet') }}
       </h2>
       <p class="landing-section__intro">
-        Ein ganzes Wochenende voller Gaming, Turniere, Musik, Bühne, Cocktailbar und einer Community,
-        die sich schon seit Jahren kennt. Bring deinen Rechner mit und mach es dir an deinem Platz bequem.
-        Wir kümmern uns um Netz, Strom und Programm.
+        {{ _('Ein ganzes Wochenende voller Gaming, Turniere, Musik, Bühne, Cocktailbar und einer Community, die sich schon seit Jahren kennt. Bring deinen Rechner mit und mach es dir an deinem Platz bequem. Wir kümmern uns um Netz, Strom und Programm.') }}
       </p>
 
       <div class="feature-grid">
         <article class="feature">
           <h3 class="feature__title">
-            <i class="fa fa-plug"></i>
-            Stabiles Gigabit-LAN
+            <i class="fa fa-plug" aria-hidden="true"></i>
+            {{ _('Stabiles Gigabit-LAN') }}
           </h3>
           <p class="feature__text">
-            Eigener Switchport, stabiles Backbone und genug Bandbreite
-            für deine Games, Downloads und LAN-Klassiker ohne Kompromisse.
+            {{ _('Eigener Switchport, stabiles Backbone und genug Bandbreite für deine Games, Downloads und LAN-Klassiker ohne Kompromisse.') }}
           </p>
         </article>
 
         <article class="feature">
           <h3 class="feature__title">
-            <i class="fa fa-trophy"></i>
-            Wettbewerbe und Spaßformate
+            <i class="fa fa-trophy" aria-hidden="true"></i>
+            {{ _('Wettbewerbe und Spaßformate') }}
           </h3>
           <p class="feature__text">
-            Von ernsthaften Wettbewerben bis hin zu lockeren Fun-Aktionen ist alles dabei.
-            Egal ob Teamplayer oder Solo, du findest das passende Format.
+            {{ _('Von ernsthaften Wettbewerben bis hin zu lockeren Fun-Aktionen ist alles dabei. Egal ob Teamplayer oder Solo, du findest das passende Format.') }}
           </p>
         </article>
 
         <article class="feature">
           <h3 class="feature__title">
-            <i class="fa fa-glass"></i>
-            Catering und Getränke
+            <i class="fa fa-glass" aria-hidden="true"></i>
+            {{ _('Catering und Getränke') }}
           </h3>
           <p class="feature__text">
-            Frühstück, Snacks, kalte Getränke und unsere Cocktailbar sorgen dafür,
-            dass du dich das ganze Wochenende über versorgt fühlst.
+            {{ _('Frühstück, Snacks, kalte Getränke und unsere Cocktailbar sorgen dafür, dass du dich das ganze Wochenende über versorgt fühlst.') }}
           </p>
         </article>
 
         <article class="feature">
           <h3 class="feature__title">
-            <i class="fa fa-users"></i>
-            Community und Chillout
+            <i class="fa fa-users" aria-hidden="true"></i>
+            {{ _('Community und Chillout') }}
           </h3>
           <p class="feature__text">
-            Ruhezonen, Couch-Ecken und eine familiäre Atmosphäre.
-            Hier lernst du neue Leute kennen oder triffst bekannte Gesichter wieder.
+            {{ _('Ruhezonen, Couch-Ecken und eine familiäre Atmosphäre. Hier lernst du neue Leute kennen oder triffst bekannte Gesichter wieder.') }}
           </p>
         </article>
-      </div>
-
-      <div class="landing-section__more">
-        <a href="#event-infos" class="btn btn-outline">
-          <i class="fa fa-info-circle"></i>
-          <span>Alle Details zum Ablauf</span>
-        </a>
       </div>
     </div>
   </section>

@@ -424,7 +424,7 @@ main.landing {
 .feature-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  gap: 16px; /* Matches design reference spacing for consistent visual rhythm */
 }
 
 @media (max-width: 900px) {
@@ -437,7 +437,7 @@ main.landing {
   background: #020617;
   border-radius: var(--radius-md);
   border: 1px solid rgba(31,41,55,0.9);
-  padding: 14px 16px 14px;
+  padding: 16px; /* Symmetric padding for visual balance */
   box-shadow: var(--shadow-light);
 }
 
@@ -449,7 +449,7 @@ main.landing {
   gap: 8px;
 }
 
-.feature__title i {
+.feature__title i.fa {
   color: var(--accent);
   font-size: 16px;
 }
@@ -458,6 +458,7 @@ main.landing {
   margin: 0;
   color: var(--text-muted);
   font-size: 14px;
+  line-height: 1.5; /* Improves readability, especially on mobile with text wrapping */
 }
 
 /* ========== TOURNAMENT TEASER GRID ========== */
