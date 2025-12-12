@@ -260,7 +260,6 @@ main.landing {
   justify-content: center;
   text-decoration: none;
   transition: transform 0.08s ease, box-shadow 0.08s ease, background 0.1s ease, border-color 0.1s ease;
-  white-space: nowrap;
   gap: 8px;
 }
 
@@ -269,8 +268,9 @@ main.landing {
 }
 
 .btn-lg {
-  padding: 11px 22px;
+  padding: 12px 24px; /* Increased from 11px 22px to 12px 24px to meet 44px minimum touch target (WCAG AAA) */
   font-size: 15px;
+  min-height: 44px; /* Explicit minimum for touch-friendliness */
 }
 
 .btn-primary {
@@ -282,6 +282,16 @@ main.landing {
 .btn-primary:hover {
   background: #fb923c;
   transform: translateY(-1px);
+}
+
+.btn-primary:focus {
+  outline: 2px solid #fb923c;
+  outline-offset: 2px;
+}
+
+.btn-primary:active {
+  background: #ea580c;
+  transform: translateY(0);
 }
 
 .btn-secondary {

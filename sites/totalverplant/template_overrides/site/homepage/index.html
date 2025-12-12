@@ -71,17 +71,25 @@
         </div>
 
         <div class="landing-hero__cta">
-          <a href="{{ url_for('shop_order.order_form') }}" class="btn btn-primary btn-lg">
-            <i class="fa fa-ticket"></i>
-            <span>Ticket sichern</span>
+          {# Primary CTA button - Direct ticket purchase (Story 1.4) #}
+          {# Zero-friction conversion: Homepage → Tickets (no Event-Info detour) #}
+          {# Defensive fallback: use /shop if party context missing #}
+          {% set ticket_url = '/shop' %}
+          {% if g.party %}
+            {% set ticket_url = url_for('shop_order.order_form') %}
+          {% endif %}
+          <a href="{{ ticket_url }}"
+             class="btn btn-primary btn-lg"
+             {% if g.party -%}
+             aria-label="{{ _('Jetzt Ticket für %(party_title)s kaufen', party_title=g.party.title) }}"
+             {%- else -%}
+             aria-label="{{ _('Tickets kaufen') }}"
+             {%- endif %}>
+            <i class="fa fa-ticket" aria-hidden="true"></i>
+            <span>{{ _('Tickets kaufen') }}</span>
           </a>
-          <a href="#event-infos" class="btn btn-secondary btn-lg">
-            <i class="fa fa-info-circle"></i>
-            <span>Event-Infos</span>
-          </a>
+          {# Secondary "Event-Infos" button intentionally omitted per zero-friction UX principle #}
         </div>
-
-        {# NOTE: Ticket data below is hardcoded for Story 1.2 - Will be made dynamic in Story 1.3 #}
         <div class="landing-hero__facts">
           <div class="fact-tile">
             <span class="fact-tile__label">Plätze</span>
