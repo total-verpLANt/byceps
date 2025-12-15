@@ -27,6 +27,13 @@ body {
   min-height: 100vh;
 }
 
+/* Disable fixed background on mobile for better performance */
+@media (max-width: 768px) {
+  body {
+    background-attachment: scroll;
+  }
+}
+
 /* Reset and base for modern layout */
 * {
   box-sizing: border-box;
