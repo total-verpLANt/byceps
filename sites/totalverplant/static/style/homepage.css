@@ -548,38 +548,58 @@ main.landing {
 }
 
 /* ========== GALLERY TEASER GRID ========== */
+/* Story 1.7: Emotion layer - Visual social proof through past event photos */
+/* Responsive grid: 3 columns desktop → 2 tablet → 1-2 mobile */
 
 .gallery-teaser-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
+  gap: 20px; /* Enhanced spacing for desktop viewing */
+  margin-top: 30px;
 }
 
-@media (max-width: 800px) {
+@media (max-width: 900px) {
   .gallery-teaser-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px; /* Reduced spacing for tablet screens */
   }
 }
 
-@media (max-width: 550px) {
+@media (max-width: 600px) {
   .gallery-teaser-grid {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr)); /* 2 columns on mobile for better UX */
+    gap: 12px; /* Further reduced spacing for mobile screens */
   }
 }
 
+/* Gallery Item Links with Interactive Hover Effects */
 .gallery-teaser__item {
   display: block;
-  border-radius: 12px;
+  position: relative;
   overflow: hidden;
+  border-radius: var(--radius-md);
   border: 1px solid rgba(31,41,55,0.9);
   background: #020617;
+  transition: transform 0.2s ease, box-shadow 0.2s ease; /* Smooth hover transitions */
 }
 
+.gallery-teaser__item:hover {
+  transform: translateY(-4px); /* Lift effect on hover */
+  box-shadow: 0 8px 16px rgba(0,0,0,0.4); /* Enhanced shadow on hover */
+}
+
+/* Gallery Images with Aspect Ratio and Zoom Effect */
 .gallery-teaser__item img {
   display: block;
   width: 100%;
-  height: 120px;
+  height: auto;
   object-fit: cover;
+  aspect-ratio: 16 / 10; /* Maintain 16:10 aspect ratio (matches 400x250) */
+  transition: transform 0.3s ease; /* Smooth zoom transition */
+}
+
+.gallery-teaser__item:hover img {
+  transform: scale(1.05); /* Subtle zoom on hover */
 }
 
 /* ========== SPONSOR LOGO GRID ========== */

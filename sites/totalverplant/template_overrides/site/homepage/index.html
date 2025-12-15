@@ -15,7 +15,7 @@
 
   Future Stories (1.3+) will add:
   - Ticket availability variables (sold count, total capacity) - Story 1.3
-  - News items array - Story 1.6
+  - News teasers array - Story 1.6
   - Gallery images array - Story 1.7
 #}
 
@@ -269,49 +269,86 @@
   </section>
 
 
+  {# ========== NEWS SECTION ========== #}
+  {# Story 1.6: ENGAGEMENT layer of Function → Trust → Emotion hierarchy #}
+  {# Positioned after features section to provide updates for returning visitors #}
+  {% if news_teasers %}
+  <section class="landing-section" id="news" aria-labelledby="news-heading" aria-label="{{ _('Abschnitt: Neuigkeiten') }}">
+    <div class="landing-section__inner">
+      <h2 class="landing-section__title" id="news-heading">
+        <i class="fa fa-newspaper-o" aria-hidden="true"></i>
+        {{ _('Neuigkeiten') }}
+      </h2>
+
+      <div class="news-list">
+        {% for news_item in news_teasers[:3] %}
+        <article class="news-item">
+          <header class="news-item__header">
+            {% if news_item.published_at %}
+            <time class="news-item__date" datetime="{{ news_item.published_at.isoformat() }}">
+              {{ news_item.published_at|dateformat('d.MM.yyyy') }}
+            </time>
+            {% endif %}
+            <h3 class="news-item__title">
+              {% if news_item.slug %}
+              <a href="{{ url_for('news.view', slug=news_item.slug) }}">{{ news_item.title }}</a>
+              {% else %}
+              {{ news_item.title }}
+              {% endif %}
+            </h3>
+          </header>
+          {% if news_item.slug %}
+          <a href="{{ url_for('news.view', slug=news_item.slug) }}" class="link-arrow" aria-label="{{ _('Weiterlesen') }}: {{ news_item.title }}">
+            {{ _('Weiterlesen') }}
+          </a>
+          {% endif %}
+        </article>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
+
   {# ========== TOURNAMENTS SECTION ========== #}
   <section class="landing-section" id="tournaments">
     <div class="landing-section__inner">
       <h2 class="landing-section__title">
         <i class="fa fa-trophy"></i>
-        Turniere und Programm
+        {{ _('Turniere und Programm') }}
       </h2>
       <p class="landing-section__intro">
-        Ob du lieber kompetitiv spielst oder einfach aus Spaß dabei bist, unser Programm bietet dir
-        eine Mischung aus organisierten Turnieren, spontanen Aktionen und Side-Events.
+        {{ _('Ob du lieber kompetitiv spielst oder einfach aus Spaß dabei bist, unser Programm bietet dir eine Mischung aus organisierten Turnieren, spontanen Aktionen und Side-Events.') }}
       </p>
 
       <div class="tournament-teaser-grid">
         <article class="tournament-teaser">
           <h3 class="tournament-teaser__title">
             <i class="fa fa-desktop"></i>
-            PC-Turniere
+            {{ _('PC-Turniere') }}
           </h3>
           <p class="tournament-teaser__text">
-            Geplante Turniere auf dem PC mit klaren Regeln, festen Zeiten
-            und Siegerehrung. Perfekt für alle, die sich mit anderen messen wollen.
+            {{ _('Geplante Turniere auf dem PC mit klaren Regeln, festen Zeiten und Siegerehrung. Perfekt für alle, die sich mit anderen messen wollen.') }}
           </p>
         </article>
 
         <article class="tournament-teaser">
           <h3 class="tournament-teaser__title">
             <i class="fa fa-smile-o"></i>
-            Fun- und Community-Events
+            {{ _('Fun- und Community-Events') }}
           </h3>
           <p class="tournament-teaser__text">
-            Lockerere Formate, verrückte Modi und Aktionen, bei denen der Spaß
-            im Vordergrund steht. Ideal zum Auflockern zwischen den Matches.
+            {{ _('Lockerere Formate, verrückte Modi und Aktionen, bei denen der Spaß im Vordergrund steht. Ideal zum Auflockern zwischen den Matches.') }}
           </p>
         </article>
 
         <article class="tournament-teaser">
           <h3 class="tournament-teaser__title">
             <i class="fa fa-television"></i>
-            Konsolen- und Side-Events
+            {{ _('Konsolen- und Side-Events') }}
           </h3>
           <p class="tournament-teaser__text">
-            Couch-Multiplayer, kleine Challenges und zusätzliche Angebote neben dem Hauptprogramm,
-            bei denen du einfach einsteigen und mitspielen kannst.
+            {{ _('Couch-Multiplayer, kleine Challenges und zusätzliche Angebote neben dem Hauptprogramm, bei denen du einfach einsteigen und mitspielen kannst.') }}
           </p>
         </article>
       </div>
@@ -319,53 +356,8 @@
       <div class="landing-section__more">
         <a href="#tournaments" class="btn btn-outline">
           <i class="fa fa-list-ul"></i>
-          <span>Alle Turniere</span>
+          <span>{{ _('Alle Turniere') }}</span>
         </a>
-      </div>
-    </div>
-  </section>
-
-
-  {# ========== NEWS SECTION ========== #}
-  <section class="landing-section" id="news">
-    <div class="landing-section__inner">
-      <h2 class="landing-section__title">
-        <i class="fa fa-newspaper-o"></i>
-        Neuigkeiten
-      </h2>
-
-      <div class="news-list">
-        <article class="news-item">
-          <header class="news-item__header">
-            <p class="news-item__date">11.03.2025</p>
-            <h3 class="news-item__title">
-              <a href="#news-1">Neue Sponsoren für genial verpLANt</a>
-            </h3>
-          </header>
-          <p class="news-item__excerpt">
-            Wir freuen uns, weitere Partner an Bord zu haben, die unsere LAN-Party unterstützen
-            und das Wochenende für euch noch besser machen.
-          </p>
-          <a href="#news-1" class="link-arrow">
-            Weiterlesen
-          </a>
-        </article>
-
-        <article class="news-item">
-          <header class="news-item__header">
-            <p class="news-item__date">01.03.2025</p>
-            <h3 class="news-item__title">
-              <a href="#news-2">Anmeldung für genial verpLANt gestartet</a>
-            </h3>
-          </header>
-          <p class="news-item__excerpt">
-            Die Anmeldung ist eröffnet. Sicher dir jetzt deinen Platz, bevor alle Sitze vergeben sind,
-            und freu dich auf ein unvergessliches Wochenende.
-          </p>
-          <a href="#news-2" class="link-arrow">
-            Weiterlesen
-          </a>
-        </article>
       </div>
     </div>
   </section>
@@ -409,29 +401,52 @@
 
 
   {# ========== GALLERY SECTION ========== #}
-  <section class="landing-section" id="gallery">
+  {# Story 1.7: EMOTION layer of Function → Trust → Emotion hierarchy #}
+  {# Positioned after tournaments/about to provide emotional validation through visual social proof #}
+  <section class="landing-section" id="gallery" aria-labelledby="gallery-heading" aria-label="{{ _('Abschnitt: Eindrücke vergangener Events') }}">
     <div class="landing-section__inner">
-      <h2 class="landing-section__title">
-        <i class="fa fa-camera"></i>
-        Eindrücke vergangener Events
+      <h2 class="landing-section__title" id="gallery-heading">
+        <i class="fa fa-camera" aria-hidden="true"></i>
+        {{ _('Eindrücke vergangener Events') }}
       </h2>
 
+      {# TEMPORARY: Using placehold.co for placeholder images during development #}
+      {# TODO: Replace with real optimized event photos (WebP + JPEG fallback) before production #}
+      {# See Issue #3, #5 in Review Follow-ups section of story file #}
       <div class="gallery-teaser-grid">
-        <a href="#galerie" class="gallery-teaser__item">
-          <img src="https://via.placeholder.com/400x250?text=Foto+1" alt="Impression von der LAN">
+        <a href="{{ url_for('gallery.index') }}" class="gallery-teaser__item" aria-label="{{ _('Zur Galerie: Foto') }} 1">
+          <img
+            src="https://placehold.co/400x250"
+            alt="{{ _('Impression von der LAN-Party - Gaming-Setup mit leuchtenden PCs') }}"
+            width="400"
+            height="250"
+            loading="lazy"
+          >
         </a>
-        <a href="#galerie" class="gallery-teaser__item">
-          <img src="https://via.placeholder.com/400x250?text=Foto+2" alt="Impression von der LAN">
+        <a href="{{ url_for('gallery.index') }}" class="gallery-teaser__item" aria-label="{{ _('Zur Galerie: Foto') }} 2">
+          <img
+            src="https://placehold.co/400x250"
+            alt="{{ _('Eindruck von der Gaming-Community - Teilnehmer beim Turnier') }}"
+            width="400"
+            height="250"
+            loading="lazy"
+          >
         </a>
-        <a href="#galerie" class="gallery-teaser__item">
-          <img src="https://via.placeholder.com/400x250?text=Foto+3" alt="Impression von der LAN">
+        <a href="{{ url_for('gallery.index') }}" class="gallery-teaser__item" aria-label="{{ _('Zur Galerie: Foto') }} 3">
+          <img
+            src="https://placehold.co/400x250"
+            alt="{{ _('Atmosphäre bei der LAN-Party - Halle voller Gamer') }}"
+            width="400"
+            height="250"
+            loading="lazy"
+          >
         </a>
       </div>
 
       <div class="landing-section__more">
-        <a href="#gallery" class="btn btn-outline">
-          <i class="fa fa-picture-o"></i>
-          <span>Zur Galerie</span>
+        <a href="{{ url_for('gallery.index') }}" class="btn btn-outline" aria-label="{{ _('Zur vollständigen Galerie') }}">
+          <i class="fa fa-picture-o" aria-hidden="true"></i>
+          <span>{{ _('Zur Galerie') }}</span>
         </a>
       </div>
     </div>
