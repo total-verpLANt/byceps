@@ -1036,6 +1036,23 @@ section {
     font-size: 14px;
   }
 
+  /* Hide login text on mobile - show only icon */
+  .header-user-nav .button span {
+    display: none;
+  }
+
+  /* Hide chevron icon in user dropdown on mobile */
+  .header-user-nav .dropdown-toggle .icon {
+    display: none;
+  }
+
+  /* Adjust padding for icon-only buttons */
+  .header-user-nav .button {
+    padding: 10px;
+    min-width: 44px;
+    min-height: 44px;
+  }
+
   .logo-img {
     height: 40px;
   }
@@ -1298,6 +1315,23 @@ section {
   .header-user-nav .button {
     padding: 6px 10px;
     font-size: 13px;
+  }
+
+  /* Hide login text on small mobile - show only icon */
+  .header-user-nav .button span {
+    display: none;
+  }
+
+  /* Hide chevron icon in user dropdown on small mobile */
+  .header-user-nav .dropdown-toggle .icon {
+    display: none;
+  }
+
+  /* Adjust padding for icon-only buttons on small screens */
+  .header-user-nav .button {
+    padding: 10px;
+    min-width: 44px;
+    min-height: 44px;
   }
 
   .logo-img {
