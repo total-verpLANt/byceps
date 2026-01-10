@@ -423,41 +423,35 @@
       </h2>
 
 
-      <div id="gn-config" hidden data-gallery-slug="homepage-img"
-       data-gallery-preview="20250411_213415,20250411_213415,20250411_213415">
+      <div class="gallery-teaser-grid">
+        <a href="{{ url_for('gallery.index') }}" class="gallery-teaser__item" aria-label="{{ _('Zur Galerie: Foto') }} 1">
+          <img
+            src="/data/brands/totalverplant/static_content/home-1.jpg"
+            alt="{{ _('Impression von der LAN-Party - Gaming-Setup mit leuchtenden PCs') }}"
+            width="400"
+            height="250"
+            loading="lazy"
+          >
+        </a>
+        <a href="{{ url_for('gallery.index') }}" class="gallery-teaser__item" aria-label="{{ _('Zur Galerie: Foto') }} 2">
+          <img
+            src="/data/brands/totalverplant/static_content/home-2.jpg"
+            alt="{{ _('Eindruck von der Gaming-Community - Teilnehmer beim Turnier') }}"
+            width="400"
+            height="250"
+            loading="lazy"
+          >
+        </a>
+        <a href="{{ url_for('gallery.index') }}" class="gallery-teaser__item" aria-label="{{ _('Zur Galerie: Foto') }} 3">
+          <img
+            src="/data/brands/totalverplant/static_content/home-3.jpg"
+            alt="{{ _('Atmosphäre bei der LAN-Party - Halle voller Gamer') }}"
+            width="400"
+            height="250"
+            loading="lazy"
+          >
+        </a>
       </div>
-      <div class="gallery-images" id="gn-gallery-preview">
-      <!-- Vorschaubilder werden per JS aus data-gallery-preview / data-gallery-files erzeugt -->
-    </div>
-<!--      <div class="gallery-teaser-grid">-->
-<!--        <a href="{{ url_for('gallery.index') }}" class="gallery-teaser__item" aria-label="{{ _('Zur Galerie: Foto') }} 1">-->
-<!--          <img-->
-<!--            src="https://placehold.co/400x250"-->
-<!--            alt="{{ _('Impression von der LAN-Party - Gaming-Setup mit leuchtenden PCs') }}"-->
-<!--            width="400"-->
-<!--            height="250"-->
-<!--            loading="lazy"-->
-<!--          >-->
-<!--        </a>-->
-<!--        <a href="{{ url_for('gallery.index') }}" class="gallery-teaser__item" aria-label="{{ _('Zur Galerie: Foto') }} 2">-->
-<!--          <img-->
-<!--            src="https://placehold.co/400x250"-->
-<!--            alt="{{ _('Eindruck von der Gaming-Community - Teilnehmer beim Turnier') }}"-->
-<!--            width="400"-->
-<!--            height="250"-->
-<!--            loading="lazy"-->
-<!--          >-->
-<!--        </a>-->
-<!--        <a href="{{ url_for('gallery.index') }}" class="gallery-teaser__item" aria-label="{{ _('Zur Galerie: Foto') }} 3">-->
-<!--          <img-->
-<!--            src="https://placehold.co/400x250"-->
-<!--            alt="{{ _('Atmosphäre bei der LAN-Party - Halle voller Gamer') }}"-->
-<!--            width="400"-->
-<!--            height="250"-->
-<!--            loading="lazy"-->
-<!--          >-->
-<!--        </a>-->
-<!--      </div>-->
 
       <div class="landing-section__more">
         <a href="{{ url_for('gallery.index') }}" class="btn btn-outline" aria-label="{{ _('Zur vollständigen Galerie') }}">
