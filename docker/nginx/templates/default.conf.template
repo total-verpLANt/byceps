@@ -1,4 +1,5 @@
 server {
+    server_tokens off;
     server_name ${SERVER_NAME_ADMIN};
 
     location @byceps {
@@ -11,6 +12,7 @@ server {
 }
 
 server {
+    server_tokens off;
     server_name ${SERVER_NAME_API};
 
     location @byceps {
@@ -23,6 +25,7 @@ server {
 }
 
 server {
+    server_tokens off;
     server_name ${SERVER_NAME_SITE};
 
     location @byceps {
