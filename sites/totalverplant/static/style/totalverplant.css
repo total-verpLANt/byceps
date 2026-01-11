@@ -31,6 +31,7 @@
   /* Border radius system */
   --radius-sm: 8px;
   --radius-md: 12px;
+  --radius-md-custom: 14px;
   --radius-lg: 16px;
   --radius-pill: 999px;
 
@@ -585,7 +586,7 @@ section {
 
 .event-card-inner {
   background: #1a1a1a;
-  border-radius: 14px;
+  border-radius: var(--radius-md-custom);
   padding: 32px;
 }
 
@@ -2045,7 +2046,7 @@ form .form-form-errors, form .invalid {
 /* Base icon styles - Icons from sprite (log-in, etc.) with 512x512 viewBox */
 .icon {
   stroke: currentColor !important;
-  stroke-width: 30px !important;  /* Optimized for 512x512 viewBox */
+  stroke-width: 30px !important; /* Optimized for 512x512 viewBox */
   stroke-linecap: round;
   stroke-linejoin: round;
   fill: none;
@@ -2068,7 +2069,7 @@ form .form-form-errors, form .invalid {
 .shop-card-image .icon,
 .news-card-image .icon {
   stroke: currentColor;
-  stroke-width: 2;  /* Correct for 24x24 viewBox */
+  stroke-width: 2; /* Correct for 24x24 viewBox */
   stroke-linecap: round;
   stroke-linejoin: round;
   fill: none;
