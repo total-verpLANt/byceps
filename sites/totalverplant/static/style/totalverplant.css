@@ -1481,6 +1481,11 @@ section {
 
 /* Landscape orientation on mobile phones */
 @media (max-width: 896px) and (orientation: landscape) {
+  /* Hide subtitle in landscape to save space */
+  .logo-text p {
+    display: none;
+  }
+
   .hero {
     padding: 100px 16px 40px;
   }
