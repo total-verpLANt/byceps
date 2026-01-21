@@ -2,7 +2,7 @@
 byceps.services.tourney.dbmodels.participant
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-:Copyright: 2014-2025 Jochen Kupperschmidt
+:Copyright: 2014-2026 Jochen Kupperschmidt
 :License: Revised BSD (see `LICENSE` file for details)
 """
 
@@ -25,7 +25,6 @@ from byceps.services.tourney.models import (
 )
 from byceps.services.user.dbmodels.user import DbUser
 from byceps.services.user.models.user import UserID
-from byceps.util.instances import ReprBuilder
 
 from .tourney import DbTourney
 
@@ -60,14 +59,6 @@ class DbParticipant(db.Model):
         self.created_at = created_at
         self.name = name
         self.manager_id = manager_id
-
-    def __repr__(self) -> str:
-        return (
-            ReprBuilder(self)
-            .add_with_lookup('tourney')
-            .add_with_lookup('name')
-            .build()
-        )
 
 
 class DbParticipantMembership(db.Model):

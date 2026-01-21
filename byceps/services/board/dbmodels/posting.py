@@ -2,7 +2,7 @@
 byceps.services.board.dbmodels.posting
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-:Copyright: 2014-2025 Jochen Kupperschmidt
+:Copyright: 2014-2026 Jochen Kupperschmidt
 :License: Revised BSD (see `LICENSE` file for details)
 """
 
@@ -15,7 +15,6 @@ from byceps.database import db
 from byceps.services.board.models import PostingID, ReactionKind, TopicID
 from byceps.services.user.dbmodels.user import DbUser
 from byceps.services.user.models.user import UserID
-from byceps.util.instances import ReprBuilder
 
 from .topic import DbTopic
 
@@ -71,14 +70,6 @@ class DbPosting(db.Model):
 
     def __eq__(self, other) -> bool:
         return self.id == other.id
-
-    def __repr__(self) -> str:
-        return (
-            ReprBuilder(self)
-            .add_with_lookup('id')
-            .add('topic', self.topic.title)
-            .build()
-        )
 
 
 class DbInitialTopicPostingAssociation(db.Model):

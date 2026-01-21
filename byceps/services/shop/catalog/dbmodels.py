@@ -2,7 +2,7 @@
 byceps.services.shop.catalog.dbmodels
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-:Copyright: 2014-2025 Jochen Kupperschmidt
+:Copyright: 2014-2026 Jochen Kupperschmidt
 :License: Revised BSD (see `LICENSE` file for details)
 """
 
@@ -12,7 +12,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from byceps.database import db
 from byceps.services.shop.product.models import ProductID
 from byceps.services.shop.shop.models import ShopID
-from byceps.util.instances import ReprBuilder
 
 from .models import CatalogProductID, CatalogID, CollectionID
 
@@ -34,9 +33,6 @@ class DbCatalog(db.Model):
         self.id = catalog_id
         self.shop_id = shop_id
         self.title = title
-
-    def __repr__(self) -> str:
-        return ReprBuilder(self).add_with_lookup('id').build()
 
 
 class DbCollection(db.Model):
@@ -67,14 +63,6 @@ class DbCollection(db.Model):
         self.id = collection_id
         self.catalog_id = catalog_id
         self.title = title
-
-    def __repr__(self) -> str:
-        return (
-            ReprBuilder(self)
-            .add_with_lookup('catalog_id')
-            .add_with_lookup('title')
-            .build()
-        )
 
 
 class DbCatalogProduct(db.Model):

@@ -2,7 +2,7 @@
 byceps.services.board.dbmodels.board_access_grant
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-:Copyright: 2014-2025 Jochen Kupperschmidt
+:Copyright: 2014-2026 Jochen Kupperschmidt
 :License: Revised BSD (see `LICENSE` file for details)
 """
 
@@ -15,7 +15,6 @@ from sqlalchemy.orm import Mapped, mapped_column
 from byceps.database import db
 from byceps.services.board.models import BoardID
 from byceps.services.user.models.user import UserID
-from byceps.util.instances import ReprBuilder
 
 
 BoardAccessGrantID = NewType('BoardAccessGrantID', UUID)
@@ -46,11 +45,3 @@ class DbBoardAccessGrant(db.Model):
         self.board_id = board_id
         self.user_id = user_id
         self.created_at = created_at
-
-    def __repr__(self) -> str:
-        return (
-            ReprBuilder(self)
-            .add_with_lookup('board_id')
-            .add_with_lookup('user_id')
-            .build()
-        )

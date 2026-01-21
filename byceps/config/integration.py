@@ -2,7 +2,7 @@
 byceps.config.integration
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-:Copyright: 2014-2025 Jochen Kupperschmidt
+:Copyright: 2014-2026 Jochen Kupperschmidt
 :License: Revised BSD (see `LICENSE` file for details)
 """
 
@@ -12,7 +12,6 @@ from pathlib import Path
 
 import structlog
 
-from byceps.byceps_app import BycepsApp
 from byceps.util.result import Err, Ok
 
 from .errors import ConfigurationError

@@ -4,7 +4,7 @@ byceps.config.models
 
 Configuration models
 
-:Copyright: 2014-2025 Jochen Kupperschmidt
+:Copyright: 2014-2026 Jochen Kupperschmidt
 :License: Revised BSD (see `LICENSE` file for details)
 """
 
@@ -12,6 +12,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+
+from byceps.services.site.models import SiteID
 
 
 class AppMode(Enum):
@@ -95,7 +97,7 @@ class CliAppConfig(AppConfig):
 
 @dataclass(frozen=True, kw_only=True, slots=True)
 class SiteAppConfig(WebAppConfig):
-    site_id: str
+    site_id: SiteID
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)

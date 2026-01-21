@@ -2,7 +2,7 @@
 byceps.application
 ~~~~~~~~~~~~~~~~~~
 
-:Copyright: 2014-2025 Jochen Kupperschmidt
+:Copyright: 2014-2026 Jochen Kupperschmidt
 :License: Revised BSD (see `LICENSE` file for details)
 """
 
@@ -180,7 +180,7 @@ def _get_app_mode(app_config: AppConfig) -> AppMode:
             raise ValueError('Unexpected application configuration type')
 
 
-def _get_site_id(app_config: AppConfig) -> str | None:
+def _get_site_id(app_config: AppConfig) -> SiteID | None:
     """Return site ID for site application configurations, `None` otherwise."""
     match app_config:
         case SiteAppConfig():
@@ -308,6 +308,6 @@ def _log_app_state(app: BycepsApp) -> None:
 
     match app.byceps_app_mode:
         case AppMode.site:
-            event_kw['site_id'] = app.site_id
+            event_kw['site_id'] = str(app.site_id)
 
     log.info('Application created', **event_kw)

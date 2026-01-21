@@ -2,7 +2,7 @@
 byceps.services.ticketing.log.dbmodels
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-:Copyright: 2014-2025 Jochen Kupperschmidt
+:Copyright: 2014-2026 Jochen Kupperschmidt
 :License: Revised BSD (see `LICENSE` file for details)
 """
 
@@ -13,7 +13,6 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from byceps.database import db
 from byceps.services.ticketing.models.ticket import TicketID
-from byceps.util.instances import ReprBuilder
 
 from .models import TicketLogEntryData
 
@@ -44,12 +43,3 @@ class DbTicketLogEntry(db.Model):
         self.event_type = event_type
         self.ticket_id = ticket_id
         self.data = data
-
-    def __repr__(self) -> str:
-        return (
-            ReprBuilder(self)
-            .add_custom(repr(self.event_type))
-            .add_with_lookup('ticket_id')
-            .add_with_lookup('data')
-            .build()
-        )

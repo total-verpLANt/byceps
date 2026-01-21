@@ -2,7 +2,7 @@
 byceps.services.tourney.avatar.dbmodels
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-:Copyright: 2014-2025 Jochen Kupperschmidt
+:Copyright: 2014-2026 Jochen Kupperschmidt
 :License: Revised BSD (see `LICENSE` file for details)
 """
 
@@ -24,7 +24,6 @@ from byceps.database import db
 from byceps.services.party.models import PartyID
 from byceps.services.user.models.user import UserID
 from byceps.util.image.image_type import ImageType
-from byceps.util.instances import ReprBuilder
 from byceps.util.uuid import generate_uuid7
 
 
@@ -88,12 +87,3 @@ class DbTourneyAvatar(db.Model):
     @property
     def url_path(self) -> str:
         return f'/data/parties/{self.party_id}/tourney/avatars/{self.filename}'
-
-    def __repr__(self) -> str:
-        return (
-            ReprBuilder(self)
-            .add_with_lookup('id')
-            .add('party', self.party_id)
-            .add('image_type', self.image_type.name)
-            .build()
-        )

@@ -2,7 +2,7 @@
 byceps.services.shop.order.order_action_service
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-:Copyright: 2014-2025 Jochen Kupperschmidt
+:Copyright: 2014-2026 Jochen Kupperschmidt
 :License: Revised BSD (see `LICENSE` file for details)
 """
 
@@ -33,21 +33,9 @@ log = structlog.get_logger()
 
 
 PROCEDURES_BY_NAME: dict[str, ActionProcedure] = {
-    'award_badge': ActionProcedure(
-        on_payment=user_badge_actions.on_payment,
-        on_cancellation_before_payment=user_badge_actions.on_cancellation_before_payment,
-        on_cancellation_after_payment=user_badge_actions.on_cancellation_after_payment,
-    ),
-    'create_ticket_bundles': ActionProcedure(
-        on_payment=ticket_bundle_actions.on_payment,
-        on_cancellation_before_payment=ticket_bundle_actions.on_cancellation_before_payment,
-        on_cancellation_after_payment=ticket_bundle_actions.on_cancellation_after_payment,
-    ),
-    'create_tickets': ActionProcedure(
-        on_payment=ticket_actions.on_payment,
-        on_cancellation_before_payment=ticket_actions.on_cancellation_before_payment,
-        on_cancellation_after_payment=ticket_actions.on_cancellation_after_payment,
-    ),
+    'award_badge': user_badge_actions.get_action_procedure(),
+    'create_ticket_bundles': ticket_bundle_actions.get_action_procedure(),
+    'create_tickets': ticket_actions.get_action_procedure(),
 }
 
 

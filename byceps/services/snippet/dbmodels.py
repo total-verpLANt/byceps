@@ -6,7 +6,7 @@ Snippets of database-stored content. Can contain HTML and template
 engine syntax. Can be embedded in other templates or mounted as full
 page.
 
-:Copyright: 2014-2025 Jochen Kupperschmidt
+:Copyright: 2014-2026 Jochen Kupperschmidt
 :License: Revised BSD (see `LICENSE` file for details)
 """
 
@@ -19,7 +19,6 @@ from byceps.database import db
 from byceps.services.language.dbmodels import DbLanguage
 from byceps.services.user.dbmodels.user import DbUser
 from byceps.services.user.models.user import UserID
-from byceps.util.instances import ReprBuilder
 from byceps.util.uuid import generate_uuid7
 
 from .models import SnippetID, SnippetScope, SnippetVersionID
@@ -68,16 +67,6 @@ class DbSnippet(db.Model):
     def scope(self) -> SnippetScope:
         return SnippetScope(self.scope_type, self.scope_name)
 
-    def __repr__(self) -> str:
-        return (
-            ReprBuilder(self)
-            .add_with_lookup('id')
-            .add_with_lookup('scope_type')
-            .add_with_lookup('scope_name')
-            .add_with_lookup('name')
-            .build()
-        )
-
 
 class DbSnippetVersion(db.Model):
     """A snapshot of a snippet at a certain time."""
@@ -116,15 +105,6 @@ class DbSnippetVersion(db.Model):
         snippet it belongs to.
         """
         return self.id == self.snippet.current_version.id
-
-    def __repr__(self) -> str:
-        return (
-            ReprBuilder(self)
-            .add_with_lookup('id')
-            .add_with_lookup('snippet')
-            .add_with_lookup('created_at')
-            .build()
-        )
 
 
 class DbCurrentSnippetVersionAssociation(db.Model):

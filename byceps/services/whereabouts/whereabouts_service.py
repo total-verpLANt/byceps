@@ -2,7 +2,7 @@
 byceps.services.whereabouts.whereabouts_service
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-:Copyright: 2022-2025 Jochen Kupperschmidt
+:Copyright: 2022-2026 Jochen Kupperschmidt
 :License: Revised BSD (see `LICENSE` file for details)
 """
 
@@ -34,6 +34,19 @@ from .models import (
 # whereabouts
 
 
+def copy_whereabouts_list(source_party: Party, target_party: Party) -> None:
+    """Copy all whereabouts from one party to another."""
+    for whereabouts in get_whereabouts_list(source_party):
+        create_whereabouts(
+            target_party,
+            whereabouts.name,
+            whereabouts.description,
+            position=whereabouts.position,
+            hidden_if_empty=whereabouts.hidden_if_empty,
+            secret=whereabouts.secret,
+        )
+
+
 def create_whereabouts(
     party: Party,
     name: str,
@@ -44,7 +57,9 @@ def create_whereabouts(
     secret: bool = False,
 ) -> Whereabouts:
     """Create whereabouts."""
-    if position is None:
+    if position is not None:
+        next_position = position
+    else:
         whereabouts_list = get_whereabouts_list(party)
         if whereabouts_list:
             next_position = max(w.position for w in whereabouts_list) + 1

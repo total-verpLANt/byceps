@@ -2,7 +2,7 @@
 byceps.services.consent.dbmodels
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-:Copyright: 2014-2025 Jochen Kupperschmidt
+:Copyright: 2014-2026 Jochen Kupperschmidt
 :License: Revised BSD (see `LICENSE` file for details)
 """
 
@@ -14,7 +14,6 @@ from byceps.database import db
 from byceps.services.brand.models import BrandID
 from byceps.services.user.dbmodels.user import DbUser
 from byceps.services.user.models.user import UserID
-from byceps.util.instances import ReprBuilder
 from byceps.util.uuid import generate_uuid4
 
 from .models import ConsentSubjectID
@@ -44,15 +43,6 @@ class DbConsentSubject(db.Model):
         self.title = title
         self.checkbox_label = checkbox_label
         self.checkbox_link_target = checkbox_link_target
-
-    def __repr__(self) -> str:
-        return (
-            ReprBuilder(self)
-            .add_with_lookup('id')
-            .add_with_lookup('name')
-            .add_with_lookup('title')
-            .build()
-        )
 
 
 class DbConsentBrandRequirement(db.Model):
