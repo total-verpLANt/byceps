@@ -1,4 +1,5 @@
 {% extends 'layout/base.html' %}
+{% from 'macros/forms.html' import form_buttons %}
 {% set current_page = 'chair_optout' %}
 {% set page_title = _('Chair opt-out') %}
 
@@ -6,8 +7,46 @@
 
   <h1 class="title">{{ page_title }}</h1>
 
-  <div class="box no-data-message">
-    {{ _('This feature is not available yet.') }}
+  <div class="block">
+    {{ _('Select the tickets for which you will bring your own chair.') }}
   </div>
+
+  <form method="post">
+    <table class="itemlist is-vcentered is-wide">
+      <thead>
+        <tr>
+          <th>{{ _('Ticket number') }}</th>
+          <th>{{ _('Seat') }}</th>
+          <th class="centered">{{ _('Bring own chair') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {%- for ticket in ticket_optouts|sort(attribute='code') %}
+        <tr>
+          <td><span class="monospace">{{ ticket.code }}</span></td>
+          <td>
+            {%- if ticket.has_seat -%}
+              {{ ticket.seat_label|fallback(_('unnamed')) }}
+            {%- else -%}
+              {{ _('no seat')|dim }}
+            {%- endif -%}
+          </td>
+          <td class="centered">
+            <input
+              type="checkbox"
+              name="ticket_id"
+              value="{{ ticket.id }}"
+              aria-label="{{ _('Bring own chair for ticket %(ticket_code)s', ticket_code=ticket.code) }}"
+              {%- if ticket.brings_own_chair %} checked{% endif -%}
+              {%- if not ticket.has_seat %} disabled{% endif -%}
+            >
+          </td>
+        </tr>
+        {%- endfor %}
+      </tbody>
+    </table>
+
+    {{ form_buttons(_('Save')) }}
+  </form>
 
 {% endblock %}
