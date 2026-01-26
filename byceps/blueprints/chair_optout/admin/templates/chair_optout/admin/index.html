@@ -1,11 +1,25 @@
 {% extends 'layout/admin/base.html' %}
+{% from 'macros/icons.html' import render_icon %}
 {% set current_page = 'chair_optout_admin' %}
 {% set current_page_party = party %}
 {% set page_title = [_('Chair opt-out'), party.title] %}
 
 {% block body %}
 
-  <h1 class="title">{{ _('Chair opt-out') }}</h1>
+  <div class="block row row--space-between">
+    <div>
+      <h1 class="title">{{ _('Chair opt-out') }}</h1>
+    </div>
+    <div>
+      <div class="button-row is-right-aligned">
+        {%- if report_entries %}
+        <a class="button" href="{{ url_for('.export_as_csv', party_id=party.id) }}" download="chair_optout_{{ party.id }}.csv">{{ render_icon('download') }} <span>{{ _('Export') }} (CSV)</span></a>
+        {%- else %}
+        <button class="button" disabled>{{ render_icon('download') }} <span>{{ _('Export') }} (CSV)</span></button>
+        {%- endif %}
+      </div>
+    </div>
+  </div>
 
   {%- if report_entries %}
   <table class="itemlist is-vcentered is-wide">
