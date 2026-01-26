@@ -1,0 +1,13 @@
+{% extends 'layout/base.html' %}
+{% set current_page = 'chair_optout' %}
+{% set page_title = _('Chair opt-out') %}
+
+{% block body %}
+
+  <h1 class="title">{{ page_title }}</h1>
+
+  <div class="box no-data-message">
+    {{ _('This feature is not available yet.') }}
+  </div>
+
+{% endblock %}
