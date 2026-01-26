@@ -27,3 +27,12 @@ class PartyTicketChairOptout:
     user_id: UserID
     brings_own_chair: bool
     updated_at: datetime
+
+
+@dataclass(frozen=True, kw_only=True)
+class ChairOptoutReportEntry:
+    full_name: str | None
+    screen_name: str | None
+    ticket_code: str
+    seat_label: str | None
+    has_seat: bool

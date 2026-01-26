@@ -1,13 +1,41 @@
 {% extends 'layout/admin/base.html' %}
 {% set current_page = 'chair_optout_admin' %}
-{% set page_title = _('Chair opt-out') %}
+{% set current_page_party = party %}
+{% set page_title = [_('Chair opt-out'), party.title] %}
 
 {% block body %}
 
-  <h1 class="title">{{ page_title }}</h1>
+  <h1 class="title">{{ _('Chair opt-out') }}</h1>
 
-  <div class="box no-data-message">
-    {{ _('Report not available yet.') }}
-  </div>
+  {%- if report_entries %}
+  <table class="itemlist is-vcentered is-wide">
+    <thead>
+      <tr>
+        <th>{{ _('Name') }}</th>
+        <th>{{ _('Nickname') }}</th>
+        <th>{{ _('Ticket number') }}</th>
+        <th>{{ _('Seat') }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {%- for entry in report_entries %}
+      <tr>
+        <td>{{ entry.full_name or '' }}</td>
+        <td>{{ entry.screen_name or '' }}</td>
+        <td><span class="monospace">{{ entry.ticket_code }}</span></td>
+        <td>
+          {%- if entry.has_seat -%}
+            {{ entry.seat_label|fallback(_('unnamed')) }}
+          {%- else -%}
+            {{ _('no seat')|dim }}
+          {%- endif -%}
+        </td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+  {%- else %}
+  <div class="box no-data-message">{{ _('No entries') }}</div>
+  {%- endif %}
 
 {% endblock %}

@@ -14,10 +14,11 @@ from byceps.database import db
 from byceps.services.party.models import PartyID
 from byceps.services.ticketing.dbmodels.ticket import DbTicket
 from byceps.services.ticketing.models.ticket import TicketID
+from byceps.services.user.dbmodels.user import DbUser
 from byceps.services.user.models.user import UserID
 
 from .dbmodels import DbPartyTicketChairOptout
-from .models import PartyTicketChairOptout
+from .models import ChairOptoutReportEntry, PartyTicketChairOptout
 
 
 def get_optout(
@@ -77,6 +78,32 @@ def list_optouts_for_party(
     return [_db_entity_to_optout(db_optout) for db_optout in db_optouts]
 
 
+def get_report_entries_for_party(
+    party_id: PartyID,
+) -> list[ChairOptoutReportEntry]:
+    """Return report entries for tickets with chair opt-out enabled."""
+    db_tickets = (
+        db.session.scalars(
+            select(DbTicket)
+            .join(
+                DbPartyTicketChairOptout,
+                DbPartyTicketChairOptout.ticket_id == DbTicket.id,
+            )
+            .filter(DbPartyTicketChairOptout.party_id == party_id)
+            .filter(DbPartyTicketChairOptout.brings_own_chair == True)  # noqa: E712
+            .options(
+                db.joinedload(DbTicket.occupied_seat),
+                db.joinedload(DbTicket.used_by).joinedload(DbUser.detail),
+            )
+            .order_by(DbTicket.code)
+        )
+        .unique()
+        .all()
+    )
+
+    return [_build_report_entry(db_ticket) for db_ticket in db_tickets]
+
+
 def list_optouts_for_user(
     party_id: PartyID, user_id: UserID
 ) -> list[PartyTicketChairOptout]:
@@ -131,4 +158,19 @@ def _db_entity_to_optout(
         user_id=db_optout.user_id,
         brings_own_chair=db_optout.brings_own_chair,
         updated_at=db_optout.updated_at,
+    )
+
+
+def _build_report_entry(db_ticket: DbTicket) -> ChairOptoutReportEntry:
+    user = db_ticket.used_by
+    full_name = (
+        user.detail.full_name if (user is not None and user.detail) else None
+    )
+
+    return ChairOptoutReportEntry(
+        full_name=full_name,
+        screen_name=user.screen_name if user is not None else None,
+        ticket_code=db_ticket.code,
+        seat_label=resolve_seat_label_for_ticket(db_ticket),
+        has_seat=db_ticket.occupied_seat is not None,
     )
