@@ -102,6 +102,58 @@ def test_set_optout_creates_and_gets_optout(monkeypatch):
     )
 
 
+def test_get_optout_returns_none_when_missing(monkeypatch):
+    party_id, ticket_id, _ = _make_ids()
+
+    monkeypatch.setattr(
+        chair_optout_service, '_get_db_optout', lambda *_: None
+    )
+
+    assert chair_optout_service.get_optout(party_id, ticket_id) is None
+
+
+def test_set_optout_updates_existing(monkeypatch):
+    party_id, ticket_id, user_id = _make_ids()
+    previous_user_id = UserID(generate_uuid())
+    initial_updated_at = datetime(2026, 1, 10, 9, 0, 0)
+    fixed_now = datetime(2026, 1, 16, 8, 30, 0)
+
+    db_optout = _make_db_optout(
+        party_id,
+        ticket_id,
+        previous_user_id,
+        initial_updated_at,
+        False,
+    )
+
+    class FixedDateTime:
+        @staticmethod
+        def utcnow() -> datetime:
+            return fixed_now
+
+    session = DummySession()
+    dummy_db = SimpleNamespace(session=session)
+
+    monkeypatch.setattr(chair_optout_service, 'db', dummy_db)
+    monkeypatch.setattr(chair_optout_service, 'datetime', FixedDateTime)
+    monkeypatch.setattr(
+        chair_optout_service, '_get_db_optout', lambda *_: db_optout
+    )
+
+    optout = chair_optout_service.set_optout(
+        party_id, ticket_id, user_id, True
+    )
+
+    assert session.committed is True
+    assert session.added == []
+    assert db_optout.user_id == user_id
+    assert db_optout.brings_own_chair is True
+    assert db_optout.updated_at == fixed_now
+    assert optout.user_id == user_id
+    assert optout.brings_own_chair is True
+    assert optout.updated_at == fixed_now
+
+
 def test_list_optouts_for_party_filters_false_entries(monkeypatch):
     party_id, ticket_id_true, user_id = _make_ids()
     _, ticket_id_false, _ = _make_ids()
@@ -125,3 +177,38 @@ def test_list_optouts_for_party_filters_false_entries(monkeypatch):
     )
 
     assert [optout.ticket_id for optout in optouts] == [ticket_id_true]
+
+
+def test_list_optouts_for_user_returns_all_entries(monkeypatch):
+    party_id, ticket_id_first, user_id = _make_ids()
+    _, ticket_id_second, _ = _make_ids()
+    updated_at = datetime(2026, 1, 15, 13, 0, 0)
+
+    db_optouts = [
+        _make_db_optout(
+            party_id, ticket_id_first, user_id, updated_at, True
+        ),
+        _make_db_optout(
+            party_id, ticket_id_second, user_id, updated_at, False
+        ),
+    ]
+
+    monkeypatch.setattr(
+        chair_optout_service,
+        '_get_db_optouts_for_user',
+        lambda *_: db_optouts,
+    )
+
+    optouts = chair_optout_service.list_optouts_for_user(party_id, user_id)
+
+    assert [optout.ticket_id for optout in optouts] == [
+        ticket_id_first,
+        ticket_id_second,
+    ]
+
+
+def test_resolve_seat_label_for_ticket_handles_missing_seat():
+    assert chair_optout_service.resolve_seat_label_for_ticket(None) is None
+
+    ticket = SimpleNamespace(occupied_seat=None)
+    assert chair_optout_service.resolve_seat_label_for_ticket(ticket) is None
