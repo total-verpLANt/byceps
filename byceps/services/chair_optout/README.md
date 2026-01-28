@@ -1,41 +1,77 @@
-# Chair Opt-out Blueprint
+# Chair Opt-out (Bring Your Own Chair)
 
 ## Purpose
-- Users can mark party tickets as "bring own chair".
-- Admin report/CSV lists only tickets with brings_own_chair = true.
+- Users can mark individual **party tickets** as “bring own chair”.
+- Admin report/CSV lists **only tickets with** `brings_own_chair = true`.
 
-## Blueprints and templates
-- Site blueprint: byceps/services/chair_optout/blueprints/site (name: chair_optout)
-- Admin blueprint: byceps/services/chair_optout/blueprints/admin (name: chair_optout_admin)
-- Templates:
-  - byceps/services/chair_optout/blueprints/site/templates/site/chair_optout/*.html
-  - byceps/services/chair_optout/blueprints/admin/templates/admin/chair_optout/*.html
+---
+
+## Structure
+
+### Service
+- `byceps/services/chair_optout/`
+  - service code, DB models, permissions
+
+### Blueprints
+- Site blueprint: `byceps/services/chair_optout/blueprints/site` (name: `chair_optout`)
+- Admin blueprint: `byceps/services/chair_optout/blueprints/admin` (name: `chair_optout_admin`)
+
+### Templates
+- Site templates:
+  - `byceps/services/chair_optout/blueprints/site/templates/site/chair_optout/*.html`
+- Admin templates:
+  - `byceps/services/chair_optout/blueprints/admin/templates/admin/chair_optout/*.html`
+
+### Registration / Integration
 - Registered in:
-  - byceps/blueprints/site.py with base path /chair_optout
-  - byceps/blueprints/admin.py with base path /chair_optout
+  - `byceps/blueprints/site.py` → module `services.chair_optout.blueprints.site`
+  - `byceps/blueprints/admin.py` → module `services.chair_optout.blueprints.admin`
+- Entry points are exposed by the routes below; links can be added via templates/navigation as needed.
+
+---
 
 ## URLs
-- User: GET/POST `/party/<party_id>/chair-optout`
-- Admin: GET `/admin/party/<party_id>/chair-optout`
-- Admin CSV: GET `/admin/party/<party_id>/chair-optout/export.csv`
+- User: `GET/POST /party/<party_id>/chair-optout`
+- Admin: `GET /admin/party/<party_id>/chair-optout`
+- Admin CSV: `GET /admin/party/<party_id>/chair-optout/export.csv`
 
-## Report/CSV columns
-- Name | Nickname | Ticketnummer | Sitzplatz-Label
+---
+
+## Report / CSV columns
+- `Name | Nickname | Ticketnummer | Sitzplatz-Label`
+
+---
 
 ## Seat label resolution
-- Seat label is derived live from the current seat assignment.
-- Source: ticket.occupied_seat.label (via seat_reservation_service managed tickets).
+- Seat label is derived live from the current seat assignment (no seat label is stored in the opt-out table).
+- If a ticket has no seat, the seat label is empty/none.
+
+---
 
 ## Permissions
 - `chair_optout.view_report`
 - `chair_optout.export_report`
 
+---
+
 ## Database
 - New table: `party_ticket_chair_optouts`
-- Fields: id (UUID PK), party_id, ticket_id, user_id, brings_own_chair, updated_at
-- Unique constraint: (party_id, ticket_id)
-- Create via DDL/SQL or re-run `byceps create-database-tables`.
+- Fields: `id (UUID PK)`, `party_id`, `ticket_id`, `user_id`, `brings_own_chair`, `updated_at`
+- Unique constraint: `(party_id, ticket_id)`
+
+Database setup:
+- For existing DBs / to (re-)create tables: `uv run byceps create-database-tables`
+- For fresh DBs: `uv run byceps initialize-database`
+
+Roles/permissions import (if needed):
+- `uv run byceps import-roles -f scripts/data/roles.toml`
+
+---
 
 ## Tests
-- Install test dependencies: `uv sync --frozen --group test`
-- Run tests: `uv run pytest tests/unit`
+Install test dependencies:
+- `uv sync --frozen --group test`
+
+Run tests:
+- Unit tests: `uv run pytest tests/unit`
+- Full suite: `uv run pytest`
