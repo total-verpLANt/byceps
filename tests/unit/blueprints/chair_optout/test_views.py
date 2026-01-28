@@ -11,8 +11,8 @@ import pytest
 from flask import g
 from werkzeug.exceptions import Forbidden
 
-from byceps.blueprints.chair_optout.admin import views as admin_views
-from byceps.blueprints.chair_optout.site import views as site_views
+from byceps.services.chair_optout.blueprints.admin import views as admin_views
+from byceps.services.chair_optout.blueprints.site import views as site_views
 from byceps.config.models import AppMode
 from byceps.services.chair_optout.models import ChairOptoutReportEntry
 from byceps.util import views as util_views

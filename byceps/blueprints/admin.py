@@ -52,7 +52,7 @@ def register_admin_blueprints(
         ('services.page.blueprints.admin', '/pages'),
         ('services.party.blueprints.admin', '/parties'),
         ('services.seating.blueprints.admin', '/seating'),
-        ('blueprints.chair_optout.admin', '/chair_optout'),
+        ('services.chair_optout.blueprints.admin', '/chair_optout'),
         ('services.shop.blueprints.admin', None),
         (
             'services.shop.cancellation_request.blueprints.admin',
