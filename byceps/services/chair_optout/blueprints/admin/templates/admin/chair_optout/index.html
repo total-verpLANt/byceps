@@ -2,13 +2,13 @@
 {% from 'macros/icons.html' import render_icon %}
 {% set current_page = 'chair_optout_admin' %}
 {% set current_page_party = party %}
-{% set page_title = [_('Chair opt-out'), party.title] %}
+{% set page_title = [_('Eigener Stuhl'), party.title] %}
 
 {% block body %}
 
   <div class="block row row--space-between">
     <div>
-      <h1 class="title">{{ _('Chair opt-out') }}</h1>
+      <h1 class="title">{{ _('Eigener Stuhl') }}</h1>
     </div>
     <div>
       <div class="button-row is-right-aligned">
@@ -27,8 +27,8 @@
       <tr>
         <th>{{ _('Name') }}</th>
         <th>{{ _('Nickname') }}</th>
-        <th>{{ _('Ticket number') }}</th>
-        <th>{{ _('Seat') }}</th>
+        <th>{{ _('Ticketnummer') }}</th>
+        <th>{{ _('Sitzplatz') }}</th>
       </tr>
     </thead>
     <tbody>
@@ -39,9 +39,9 @@
         <td><span class="monospace">{{ entry.ticket_code }}</span></td>
         <td>
           {%- if entry.has_seat -%}
-            {{ entry.seat_label|fallback(_('unnamed')) }}
+            {{ entry.seat_label|fallback(_('ohne Bezeichnung')) }}
           {%- else -%}
-            {{ _('no seat')|dim }}
+            {{ _('kein Sitzplatz')|dim }}
           {%- endif -%}
         </td>
       </tr>
@@ -49,7 +49,7 @@
     </tbody>
   </table>
   {%- else %}
-  <div class="box no-data-message">{{ _('No entries') }}</div>
+  <div class="box no-data-message">{{ _('Keine Eintraege') }}</div>
   {%- endif %}
 
 {% endblock %}

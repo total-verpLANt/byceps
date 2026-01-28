@@ -1,23 +1,23 @@
 {% extends 'layout/base.html' %}
 {% from 'macros/forms.html' import form_buttons %}
 {% set current_page = 'chair_optout' %}
-{% set page_title = _('Chair opt-out') %}
+{% set page_title = _('Eigener Stuhl') %}
 
 {% block body %}
 
   <h1 class="title">{{ page_title }}</h1>
 
   <div class="block">
-    {{ _('Select the tickets for which you will bring your own chair.') }}
+    {{ _('Waehle die Tickets aus, fuer die du deinen eigenen Stuhl mitbringst.') }}
   </div>
 
   <form method="post">
     <table class="itemlist is-vcentered is-wide">
       <thead>
         <tr>
-          <th>{{ _('Ticket number') }}</th>
-          <th>{{ _('Seat') }}</th>
-          <th class="centered">{{ _('Bring own chair') }}</th>
+          <th>{{ _('Ticketnummer') }}</th>
+          <th>{{ _('Sitzplatz') }}</th>
+          <th class="centered">{{ _('Eigenen Stuhl mitbringen') }}</th>
         </tr>
       </thead>
       <tbody>
@@ -26,9 +26,9 @@
           <td><span class="monospace">{{ ticket.code }}</span></td>
           <td>
             {%- if ticket.has_seat -%}
-              {{ ticket.seat_label|fallback(_('unnamed')) }}
+              {{ ticket.seat_label|fallback(_('ohne Bezeichnung')) }}
             {%- else -%}
-              {{ _('no seat')|dim }}
+              {{ _('kein Sitzplatz')|dim }}
             {%- endif -%}
           </td>
           <td class="centered">
@@ -36,7 +36,7 @@
               type="checkbox"
               name="ticket_id"
               value="{{ ticket.id }}"
-              aria-label="{{ _('Bring own chair for ticket %(ticket_code)s', ticket_code=ticket.code) }}"
+              aria-label="{{ _('Eigenen Stuhl mitbringen fuer Ticket %(ticket_code)s', ticket_code=ticket.code) }}"
               {%- if ticket.brings_own_chair %} checked{% endif -%}
               {%- if not ticket.has_seat %} disabled{% endif -%}
             >
@@ -46,7 +46,7 @@
       </tbody>
     </table>
 
-    {{ form_buttons(_('Save')) }}
+    {{ form_buttons(_('Speichern')) }}
   </form>
 
 {% endblock %}

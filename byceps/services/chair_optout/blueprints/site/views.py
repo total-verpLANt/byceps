@@ -12,7 +12,7 @@ from flask_babel import gettext
 from byceps.services.chair_optout import chair_optout_service
 from byceps.services.ticketing import ticket_service
 from byceps.util.framework.blueprint import create_blueprint
-from byceps.util.framework.flash import flash_success
+from byceps.util.framework.flash import flash_notice, flash_success
 from byceps.util.framework.templating import templated
 from byceps.util.views import login_required, redirect_to
 
@@ -56,11 +56,14 @@ def update():
     optouts_by_ticket_id = _get_optouts_by_ticket_id(party.id)
 
     selected_ticket_ids = set(request.form.getlist('ticket_id'))
+    changed = False
+    toggleable_seat_count = 0
 
     for ticket in tickets:
         if ticket.occupied_seat is None:
             continue
 
+        toggleable_seat_count += 1
         ticket_id_str = str(ticket.id)
         brings_own_chair = ticket_id_str in selected_ticket_ids
         existing_optout = optouts_by_ticket_id.get(ticket_id_str)
@@ -77,8 +80,16 @@ def update():
                 g.user.id,
                 brings_own_chair,
             )
+            changed = True
 
-    flash_success(gettext('Changes have been saved.'))
+    if changed:
+        flash_success(gettext('Aenderungen gespeichert.'))
+    elif toggleable_seat_count == 0:
+        flash_notice(
+            gettext('Keine Sitzplaetze vorhanden - nichts zu speichern.')
+        )
+    else:
+        flash_notice(gettext('Keine Aenderungen.'))
     return redirect_to('.index')
 
 
