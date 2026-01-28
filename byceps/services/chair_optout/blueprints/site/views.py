@@ -83,13 +83,13 @@ def update():
             changed = True
 
     if changed:
-        flash_success(gettext('Aenderungen gespeichert.'))
+        flash_success(gettext('Änderungen gespeichert.'))
     elif toggleable_seat_count == 0:
         flash_notice(
-            gettext('Keine Sitzplaetze vorhanden - nichts zu speichern.')
+            gettext('Keine Sitzplätze vorhanden - nichts zu speichern.')
         )
     else:
-        flash_notice(gettext('Keine Aenderungen.'))
+        flash_notice(gettext('Keine Änderungen.'))
     return redirect_to('.index')
 
 
