@@ -6,6 +6,8 @@ byceps.services.chair_optout.blueprints.site.views
 :License: Revised BSD (see `LICENSE` file for details)
 """
 
+from uuid import UUID
+
 from flask import abort, g, request
 from flask_babel import gettext
 
@@ -16,6 +18,8 @@ from byceps.util.framework.flash import flash_notice, flash_success
 from byceps.util.framework.templating import templated
 from byceps.util.views import login_required, redirect_to
 
+from .forms import ChairOptoutForm
+
 
 blueprint = create_blueprint('chair_optout', __name__)
 
@@ -23,7 +27,7 @@ blueprint = create_blueprint('chair_optout', __name__)
 @blueprint.get('/')
 @login_required
 @templated
-def index():
+def index(erroneous_form=None):
     """Show the chair opt-out page."""
     party = _get_current_party_or_404()
 
@@ -33,13 +37,24 @@ def index():
 
     optouts_by_ticket_id = _get_optouts_by_ticket_id(party.id)
 
+    form = erroneous_form if erroneous_form else ChairOptoutForm()
+    form.ticket_ids.choices = _get_ticket_id_choices(tickets)
+
+    if erroneous_form is None:
+        form.ticket_ids.data = _get_selected_ticket_id_strings(
+            tickets, optouts_by_ticket_id
+        )
+
+    selected_ticket_id_strings = set(form.ticket_ids.data or [])
+
     ticket_optouts = [
-        _build_ticket_optout(ticket, optouts_by_ticket_id)
+        _build_ticket_optout(ticket, selected_ticket_id_strings)
         for ticket in tickets
     ]
 
     return {
         'ticket_optouts': ticket_optouts,
+        'form': form,
     }
 
 
@@ -55,7 +70,24 @@ def update():
 
     optouts_by_ticket_id = _get_optouts_by_ticket_id(party.id)
 
-    selected_ticket_ids = set(request.form.getlist('ticket_id'))
+    form = ChairOptoutForm(request.form)
+    form.ticket_ids.choices = _get_ticket_id_choices(tickets)
+    if not form.validate():
+        return index(form)
+
+    try:
+        selected_ticket_ids = {
+            UUID(ticket_id) for ticket_id in (form.ticket_ids.data or [])
+        }
+    except ValueError:
+        form.ticket_ids.errors.append(gettext('Ungültige Ticket-ID.'))
+        return index(form)
+
+    allowed_ticket_ids = {ticket.id for ticket in tickets}
+    if not selected_ticket_ids.issubset(allowed_ticket_ids):
+        form.ticket_ids.errors.append(gettext('Ungültige Ticket-ID.'))
+        return index(form)
+
     changed = False
     toggleable_seat_count = 0
 
@@ -64,9 +96,8 @@ def update():
             continue
 
         toggleable_seat_count += 1
-        ticket_id_str = str(ticket.id)
-        brings_own_chair = ticket_id_str in selected_ticket_ids
-        existing_optout = optouts_by_ticket_id.get(ticket_id_str)
+        brings_own_chair = ticket.id in selected_ticket_ids
+        existing_optout = optouts_by_ticket_id.get(str(ticket.id))
 
         if (existing_optout is None) and not brings_own_chair:
             continue
@@ -93,8 +124,7 @@ def update():
     return redirect_to('.index')
 
 
-def _build_ticket_optout(ticket, optouts_by_ticket_id):
-    optout = optouts_by_ticket_id.get(str(ticket.id))
+def _build_ticket_optout(ticket, selected_ticket_id_strings):
     has_seat = ticket.occupied_seat is not None
 
     return {
@@ -104,7 +134,7 @@ def _build_ticket_optout(ticket, optouts_by_ticket_id):
             ticket
         ),
         'has_seat': has_seat,
-        'brings_own_chair': optout.brings_own_chair if optout else False,
+        'brings_own_chair': str(ticket.id) in selected_ticket_id_strings,
     }
 
 
@@ -113,6 +143,20 @@ def _get_optouts_by_ticket_id(party_id):
         party_id, only_true=False
     )
     return {str(optout.ticket_id): optout for optout in optouts}
+
+
+def _get_ticket_id_choices(tickets):
+    return [(str(ticket.id), ticket.code) for ticket in tickets]
+
+
+def _get_selected_ticket_id_strings(tickets, optouts_by_ticket_id):
+    selected_ticket_id_strings = []
+    for ticket in tickets:
+        optout = optouts_by_ticket_id.get(str(ticket.id))
+        if (optout is not None) and optout.brings_own_chair:
+            selected_ticket_id_strings.append(str(ticket.id))
+
+    return selected_ticket_id_strings
 
 
 def _get_current_party_or_404():

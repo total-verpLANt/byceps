@@ -1,5 +1,5 @@
 {% extends 'layout/base.html' %}
-{% from 'macros/forms.html' import form_buttons %}
+{% from 'macros/forms.html' import form_buttons, form_field_errors, form_form_errors %}
 {% set current_page = 'chair_optout' %}
 {% set page_title = _('Eigener Stuhl') %}
 
@@ -12,6 +12,7 @@
   </div>
 
   <form method="post">
+    {{ form_form_errors(form) }}
     <table class="itemlist is-vcentered is-wide">
       <thead>
         <tr>
@@ -34,7 +35,7 @@
           <td class="centered">
             <input
               type="checkbox"
-              name="ticket_id"
+              name="{{ form.ticket_ids.name }}"
               value="{{ ticket.id }}"
               aria-label="{{ _('Eigenen Stuhl mitbringen für Ticket %(ticket_code)s', ticket_code=ticket.code) }}"
               {%- if ticket.brings_own_chair %} checked{% endif -%}
@@ -45,6 +46,8 @@
         {%- endfor %}
       </tbody>
     </table>
+
+    {{ form_field_errors(form.ticket_ids) }}
 
     {{ form_buttons(_('Speichern')) }}
   </form>
