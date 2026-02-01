@@ -8,7 +8,7 @@
   <h1 class="title">{{ page_title }}</h1>
 
   <div class="block">
-    {{ _('Waehle die Tickets aus, fuer die du deinen eigenen Stuhl mitbringst.') }}
+    {{ _('Wähle die Tickets aus, für die du deinen eigenen Stuhl mitbringst.') }}
   </div>
 
   <form method="post">
@@ -36,7 +36,7 @@
               type="checkbox"
               name="ticket_id"
               value="{{ ticket.id }}"
-              aria-label="{{ _('Eigenen Stuhl mitbringen fuer Ticket %(ticket_code)s', ticket_code=ticket.code) }}"
+              aria-label="{{ _('Eigenen Stuhl mitbringen für Ticket %(ticket_code)s', ticket_code=ticket.code) }}"
               {%- if ticket.brings_own_chair %} checked{% endif -%}
               {%- if not ticket.has_seat %} disabled{% endif -%}
             >
