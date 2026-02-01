@@ -155,8 +155,6 @@ assigned_permissions = [
     'admin.access',
     'board.view_hidden',
     'brand.view',
-    'chair_optout.export_report',
-    'chair_optout.view_report',
     'guest_server.view',
     'news_item.view',
     'orga_birthday.view',
@@ -211,14 +209,13 @@ assigned_permissions = [
     'party.create',
     'party.update',
     'party.view',
-    'chair_optout.export_report',
-    'chair_optout.view_report',
 ]
 
 [[roles]]
 id = 'seating_admin'
 title = 'Sitzpläne verwalten'
 assigned_permissions = [
+    'chair_optout.view',
     'seating.administrate',
     'seating.view',
 ]
