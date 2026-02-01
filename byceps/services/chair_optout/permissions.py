@@ -14,7 +14,9 @@ from byceps.util.authz import register_permissions
 register_permissions(
     'chair_optout',
     [
-        ('view_report', lazy_gettext('Eigener-Stuhl-Bericht anzeigen')),
-        ('export_report', lazy_gettext('Eigener-Stuhl-Bericht exportieren')),
+        (
+            'view',
+            lazy_gettext('Eigener-Stuhl-Bericht anzeigen und exportieren'),
+        ),
     ],
 )

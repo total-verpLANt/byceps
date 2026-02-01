@@ -63,7 +63,7 @@ def test_admin_export_requires_permission(app):
 def test_admin_export_csv_smoke(app, monkeypatch):
     with app.test_request_context('/'):
         g.user = SimpleNamespace(
-            permissions=frozenset(['chair_optout.export_report'])
+            permissions=frozenset(['chair_optout.view'])
         )
 
         party = SimpleNamespace(id='party-1')

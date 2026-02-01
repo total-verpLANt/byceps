@@ -21,7 +21,7 @@ blueprint = create_blueprint('chair_optout_admin', __name__)
 
 
 @blueprint.get('/for_party/<party_id>')
-@permission_required('chair_optout.view_report')
+@permission_required('chair_optout.view')
 @templated
 def index(party_id):
     """Show the chair opt-out report for a party."""
@@ -38,7 +38,7 @@ def index(party_id):
 
 
 @blueprint.get('/for_party/<party_id>/export.csv')
-@permission_required('chair_optout.export_report')
+@permission_required('chair_optout.view')
 @textified
 def export_as_csv(party_id):
     """Export the chair opt-out report for a party as CSV."""

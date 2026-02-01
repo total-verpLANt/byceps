@@ -49,8 +49,7 @@
 ---
 
 ## Permissions
-- `chair_optout.view_report`
-- `chair_optout.export_report`
+- `chair_optout.view`
 
 ---
 

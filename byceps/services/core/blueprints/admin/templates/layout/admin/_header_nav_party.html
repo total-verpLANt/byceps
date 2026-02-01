@@ -36,7 +36,7 @@
       url_for('chair_optout_admin.index', party_id=party.id),
       _('Eigener Stuhl'),
       id='chair_optout_admin',
-      required_permission='chair_optout.view_report',
+      required_permission='chair_optout.view',
       icon='seating-area')
     .add_item(
       url_for('ticketing_checkin_admin.index', party_id=party.id),
