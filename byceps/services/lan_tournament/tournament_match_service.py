@@ -2,6 +2,8 @@ from typing import List
 
 
 from byceps.services.lan_tournament.models.tournament_match_comment import TournamentMatchComment, TournamentMatchCommentId
+from byceps.services.lan_tournament.models.tournament_participant import TournamentParticipantId
+from byceps.services.lan_tournament.models.tournament_team import TournamentTeamId
 from byceps.services.user.models.user import UserID as UserId
 
 
@@ -46,7 +48,7 @@ def confirm_match(match_id: TournamentMatchId, confirmed_by_user_id: UserId) -> 
     raise NotImplementedError
 
 
-def set_score(match_id: TournamentMatchId, contestand_id: str, score: int
+def set_score(match_id: TournamentMatchId, contestant_id: TournamentParticipantId | TournamentTeamId, score: int
 ) -> None:
     raise NotImplementedError
 

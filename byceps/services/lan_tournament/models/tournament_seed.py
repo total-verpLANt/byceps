@@ -4,6 +4,6 @@ from dataclasses import dataclass
 
 @dataclass(kw_only=True)
 class TournamentSeed:
-    match_order : int
-    entryA : str
-    entryB : str
+    match_order: int
+    entry_a: str
+    entry_b: str

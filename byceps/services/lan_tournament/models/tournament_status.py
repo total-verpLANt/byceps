@@ -1,7 +1,7 @@
 from enum import Enum
 
 class TournamentStatus(Enum):
-    NONE = 0
+    NOT_SET = 0
     DRAFT = 1
     REGISTRATION_OPEN = 2
     REGISTRATION_CLOSED = 3

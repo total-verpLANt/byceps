@@ -5,11 +5,11 @@ from .models.tournament_participant import TournamentParticipantId
 from .models.tournament_team import TournamentTeamId
 
 
-def create_tournament(newTournament:Tournament) -> Tournament:
+def create_tournament(new_ournament:Tournament) -> Tournament:
     raise NotImplementedError
 
 
-def update_tournament(modifiedTournament:Tournament):
+def update_tournament(modified_tournament:Tournament) -> None:
     raise NotImplementedError
 
 

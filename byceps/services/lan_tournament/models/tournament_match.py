@@ -14,4 +14,4 @@ class TournamentMatch:
     tournament_id: TournamentId
     group_order: int | None
     match_order: int | None
-    confirmed_by : UserId | None
+    confirmed_by: UserId | None

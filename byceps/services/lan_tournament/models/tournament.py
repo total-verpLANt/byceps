@@ -24,5 +24,5 @@ class Tournament:
     max_teams: int | None
     min_players_in_team: int | None
     max_players_in_team: int | None
-    tournament_status: TournamentStatus | TournamentStatus.none
-    tournament_mode: TournamentMode | TournamentMode.none
+    tournament_status: TournamentStatus = TournamentStatus.NOT_SET
+    tournament_mode: TournamentMode = TournamentMode.NOT_SET
