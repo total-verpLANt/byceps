@@ -12,5 +12,5 @@ TournamentMatchCommentId = NewType('TournamentMatchCommentId', UUID)
 class TournamentMatchComment:
     id: TournamentMatchCommentId
     tournament_match_id: TournamentMatchId
-    created_by : UserId
+    created_by: UserId
     comment: str
