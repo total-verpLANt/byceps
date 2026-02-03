@@ -53,11 +53,15 @@ def set_score(match_id: TournamentMatchId, contestant_id: TournamentParticipantI
     raise NotImplementedError
 
 
-def add_comment(comment: TournamentMatchComment)-> None:
+def add_comment(
+    match_id: TournamentMatchId,
+    created_by_user_id: UserId,
+    comment: str,
+) -> None:
     raise NotImplementedError
 
 
-def update_comment(comment: TournamentMatchComment) -> None:
+def update_comment(comment_id: TournamentMatchCommentId, comment: str) -> None:
     raise NotImplementedError
 
 

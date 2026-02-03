@@ -1,15 +1,47 @@
 from byceps.services.party.models import PartyID
 
 from .models.tournament import Tournament, TournamentId
+from .models.tournament_mode import TournamentMode
 from .models.tournament_participant import TournamentParticipantId
+from .models.tournament_status import TournamentStatus
 from .models.tournament_team import TournamentTeamId
 
 
-def create_tournament(new_ournament:Tournament) -> Tournament:
+def create_tournament(
+    party_id: PartyID,
+    name: str,
+    *,
+    description: str | None,
+    image_url: str | None,
+    ruleset: str | None,
+    min_players: int | None,
+    max_players: int | None,
+    min_teams: int | None,
+    max_teams: int | None,
+    min_players_in_team: int | None,
+    max_players_in_team: int | None,
+    tournament_status: TournamentStatus = TournamentStatus.NOT_SET,
+    tournament_mode: TournamentMode = TournamentMode.NOT_SET,
+) -> Tournament:
     raise NotImplementedError
 
 
-def update_tournament(modified_tournament:Tournament) -> None:
+def update_tournament(
+    tournament_id: TournamentId,
+    *,
+    name: str,
+    description: str | None,
+    image_url: str | None,
+    ruleset: str | None,
+    min_players: int | None,
+    max_players: int | None,
+    min_teams: int | None,
+    max_teams: int | None,
+    min_players_in_team: int | None,
+    max_players_in_team: int | None,
+    tournament_status: TournamentStatus,
+    tournament_mode: TournamentMode,
+) -> None:
     raise NotImplementedError
 
 

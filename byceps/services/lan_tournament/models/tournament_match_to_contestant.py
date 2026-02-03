@@ -10,7 +10,7 @@ from .tournament_match import TournamentMatchId
 
 TournamentMatchToContestantId = NewType('TournamentMatchToContestantId', UUID)
 
-@dataclass(kw_only=True)
+@dataclass(frozen=True, kw_only=True)
 class TournamentMatchToContestant:
     id: TournamentMatchToContestantId
     tournament_match_id: TournamentMatchId

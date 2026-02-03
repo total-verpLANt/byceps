@@ -10,7 +10,7 @@ from .tournament_mode import TournamentMode
 
 TournamentId = NewType('TournamentId', UUID)
 
-@dataclass(kw_only=True)
+@dataclass(frozen=True, kw_only=True)
 class Tournament:
     id: TournamentId
     party_id: PartyID

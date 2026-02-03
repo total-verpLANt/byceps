@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-@dataclass(kw_only=True)
+@dataclass(frozen=True, kw_only=True)
 class TournamentSeed:
     match_order: int
     entry_a: str

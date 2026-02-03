@@ -8,7 +8,7 @@ from byceps.services.user.models.user import UserID as UserId
 from .tournament_match import TournamentMatchId
 
 TournamentMatchCommentId = NewType('TournamentMatchCommentId', UUID)
-@dataclass(kw_only=True)
+@dataclass(frozen=True, kw_only=True)
 class TournamentMatchComment:
     id: TournamentMatchCommentId
     tournament_match_id: TournamentMatchId

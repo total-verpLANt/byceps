@@ -11,7 +11,7 @@ from .tournament import TournamentId
 
 TournamentParticipantId = NewType('TournamentParticipantId', UUID)
 
-@dataclass(kw_only=True)
+@dataclass(frozen=True, kw_only=True)
 class TournamentParticipant:
     id: TournamentParticipantId
     user_id: UserID
