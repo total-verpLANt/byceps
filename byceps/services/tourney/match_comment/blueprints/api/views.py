@@ -27,7 +27,7 @@ from byceps.services.tourney.models import (
     MatchID,
 )
 from byceps.services.user import user_service
-from byceps.services.user.models.user import User, UserID
+from byceps.services.user.models import User, UserID
 from byceps.util.framework.blueprint import create_blueprint
 from byceps.util.views import (
     api_token_required,
@@ -255,7 +255,7 @@ def _get_comment_or_404(comment_id: MatchCommentID) -> MatchComment:
     return comment
 
 
-def _parse_request(model_class: type[BaseModel]) -> BaseModel:
+def _parse_request[M: BaseModel](model_class: type[M]) -> M:
     try:
         return model_class.model_validate(request.get_json())
     except ValidationError as e:

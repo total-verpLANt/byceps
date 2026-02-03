@@ -16,7 +16,7 @@ from byceps.database import db
 from byceps.services.user import user_service
 from byceps.services.user.log import user_log_service
 from byceps.services.user.log.models import UserLogEntry
-from byceps.services.user.models.user import User, UserID
+from byceps.services.user.models import User, UserID
 from byceps.util.result import Err, Ok, Result
 
 from . import authz_domain_service
@@ -50,7 +50,7 @@ def delete_role(role_id: RoleID) -> None:
 
 
 def find_role(role_id: RoleID) -> Role | None:
-    """Return the role with that id, or `None` if not found."""
+    """Return the role with that ID, or `None` if not found."""
     db_role = db.session.get(DbRole, role_id)
 
     if db_role is None:

@@ -1,8 +1,8 @@
 """
-byceps.app_dispatcher
-~~~~~~~~~~~~~~~~~~~~~
+byceps.web_apps_dispatcher
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Serve multiple apps together.
+Serve multiple web apps together.
 
 :Copyright: 2014-2026 Jochen Kupperschmidt
 :License: Revised BSD (see `LICENSE` file for details)
@@ -17,11 +17,12 @@ from werkzeug.exceptions import InternalServerError, NotFound
 
 from byceps.application import create_admin_app, create_api_app, create_site_app
 from byceps.config.models import (
-    AdminAppConfig,
-    ApiAppConfig,
+    AdminWebAppConfig,
+    ApiWebAppConfig,
     BycepsConfig,
-    SiteAppConfig,
+    SiteWebAppConfig,
     WebAppConfig,
+    WebAppsConfig,
 )
 from byceps.config.util import iterate_app_configs
 
@@ -33,18 +34,22 @@ from .byceps_app import BycepsApp
 log = structlog.get_logger()
 
 
-def create_dispatcher_app(byceps_config: BycepsConfig) -> Flask:
-    app = Flask('dispatcher')
-    app.wsgi_app = AppDispatcher(byceps_config)
+def create_web_apps_dispatcher_app(
+    byceps_config: BycepsConfig, web_apps_config: WebAppsConfig
+) -> Flask:
+    app = Flask('web-apps-dispatcher')
+    app.wsgi_app = WebAppsDispatcherApp(byceps_config, web_apps_config)
     return app
 
 
-class AppDispatcher:
-    def __init__(self, byceps_config: BycepsConfig) -> None:
+class WebAppsDispatcherApp:
+    def __init__(
+        self, byceps_config: BycepsConfig, web_apps_config: WebAppsConfig
+    ) -> None:
         self.lock = Lock()
         self.app_configs_by_host: dict[str, WebAppConfig] = {
             app_config.server_name: app_config
-            for app_config in iterate_app_configs(byceps_config.apps)
+            for app_config in iterate_app_configs(web_apps_config)
         }
         self.byceps_config = byceps_config
         self.apps_by_host: dict[str, BycepsApp] = {}
@@ -74,7 +79,7 @@ class AppDispatcher:
                     self.apps_by_host[host] = app
 
                     match app_config:
-                        case SiteAppConfig():
+                        case SiteWebAppConfig():
                             log_ctx = log_ctx.bind(site_id=app_config.site_id)
 
                     mode = app.byceps_app_mode
@@ -96,11 +101,11 @@ def _create_app(
     app_config: WebAppConfig, byceps_config: BycepsConfig
 ) -> Result[BycepsApp, str]:
     match app_config:
-        case AdminAppConfig():
+        case AdminWebAppConfig():
             return Ok(create_admin_app(byceps_config, app_config))
-        case ApiAppConfig():
+        case ApiWebAppConfig():
             return Ok(create_api_app(byceps_config, app_config))
-        case SiteAppConfig():
+        case SiteWebAppConfig():
             site_id = app_config.site_id
             if not site_id:
                 return Err(f'Unknown site ID "{site_id}"')
