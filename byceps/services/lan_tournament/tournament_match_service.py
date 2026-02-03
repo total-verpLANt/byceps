@@ -1,6 +1,3 @@
-from typing import List
-
-
 from byceps.services.lan_tournament.models.tournament_match_comment import TournamentMatchComment, TournamentMatchCommentId
 from byceps.services.lan_tournament.models.tournament_participant import TournamentParticipantId
 from byceps.services.lan_tournament.models.tournament_team import TournamentTeamId
@@ -12,7 +9,7 @@ from .models.tournament_match import TournamentMatch, TournamentMatchId
 from .models.tournament_seed import TournamentSeed
 
 
-def set_seed(seed_list: List[TournamentSeed], tournament_id: TournamentId) -> None:
+def set_seed(seed_list: list[TournamentSeed], tournament_id: TournamentId) -> None:
     raise NotImplementedError
 
 
@@ -40,7 +37,7 @@ def get_match(match_id: TournamentMatchId) -> TournamentMatch:
     raise NotImplementedError
 
 
-def get_matches_for_tournament(tournament_id: TournamentId) -> List[TournamentMatch]:
+def get_matches_for_tournament(tournament_id: TournamentId) -> list[TournamentMatch]:
     raise NotImplementedError
 
 
@@ -69,5 +66,5 @@ def delete_comment(comment_id: TournamentMatchCommentId) -> None:
     raise NotImplementedError
 
 
-def get_comments_from_match(match_id: TournamentMatchId) -> List[TournamentMatchComment]:
+def get_comments_from_match(match_id: TournamentMatchId) -> list[TournamentMatchComment]:
     raise NotImplementedError
