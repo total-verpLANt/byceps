@@ -24,7 +24,7 @@ def pause_tournament(tournament_id: TournamentId) -> None:
     raise NotImplementedError
 
 
-def resume_tournament(tournament_id: TournamentId) -> None: 
+def resume_tournament(tournament_id: TournamentId) -> None:
     raise NotImplementedError
 
 

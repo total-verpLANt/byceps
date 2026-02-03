@@ -8,9 +8,10 @@ from byceps.services.user.models.user import UserID as UserId
 from .tournament_match import TournamentMatchId
 
 TournamentMatchCommentId = NewType('TournamentMatchCommentId', UUID)
+
 @dataclass(frozen=True, kw_only=True)
 class TournamentMatchComment:
     id: TournamentMatchCommentId
     tournament_match_id: TournamentMatchId
-    created_by : UserId
+    created_by: UserId
     comment: str

@@ -16,5 +16,5 @@ class TournamentParticipant:
     id: TournamentParticipantId
     user_id: UserID
     tournament_id: TournamentId
-    substitute_player : bool
+    substitute_player: bool
     team_id: TournamentTeamId | None

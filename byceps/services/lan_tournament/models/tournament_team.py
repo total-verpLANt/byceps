@@ -9,6 +9,6 @@ TournamentTeamId = NewType('TournamentTeamId', UUID)
 @dataclass(frozen=True, kw_only=True)
 class TournamentTeam:
     id: TournamentTeamId
-    tag : str | None
-    description : str | None
-    image_url : str | None
+    tag: str | None
+    description: str | None
+    image_url: str | None

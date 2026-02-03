@@ -1,3 +1,6 @@
+from typing import List
+
+
 from byceps.services.party.models import PartyID
 
 from .models.tournament import Tournament, TournamentId
@@ -53,7 +56,7 @@ def get_tournament(tournament_id: TournamentId) -> Tournament:
     raise NotImplementedError
 
 
-def get_tournaments_for_party(party_id: PartyID) -> list[Tournament]:
+def get_tournaments_for_party(party_id: PartyID) -> List[Tournament]:
     raise NotImplementedError
 
 
