@@ -59,11 +59,18 @@
 - Unique constraint: `(party_id, ticket_id)`
 
 Database setup:
-- For existing DBs / to (re-)create tables: `uv run byceps create-database-tables`
-- For fresh DBs: `uv run byceps initialize-database`
+`initialize-database` importiert nur Default-Rollen; Custom-Rollen müssen
+separat per `import-roles -f` importiert werden.
 
-Roles/permissions import (if needed):
-- `uv run byceps import-roles -f scripts/data/verplant_roles.toml`
+Fresh install (Docker):
+1. `uv run byceps initialize-database`
+2. `uv run byceps import-roles -f scripts/data/verplant_roles.toml`
+3. `uv run byceps create-superuser`
+
+Upgrade/existing DB:
+1. `uv run byceps create-database-tables`
+2. `uv run byceps import-roles -f scripts/data/verplant_roles.toml`
+3. Hinweis: Rolle anschließend einem Orga-User zuweisen (UI), falls nötig.
 
 ---
 
