@@ -14,7 +14,6 @@ from byceps.database import db
 from byceps.services.party.models import PartyID
 from byceps.services.ticketing.dbmodels.ticket import DbTicket
 from byceps.services.ticketing.models.ticket import TicketID
-from byceps.services.user.dbmodels.user import DbUser
 from byceps.services.user.models.user import UserID
 
 from .dbmodels import DbPartyTicketChairOptout
@@ -93,7 +92,7 @@ def get_report_entries_for_party(
             .filter(DbPartyTicketChairOptout.brings_own_chair == True)  # noqa: E712
             .options(
                 db.joinedload(DbTicket.occupied_seat),
-                db.joinedload(DbTicket.used_by).joinedload(DbUser.detail),
+                db.joinedload(DbTicket.used_by),
             )
             .order_by(DbTicket.code)
         )
