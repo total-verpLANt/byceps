@@ -63,7 +63,7 @@ Database setup:
 - For fresh DBs: `uv run byceps initialize-database`
 
 Roles/permissions import (if needed):
-- `uv run byceps import-roles -f scripts/data/roles.toml`
+- `uv run byceps import-roles -f scripts/data/verplant_roles.toml`
 
 ---
 

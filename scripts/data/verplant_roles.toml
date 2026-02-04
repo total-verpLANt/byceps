@@ -1,0 +1,6 @@
+[[roles]]
+id = 'chair_optout_admin'
+title = 'Eigener Stuhl: Bericht'
+assigned_permissions = [
+    'chair_optout.view',
+]

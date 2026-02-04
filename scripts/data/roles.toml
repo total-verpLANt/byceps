@@ -215,7 +215,6 @@ assigned_permissions = [
 id = 'seating_admin'
 title = 'Sitzpläne verwalten'
 assigned_permissions = [
-    'chair_optout.view',
     'seating.administrate',
     'seating.view',
 ]
