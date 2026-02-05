@@ -13,7 +13,7 @@ from uuid import UUID
 
 from byceps.services.party.models import PartyID
 from byceps.services.ticketing.models.ticket import TicketID
-from byceps.services.user.models.user import UserID
+from byceps.services.user.models import UserID
 
 
 ChairOptoutID = NewType('ChairOptoutID', UUID)
