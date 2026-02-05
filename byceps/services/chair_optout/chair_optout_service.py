@@ -14,7 +14,7 @@ from byceps.database import db
 from byceps.services.party.models import PartyID
 from byceps.services.ticketing.dbmodels.ticket import DbTicket
 from byceps.services.ticketing.models.ticket import TicketID
-from byceps.services.user.models.user import UserID
+from byceps.services.user.models import UserID
 
 from .dbmodels import DbPartyTicketChairOptout
 from .models import ChairOptoutReportEntry, PartyTicketChairOptout
