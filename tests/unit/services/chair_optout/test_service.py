@@ -11,7 +11,7 @@ from byceps.services.chair_optout.dbmodels import DbPartyTicketChairOptout
 from byceps.services.chair_optout.models import ChairOptoutID
 from byceps.services.party.models import PartyID
 from byceps.services.ticketing.models.ticket import TicketID
-from byceps.services.user.models.user import UserID
+from byceps.services.user.models import UserID
 
 from tests.helpers import generate_token, generate_uuid
 
