@@ -14,8 +14,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from byceps.database import db
 from byceps.services.party.models import PartyID
-from byceps.services.user.dbmodels.user import DbUser
-from byceps.services.user.models.user import UserID
+from byceps.services.user.dbmodels import DbUser
+from byceps.services.user.models import UserID
 
 
 class DbUserGroup(db.Model):
@@ -32,7 +32,7 @@ class DbUserGroup(db.Model):
     creator_id: Mapped[UserID] = mapped_column(
         db.Uuid, db.ForeignKey('users.id'), unique=True
     )
-    creator: Mapped[DbUser] = relationship(DbUser)
+    creator: Mapped[DbUser] = relationship()
     title: Mapped[str] = mapped_column(db.UnicodeText, unique=True)
     description: Mapped[str | None] = mapped_column(db.UnicodeText)
 
@@ -68,10 +68,10 @@ class DbUserGroupMembership(db.Model):
         db.Uuid, db.ForeignKey('user_groups.id')
     )
     group: Mapped[DbUserGroup] = relationship(
-        DbUserGroup, collection_class=set, backref='memberships'
+        collection_class=set, backref='memberships'
     )
     user_id: Mapped[UserID] = mapped_column(db.Uuid, db.ForeignKey('users.id'))
-    user: Mapped[DbUser] = relationship(DbUser, backref='group_membership')
+    user: Mapped[DbUser] = relationship(backref='group_membership')
     created_at: Mapped[datetime]
 
     def __init__(

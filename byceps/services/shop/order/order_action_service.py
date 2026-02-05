@@ -15,8 +15,8 @@ import structlog
 
 from byceps.database import db
 from byceps.services.shop.product import product_service
-from byceps.services.shop.product.models import ProductID
-from byceps.services.user.models.user import User
+from byceps.services.shop.product.models import ProductID, ProductType
+from byceps.services.user.models import User
 from byceps.util.result import Err, Ok, Result
 from byceps.util.uuid import generate_uuid7
 
@@ -32,10 +32,15 @@ from .models.order import LineItem, Order, PaidOrder, PaymentState
 log = structlog.get_logger()
 
 
-PROCEDURES_BY_NAME: dict[str, ActionProcedure] = {
+_PROCEDURES_BY_NAME: dict[str, ActionProcedure] = {
     'award_badge': user_badge_actions.get_action_procedure(),
     'create_ticket_bundles': ticket_bundle_actions.get_action_procedure(),
     'create_tickets': ticket_actions.get_action_procedure(),
+}
+
+_PROCEDURES_BY_PRODUCT_TYPE: dict[ProductType, ActionProcedure] = {
+    ProductType.ticket: ticket_actions.get_action_procedure(),
+    ProductType.ticket_bundle: ticket_bundle_actions.get_action_procedure(),
 }
 
 
@@ -297,7 +302,7 @@ def _get_procedure(
     """Return the procedure with that name, or an error if the name is
     not registered.
     """
-    procedure = PROCEDURES_BY_NAME.get(name)
+    procedure = _PROCEDURES_BY_NAME.get(name)
 
     if procedure is None:
         product = product_service.get_product(product_id)
@@ -309,3 +314,10 @@ def _get_procedure(
         )
 
     return Ok(procedure)
+
+
+def find_procedure_for_product_type(
+    product_type: ProductType,
+) -> ActionProcedure | None:
+    """Find the action procedure for the product type."""
+    return _PROCEDURES_BY_PRODUCT_TYPE.get(product_type)

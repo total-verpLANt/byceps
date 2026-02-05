@@ -1,5 +1,5 @@
 """
-byceps.services.tourney.avatar.dbmodels
+byceps.services.tourney.dbmodels.avatar
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 :Copyright: 2014-2026 Jochen Kupperschmidt
@@ -8,10 +8,8 @@ byceps.services.tourney.avatar.dbmodels
 
 from datetime import datetime
 from pathlib import Path
-from typing import NewType, TYPE_CHECKING
-from uuid import UUID
+from typing import TYPE_CHECKING
 
-from flask import current_app
 from sqlalchemy.orm import Mapped, mapped_column
 
 
@@ -20,14 +18,12 @@ if TYPE_CHECKING:
 else:
     from sqlalchemy.ext.hybrid import hybrid_property
 
+from byceps.byceps_app import get_current_byceps_app
 from byceps.database import db
 from byceps.services.party.models import PartyID
-from byceps.services.user.models.user import UserID
+from byceps.services.tourney.models import TourneyAvatarID
+from byceps.services.user.models import UserID
 from byceps.util.image.image_type import ImageType
-from byceps.util.uuid import generate_uuid7
-
-
-AvatarID = NewType('AvatarID', UUID)
 
 
 class DbTourneyAvatar(db.Model):
@@ -35,9 +31,7 @@ class DbTourneyAvatar(db.Model):
 
     __tablename__ = 'tourney_avatars'
 
-    id: Mapped[AvatarID] = mapped_column(
-        db.Uuid, default=generate_uuid7, primary_key=True
-    )
+    id: Mapped[TourneyAvatarID] = mapped_column(db.Uuid, primary_key=True)
     party_id: Mapped[PartyID] = mapped_column(
         db.UnicodeText, db.ForeignKey('parties.id'), index=True
     )
@@ -49,11 +43,13 @@ class DbTourneyAvatar(db.Model):
 
     def __init__(
         self,
+        avatar_id: TourneyAvatarID,
         party_id: PartyID,
         created_at: datetime,
         creator_id: UserID,
         image_type: ImageType,
     ) -> None:
+        self.id = avatar_id
         self.party_id = party_id
         self.created_at = created_at
         self.creator_id = creator_id
@@ -76,7 +72,7 @@ class DbTourneyAvatar(db.Model):
     @property
     def path(self) -> Path:
         path = (
-            current_app.byceps_config.data_path
+            get_current_byceps_app().byceps_config.data_path
             / 'parties'
             / self.party_id
             / 'tourney'

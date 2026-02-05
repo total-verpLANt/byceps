@@ -13,7 +13,10 @@ from typing import NewType, Self
 from uuid import UUID
 
 from byceps.services.party.models import PartyID
-from byceps.services.user.models.user import User
+from byceps.services.user.models import User
+
+
+TourneyAvatarID = NewType('TourneyAvatarID', UUID)
 
 
 TourneyCategoryID = NewType('TourneyCategoryID', UUID)

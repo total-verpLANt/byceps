@@ -7,9 +7,8 @@ from datetime import datetime
 
 import pytest
 
-from byceps.services.user.dbmodels.detail import DbUserDetail
-from byceps.services.user.dbmodels.user import DbUser
-from byceps.services.user.models.user import UserID
+from byceps.services.user.dbmodels import DbUser, DbUserDetail
+from byceps.services.user.models import UserID
 from byceps.util.uuid import generate_uuid4
 
 

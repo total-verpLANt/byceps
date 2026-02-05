@@ -21,7 +21,7 @@ else:
 
 from byceps.database import db
 from byceps.services.party.models import PartyID
-from byceps.services.user.models.user import UserID
+from byceps.services.user.models import UserID
 
 from .models import AddressID, IPAddress, ServerID
 
@@ -147,9 +147,7 @@ class DbGuestServerAddress(db.Model):
     server_id: Mapped[ServerID] = mapped_column(
         db.Uuid, db.ForeignKey('guest_servers.id'), index=True
     )
-    server: Mapped[DbGuestServer] = relationship(
-        DbGuestServer, backref='addresses'
-    )
+    server: Mapped[DbGuestServer] = relationship(backref='addresses')
     created_at: Mapped[datetime] = mapped_column(db.DateTime)
     _ip_address: Mapped[str | None] = mapped_column(
         'ip_address', postgresql.INET
