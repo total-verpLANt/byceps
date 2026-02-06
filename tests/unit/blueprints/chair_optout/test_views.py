@@ -20,6 +20,17 @@ from byceps.util import views as util_views
 from tests.helpers import generate_uuid
 
 
+class StubUser:
+
+    def __init__(self, *, permissions=(), authenticated=True, id=None):
+        self.permissions = frozenset(permissions)
+        self.authenticated = authenticated
+        self.id = id
+
+    def has_permission(self, permission: str) -> bool:
+        return permission in self.permissions
+
+
 def _make_ticket(ticket_id, code, *, has_seat=True):
     occupied_seat = SimpleNamespace(label='A-1') if has_seat else None
     return SimpleNamespace(
@@ -46,7 +57,7 @@ def test_site_index_requires_login(app, monkeypatch):
 
 def test_admin_index_requires_permission(app):
     with app.test_request_context('/'):
-        g.user = SimpleNamespace(permissions=frozenset())
+        g.user = StubUser(permissions=())
 
         with pytest.raises(Forbidden):
             admin_views.index('party-1')
@@ -54,7 +65,7 @@ def test_admin_index_requires_permission(app):
 
 def test_admin_export_requires_permission(app):
     with app.test_request_context('/'):
-        g.user = SimpleNamespace(permissions=frozenset())
+        g.user = StubUser(permissions=())
 
         with pytest.raises(Forbidden):
             admin_views.export_as_csv('party-1')
@@ -62,9 +73,7 @@ def test_admin_export_requires_permission(app):
 
 def test_admin_export_csv_smoke(app, monkeypatch):
     with app.test_request_context('/'):
-        g.user = SimpleNamespace(
-            permissions=frozenset(['chair_optout.view'])
-        )
+        g.user = StubUser(permissions=('chair_optout.view',))
 
         party = SimpleNamespace(id='party-1')
         report_entries = [
