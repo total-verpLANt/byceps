@@ -18,7 +18,7 @@ from byceps.services.brand.models import BrandID
 from byceps.services.site import site_service
 from byceps.services.site.models import SiteID
 from byceps.services.user import user_service
-from byceps.services.user.models.user import User
+from byceps.services.user.models import User
 from byceps.util.result import Err, Ok, Result
 from byceps.util.uuid import generate_uuid7
 
@@ -230,7 +230,7 @@ def delete_item(item_id: NewsItemID) -> None:
 
 
 def find_item(item_id: NewsItemID) -> NewsItem | None:
-    """Return the item with that id, or `None` if not found."""
+    """Return the item with that ID, or `None` if not found."""
     db_item = _find_db_item(item_id)
 
     if db_item is None:
@@ -240,7 +240,7 @@ def find_item(item_id: NewsItemID) -> NewsItem | None:
 
 
 def _find_db_item(item_id: NewsItemID) -> DbNewsItem | None:
-    """Return the item with that id, or `None` if not found."""
+    """Return the item with that ID, or `None` if not found."""
     return (
         db.session.scalars(
             select(DbNewsItem)
@@ -259,7 +259,7 @@ def _find_db_item(item_id: NewsItemID) -> DbNewsItem | None:
 
 
 def _get_db_item(item_id: NewsItemID) -> DbNewsItem:
-    """Return the item with that id, or raise an exception."""
+    """Return the item with that ID, or raise an exception."""
     db_item = _find_db_item(item_id)
 
     if db_item is None:
@@ -611,31 +611,29 @@ def render_html(item: NewsItem) -> RenderedNewsItem:
 def _render_featured_image_html(
     item_id: NewsItemID, image: NewsImage
 ) -> Result[str, str]:
-    result = news_html_service.render_featured_image_html(image)
-
-    if result.is_err():
-        # Log, but do not return error.
-        log.warning(
-            'HTML rendering of featured image for news item %s failed: %s',
-            item_id,
-            result.unwrap_err(),
-        )
-
-    return Ok(result.unwrap())
+    match news_html_service.render_featured_image_html(image):
+        case Ok(html):
+            return Ok(html)
+        case Err(e):
+            # Log, but do not return error.
+            log.warning(
+                'HTML rendering of featured image for news item %s failed: %s',
+                item_id,
+                e,
+            )
+            return Err(e)
 
 
 def _render_body_html(item: NewsItem) -> Result[str, str]:
-    result = news_html_service.render_body_html(item)
-
-    if result.is_err():
-        # Log, but do not return error.
-        log.warning(
-            'HTML rendering of body for news item %s failed: %s',
-            item.id,
-            result.unwrap_err(),
-        )
-
-    return result
+    match news_html_service.render_body_html(item):
+        case Ok(html):
+            return Ok(html)
+        case Err(e):
+            # Log, but do not return error.
+            log.warning(
+                'HTML rendering of body for news item %s failed: %s', item.id, e
+            )
+            return Err(e)
 
 
 def _db_entity_to_headline(db_item: DbNewsItem) -> NewsHeadline:

@@ -7,6 +7,7 @@ byceps.services.board.blueprints.site.views_posting
 """
 
 import dataclasses
+from uuid import UUID
 
 from flask import abort, g, redirect, request
 from flask_babel import gettext
@@ -21,13 +22,12 @@ from byceps.services.board.errors import (
     ReactionDeniedError,
     ReactionExistsError,
 )
-from byceps.services.board.models import ReactionKind
+from byceps.services.board.models import PostingID, ReactionKind
 from byceps.services.site.blueprints.site.navigation import (
     subnavigation_for_view,
 )
 from byceps.services.text_markup import text_markup_service
 from byceps.services.user import user_service
-from byceps.util.authz import has_current_user_permission
 from byceps.util.framework.flash import flash_error, flash_success
 from byceps.util.framework.templating import templated
 from byceps.util.result import Err
@@ -78,9 +78,11 @@ def posting_create_form(topic_id, erroneous_form=None):
 
 
 def quote_posting_as_bbcode():
-    posting_id = request.args.get('quote', type=str)
-    if not posting_id:
+    posting_id_str = request.args.get('quote', type=str)
+    if not posting_id_str:
         return
+
+    posting_id = PostingID(UUID(posting_id_str))
 
     db_posting = board_posting_query_service.find_db_posting(posting_id)
     if db_posting is None:
@@ -112,9 +114,8 @@ def posting_create(topic_id):
         )
         return redirect(h.build_url_for_topic(db_topic.id))
 
-    if (
-        db_topic.posting_limited_to_moderators
-        and not has_current_user_permission('board.announce')
+    if db_topic.posting_limited_to_moderators and not g.user.has_permission(
+        'board.announce'
     ):
         flash_error(
             gettext('Only moderators are allowed to reply in this topic.'),

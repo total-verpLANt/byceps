@@ -11,8 +11,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from byceps.database import db
 from byceps.services.brand.dbmodels import DbBrand
 from byceps.services.brand.models import BrandID
-from byceps.services.user.dbmodels.user import DbUser
-from byceps.services.user.models.user import UserID
+from byceps.services.user.dbmodels import DbUser
+from byceps.services.user.models import UserID
 
 
 class DbOrgaFlag(db.Model):
@@ -23,11 +23,11 @@ class DbOrgaFlag(db.Model):
     user_id: Mapped[UserID] = mapped_column(
         db.Uuid, db.ForeignKey('users.id'), primary_key=True
     )
-    user: Mapped[DbUser] = relationship(DbUser)
+    user: Mapped[DbUser] = relationship()
     brand_id: Mapped[BrandID] = mapped_column(
         db.UnicodeText, db.ForeignKey('brands.id'), primary_key=True
     )
-    brand: Mapped[DbBrand] = relationship(DbBrand)
+    brand: Mapped[DbBrand] = relationship()
 
     def __init__(self, user_id: UserID, brand_id: BrandID) -> None:
         self.user_id = user_id

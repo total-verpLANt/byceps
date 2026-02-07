@@ -14,7 +14,7 @@ from byceps.database import db, upsert, upsert_many
 from byceps.services.brand import brand_service
 from byceps.services.core.events import EventBrand
 from byceps.services.user import user_service
-from byceps.services.user.models.user import User, UserID
+from byceps.services.user.models import User, UserID
 from byceps.util.uuid import generate_uuid7
 
 from . import (
@@ -72,7 +72,7 @@ def create_topic(
         topic_id=topic.id,
         topic_creator=creator,
         topic_title=topic.title,
-        url=None,
+        url='to-be-determined-later',
     )
 
     return topic, event
@@ -103,7 +103,7 @@ def update_topic(
         topic_creator=topic_creator,
         topic_title=db_topic.title,
         editor=editor,
-        url=None,
+        url='to-be-determined-later',
     )
 
 
@@ -131,7 +131,7 @@ def hide_topic(topic_id: TopicID, moderator: User) -> BoardTopicHiddenEvent:
         topic_creator=topic_creator,
         topic_title=db_topic.title,
         moderator=moderator,
-        url=None,
+        url='to-be-determined-later',
     )
 
 
@@ -141,7 +141,6 @@ def unhide_topic(topic_id: TopicID, moderator: User) -> BoardTopicUnhiddenEvent:
 
     now = datetime.utcnow()
 
-    # TODO: Store who un-hid the topic.
     db_topic.hidden = False
     db_topic.hidden_at = None
     db_topic.hidden_by_id = None
@@ -160,7 +159,7 @@ def unhide_topic(topic_id: TopicID, moderator: User) -> BoardTopicUnhiddenEvent:
         topic_creator=topic_creator,
         topic_title=db_topic.title,
         moderator=moderator,
-        url=None,
+        url='to-be-determined-later',
     )
 
 
@@ -186,7 +185,7 @@ def lock_topic(topic_id: TopicID, moderator: User) -> BoardTopicLockedEvent:
         topic_creator=topic_creator,
         topic_title=db_topic.title,
         moderator=moderator,
-        url=None,
+        url='to-be-determined-later',
     )
 
 
@@ -196,7 +195,6 @@ def unlock_topic(topic_id: TopicID, moderator: User) -> BoardTopicUnlockedEvent:
 
     now = datetime.utcnow()
 
-    # TODO: Store who unlocked the topic.
     db_topic.locked = False
     db_topic.locked_at = None
     db_topic.locked_by_id = None
@@ -213,7 +211,7 @@ def unlock_topic(topic_id: TopicID, moderator: User) -> BoardTopicUnlockedEvent:
         topic_creator=topic_creator,
         topic_title=db_topic.title,
         moderator=moderator,
-        url=None,
+        url='to-be-determined-later',
     )
 
 
@@ -239,7 +237,7 @@ def pin_topic(topic_id: TopicID, moderator: User) -> BoardTopicPinnedEvent:
         topic_creator=topic_creator,
         topic_title=db_topic.title,
         moderator=moderator,
-        url=None,
+        url='to-be-determined-later',
     )
 
 
@@ -249,7 +247,6 @@ def unpin_topic(topic_id: TopicID, moderator: User) -> BoardTopicUnpinnedEvent:
 
     now = datetime.utcnow()
 
-    # TODO: Store who unpinned the topic.
     db_topic.pinned = False
     db_topic.pinned_at = None
     db_topic.pinned_by_id = None
@@ -266,7 +263,7 @@ def unpin_topic(topic_id: TopicID, moderator: User) -> BoardTopicUnpinnedEvent:
         topic_creator=topic_creator,
         topic_title=db_topic.title,
         moderator=moderator,
-        url=None,
+        url='to-be-determined-later',
     )
 
 
@@ -279,7 +276,10 @@ def move_topic(
     now = datetime.utcnow()
 
     db_old_category = db_topic.category
+
     db_new_category = db.session.get(DbBoardCategory, new_category_id)
+    if db_new_category is None:
+        raise ValueError(f'Unknown board category ID "{new_category_id}"')
 
     db_topic.category = db_new_category
     db.session.commit()
@@ -302,7 +302,7 @@ def move_topic(
         new_category_id=db_new_category.id,
         new_category_title=db_new_category.title,
         moderator=moderator,
-        url=None,
+        url='to-be-determined-later',
     )
 
 

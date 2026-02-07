@@ -14,7 +14,7 @@ USER byceps
 ENV PATH /home/byceps/.local/bin:$PATH
 
 # Install uv.
-COPY --from=ghcr.io/astral-sh/uv:0.9.26 /uv /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.9.30 /uv /bin/
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_PYTHON_DOWNLOADS=never
@@ -47,5 +47,5 @@ CMD [ \
         "--lazy-apps", \
         "--processes", "8", \
         "--uwsgi-socket", "0.0.0.0:5000", \
-        "--wsgi-file", "serve_apps.py" \
+        "--wsgi-file", "serve_web_apps.py" \
     ]

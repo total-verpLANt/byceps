@@ -12,7 +12,7 @@ from sqlalchemy import select
 
 from byceps.database import db
 from byceps.services.authn.session.models import CurrentUser
-from byceps.services.user.models.user import UserID
+from byceps.services.user.models import UserID
 
 from .dbmodels.category import DbBoardCategory, DbLastCategoryView
 from .models import (
@@ -38,7 +38,7 @@ def count_categories_for_board(board_id: BoardID) -> int:
 def find_category_by_id(
     category_id: BoardCategoryID,
 ) -> BoardCategory | None:
-    """Return the category with that id, or `None` if not found."""
+    """Return the category with that ID, or `None` if not found."""
     db_category = db.session.get(DbBoardCategory, category_id)
 
     if db_category is None:
@@ -91,7 +91,7 @@ def get_categories_excluding(
 
 
 def get_category_summaries(
-    board_id: BoardID, user: CurrentUser
+    board_id: BoardID, current_user: CurrentUser
 ) -> list[BoardCategorySummary]:
     """Return the categories for that board.
 
@@ -114,7 +114,7 @@ def get_category_summaries(
 
     for db_category in db_categories_with_last_update:
         contains_unseen_postings = contains_category_unseen_postings(
-            db_category.id, db_category.last_posting_updated_at, user
+            db_category.id, db_category.last_posting_updated_at, current_user
         )
 
         summary = _db_entity_to_category_summary(
@@ -165,18 +165,18 @@ def _db_entity_to_category_summary(
 def contains_category_unseen_postings(
     category_id: BoardCategoryID,
     last_posting_updated_at: datetime | None,
-    user: CurrentUser,
+    current_user: CurrentUser,
 ) -> bool:
     """Return `True` if the category contains postings created after the
-    last time the user viewed it.
+    last time the current user viewed it.
     """
     if last_posting_updated_at is None:
         return False
 
-    if not user.authenticated:
+    if not current_user.authenticated:
         return False
 
-    db_last_view = _find_last_category_view(user.id, category_id)
+    db_last_view = _find_last_category_view(current_user.id, category_id)
 
     if db_last_view is None:
         return True

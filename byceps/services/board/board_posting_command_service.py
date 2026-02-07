@@ -14,7 +14,7 @@ from byceps.database import db
 from byceps.services.brand import brand_service
 from byceps.services.core.events import EventBrand
 from byceps.services.user import user_service
-from byceps.services.user.models.user import User, UserID
+from byceps.services.user.models import User, UserID
 from byceps.util.result import Err, Ok, Result
 from byceps.util.uuid import generate_uuid7
 
@@ -68,7 +68,7 @@ def create_posting(
         topic_id=db_topic.id,
         topic_title=db_topic.title,
         topic_muted=db_topic.muted,
-        url=None,
+        url='to-be-determined-later',
     )
 
     return db_posting, event
@@ -102,7 +102,7 @@ def update_posting(
         topic_id=db_posting.topic.id,
         topic_title=db_posting.topic.title,
         editor=editor,
-        url=None,
+        url='to-be-determined-later',
     )
 
 
@@ -133,7 +133,7 @@ def hide_posting(
         topic_id=db_posting.topic.id,
         topic_title=db_posting.topic.title,
         moderator=moderator,
-        url=None,
+        url='to-be-determined-later',
     )
 
     return event
@@ -147,7 +147,6 @@ def unhide_posting(
 
     now = datetime.utcnow()
 
-    # TODO: Store who un-hid the posting.
     db_posting.hidden = False
     db_posting.hidden_at = None
     db_posting.hidden_by_id = None
@@ -167,7 +166,7 @@ def unhide_posting(
         topic_id=db_posting.topic.id,
         topic_title=db_posting.topic.title,
         moderator=moderator,
-        url=None,
+        url='to-be-determined-later',
     )
 
     return event
@@ -185,14 +184,13 @@ def add_reaction(
     """Add user reaction to the posting."""
     reaction_exists = _is_reaction_existing(db_posting.id, user.id, kind)
 
-    result = board_posting_domain_service.add_reaction(
+    match board_posting_domain_service.add_reaction(
         db_posting.id, db_posting.creator_id, user, kind, reaction_exists
-    )
-
-    if result.is_err():
-        return Err(result.unwrap_err())
-
-    reaction = result.unwrap()
+    ):
+        case Ok(reaction):
+            pass
+        case Err(e):
+            return Err(e)
 
     db_reaction = DbPostingReaction(
         reaction.id,
@@ -213,12 +211,11 @@ def remove_reaction(
     """Remove user reaction from the posting."""
     reaction_exists = _is_reaction_existing(db_posting.id, user.id, kind)
 
-    result = board_posting_domain_service.remove_reaction(
+    match board_posting_domain_service.remove_reaction(
         db_posting.id, db_posting.creator_id, user, kind, reaction_exists
-    )
-
-    if result.is_err():
-        return Err(result.unwrap_err())
+    ):
+        case Err(e):
+            return Err(e)
 
     db.session.execute(
         delete(DbPostingReaction)

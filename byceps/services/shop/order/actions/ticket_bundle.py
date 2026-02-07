@@ -29,6 +29,7 @@ from byceps.services.shop.order.models.order import (
     OrderID,
     PaidOrder,
 )
+from byceps.services.shop.product import product_service
 from byceps.services.ticketing import (
     ticket_bundle_service,
     ticket_category_service,
@@ -38,7 +39,7 @@ from byceps.services.ticketing.models.ticket import (
     TicketBundleID,
     TicketCategory,
 )
-from byceps.services.user.models.user import User
+from byceps.services.user.models import User
 from byceps.util.result import Err, Ok, Result
 
 
@@ -56,17 +57,18 @@ def on_payment(
     parameters: ActionParameters,
 ) -> Result[None, OrderActionFailedError]:
     """Create ticket bundles."""
-    ticket_category_id = parameters['category_id']
+    if parameters:
+        ticket_category_id = parameters['ticket_category_id']
+        ticket_quantity_per_bundle = int(parameters['ticket_quantity'])
+    else:
+        product = product_service.get_product(line_item.product_id)
+        ticket_category_id = product.type_params['ticket_category_id']
+        ticket_quantity_per_bundle = int(product.type_params['ticket_quantity'])
+
     ticket_category = ticket_category_service.get_category(ticket_category_id)
 
-    ticket_quantity_per_bundle = parameters['ticket_quantity']
-
     _create_ticket_bundles(
-        order,
-        line_item,
-        ticket_category,
-        ticket_quantity_per_bundle,
-        initiator,
+        order, line_item, ticket_category, ticket_quantity_per_bundle, initiator
     )
 
     return Ok(None)
@@ -121,11 +123,7 @@ def _create_ticket_bundles(
 
     total_quantity = ticket_quantity_per_bundle * bundle_quantity
     tickets_sold_event = order_event_service.create_tickets_sold_event(
-        order,
-        initiator,
-        ticket_category,
-        owner,
-        total_quantity,
+        order, initiator, ticket_category, owner, total_quantity
     )
     order_event_service.send_tickets_sold_event(tickets_sold_event)
 

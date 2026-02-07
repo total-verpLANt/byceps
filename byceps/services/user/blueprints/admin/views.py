@@ -30,7 +30,7 @@ from byceps.services.user import (
     user_service,
 )
 from byceps.services.user.errors import NothingChangedError
-from byceps.services.user.models.user import UserFilter, UserForAdmin
+from byceps.services.user.models import UserFilter, UserForAdmin
 from byceps.services.user_badge import user_badge_awarding_service
 from byceps.util.authz import permission_registry
 from byceps.util.framework.blueprint import create_blueprint
@@ -103,7 +103,8 @@ def index(page):
 def view(user_id):
     """Show a user's internal profile."""
     user = _get_user_for_admin_or_404(user_id)
-    db_user = user_service.find_user_with_details(user.id)
+    email_address_data = user_service.get_email_address_data(user.id)
+    user_detail = user_service.get_detail(user.id)
 
     locale = user_service.find_locale(user.id)
 
@@ -137,10 +138,12 @@ def view(user_id):
 
     return {
         'profile_user': user,
-        'user': db_user,
+        'user': user,
+        'email_address_data': email_address_data,
         'user_locale': locale,
         'recent_login': recent_login,
         'days_since_recent_login': days_since_recent_login,
+        'user_detail': user_detail,
         'orga_activities': orga_activities,
         'newsletter_subscription_count': newsletter_subscription_count,
         'newsletter_subscription_states': newsletter_subscription_states,

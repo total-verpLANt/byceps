@@ -23,7 +23,7 @@ from byceps.services.shop.product.models import (
 from byceps.services.shop.shop.models import Shop
 from byceps.services.shop.storefront.models import Storefront
 from byceps.services.site.models import Site, SiteID
-from byceps.services.user.models.user import User, UserID
+from byceps.services.user.models import User, UserID
 
 from tests.helpers import create_site, http_client, log_in_user
 from tests.helpers.shop import create_shop_snippet
@@ -174,7 +174,7 @@ def test_order_single(
     url = f'{BASE_URL}/shop/order_single/{product.id!s}'
     form_data: dict[str, int | str] = {
         **COMMON_FORM_DATA,
-        'quantity': 1,  # TODO: Test with `3` if limitation is removed.
+        'quantity': 1,  # Overridden with fixed quantity 1 anyway.
     }
     with http_client(site_app, user_id=orderer_user.id) as client:
         response = client.post(url, data=form_data)

@@ -6,16 +6,14 @@
 from uuid import UUID
 
 from babel import Locale
-from flask_babel import lazy_gettext
 
-from byceps.services.authn.session import authn_session_service
-from byceps.util.authz import register_permissions
+from byceps.services.authn.session.models import CurrentUser
 
 
-def test_get_anonymous_current_user():
+def test_create_anonymous_current_user():
     locale = Locale('en')
 
-    current_user = authn_session_service.get_anonymous_current_user(locale)
+    current_user = CurrentUser.create_anonymous(locale)
 
     assert current_user.id == UUID('00000000-0000-0000-0000-000000000000')
     assert current_user.screen_name is None
@@ -27,16 +25,8 @@ def test_get_anonymous_current_user():
     assert current_user.locale == locale
 
 
-def test_get_authenticated_current_user(user):
+def test_create_authenticated_current_user(user):
     locale = Locale('de')
-
-    register_permissions(
-        'example',
-        [
-            ('do_this', lazy_gettext('Do this')),
-            ('do_that', lazy_gettext('Do that')),
-        ],
-    )
     permissions = frozenset(
         [
             'example.do_this',
@@ -44,9 +34,7 @@ def test_get_authenticated_current_user(user):
         ]
     )
 
-    current_user = authn_session_service.get_authenticated_current_user(
-        user, locale, permissions
-    )
+    current_user = CurrentUser.create_authenticated(user, locale, permissions)
 
     assert current_user.id == user.id
     assert current_user.screen_name == user.screen_name

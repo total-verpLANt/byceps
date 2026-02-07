@@ -11,12 +11,12 @@ from datetime import timedelta
 from babel import Locale
 
 from byceps.database import Pagination
-from byceps.services.user.models.user import UserID
 
 from . import user_repository
-from .dbmodels.user import DbUser
-from .models.user import (
+from .dbmodels import DbUser
+from .models import (
     User,
+    UserID,
     UserDetail,
     UserEmailAddress,
     UserFilter,
@@ -125,11 +125,6 @@ def find_db_user_by_screen_name(screen_name: str) -> DbUser | None:
     Comparison is done case-insensitively.
     """
     return user_repository.find_db_user_by_screen_name(screen_name)
-
-
-def find_user_with_details(user_id: UserID) -> DbUser | None:
-    """Return the user and its details."""
-    return user_repository.find_user_with_details(user_id)
 
 
 def get_db_user(user_id: UserID) -> DbUser:
