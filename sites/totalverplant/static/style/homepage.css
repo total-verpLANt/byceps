@@ -112,7 +112,7 @@ main.landing {
 
 .landing-hero__meta-item {
   padding: 10px 14px;
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-md-custom);
   background: rgba(15,23,42,0.6);
   border: 1px solid rgba(148,163,184,0.4);
   -webkit-backdrop-filter: blur(12px);
@@ -162,7 +162,7 @@ main.landing {
 
 .fact-tile {
   padding: 10px 14px;
-  border-radius: 14px;
+  border-radius: var(--radius-md-custom);
   background: rgba(15,23,42,0.72);
   border: 1px solid rgba(148,163,184,0.4);
   -webkit-backdrop-filter: blur(10px);
@@ -192,6 +192,12 @@ main.landing {
   padding: 18px 18px 18px;
   max-width: 420px;
   margin-left: auto;
+}
+
+@media(max-width: 630px) {
+  .landing-hero__aside-card {
+    max-width: 100%;
+  }
 }
 
 .landing-hero__aside-header {
@@ -460,7 +466,7 @@ main.landing {
   }
 }
 
-/* Gallery Item - Static Display (No Interactive Effects) */
+/* Gallery Item Links with Interactive Hover Effects */
 .gallery-teaser__item {
   display: block;
   position: relative;
@@ -468,17 +474,32 @@ main.landing {
   border-radius: var(--radius-md);
   border: 1px solid var(--border-color);
   background: var(--bg-card);
-  cursor: default;
-  pointer-events: none;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
-/* Gallery Images with Aspect Ratio */
+.gallery-teaser__item:hover {
+  transform: translateY(-4px); /* Lift effect on hover */
+  box-shadow: 0 8px 16px rgba(0,0,0,0.4); /* Enhanced shadow on hover */
+}
+
+.gallery-teaser__item:focus {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+  border-color: var(--border-color-hover);
+}
+
+/* Gallery Images with Aspect Ratio and Zoom Effect */
 .gallery-teaser__item img {
   display: block;
   width: 100%;
   height: auto;
   object-fit: cover;
   aspect-ratio: 16 / 10; /* Maintain 16:10 aspect ratio (matches 400x250) */
+  transition: transform 0.3s ease; /* Smooth zoom transition */
+}
+
+.gallery-teaser__item:hover img {
+  transform: scale(1.05); /* Subtle zoom on hover */
 }
 
 /* ========== SPONSOR LOGO GRID ========== */
