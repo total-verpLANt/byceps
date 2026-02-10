@@ -33,6 +33,12 @@ class DbTournamentMatch(db.Model):
     tournament: Mapped[DbTournament] = relationship(DbTournament)
     group_order: Mapped[int | None]
     match_order: Mapped[int | None]
+    round: Mapped[int | None]
+    next_match_id: Mapped[TournamentMatchID | None] = mapped_column(
+        db.Uuid,
+        db.ForeignKey('lan_tournament_matches.id'),
+        index=True,
+    )
     confirmed_by: Mapped[UserID | None] = mapped_column(
         db.Uuid,
         db.ForeignKey('users.id'),
@@ -48,6 +54,8 @@ class DbTournamentMatch(db.Model):
         *,
         group_order: int | None = None,
         match_order: int | None = None,
+        round: int | None = None,
+        next_match_id: TournamentMatchID | None = None,
         confirmed_by: UserID | None = None,
     ) -> None:
         self.id = match_id
@@ -55,12 +63,15 @@ class DbTournamentMatch(db.Model):
         self.created_at = created_at
         self.group_order = group_order
         self.match_order = match_order
+        self.round = round
+        self.next_match_id = next_match_id
         self.confirmed_by = confirmed_by
 
     def __repr__(self) -> str:
         return (
             ReprBuilder(self)
             .add_with_lookup('tournament_id')
+            .add_with_lookup('round')
             .add_with_lookup('match_order')
             .build()
         )

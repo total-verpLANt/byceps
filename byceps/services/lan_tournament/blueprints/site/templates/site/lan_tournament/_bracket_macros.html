@@ -102,9 +102,7 @@
     {%- set rounds = {} %}
     {%- for data in match_data %}
       {%- set match = data.match %}
-      {# Simple round calculation - assumes sequential match_order #}
-      {# For single elimination: round 0 = first matches, etc. #}
-      {%- set round_num = (match.match_order // 2) if match.match_order else 0 %}
+      {%- set round_num = match.round if match.round is not none else 0 %}
       {%- if round_num not in rounds %}
         {%- set _ = rounds.update({round_num: []}) %}
       {%- endif %}
@@ -162,6 +160,20 @@
             </div>
           </div>
           {%- endfor %}
+          {%- if not contestants %}
+          <div class='bracket-contestant'>
+            <div class='bracket-contestant-name' style='color: #999;'>
+              TBD
+            </div>
+            <div class='bracket-contestant-score'>–</div>
+          </div>
+          <div class='bracket-contestant'>
+            <div class='bracket-contestant-name' style='color: #999;'>
+              TBD
+            </div>
+            <div class='bracket-contestant-score'>–</div>
+          </div>
+          {%- endif %}
         </div>
       </div>
       {%- endfor %}
