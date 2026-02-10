@@ -1,7 +1,7 @@
 import dataclasses
 
 from flask import abort, g, request
-from flask_babel import gettext
+from flask_babel import gettext, to_user_timezone, to_utc
 
 from byceps.services.party import party_service
 from byceps.services.party.models import Party
@@ -108,7 +108,8 @@ def create(party_id):
     )
     image_url = form.image_url.data.strip() if form.image_url.data else None
     ruleset = form.ruleset.data.strip() if form.ruleset.data else None
-    start_time = form.start_time.data
+    start_time_local = form.start_time.data
+    start_time = to_utc(start_time_local) if start_time_local else None
     try:
         contestant_type = (
             ContestantType[form.contestant_type.data]
@@ -181,7 +182,14 @@ def update_form(tournament_id, erroneous_form=None):
     if erroneous_form:
         form = erroneous_form
     else:
+        start_time_local = (
+            to_user_timezone(tournament.start_time)
+            if tournament.start_time
+            else None
+        )
+
         data = dataclasses.asdict(tournament)
+        data['start_time'] = start_time_local
         if tournament.contestant_type is not None:
             data['contestant_type'] = tournament.contestant_type.name
         else:
@@ -222,7 +230,8 @@ def update(tournament_id):
     )
     image_url = form.image_url.data.strip() if form.image_url.data else None
     ruleset = form.ruleset.data.strip() if form.ruleset.data else None
-    start_time = form.start_time.data
+    start_time_local = form.start_time.data
+    start_time = to_utc(start_time_local) if start_time_local else None
     try:
         contestant_type = (
             ContestantType[form.contestant_type.data]
