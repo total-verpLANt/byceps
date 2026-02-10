@@ -13,6 +13,7 @@ from byceps.util.views import permission_required, redirect_to
 
 from byceps.services.lan_tournament import (
     tournament_match_service,
+    tournament_participant_service,
     tournament_service,
     tournament_team_service,
 )
@@ -22,6 +23,12 @@ from byceps.services.lan_tournament.models.contestant_type import (
 )
 from byceps.services.lan_tournament.models.tournament_team import (
     TournamentTeam,
+)
+from byceps.services.lan_tournament.models.tournament_match import (
+    TournamentMatchID,
+)
+from byceps.services.lan_tournament.models.tournament_match_comment import (
+    TournamentMatchCommentID,
 )
 from byceps.services.lan_tournament.models.tournament_mode import (
     TournamentMode,
@@ -387,23 +394,45 @@ def generate_bracket(tournament_id):
     """Generate bracket for the tournament."""
     tournament = _get_tournament_or_404(tournament_id)
 
-    try:
-        seeds = tournament_match_service.generate_single_elimination_bracket(
-            tournament.id
-        )
-        flash_success(
-            gettext(
-                'Bracket generated with %(count)d matches.',
-                count=len(seeds),
-            )
-        )
-    except ValueError as e:
+    allowed_statuses = (
+        TournamentStatus.REGISTRATION_CLOSED,
+        TournamentStatus.ONGOING,
+    )
+    if tournament.tournament_status not in allowed_statuses:
         flash_error(
             gettext(
-                'Bracket generation failed: %(error)s',
-                error=str(e),
+                'Bracket can only be generated when registration '
+                'is closed or tournament is ongoing.'
             )
         )
+        return redirect_to('.view', tournament_id=tournament.id)
+
+    match tournament_match_service.generate_single_elimination_bracket(
+        tournament.id
+    ):
+        case Ok(seeds):
+            match tournament_match_service.set_seed(seeds, tournament.id):
+                case Ok(_):
+                    flash_success(
+                        gettext(
+                            'Bracket generated with %(count)d matches.',
+                            count=len(seeds),
+                        )
+                    )
+                case Err(error_message):
+                    flash_error(
+                        gettext(
+                            'Bracket generation failed: %(error)s',
+                            error=error_message,
+                        )
+                    )
+        case Err(error_message):
+            flash_error(
+                gettext(
+                    'Bracket generation failed: %(error)s',
+                    error=error_message,
+                )
+            )
 
     return redirect_to('.view', tournament_id=tournament.id)
 
@@ -589,6 +618,60 @@ def delete_team(team_id):
     return redirect_to('.teams_for_tournament', tournament_id=tournament_id)
 
 
+# -------------------------------------------------------------------- #
+# participants
+
+
+@blueprint.get('/tournaments/<tournament_id>/participants')
+@permission_required('lan_tournament.view')
+@templated
+def participants_for_tournament(tournament_id):
+    """List participants for that tournament."""
+    tournament = _get_tournament_or_404(tournament_id)
+    party = party_service.get_party(tournament.party_id)
+
+    participants = (
+        tournament_participant_service.get_participants_for_tournament(
+            tournament.id
+        )
+    )
+
+    return {
+        'party': party,
+        'tournament': tournament,
+        'participants': participants,
+    }
+
+
+@blueprint.post(
+    '/tournaments/<tournament_id>/participants/<participant_id>/remove'
+)
+@permission_required('lan_tournament.administrate')
+def remove_participant(tournament_id, participant_id):
+    """Remove a participant from the tournament."""
+    tournament = _get_tournament_or_404(tournament_id)
+
+    result = tournament_participant_service.leave_tournament(
+        tournament.id, participant_id
+    )
+
+    match result:
+        case Ok(_):
+            flash_success(gettext('Participant has been removed.'))
+        case Err(error_message):
+            flash_error(
+                gettext(
+                    'Could not remove participant: %(error)s',
+                    error=error_message,
+                )
+            )
+
+    return redirect_to(
+        '.participants_for_tournament',
+        tournament_id=tournament.id,
+    )
+
+
 def _get_party_or_404(party_id) -> Party:
     party = party_service.find_party(party_id)
 
@@ -608,13 +691,12 @@ def _get_tournament_or_404(tournament_id) -> Tournament:
 
 
 def _get_team_or_404(team_id) -> TournamentTeam:
-    team = tournament_team_service.get_team(team_id)
+    team = tournament_team_service.find_team(team_id)
 
     if team is None:
         abort(404)
 
     return team
-
 
 
 # -------------------------------------------------------------------- #
@@ -629,22 +711,20 @@ def matches_for_tournament(tournament_id):
     tournament = _get_tournament_or_404(tournament_id)
     party = party_service.get_party(tournament.party_id)
 
-    matches = tournament_match_service.get_matches_for_tournament(
-        tournament.id
-    )
+    matches = tournament_match_service.get_matches_for_tournament(tournament.id)
 
     # Get contestants for each match
-    from byceps.services.lan_tournament import tournament_repository
-
     match_data = []
     for match in matches:
-        contestants = tournament_repository.get_contestants_for_match(
+        contestants = tournament_match_service.get_contestants_for_match(
             match.id
         )
-        match_data.append({
-            'match': match,
-            'contestants': contestants,
-        })
+        match_data.append(
+            {
+                'match': match,
+                'contestants': contestants,
+            }
+        )
 
     return {
         'party': party,
@@ -658,17 +738,12 @@ def matches_for_tournament(tournament_id):
 @templated
 def view_match(match_id):
     """Show a match."""
-    from byceps.services.lan_tournament import tournament_repository
-    from byceps.services.lan_tournament.models.tournament_match import (
-        TournamentMatchID,
-    )
-
     match_id_obj = TournamentMatchID(match_id)
     match = tournament_match_service.get_match(match_id_obj)
     tournament = _get_tournament_or_404(match.tournament_id)
     party = party_service.get_party(tournament.party_id)
 
-    contestants = tournament_repository.get_contestants_for_match(
+    contestants = tournament_match_service.get_contestants_for_match(
         match_id_obj
     )
     comments = tournament_match_service.get_comments_from_match(match_id_obj)
@@ -686,10 +761,6 @@ def view_match(match_id):
 @permission_required('lan_tournament.update')
 def set_match_score(match_id):
     """Set score for a contestant in a match."""
-    from byceps.services.lan_tournament.models.tournament_match import (
-        TournamentMatchID,
-    )
-
     match_id_obj = TournamentMatchID(match_id)
     match = tournament_match_service.get_match(match_id_obj)
 
@@ -704,9 +775,9 @@ def set_match_score(match_id):
         score_int = int(score)
         from uuid import UUID
 
-        # Try to parse as participant or team ID
-        from byceps.services.lan_tournament.models.tournament_participant \
-            import TournamentParticipantID
+        from byceps.services.lan_tournament.models.tournament_participant import (
+            TournamentParticipantID,
+        )
         from byceps.services.lan_tournament.models.tournament_team import (
             TournamentTeamID,
         )
@@ -715,22 +786,27 @@ def set_match_score(match_id):
 
         # Determine if it's a participant or team based on tournament type
         tournament = _get_tournament_or_404(match.tournament_id)
-        from byceps.services.lan_tournament.models.contestant_type import (
-            ContestantType,
-        )
 
         if tournament.contestant_type == ContestantType.TEAM:
             contestant_id_obj = TournamentTeamID(contestant_uuid)
         else:
             contestant_id_obj = TournamentParticipantID(contestant_uuid)
-
-        tournament_match_service.set_score(
-            match_id_obj, contestant_id_obj, score_int
-        )
-
-        flash_success(gettext('Score has been set.'))
     except ValueError as e:
         flash_error(gettext('Error setting score: %(error)s', error=str(e)))
+        return redirect_to('.view_match', match_id=match_id)
+
+    match tournament_match_service.set_score(
+        match_id_obj, contestant_id_obj, score_int
+    ):
+        case Ok(_):
+            flash_success(gettext('Score has been set.'))
+        case Err(error_message):
+            flash_error(
+                gettext(
+                    'Error setting score: %(error)s',
+                    error=error_message,
+                )
+            )
 
     return redirect_to('.view_match', match_id=match_id)
 
@@ -739,19 +815,18 @@ def set_match_score(match_id):
 @permission_required('lan_tournament.administrate')
 def confirm_match(match_id):
     """Confirm a match result."""
-    from byceps.services.lan_tournament.models.tournament_match import (
-        TournamentMatchID,
-    )
-
     match_id_obj = TournamentMatchID(match_id)
 
-    try:
-        tournament_match_service.confirm_match(match_id_obj, g.user.id)
-        flash_success(gettext('Match has been confirmed.'))
-    except ValueError as e:
-        flash_error(
-            gettext('Error confirming match: %(error)s', error=str(e))
-        )
+    match tournament_match_service.confirm_match(match_id_obj, g.user.id):
+        case Ok(_):
+            flash_success(gettext('Match has been confirmed.'))
+        case Err(error_message):
+            flash_error(
+                gettext(
+                    'Error confirming match: %(error)s',
+                    error=error_message,
+                )
+            )
 
     return redirect_to('.view_match', match_id=match_id)
 
@@ -760,10 +835,6 @@ def confirm_match(match_id):
 @permission_required('lan_tournament.update')
 def add_match_comment(match_id):
     """Add a comment to a match."""
-    from byceps.services.lan_tournament.models.tournament_match import (
-        TournamentMatchID,
-    )
-
     match_id_obj = TournamentMatchID(match_id)
 
     comment = request.form.get('comment', '').strip()
@@ -772,18 +843,20 @@ def add_match_comment(match_id):
         flash_error(gettext('Comment cannot be empty.'))
         return redirect_to('.view_match', match_id=match_id)
 
-    try:
-        tournament_match_service.add_comment(
-            match_id_obj, g.user.id, comment
-        )
-        flash_success(gettext('Comment has been added.'))
-    except ValueError as e:
-        flash_error(gettext('Error adding comment: %(error)s', error=str(e)))
+    match tournament_match_service.add_comment(
+        match_id_obj, g.user.id, comment
+    ):
+        case Ok(_):
+            flash_success(gettext('Comment has been added.'))
+        case Err(error_message):
+            flash_error(
+                gettext(
+                    'Error adding comment: %(error)s',
+                    error=error_message,
+                )
+            )
 
     return redirect_to('.view_match', match_id=match_id)
-
-
-
 
 
 @blueprint.get('/tournaments/<tournament_id>/bracket')
@@ -794,43 +867,38 @@ def bracket(tournament_id):
     tournament = _get_tournament_or_404(tournament_id)
     party = party_service.get_party(tournament.party_id)
 
-    matches = tournament_match_service.get_matches_for_tournament(
-        tournament.id
-    )
+    matches = tournament_match_service.get_matches_for_tournament(tournament.id)
 
     # Get contestants for each match
-    from byceps.services.lan_tournament import tournament_repository
-
     match_data = []
     for match in matches:
-        contestants = tournament_repository.get_contestants_for_match(
+        contestants = tournament_match_service.get_contestants_for_match(
             match.id
         )
-        match_data.append({
-            'match': match,
-            'contestants': contestants,
-        })
+        match_data.append(
+            {
+                'match': match,
+                'contestants': contestants,
+            }
+        )
 
     return {
         'party': party,
         'tournament': tournament,
         'match_data': match_data,
     }
+
+
 @blueprint.post('/matches/<match_id>/comments/<comment_id>/delete')
 @permission_required('lan_tournament.administrate')
 def delete_match_comment(match_id, comment_id):
     """Delete a match comment."""
-    from byceps.services.lan_tournament.models.tournament_match_comment \
-        import TournamentMatchCommentID
-
     comment_id_obj = TournamentMatchCommentID(comment_id)
 
     try:
         tournament_match_service.delete_comment(comment_id_obj)
         flash_success(gettext('Comment has been deleted.'))
     except ValueError as e:
-        flash_error(
-            gettext('Error deleting comment: %(error)s', error=str(e))
-        )
+        flash_error(gettext('Error deleting comment: %(error)s', error=str(e)))
 
     return redirect_to('.view_match', match_id=match_id)

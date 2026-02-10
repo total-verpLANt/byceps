@@ -28,9 +28,7 @@ def join_tournament(
 ) -> Result[tuple[TournamentParticipant, ParticipantJoinedEvent], str]:
     """Register a user as participant in a tournament."""
     # Use SELECT FOR UPDATE to prevent race conditions
-    tournament = tournament_repository.get_tournament_for_update(
-        tournament_id
-    )
+    tournament = tournament_repository.get_tournament_for_update(tournament_id)
 
     if tournament.tournament_status != TournamentStatus.REGISTRATION_OPEN:
         return Err('Registration is not open for this tournament.')
@@ -87,9 +85,7 @@ def leave_tournament(
         TournamentStatus.REGISTRATION_OPEN,
         TournamentStatus.REGISTRATION_CLOSED,
     ):
-        return Err(
-            'Cannot leave tournament after it has started or completed.'
-        )
+        return Err('Cannot leave tournament after it has started or completed.')
 
     tournament_repository.delete_participant(participant_id)
 

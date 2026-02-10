@@ -60,9 +60,7 @@ def create_team(
         return Err(validation_result.unwrap_err())
 
     # Use SELECT FOR UPDATE to prevent race conditions
-    tournament = tournament_repository.get_tournament_for_update(
-        tournament_id
-    )
+    tournament = tournament_repository.get_tournament_for_update(tournament_id)
 
     current_count = len(
         tournament_repository.get_teams_for_tournament(tournament_id)
@@ -154,9 +152,9 @@ def delete_team(
     calling this function. This function includes business logic validation
     for team captain ownership when current_user_id is provided.
 
-    CASCADE HANDLING: Sets team_id to NULL on:
-    - Participants (team members remain in tournament as individuals)
-    - Match contestants (preserves match history with NULL team reference)
+    CASCADE HANDLING:
+    - Participants: Sets team_id to NULL (team members remain as individuals)
+    - Match contestants: Deletes contestant records referencing this team
     """
     team = tournament_repository.find_team(team_id)
     if team is None:
@@ -166,7 +164,7 @@ def delete_team(
     if current_user_id is not None and team.captain_user_id != current_user_id:
         return Err('Only the team captain can delete this team.')
 
-    # Remove team references (set to NULL) before deleting team
+    # Remove team references before deleting team
     tournament_repository.remove_team_from_participants(team_id)
     tournament_repository.remove_team_from_contestants(team_id)
     tournament_repository.delete_team(team_id)
@@ -181,6 +179,13 @@ def delete_team(
     signals.team_deleted.send(None, event=event)
 
     return Ok(event)
+
+
+def find_team(
+    team_id: TournamentTeamID,
+) -> TournamentTeam | None:
+    """Return the team, or `None` if not found."""
+    return tournament_repository.find_team(team_id)
 
 
 def get_team(
@@ -271,9 +276,7 @@ def leave_team(
         # If captain is only member, will delete team after leaving (below)
 
     # Status validation: Cannot leave after tournament has started
-    tournament = tournament_repository.get_tournament(
-        participant.tournament_id
-    )
+    tournament = tournament_repository.get_tournament(participant.tournament_id)
     if tournament.tournament_status not in (
         TournamentStatus.REGISTRATION_OPEN,
         TournamentStatus.REGISTRATION_CLOSED,
@@ -296,9 +299,7 @@ def leave_team(
     signals.team_member_left.send(None, event=event)
 
     # Auto-delete empty team: If captain was the last member, delete team
-    remaining_members = tournament_repository.get_participants_for_team(
-        team_id
-    )
+    remaining_members = tournament_repository.get_participants_for_team(team_id)
     if len(remaining_members) == 0:
         tournament_repository.delete_team(team_id)
 

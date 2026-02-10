@@ -157,9 +157,7 @@ def get_tournament_for_update(
     Raise an exception if not found.
     """
     db_tournament = db.session.execute(
-        select(DbTournament)
-        .filter_by(id=tournament_id)
-        .with_for_update()
+        select(DbTournament).filter_by(id=tournament_id).with_for_update()
     ).scalar_one_or_none()
     if db_tournament is None:
         raise ValueError(f'Unknown tournament ID "{tournament_id}"')
@@ -299,9 +297,7 @@ def get_team_for_update(team_id: TournamentTeamID) -> TournamentTeam:
     Raise an exception if not found.
     """
     db_team = db.session.execute(
-        select(DbTournamentTeam)
-        .filter_by(id=team_id)
-        .with_for_update()
+        select(DbTournamentTeam).filter_by(id=team_id).with_for_update()
     ).scalar_one_or_none()
     if db_team is None:
         raise ValueError(f'Unknown team ID "{team_id}"')
@@ -494,7 +490,7 @@ def create_match(match: TournamentMatch) -> None:
     )
 
     db.session.add(db_match)
-    db.session.commit()
+    db.session.flush()
 
 
 def delete_match(match_id: TournamentMatchID) -> None:
@@ -548,6 +544,19 @@ def get_matches_for_tournament(
     return [_db_match_to_match(m) for m in db_matches]
 
 
+def confirm_match(
+    match_id: TournamentMatchID,
+    confirmed_by: UserID,
+) -> None:
+    """Set the confirmed_by field on a match."""
+    db_match = db.session.get(DbTournamentMatch, match_id)
+    if db_match is None:
+        raise ValueError(f'Unknown match ID "{match_id}"')
+
+    db_match.confirmed_by = confirmed_by
+    db.session.commit()
+
+
 def _db_match_to_match(
     db_match: DbTournamentMatch,
 ) -> TournamentMatch:
@@ -577,6 +586,19 @@ def create_match_comment(
     )
 
     db.session.add(db_comment)
+    db.session.commit()
+
+
+def update_match_comment(
+    comment_id: TournamentMatchCommentID,
+    comment: str,
+) -> None:
+    """Update a match comment's text."""
+    db_comment = db.session.get(DbTournamentMatchComment, comment_id)
+    if db_comment is None:
+        raise ValueError(f'Unknown comment ID "{comment_id}"')
+
+    db_comment.comment = comment
     db.session.commit()
 
 
@@ -640,7 +662,6 @@ def _db_comment_to_comment(
     )
 
 
-
 # -- match contestant --
 
 
@@ -658,7 +679,7 @@ def create_match_contestant(
     )
 
     db.session.add(db_contestant)
-    db.session.commit()
+    db.session.flush()
 
 
 def update_contestant_score(
@@ -666,9 +687,7 @@ def update_contestant_score(
     score: int,
 ) -> None:
     """Update a contestant's score."""
-    db_contestant = db.session.get(
-        DbTournamentMatchToContestant, contestant_id
-    )
+    db_contestant = db.session.get(DbTournamentMatchToContestant, contestant_id)
     if db_contestant is None:
         raise ValueError(f'Unknown contestant ID "{contestant_id}"')
 
@@ -762,10 +781,8 @@ def delete_contestants_for_tournament(tournament_id: TournamentID) -> None:
 
 
 def remove_team_from_contestants(team_id: TournamentTeamID) -> None:
-    """Set team_id to NULL for all contestants referencing this team."""
+    """Delete all match contestants referencing this team."""
     db.session.execute(
-        db.update(DbTournamentMatchToContestant)
-        .filter_by(team_id=team_id)
-        .values(team_id=None)
+        db.delete(DbTournamentMatchToContestant).filter_by(team_id=team_id)
     )
     db.session.commit()
