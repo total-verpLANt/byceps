@@ -15,5 +15,7 @@ class TournamentMatch:
     tournament_id: TournamentID
     group_order: int | None
     match_order: int | None
+    round: int | None
+    next_match_id: TournamentMatchID | None
     confirmed_by: UserID | None
     created_at: datetime

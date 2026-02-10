@@ -11,6 +11,9 @@ from .events import (
 from .models.contestant_type import ContestantType
 from .models.tournament import Tournament, TournamentID
 from .models.tournament_mode import TournamentMode
+from .models.tournament_match_to_contestant import (
+    TournamentMatchToContestant,
+)
 from .models.tournament_status import TournamentStatus
 
 
@@ -163,3 +166,44 @@ def validate_team_count(
         return Err('Maximum number of teams reached.')
 
     return Ok(None)
+
+
+def determine_match_winner(
+    contestants: list[TournamentMatchToContestant],
+) -> Result[TournamentMatchToContestant, str]:
+    """Determine the winner of a match by highest score."""
+    if len(contestants) < 2:
+        return Err('Need at least 2 contestants to determine winner.')
+
+    for contestant in contestants:
+        if contestant.score is None:
+            return Err('All contestants must have scores.')
+
+    sorted_contestants = sorted(
+        contestants, key=lambda c: c.score, reverse=True
+    )
+
+    if sorted_contestants[0].score == sorted_contestants[1].score:
+        return Err('Match is tied; cannot determine winner.')
+
+    return Ok(sorted_contestants[0])
+
+
+def _standard_seed_order(bracket_size: int) -> list[int]:
+    """Return standard seeding order for single elimination.
+
+    For bracket_size=8: [0, 7, 3, 4, 1, 6, 2, 5]
+    This produces matchups: 1v8, 4v5, 2v7, 3v6 (1-indexed).
+    """
+    if bracket_size == 1:
+        return [0]
+    if bracket_size == 2:
+        return [0, 1]
+
+    half = bracket_size // 2
+    prev = _standard_seed_order(half)
+    result = []
+    for seed in prev:
+        result.append(seed)
+        result.append(bracket_size - 1 - seed)
+    return result

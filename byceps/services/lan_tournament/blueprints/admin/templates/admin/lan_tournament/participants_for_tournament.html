@@ -1,0 +1,82 @@
+{% extends 'layout/admin/lan_tournament.html' %}
+{% from 'macros/admin.html' import render_extra_in_heading %}
+{% from 'macros/icons.html' import render_icon %}
+{% set page_title = [_('LAN'), party.title, _('Tournaments'), tournament.name, _('Participants')] %}
+
+{% block head %}
+  <style>
+    .participant-list .column-user {
+      width: 30%;
+    }
+    .column-substitute {
+      width: 10%;
+      text-align: center;
+    }
+    .column-team {
+      width: 20%;
+    }
+    .column-joined {
+      width: 20%;
+    }
+  </style>
+{%- endblock %}
+
+{% block body %}
+
+  <nav class="breadcrumbs">
+    <ol>
+      <li><a href="{{ url_for('.index', party_id=party.id) }}">{{ party.title }}</a></li>
+      <li><a href="{{ url_for('.view', tournament_id=tournament.id) }}">{{ tournament.name }}</a></li>
+    </ol>
+  </nav>
+
+  <h1 class="title">{{ _('Participants') }} {{ render_extra_in_heading(participants|length) }}</h1>
+
+  {%- if participants %}
+  <table class="itemlist is-vcentered is-wide participant-list">
+    <thead>
+      <tr>
+        <th class="column-user">{{ _('User') }}</th>
+        <th class="column-substitute">{{ _('Substitute') }}</th>
+        <th class="column-team">{{ _('Team') }}</th>
+        <th class="column-joined">{{ _('Joined') }}</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {%- for participant in participants %}
+      <tr>
+        <td class="column-user">{{ participant.user_id }}</td>
+        <td class="column-substitute">
+          {%- if participant.substitute_player %}
+            {{ render_icon('enabled') }}
+          {%- else %}
+            <span class="dimmed">{{ render_icon('disabled') }}</span>
+          {%- endif %}
+        </td>
+        <td class="column-team">
+          {%- if participant.team_id %}
+            {{ participant.team_id }}
+          {%- else %}
+            <span class="dimmed">-</span>
+          {%- endif %}
+        </td>
+        <td class="column-joined">{{ participant.created_at|dateformat }}</td>
+        <td class="bared">
+          <div class="button-row is-compact is-right-aligned">
+            <form action="{{ url_for('.remove_participant', tournament_id=tournament.id, participant_id=participant.id) }}" method="post" style="display: inline;">
+              <button type="submit" class="button is-compact" title="{{ _('Remove') }}" onclick="return confirm('{{ _('Remove participant?') }}');">{{ render_icon('delete') }}</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+  {%- else %}
+  <div class="box">
+    <div class="dimmed">{{ _('No participants have joined yet.') }}</div>
+  </div>
+  {%- endif %}
+
+{%- endblock %}

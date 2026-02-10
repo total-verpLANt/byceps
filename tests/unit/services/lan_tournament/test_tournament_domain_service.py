@@ -23,8 +23,17 @@ from byceps.services.lan_tournament.models.tournament_mode import (
 from byceps.services.lan_tournament.models.tournament_status import (
     TournamentStatus,
 )
+from byceps.services.lan_tournament.models.tournament_match import (
+    TournamentMatchID,
+)
+from byceps.services.lan_tournament.models.tournament_match_to_contestant import (
+    TournamentMatchToContestant,
+    TournamentMatchToContestantID,
+)
 from byceps.services.lan_tournament.tournament_domain_service import (
+    _standard_seed_order,
     create_tournament,
+    determine_match_winner,
     validate_participant_count,
     validate_team_count,
 )
@@ -125,14 +134,14 @@ def test_create_tournament_generates_unique_ids():
 @pytest.mark.parametrize(
     ('max_players', 'current_count', 'expected_ok'),
     [
-        (None, 0, True),      # no limit, zero players
-        (None, 100, True),    # no limit, many players
-        (10, 0, True),        # under limit
-        (10, 9, True),        # one below limit
-        (10, 10, False),      # at limit
-        (10, 11, False),      # over limit
-        (1, 0, True),         # single-slot tournament, empty
-        (1, 1, False),        # single-slot tournament, full
+        (None, 0, True),  # no limit, zero players
+        (None, 100, True),  # no limit, many players
+        (10, 0, True),  # under limit
+        (10, 9, True),  # one below limit
+        (10, 10, False),  # at limit
+        (10, 11, False),  # over limit
+        (1, 0, True),  # single-slot tournament, empty
+        (1, 1, False),  # single-slot tournament, full
     ],
 )
 def test_validate_participant_count(max_players, current_count, expected_ok):
@@ -152,14 +161,14 @@ def test_validate_participant_count(max_players, current_count, expected_ok):
 @pytest.mark.parametrize(
     ('max_teams', 'current_count', 'expected_ok'),
     [
-        (None, 0, True),      # no limit, zero teams
-        (None, 50, True),     # no limit, many teams
-        (8, 0, True),         # under limit
-        (8, 7, True),         # one below limit
-        (8, 8, False),        # at limit
-        (8, 9, False),        # over limit
-        (1, 0, True),         # single team allowed, empty
-        (1, 1, False),        # single team allowed, full
+        (None, 0, True),  # no limit, zero teams
+        (None, 50, True),  # no limit, many teams
+        (8, 0, True),  # under limit
+        (8, 7, True),  # one below limit
+        (8, 8, False),  # at limit
+        (8, 9, False),  # over limit
+        (1, 0, True),  # single team allowed, empty
+        (1, 1, False),  # single team allowed, full
     ],
 )
 def test_validate_team_count(max_teams, current_count, expected_ok):
@@ -173,7 +182,137 @@ def test_validate_team_count(max_teams, current_count, expected_ok):
 
 
 # -------------------------------------------------------------------- #
+# determine_match_winner
+
+
+def test_determine_match_winner_clear_win():
+    match_id = TournamentMatchID(generate_uuid())
+    winner = _create_contestant(match_id=match_id, score=10)
+    loser = _create_contestant(match_id=match_id, score=5)
+
+    result = determine_match_winner([winner, loser])
+
+    assert result.is_ok()
+    assert result.unwrap() == winner
+
+
+def test_determine_match_winner_clear_win_reversed_order():
+    match_id = TournamentMatchID(generate_uuid())
+    winner = _create_contestant(match_id=match_id, score=10)
+    loser = _create_contestant(match_id=match_id, score=5)
+
+    result = determine_match_winner([loser, winner])
+
+    assert result.is_ok()
+    assert result.unwrap() == winner
+
+
+def test_determine_match_winner_tie_error():
+    match_id = TournamentMatchID(generate_uuid())
+    c1 = _create_contestant(match_id=match_id, score=7)
+    c2 = _create_contestant(match_id=match_id, score=7)
+
+    result = determine_match_winner([c1, c2])
+
+    assert result.is_err()
+    assert 'tied' in result.unwrap_err().lower()
+
+
+def test_determine_match_winner_missing_scores_error():
+    match_id = TournamentMatchID(generate_uuid())
+    c1 = _create_contestant(match_id=match_id, score=10)
+    c2 = _create_contestant(match_id=match_id, score=None)
+
+    result = determine_match_winner([c1, c2])
+
+    assert result.is_err()
+    assert 'scores' in result.unwrap_err().lower()
+
+
+def test_determine_match_winner_too_few_contestants():
+    match_id = TournamentMatchID(generate_uuid())
+    c1 = _create_contestant(match_id=match_id, score=10)
+
+    result = determine_match_winner([c1])
+
+    assert result.is_err()
+    assert '2 contestants' in result.unwrap_err().lower()
+
+
+def test_determine_match_winner_empty_list():
+    result = determine_match_winner([])
+
+    assert result.is_err()
+
+
+# -------------------------------------------------------------------- #
+# _standard_seed_order
+
+
+def test_standard_seed_order_4_players():
+    order = _standard_seed_order(4)
+
+    assert len(order) == 4
+    # For bracket_size=4: [0, 3, 1, 2]
+    # matchup 0: seeds 0 vs 3 (1v4)
+    # matchup 1: seeds 1 vs 2 (2v3)
+    assert order == [0, 3, 1, 2]
+
+
+def test_standard_seed_order_8_players():
+    order = _standard_seed_order(8)
+
+    assert len(order) == 8
+    # For bracket_size=8: [0, 7, 3, 4, 1, 6, 2, 5]
+    # matchup 0: seeds 0 vs 7 (1v8)
+    # matchup 1: seeds 3 vs 4 (4v5)
+    # matchup 2: seeds 1 vs 6 (2v7)
+    # matchup 3: seeds 2 vs 5 (3v6)
+    assert order == [0, 7, 3, 4, 1, 6, 2, 5]
+
+
+def test_standard_seed_order_16_players():
+    order = _standard_seed_order(16)
+
+    assert len(order) == 16
+    # Top seed (0) faces bottom seed (15)
+    assert order[0] == 0
+    assert order[1] == 15
+    # Every seed appears exactly once
+    assert sorted(order) == list(range(16))
+
+
+def test_standard_seed_order_2_players():
+    order = _standard_seed_order(2)
+
+    assert order == [0, 1]
+
+
+def test_standard_seed_order_1_player():
+    order = _standard_seed_order(1)
+
+    assert order == [0]
+
+
+# -------------------------------------------------------------------- #
 # helpers
+
+
+def _create_contestant(
+    *,
+    match_id: TournamentMatchID | None = None,
+    score: int | None = None,
+) -> TournamentMatchToContestant:
+    if match_id is None:
+        match_id = TournamentMatchID(generate_uuid())
+    return TournamentMatchToContestant(
+        id=TournamentMatchToContestantID(generate_uuid()),
+        tournament_match_id=match_id,
+        team_id=None,
+        participant_id=None,
+        score=score,
+        created_at=NOW,
+    )
 
 
 def _create_tournament(**kwargs) -> Tournament:

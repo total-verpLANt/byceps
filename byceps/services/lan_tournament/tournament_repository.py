@@ -478,6 +478,11 @@ def _db_participant_to_participant(
 # -- match --
 
 
+def commit_session() -> None:
+    """Commit the current database session."""
+    db.session.commit()
+
+
 def create_match(match: TournamentMatch) -> None:
     """Persist a match."""
     db_match = DbTournamentMatch(
@@ -486,6 +491,8 @@ def create_match(match: TournamentMatch) -> None:
         match.created_at,
         group_order=match.group_order,
         match_order=match.match_order,
+        round=match.round,
+        next_match_id=match.next_match_id,
         confirmed_by=match.confirmed_by,
     )
 
@@ -501,6 +508,12 @@ def delete_match(match_id: TournamentMatchID) -> None:
 
 def delete_matches_for_tournament(tournament_id: TournamentID) -> None:
     """Delete all matches for a tournament."""
+    # NULL out self-referential FKs first
+    db.session.execute(
+        db.update(DbTournamentMatch)
+        .filter_by(tournament_id=tournament_id)
+        .values(next_match_id=None)
+    )
     db.session.execute(
         delete(DbTournamentMatch).filter_by(tournament_id=tournament_id)
     )
@@ -544,6 +557,25 @@ def get_matches_for_tournament(
     return [_db_match_to_match(m) for m in db_matches]
 
 
+def get_matches_for_tournament_ordered(
+    tournament_id: TournamentID,
+) -> list[TournamentMatch]:
+    """Return all matches for that tournament, ordered by round."""
+    db_matches = (
+        db.session.execute(
+            select(DbTournamentMatch)
+            .filter_by(tournament_id=tournament_id)
+            .order_by(
+                DbTournamentMatch.round,
+                DbTournamentMatch.match_order,
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [_db_match_to_match(m) for m in db_matches]
+
+
 def confirm_match(
     match_id: TournamentMatchID,
     confirmed_by: UserID,
@@ -557,6 +589,16 @@ def confirm_match(
     db.session.commit()
 
 
+def unconfirm_match(match_id: TournamentMatchID) -> None:
+    """Reset the confirmed_by field on a match."""
+    db_match = db.session.get(DbTournamentMatch, match_id)
+    if db_match is None:
+        raise ValueError(f'Unknown match ID "{match_id}"')
+
+    db_match.confirmed_by = None
+    db.session.flush()
+
+
 def _db_match_to_match(
     db_match: DbTournamentMatch,
 ) -> TournamentMatch:
@@ -565,6 +607,8 @@ def _db_match_to_match(
         tournament_id=db_match.tournament_id,
         group_order=db_match.group_order,
         match_order=db_match.match_order,
+        round=db_match.round,
+        next_match_id=db_match.next_match_id,
         confirmed_by=db_match.confirmed_by,
         created_at=db_match.created_at,
     )
@@ -754,6 +798,26 @@ def delete_match_contestant(
         delete(DbTournamentMatchToContestant).filter_by(id=contestant_id)
     )
     db.session.commit()
+
+
+def delete_contestant_from_match(
+    match_id: TournamentMatchID,
+    *,
+    team_id: TournamentTeamID | None = None,
+    participant_id: TournamentParticipantID | None = None,
+) -> None:
+    """Delete a specific contestant from a match."""
+    query = delete(DbTournamentMatchToContestant).filter_by(
+        tournament_match_id=match_id
+    )
+    if team_id is not None:
+        query = query.filter_by(team_id=team_id)
+    elif participant_id is not None:
+        query = query.filter_by(participant_id=participant_id)
+    else:
+        raise ValueError('Either team_id or participant_id required.')
+    db.session.execute(query)
+    db.session.flush()
 
 
 def delete_contestants_for_match(match_id: TournamentMatchID) -> None:
