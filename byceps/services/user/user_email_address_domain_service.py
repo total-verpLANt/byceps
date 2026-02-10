@@ -17,7 +17,7 @@ from .events import (
     UserEmailAddressConfirmedEvent,
     UserEmailAddressInvalidatedEvent,
 )
-from .models import User, UserEmailAddress
+from .models.user import User, UserEmailAddress
 
 
 def change_email_address(

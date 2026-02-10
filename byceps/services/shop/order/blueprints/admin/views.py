@@ -6,10 +6,9 @@ byceps.services.shop.order.blueprints.admin.views
 :License: Revised BSD (see `LICENSE` file for details)
 """
 
-from flask import abort, g, request, Response
+from flask import abort, current_app, g, request, Response
 from flask_babel import gettext
 
-from byceps.byceps_app import get_current_byceps_app
 from byceps.services.brand import brand_service
 from byceps.services.shop.invoice import order_invoice_service
 from byceps.services.shop.invoice.errors import (
@@ -182,7 +181,7 @@ def download_invoice(order_id):
     draft_arg = request.args.get('mode', default='')
     is_draft = draft_arg == 'draft'
 
-    config = get_current_byceps_app().byceps_config.invoiceninja
+    config = current_app.byceps_config.invoiceninja
     if config is None:
         abort(500, gettext('Invoice provider is not configured.'))
 

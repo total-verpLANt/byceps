@@ -27,8 +27,8 @@ from byceps.services.news.models import (
     NewsItemVersionID,
 )
 from byceps.services.site.models import SiteID
-from byceps.services.user.dbmodels import DbUser
-from byceps.services.user.models import UserID
+from byceps.services.user.dbmodels.user import DbUser
+from byceps.services.user.models.user import UserID
 
 
 class DbNewsChannel(db.Model):
@@ -81,7 +81,7 @@ class DbNewsItem(db.Model):
         db.ForeignKey('news_channels.id'),
         index=True,
     )
-    channel: Mapped[DbNewsChannel] = relationship()
+    channel: Mapped[DbNewsChannel] = relationship(DbNewsChannel)
     slug: Mapped[str] = mapped_column(db.UnicodeText)
     published_at: Mapped[datetime | None]
     current_version = association_proxy(
@@ -121,12 +121,12 @@ class DbNewsItemVersion(db.Model):
     item_id: Mapped[NewsItemID] = mapped_column(
         db.Uuid, db.ForeignKey('news_items.id'), index=True
     )
-    item: Mapped[DbNewsItem] = relationship()
+    item: Mapped[DbNewsItem] = relationship(DbNewsItem)
     created_at: Mapped[datetime]
     creator_id: Mapped[UserID] = mapped_column(
         db.Uuid, db.ForeignKey('users.id')
     )
-    creator: Mapped[DbUser] = relationship()
+    creator: Mapped[DbUser] = relationship(DbUser)
     title: Mapped[str] = mapped_column(db.UnicodeText)
     body: Mapped[str] = mapped_column(db.UnicodeText)
     _body_format: Mapped[str] = mapped_column('body_format', db.UnicodeText)
@@ -172,6 +172,7 @@ class DbCurrentNewsItemVersionAssociation(db.Model):
         db.Uuid, db.ForeignKey('news_items.id'), primary_key=True
     )
     item: Mapped[DbNewsItem] = relationship(
+        DbNewsItem,
         backref=db.backref('current_version_association', uselist=False),
     )
     version_id: Mapped[NewsItemVersionID] = mapped_column(
@@ -180,7 +181,7 @@ class DbCurrentNewsItemVersionAssociation(db.Model):
         unique=True,
         nullable=False,
     )
-    version: Mapped[DbNewsItemVersion] = relationship()
+    version: Mapped[DbNewsItemVersion] = relationship(DbNewsItemVersion)
 
     def __init__(self, item: DbNewsItem, version: DbNewsItemVersion) -> None:
         self.item = item
@@ -201,7 +202,7 @@ class DbNewsImage(db.Model):
     item_id: Mapped[NewsItemID] = mapped_column(
         db.Uuid, db.ForeignKey('news_items.id'), index=True
     )
-    item: Mapped[DbNewsItem] = relationship(backref='images')
+    item: Mapped[DbNewsItem] = relationship(DbNewsItem, backref='images')
     number: Mapped[int]
     filename: Mapped[str] = mapped_column(db.UnicodeText)
     alt_text: Mapped[str | None] = mapped_column(db.UnicodeText)
@@ -239,12 +240,13 @@ class DbFeaturedNewsImage(db.Model):
         db.Uuid, db.ForeignKey('news_items.id'), primary_key=True
     )
     item: Mapped[DbNewsItem] = relationship(
+        DbNewsItem,
         backref=db.backref('featured_image_association', uselist=False),
     )
     image_id: Mapped[NewsImageID] = mapped_column(
         db.Uuid, db.ForeignKey('news_images.id'), unique=True
     )
-    image: Mapped[DbNewsImage] = relationship()
+    image: Mapped[DbNewsImage] = relationship(DbNewsImage)
 
     def __init__(self, item_id: NewsItemID, image_id: NewsImageID) -> None:
         self.item_id = item_id

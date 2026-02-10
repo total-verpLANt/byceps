@@ -37,7 +37,7 @@ class DbTourney(db.Model):
         index=True,
         nullable=False,
     )
-    category: Mapped[DbTourneyCategory] = relationship()
+    category: Mapped[DbTourneyCategory] = relationship(DbTourneyCategory)
     team_size: Mapped[int]
     max_participant_count: Mapped[int]
     starts_at: Mapped[datetime]

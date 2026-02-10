@@ -9,7 +9,7 @@ byceps.services.snippet.snippet_service
 from datetime import datetime
 
 from byceps.services.user import user_service
-from byceps.services.user.models import User
+from byceps.services.user.models.user import User
 from byceps.util.result import Err, Ok, Result
 
 from . import snippet_repository
@@ -152,7 +152,7 @@ def delete_snippet(
 
 
 def find_snippet(snippet_id: SnippetID) -> DbSnippet | None:
-    """Return the snippet with that ID, or `None` if not found."""
+    """Return the snippet with that id, or `None` if not found."""
     return snippet_repository.find_snippet(snippet_id)
 
 
@@ -182,7 +182,7 @@ def get_all_scopes() -> list[SnippetScope]:
 def find_snippet_version(
     version_id: SnippetVersionID,
 ) -> DbSnippetVersion | None:
-    """Return the snippet version with that ID, or `None` if not found."""
+    """Return the snippet version with that id, or `None` if not found."""
     return snippet_repository.find_snippet_version(version_id)
 
 

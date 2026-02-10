@@ -9,7 +9,7 @@ byceps.services.tourney.tourney_participant_service
 from collections.abc import Sequence
 
 from byceps.services.user import user_service
-from byceps.services.user.models import User, UserID
+from byceps.services.user.models.user import User, UserID
 
 from . import tourney_participant_domain_service, tourney_participant_repository
 from .dbmodels.participant import DbParticipant
@@ -47,7 +47,7 @@ def delete_participant(participant_id: ParticipantID) -> None:
 
 
 def find_participant(participant_id: ParticipantID) -> Participant | None:
-    """Return the participant with that ID, or `None` if not found."""
+    """Return the participant with that id, or `None` if not found."""
     db_participant = tourney_participant_repository.find_participant(
         participant_id
     )

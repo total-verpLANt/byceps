@@ -10,7 +10,7 @@ from datetime import datetime
 
 from byceps.services.party.models import Party, PartyID
 from byceps.services.tourney.log import tourney_log_service
-from byceps.services.user.models import User
+from byceps.services.user.models.user import User
 from byceps.util.result import Err, Ok, Result
 
 from . import (
@@ -135,7 +135,7 @@ def delete_tourney(tourney_id: TourneyID) -> None:
 
 
 def find_tourney(tourney_id: TourneyID) -> Tourney | None:
-    """Return the tourney with that ID, or `None` if not found."""
+    """Return the tourney with that id, or `None` if not found."""
     db_tourney = tourney_repository.find_tourney(tourney_id)
 
     if db_tourney is None:
@@ -160,7 +160,7 @@ def get_tourney(tourney_id: TourneyID) -> Tourney:
 def find_tourney_with_category(
     tourney_id: TourneyID,
 ) -> TourneyWithCategory | None:
-    """Return the tourney with that ID, or `None` if not found."""
+    """Return the tourney with that id, or `None` if not found."""
     row = tourney_repository.find_tourney_with_category(tourney_id)
 
     if row is None:

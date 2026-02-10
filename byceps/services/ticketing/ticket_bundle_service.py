@@ -19,7 +19,7 @@ from byceps.services.seating.errors import SeatingError
 from byceps.services.seating.models import SeatGroupID
 from byceps.services.shop.order.models.number import OrderNumber
 from byceps.services.user import user_service
-from byceps.services.user.models import User
+from byceps.services.user.models.user import User
 from byceps.util.result import Err, Ok, Result
 from byceps.util.uuid import generate_uuid7
 
@@ -143,12 +143,12 @@ def delete_bundle(bundle_id: TicketBundleID) -> None:
 
 
 def find_bundle(bundle_id: TicketBundleID) -> DbTicketBundle | None:
-    """Return the ticket bundle with that ID, or `None` if not found."""
+    """Return the ticket bundle with that id, or `None` if not found."""
     return db.session.get(DbTicketBundle, bundle_id)
 
 
 def get_bundle(bundle_id: TicketBundleID) -> DbTicketBundle:
-    """Return the ticket bundle with that ID, or raise an exception."""
+    """Return the ticket bundle with that id, or raise an exception."""
     db_bundle = find_bundle(bundle_id)
 
     if db_bundle is None:

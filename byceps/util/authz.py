@@ -14,7 +14,7 @@ from flask_babel import LazyString
 
 from byceps.services.authz import authz_service
 from byceps.services.authz.models import Permission, PermissionID
-from byceps.services.user.models import UserID
+from byceps.services.user.models.user import UserID
 
 
 def load_permissions() -> None:
@@ -43,17 +43,17 @@ def register_permissions(
 
 
 def get_permissions_for_user(user_id: UserID) -> frozenset[str]:
-    """Return the registered permissions this user has been granted."""
+    """Return the permissions this user has been granted."""
+    registered_permission_ids = (
+        permission_registry.get_registered_permission_ids()
+    )
     user_permission_ids = authz_service.get_permission_ids_for_user(user_id)
 
-    registered_user_permission_ids = (
-        permission_registry.select_registered_permission_ids(
-            user_permission_ids
-        )
-    )
-
+    # Ignore unregistered permission IDs.
     return frozenset(
-        str(permission_id) for permission_id in registered_user_permission_ids
+        str(permission_id)
+        for permission_id in registered_permission_ids
+        if permission_id in user_permission_ids
     )
 
 
@@ -69,6 +69,10 @@ class PermissionRegistry:
         """Add permission to the registry."""
         self._permissions[permission_id] = label
 
+    def get_registered_permission_ids(self) -> frozenset[PermissionID]:
+        """Return all registered permission IDs."""
+        return frozenset(self._permissions.keys())
+
     def get_registered_permissions(self) -> frozenset[Permission]:
         """Return all registered permissions."""
         return frozenset(
@@ -76,25 +80,15 @@ class PermissionRegistry:
             for permission_id, label in self._permissions.items()
         )
 
-    def select_registered_permission_ids(
-        self, permission_ids: set[PermissionID]
-    ) -> set[PermissionID]:
-        """Return only those permission IDs that are registered."""
-        return {
-            permission_id
-            for permission_id in permission_ids
-            if permission_id in self._permissions
-        }
-
 
 permission_registry = PermissionRegistry()
 
 
 def has_current_user_permission(permission: str) -> bool:
     """Return `True` if the current user has this permission."""
-    return g.user.has_permission(permission)
+    return permission in g.user.permissions
 
 
 def has_current_user_any_permission(*permissions: str) -> bool:
     """Return `True` if the current user has any of these permissions."""
-    return g.user.has_any_permission(permissions)
+    return any(map(has_current_user_permission, permissions))

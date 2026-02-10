@@ -8,12 +8,15 @@ byceps.util.iterables
 
 from collections.abc import Callable, Iterable, Iterator
 from itertools import tee
+from typing import TypeVar
 
 
-type Predicate[T] = Callable[[T], bool]
+T = TypeVar('T')
+
+Predicate = Callable[[T], bool]
 
 
-def find[T](iterable: Iterable[T], predicate: Predicate) -> T | None:
+def find(iterable: Iterable[T], predicate: Predicate) -> T | None:
     """Return the first element in the iterable that matches the
     predicate.
 
@@ -26,7 +29,7 @@ def find[T](iterable: Iterable[T], predicate: Predicate) -> T | None:
     return None
 
 
-def index_of[T](iterable: Iterable[T], predicate: Predicate) -> int | None:
+def index_of(iterable: Iterable[T], predicate: Predicate) -> int | None:
     """Return the (0-based) index of the first element in the iterable
     that matches the predicate.
 
@@ -39,7 +42,7 @@ def index_of[T](iterable: Iterable[T], predicate: Predicate) -> int | None:
     return None
 
 
-def pairwise[T](iterable: Iterable[T]) -> Iterator[tuple[T, T]]:
+def pairwise(iterable: Iterable[T]) -> Iterator[tuple[T, T]]:
     """Return each element paired with its next one.
 
     Example:
@@ -54,7 +57,7 @@ def pairwise[T](iterable: Iterable[T]) -> Iterator[tuple[T, T]]:
     return zip(a, b, strict=False)
 
 
-def partition[T](
+def partition(
     iterable: Iterable[T], predicate: Predicate
 ) -> tuple[list[T], list[T]]:
     """Partition the iterable into two lists according to the predicate.

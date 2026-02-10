@@ -8,12 +8,13 @@ byceps.services.more.blueprints.admin.item_service
 
 from dataclasses import dataclass
 
-from flask import g, url_for
+from flask import url_for
 from flask_babel import gettext
 
 from byceps.services.brand.models import Brand
 from byceps.services.party.models import Party
 from byceps.services.site.models import Site
+from byceps.util.authz import has_current_user_permission
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -30,7 +31,10 @@ def select_visible_items(items: list[MoreItem]) -> list[MoreItem]:
 
 
 def _is_item_visible(item: MoreItem) -> bool:
-    return g.user.has_permission(item.required_permission) and item.precondition
+    return (
+        has_current_user_permission(item.required_permission)
+        and item.precondition
+    )
 
 
 def get_global_items() -> list[MoreItem]:

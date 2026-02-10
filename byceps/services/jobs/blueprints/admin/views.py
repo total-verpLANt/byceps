@@ -6,12 +6,14 @@ byceps.services.jobs.blueprints.admin.views
 :License: Revised BSD (see `LICENSE` file for details)
 """
 
-from flask import abort, Flask, g
+from flask import abort, Flask
 import rq_dashboard
 
 from byceps.util.framework.blueprint import create_blueprint
 from byceps.util.framework.templating import templated
 from byceps.util.views import permission_required
+
+from byceps.util.authz import has_current_user_permission
 
 
 blueprint = create_blueprint('jobs_admin', __name__)
@@ -19,7 +21,7 @@ blueprint = create_blueprint('jobs_admin', __name__)
 
 @rq_dashboard.blueprint.before_request
 def require_permission() -> None:
-    if not g.user.has_permission('jobs.view'):
+    if not has_current_user_permission('jobs.view'):
         abort(403)
 
 

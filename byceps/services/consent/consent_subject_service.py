@@ -13,7 +13,6 @@ from byceps.services.brand.models import BrandID
 
 from .dbmodels import DbConsent, DbConsentBrandRequirement, DbConsentSubject
 from .models import ConsentSubject, ConsentSubjectID
-from byceps.util.uuid import generate_uuid4
 
 
 class UnknownSubjectIdError(ValueError):
@@ -27,10 +26,8 @@ def create_subject(
     checkbox_link_target: str | None,
 ) -> ConsentSubject:
     """Create a new subject."""
-    subject_id = ConsentSubjectID(generate_uuid4())
-
     db_subject = DbConsentSubject(
-        subject_id, name, title, checkbox_label, checkbox_link_target
+        name, title, checkbox_label, checkbox_link_target
     )
 
     db.session.add(db_subject)
@@ -40,7 +37,7 @@ def create_subject(
 
 
 def find_subject(subject_id: ConsentSubjectID) -> ConsentSubject | None:
-    """Return the subject with that ID, or `None` if not found."""
+    """Return the subject with that id, or `None` if not found."""
     db_subject = db.session.get(DbConsentSubject, subject_id)
 
     if db_subject is None:

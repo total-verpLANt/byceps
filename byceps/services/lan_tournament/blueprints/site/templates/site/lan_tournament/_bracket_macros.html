@@ -1,0 +1,243 @@
+{% macro render_bracket(match_data, tournament) %}
+{# 
+  Renders a tournament bracket visualization.
+  
+  Args:
+    match_data: List of dicts with 'match' and 'contestants' keys
+    tournament: Tournament object
+#}
+
+<style>
+  .bracket-container {
+    overflow-x: auto;
+    padding: 2rem 0;
+  }
+
+  .bracket {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-around;
+    min-width: 800px;
+  }
+
+  .bracket-round {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-around;
+    margin: 0 1rem;
+  }
+
+  .bracket-match {
+    position: relative;
+    margin: 1rem 0;
+    min-width: 200px;
+  }
+
+  .bracket-match-card {
+    background-color: #fff;
+    border: 2px solid #ccc;
+    border-radius: 4px;
+    padding: 0.5rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  }
+
+  .bracket-match-card.confirmed {
+    border-color: #28a745;
+  }
+
+  .bracket-match-header {
+    font-size: 0.75rem;
+    color: #666;
+    margin-bottom: 0.5rem;
+    text-align: center;
+    font-weight: bold;
+  }
+
+  .bracket-contestant {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem;
+    margin: 0.25rem 0;
+    background-color: #f5f5f5;
+    border-radius: 3px;
+  }
+
+  .bracket-contestant.winner {
+    background-color: #d4edda;
+    font-weight: bold;
+  }
+
+  .bracket-contestant-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .bracket-contestant-score {
+    font-weight: bold;
+    margin-left: 0.5rem;
+    min-width: 30px;
+    text-align: right;
+  }
+
+  .bracket-connector {
+    position: absolute;
+    border: 2px solid #ccc;
+  }
+
+  .bracket-round-label {
+    text-align: center;
+    font-weight: bold;
+    margin-bottom: 1rem;
+    color: #333;
+  }
+</style>
+
+<div class='bracket-container'>
+  {%- if match_data %}
+  <div class='bracket'>
+    {# Group matches by round (using match_order as proxy) #}
+    {%- set rounds = {} %}
+    {%- for data in match_data %}
+      {%- set match = data.match %}
+      {# Simple round calculation - assumes sequential match_order #}
+      {# For single elimination: round 0 = first matches, etc. #}
+      {%- set round_num = (match.match_order // 2) if match.match_order else 0 %}
+      {%- if round_num not in rounds %}
+        {%- set _ = rounds.update({round_num: []}) %}
+      {%- endif %}
+      {%- set _ = rounds[round_num].append(data) %}
+    {%- endfor %}
+
+    {# Render each round #}
+    {%- for round_num in rounds.keys()|sort %}
+    <div class='bracket-round'>
+      <div class='bracket-round-label'>
+        {%- if rounds|length == 1 %}
+          {{ _('Final') }}
+        {%- elif round_num == (rounds|length - 1) %}
+          {{ _('Final') }}
+        {%- elif round_num == (rounds|length - 2) %}
+          {{ _('Semi-Finals') }}
+        {%- elif round_num == (rounds|length - 3) %}
+          {{ _('Quarter-Finals') }}
+        {%- else %}
+          {{ _('Round') }} {{ round_num + 1 }}
+        {%- endif %}
+      </div>
+
+      {%- for data in rounds[round_num] %}
+      {%- set match = data.match %}
+      {%- set contestants = data.contestants %}
+      <div class='bracket-match'>
+        <div class='bracket-match-card {% if match.confirmed_by %}confirmed{% endif %}'>
+          <div class='bracket-match-header'>
+            {{ _('Match') }} #{{ match.match_order }}
+          </div>
+
+          {%- for contestant in contestants %}
+          {%- set is_winner = false %}
+          {%- if match.confirmed_by and contestants|length == 2 %}
+            {# Determine winner if match is confirmed #}
+            {%- set other_contestant = contestants[1 if loop.index0 == 0 else 0] %}
+            {%- if contestant.score is not none and other_contestant.score is not none %}
+              {%- set is_winner = contestant.score > other_contestant.score %}
+            {%- endif %}
+          {%- endif %}
+
+          <div class='bracket-contestant {% if is_winner %}winner{% endif %}'>
+            <div class='bracket-contestant-name'>
+              {%- if contestant.team_id %}
+                {{ _('Team') }} {{ contestant.team_id|string|truncate(15) }}
+              {%- elif contestant.participant_id %}
+                {{ contestant.participant_id|string|truncate(15) }}
+              {%- else %}
+                BYE
+              {%- endif %}
+            </div>
+            <div class='bracket-contestant-score'>
+              {{ contestant.score|default('–', true) }}
+            </div>
+          </div>
+          {%- endfor %}
+        </div>
+      </div>
+      {%- endfor %}
+    </div>
+    {%- endfor %}
+  </div>
+  {%- else %}
+  <p class='dimmed' style='text-align: center;'>
+    {{ _('Bracket not yet generated.') }}
+  </p>
+  {%- endif %}
+</div>
+
+{%- endmacro %}
+
+
+{% macro render_simple_bracket_list(match_data) %}
+{#
+  Simpler list-based bracket view for small screens or fallback.
+  
+  Args:
+    match_data: List of dicts with 'match' and 'contestants' keys
+#}
+
+<div class='bracket-list'>
+  {%- for data in match_data %}
+  {%- set match = data.match %}
+  {%- set contestants = data.contestants %}
+  <div class='bracket-list-item'>
+    <div class='bracket-list-header'>
+      <strong>{{ _('Match') }} #{{ match.match_order }}</strong>
+      {%- if match.confirmed_by %}
+        <span style='color: #28a745; margin-left: 0.5rem;'>✓</span>
+      {%- endif %}
+    </div>
+    <div class='bracket-list-matchup'>
+      {%- for contestant in contestants %}
+        <div style='padding: 0.25rem 0;'>
+          {%- if contestant.team_id %}
+            {{ _('Team') }} {{ contestant.team_id }}
+          {%- elif contestant.participant_id %}
+            {{ contestant.participant_id }}
+          {%- else %}
+            BYE
+          {%- endif %}
+          <strong>{{ contestant.score|default('–', true) }}</strong>
+        </div>
+        {%- if not loop.last %}
+        <div style='text-align: center; color: #999;'>vs</div>
+        {%- endif %}
+      {%- endfor %}
+    </div>
+  </div>
+  {%- endfor %}
+</div>
+
+<style>
+  .bracket-list {
+    max-width: 600px;
+    margin: 0 auto;
+  }
+
+  .bracket-list-item {
+    background-color: #f5f5f5;
+    border-radius: 4px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .bracket-list-header {
+    margin-bottom: 0.5rem;
+  }
+
+  .bracket-list-matchup {
+    padding-left: 1rem;
+  }
+</style>
+
+{%- endmacro %}

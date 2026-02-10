@@ -19,6 +19,7 @@ classifiers = [
     "Programming Language :: JavaScript",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Communications",
@@ -27,7 +28,7 @@ classifiers = [
     "Topic :: Internet :: WWW/HTTP :: Dynamic Content :: Message Boards",
     "Topic :: Internet :: WWW/HTTP :: Dynamic Content :: News/Diary",
 ]
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 dependencies = [
     "babel>=2.17.0",
     "bbcode==1.1.0",
@@ -48,22 +49,22 @@ dependencies = [
     "pillow>=12.1.0",
     "psycopg[binary]>=3.3.2",
     "py-moneyed==3.0",
-    "pydantic>=2.12.5",
+    "pydantic>=2.12.4",
     "python-dotenv>=1.2.1",
     "qrcode>=8.2",
-    "redis>=7.1.0",
+    "redis>=6.4.0",
     "rq-dashboard>=0.8.6",
     "rq>=2.6.1",
     "rtoml>=0.13.0",
-    "schwifty>=2026.1.0",
+    "schwifty>=2025.9.0",
     "secret-type>=0.3.0",
-    "sentry-sdk[flask,httpx,rq,sqlalchemy]>=2.50.0",
-    "sqlalchemy>=2.0.46",
+    "sentry-sdk[flask,httpx,rq,sqlalchemy]>=2.44.0",
+    "sqlalchemy>=2.0.45",
     "stripe==5.4.0",
     "structlog>=25.5.0",
     "tenacity>=9.1.2",
     "uuid6>=2025.0.1",
-    "werkzeug>=3.1.5",
+    "werkzeug>=3.1.4",
     "wtforms==3.2.1",
 ]
 
@@ -80,7 +81,7 @@ docs = [
     "sphinx>=9.0.4",
 ]
 test = [
-    "coverage>=7.13.1",
+    "coverage>=7.13.0",
     "freezegun>=1.5.5",
     "pyfakefs>=6.0.0",
     "pytest>=9.0.2",
@@ -105,7 +106,7 @@ requires = ["uv_build>=0.8.11,<0.9.0"]
 build-backend = "uv_build"
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.11"
 plugins = "sqlalchemy.ext.mypy.plugin"
 ignore_missing_imports = true
 no_implicit_optional = true
@@ -166,7 +167,7 @@ order-by-type = false
 
 [tool.uv]
 default-groups = []
-required-version = ">=0.9.28"
+required-version = ">=0.8.11"
 
 [tool.uv.build-backend]
 module-name = "byceps"

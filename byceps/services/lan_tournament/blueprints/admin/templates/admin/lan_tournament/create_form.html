@@ -1,0 +1,41 @@
+{% extends 'layout/admin/lan_tournament.html' %}
+{% from 'macros/admin.html' import render_backlink %}
+{% from 'macros/forms.html' import form_buttons, form_field %}
+{% set current_page_party = party %}
+{% set current_tab = 'tournaments' %}
+{% set page_title = _('Create tournament') %}
+
+{% block before_body %}
+{{ render_backlink(url_for('.index', party_id=party.id), _('Tournaments')) }}
+{%- endblock %}
+
+{% block body %}
+
+  <h1 class="title">{{ page_title }}</h1>
+
+  <form action="{{ url_for('.create', party_id=party.id) }}" method="post">
+    <div class="box">
+      {{ form_field(form.name, autofocus='autofocus') }}
+      {{ form_field(form.game) }}
+      {{ form_field(form.description) }}
+      {{ form_field(form.image_url) }}
+      {{ form_field(form.contestant_type) }}
+      {{ form_field(form.tournament_mode) }}
+      {{ form_field(form.start_time) }}
+      {{ form_field(form.ruleset) }}
+    </div>
+
+    <div class="box">
+      <h3>{{ _('Player/team constraints') }}</h3>
+      {{ form_field(form.min_players, min=0, style='width: 5rem;') }}
+      {{ form_field(form.max_players, min=0, style='width: 5rem;') }}
+      {{ form_field(form.min_teams, min=0, style='width: 5rem;') }}
+      {{ form_field(form.max_teams, min=0, style='width: 5rem;') }}
+      {{ form_field(form.min_players_in_team, min=0, style='width: 5rem;') }}
+      {{ form_field(form.max_players_in_team, min=0, style='width: 5rem;') }}
+    </div>
+
+    {{ form_buttons(_('Create')) }}
+  </form>
+
+{%- endblock %}

@@ -8,13 +8,20 @@ byceps.services.shop.payment.stripe.blueprints.site.views
 
 from uuid import UUID
 
-from flask import abort, g, jsonify, make_response, request, url_for
+from flask import (
+    abort,
+    current_app,
+    g,
+    jsonify,
+    make_response,
+    request,
+    url_for,
+)
 from moneyed import Money
 from pydantic import BaseModel, ValidationError
 import stripe
 import structlog
 
-from byceps.byceps_app import get_current_byceps_app
 from byceps.config.errors import ConfigurationError
 from byceps.config.models import StripeConfig
 from byceps.services.shop.order import (
@@ -25,7 +32,7 @@ from byceps.services.shop.order import (
 from byceps.services.shop.order.email import order_email_service
 from byceps.services.shop.order.models.order import OrderID
 from byceps.services.user import user_service
-from byceps.services.user.models import UserID
+from byceps.services.user.models.user import UserID
 from byceps.util.framework.blueprint import create_blueprint
 from byceps.util.views import create_empty_json_response
 
@@ -205,7 +212,7 @@ def _get_currency_code(money: Money) -> str:
 
 
 def _get_enabled_stripe_configuration() -> StripeConfig:
-    config = get_current_byceps_app().byceps_config.payment_gateways.stripe
+    config = current_app.byceps_config.payment_gateways.stripe
 
     if not config:
         raise ConfigurationError('Stripe integration is not configured.')

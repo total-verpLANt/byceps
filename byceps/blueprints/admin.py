@@ -1,17 +1,21 @@
 """
-byceps.blueprints.admin
-~~~~~~~~~~~~~~~~~~~~~~~
+byceps.application.blueprints.admin
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 :Copyright: 2014-2026 Jochen Kupperschmidt
 :License: Revised BSD (see `LICENSE` file for details)
 """
 
 from flask import Flask
+import structlog
 
 from byceps.util.framework.blueprint import register_blueprints
+from importlib import util as importlib_util
 
 from .common import get_common_blueprints
 
+
+log = structlog.get_logger()
 
 def register_admin_blueprints(
     app: Flask,
@@ -87,5 +91,15 @@ def register_admin_blueprints(
 
     if metrics_enabled:
         blueprints.append(('services.metrics.blueprints.metrics', '/metrics'))
+
+    if importlib_util.find_spec('byceps.services.lan_tournament.blueprints.admin'):
+        blueprints.append(
+            ('services.lan_tournament.blueprints.admin', '/lan-tournaments')
+        )
+    else:
+        log.warning(
+            'Module byceps.services.lan_tournament.blueprints.admin '
+            'is not importable; skipping admin blueprints for lan_tournament'
+        )
 
     register_blueprints(app, blueprints)

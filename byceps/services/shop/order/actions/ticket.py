@@ -29,7 +29,6 @@ from byceps.services.shop.order.models.order import (
     OrderID,
     PaidOrder,
 )
-from byceps.services.shop.product import product_service
 from byceps.services.ticketing import (
     ticket_category_service,
     ticket_creation_service,
@@ -42,7 +41,7 @@ from byceps.services.ticketing.models.ticket import (
     TicketCode,
     TicketID,
 )
-from byceps.services.user.models import User
+from byceps.services.user.models.user import User
 from byceps.util.result import Ok, Result
 
 
@@ -60,13 +59,7 @@ def on_payment(
     parameters: ActionParameters,
 ) -> Result[None, OrderActionFailedError]:
     """Create tickets."""
-    product = product_service.get_product(line_item.product_id)
-
-    if parameters:
-        ticket_category_id = parameters['ticket_category_id']
-    else:
-        ticket_category_id = product.type_params['ticket_category_id']
-
+    ticket_category_id = parameters['category_id']
     ticket_category = ticket_category_service.get_category(ticket_category_id)
 
     _create_tickets(order, line_item, ticket_category, initiator)

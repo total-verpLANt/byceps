@@ -1,0 +1,108 @@
+{% extends 'layout/base.html' %}
+{% from 'macros/icons.html' import render_icon %}
+{% from 'macros/misc.html' import render_tag %}
+{% set page_title = [_('Matches'), tournament.name] %}
+
+{% block head %}
+<style>
+  .match-table {
+    width: 100%;
+    margin-top: 1rem;
+  }
+
+  .match-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    margin-bottom: 0.5rem;
+    background-color: #f5f5f5;
+    border-radius: 4px;
+  }
+
+  .match-row:hover {
+    background-color: #e8e8e8;
+  }
+
+  .match-number {
+    font-weight: bold;
+    min-width: 60px;
+  }
+
+  .match-contestants {
+    flex-grow: 1;
+    padding: 0 1rem;
+  }
+
+  .match-score {
+    font-size: 1.5rem;
+    font-weight: bold;
+    min-width: 80px;
+    text-align: center;
+  }
+
+  .match-status {
+    min-width: 100px;
+    text-align: right;
+  }
+</style>
+{%- endblock %}
+
+{% block body %}
+
+  <nav class='breadcrumbs'>
+    <ol>
+      <li><a href='{{ url_for('.index') }}'>{{ _('Tournaments') }}</a></li>
+      <li><a href='{{ url_for('.view', tournament_id=tournament.id) }}'>
+        {{ tournament.name }}
+      </a></li>
+    </ol>
+  </nav>
+
+  <h1 class='title'>{{ _('Matches') }}</h1>
+
+  {%- if match_data %}
+  <div class='match-table'>
+    {%- for data in match_data %}
+    {%- set match = data.match %}
+    {%- set contestants = data.contestants %}
+    <a href='{{ url_for('.view_match', match_id=match.id) }}'
+       style='text-decoration: none; color: inherit;'>
+      <div class='match-row'>
+        <div class='match-number'>
+          {{ _('Match') }} #{{ match.match_order }}
+        </div>
+        <div class='match-contestants'>
+          {%- for contestant in contestants %}
+            {%- if contestant.team_id %}
+              {{ _('Team') }} {{ contestant.team_id }}
+            {%- elif contestant.participant_id %}
+              {{ _('Player') }} {{ contestant.participant_id }}
+            {%- else %}
+              BYE
+            {%- endif %}
+            {%- if not loop.last %} <strong>vs</strong> {% endif %}
+          {%- endfor %}
+        </div>
+        <div class='match-score'>
+          {%- for contestant in contestants %}
+            {{ contestant.score|default('–', true) }}
+            {%- if not loop.last %} : {% endif %}
+          {%- endfor %}
+        </div>
+        <div class='match-status'>
+          {%- if match.confirmed_by %}
+            {{ render_tag(_('Confirmed'), class='color-success') }}
+          {%- else %}
+            {{ render_tag(_('Pending'), class='color-warning') }}
+          {%- endif %}
+        </div>
+      </div>
+    </a>
+    {%- endfor %}
+  </div>
+  {%- else %}
+  <p class='dimmed'>{{ _('No matches have been scheduled yet.') }}</p>
+  {%- endif %}
+
+{%- endblock %}

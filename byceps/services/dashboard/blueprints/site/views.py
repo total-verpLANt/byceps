@@ -26,7 +26,7 @@ from byceps.services.shop.storefront import storefront_service
 from byceps.services.ticketing import ticket_service
 from byceps.services.ticketing.dbmodels.ticket import DbTicket
 from byceps.services.user import user_service
-from byceps.services.user.models import UserID
+from byceps.services.user.models.user import UserID
 from byceps.util.framework.blueprint import create_blueprint
 from byceps.util.framework.templating import templated
 from byceps.util.views import login_required
@@ -47,8 +47,7 @@ def index():
     open_orders = _get_open_orders(user.id)
     tickets = _get_tickets(user.id)
     news_headlines = _get_news_headlines()
-    board_topics = board_helper_service.get_recent_topics()
-
+    board_topics = board_helper_service.get_recent_topics(g.user)
     guest_servers = _get_guest_servers()
 
     return {

@@ -23,10 +23,11 @@ from . import (
     user_email_address_service,
     user_service,
 )
-from .dbmodels import DbUser, DbUserDetail
+from .dbmodels.detail import DbUserDetail
+from .dbmodels.user import DbUser
 from .errors import InvalidEmailAddressError, InvalidScreenNameError
 from .events import UserAccountCreatedEvent
-from .models import Password, User
+from .models.user import Password, User
 
 
 log = structlog.get_logger()

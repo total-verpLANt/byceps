@@ -15,11 +15,16 @@ from byceps.database import db
 from byceps.services.shop.order.log import order_log_service
 from byceps.services.shop.order.log.models import OrderLogEntry
 from byceps.services.shop.product import product_service
+from byceps.services.shop.product.models import ProductType
 from byceps.services.user import user_service
-from byceps.services.user.models import User
+from byceps.services.user.models.user import User
 from byceps.util.result import Err, Ok, Result
 
 from . import order_action_service, order_domain_service, order_payment_service
+from .actions import (
+    ticket as ticket_actions,
+    ticket_bundle as ticket_bundle_actions,
+)
 from .dbmodels.line_item import DbLineItem
 from .dbmodels.order import DbOrder
 from .errors import (
@@ -287,13 +292,37 @@ def _execute_actions_on_payment(
 ) -> Result[None, OrderActionFailedError]:
     # based on product type
     for line_item in order.line_items:
-        procedure = order_action_service.find_procedure_for_product_type(
-            line_item.product_type
-        )
-        if procedure:
-            match procedure.on_payment(order, line_item, initiator, {}):
-                case Err(e):
-                    return Err(OrderActionFailedError(e))
+        match line_item.product_type:
+            case ProductType.ticket:
+                product = product_service.get_product(line_item.product_id)
+
+                ticket_category_id = product.type_params['ticket_category_id']
+
+                ticket_actions.on_payment(
+                    order,
+                    line_item,
+                    initiator,
+                    {
+                        'category_id': ticket_category_id,
+                    },
+                )
+            case ProductType.ticket_bundle:
+                product = product_service.get_product(line_item.product_id)
+
+                ticket_category_id = product.type_params['ticket_category_id']
+                ticket_quantity_per_bundle = int(
+                    product.type_params['ticket_quantity']
+                )
+
+                ticket_bundle_actions.on_payment(
+                    order,
+                    line_item,
+                    initiator,
+                    {
+                        'category_id': ticket_category_id,
+                        'ticket_quantity': ticket_quantity_per_bundle,
+                    },
+                )
 
     # based on order action registered for product number
     return order_action_service.execute_actions_on_payment(order, initiator)
@@ -304,15 +333,9 @@ def _execute_actions_on_cancellation_before_payment(
 ) -> Result[None, OrderActionFailedError]:
     # based on product type
     for line_item in order.line_items:
-        procedure = order_action_service.find_procedure_for_product_type(
-            line_item.product_type
-        )
-        if procedure:
-            match procedure.on_cancellation_before_payment(
-                order, line_item, initiator, {}
-            ):
-                case Err(e):
-                    return Err(OrderActionFailedError(e))
+        match line_item.product_type:
+            case _:
+                pass  # No actions use this, yet.
 
     # based on order action registered for product number
     return order_action_service.execute_actions_on_cancellation_before_payment(
@@ -325,15 +348,17 @@ def _execute_actions_on_cancellation_after_payment(
 ) -> Result[None, OrderActionFailedError]:
     # based on product type
     for line_item in order.line_items:
-        procedure = order_action_service.find_procedure_for_product_type(
-            line_item.product_type
-        )
-        if procedure:
-            match procedure.on_cancellation_after_payment(
-                order, line_item, initiator, {}
-            ):
-                case Err(e):
-                    return Err(OrderActionFailedError(e))
+        match line_item.product_type:
+            case ProductType.ticket:
+                ticket_actions.on_cancellation_after_payment(
+                    order, line_item, initiator, {}
+                )
+            case ProductType.ticket_bundle:
+                match ticket_bundle_actions.on_cancellation_after_payment(
+                    order, line_item, initiator, {}
+                ):
+                    case Err(e):
+                        return Err(OrderActionFailedError(e))
 
     # based on order action registered for product number
     return order_action_service.execute_actions_on_cancellation_after_payment(
