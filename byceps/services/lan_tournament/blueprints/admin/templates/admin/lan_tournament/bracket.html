@@ -1,0 +1,27 @@
+{% extends 'layout/admin/lan_tournament.html' %}
+{% from 'macros/admin.html' import render_backlink %}
+{% from 'site/lan_tournament/_bracket_macros.html' import render_bracket %}
+{% set current_page_party = party %}
+{% set current_tab = 'tournaments' %}
+{% set page_title = [_('Bracket'), tournament.name, party.title] %}
+
+{% block before_body %}
+{{ render_backlink(url_for('.view', tournament_id=tournament.id),
+                   _('Tournament')) }}
+{%- endblock %}
+
+{% block body %}
+
+  <h1 class='title'>{{ _('Tournament Bracket') }}</h1>
+
+  {{ render_bracket(match_data, tournament) }}
+
+  <div style='margin-top: 2rem;'>
+    <a href='{{ url_for('.matches_for_tournament',
+                        tournament_id=tournament.id) }}'
+       class='button'>
+      {{ _('View Matches List') }}
+    </a>
+  </div>
+
+{%- endblock %}

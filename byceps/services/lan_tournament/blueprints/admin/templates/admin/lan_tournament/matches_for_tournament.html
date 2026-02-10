@@ -1,0 +1,74 @@
+{% extends 'layout/admin/lan_tournament.html' %}
+{% from 'macros/admin.html' import render_backlink %}
+{% from 'macros/icons.html' import render_icon %}
+{% from 'macros/misc.html' import render_tag %}
+{% set current_page_party = party %}
+{% set current_tab = 'tournaments' %}
+{% set page_title = [_('Matches'), tournament.name, party.title] %}
+
+{% block before_body %}
+{{ render_backlink(url_for('.view', tournament_id=tournament.id),
+                   _('Tournament')) }}
+{%- endblock %}
+
+{% block body %}
+
+  <h1 class='title'>{{ _('Matches') }}</h1>
+
+  {%- if match_data %}
+  <table class='table table--wide'>
+    <thead>
+      <tr>
+        <th>{{ _('Match #') }}</th>
+        <th>{{ _('Contestants') }}</th>
+        <th>{{ _('Score') }}</th>
+        <th>{{ _('Status') }}</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {%- for data in match_data %}
+      {%- set match = data.match %}
+      {%- set contestants = data.contestants %}
+      <tr>
+        <td>{{ match.match_order }}</td>
+        <td>
+          {%- for contestant in contestants %}
+            {%- if contestant.team_id %}
+              Team: {{ contestant.team_id }}
+            {%- elif contestant.participant_id %}
+              Player: {{ contestant.participant_id }}
+            {%- else %}
+              BYE
+            {%- endif %}
+            {%- if not loop.last %} vs {% endif %}
+          {%- endfor %}
+        </td>
+        <td>
+          {%- for contestant in contestants %}
+            {{ contestant.score|default('–', true) }}
+            {%- if not loop.last %} : {% endif %}
+          {%- endfor %}
+        </td>
+        <td>
+          {%- if match.confirmed_by %}
+            {{ render_tag(_('Confirmed'), class='color-success') }}
+          {%- else %}
+            {{ render_tag(_('Pending'), class='color-warning') }}
+          {%- endif %}
+        </td>
+        <td>
+          <a href='{{ url_for('.view_match', match_id=match.id) }}'
+             class='button button--compact'>
+            {{ render_icon('view') }} {{ _('Details') }}
+          </a>
+        </td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+  {%- else %}
+  <p class='dimmed'>{{ _('No matches have been created yet.') }}</p>
+  {%- endif %}
+
+{%- endblock %}

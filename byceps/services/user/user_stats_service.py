@@ -12,7 +12,7 @@ from sqlalchemy import select
 
 from byceps.database import db
 
-from .dbmodels import DbUser
+from .dbmodels.user import DbUser
 
 
 def count_users() -> int:

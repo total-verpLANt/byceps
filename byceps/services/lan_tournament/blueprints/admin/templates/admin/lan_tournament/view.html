@@ -1,0 +1,208 @@
+{% extends 'layout/admin/lan_tournament.html' %}
+{% from 'macros/admin.html' import render_backlink %}
+{% from 'macros/icons.html' import render_icon %}
+{% from 'macros/misc.html' import render_tag %}
+{% set current_page_party = party %}
+{% set current_tab = 'tournaments' %}
+{% set page_title = [_('Tournament'), party.title] %}
+
+{% block before_body %}
+{{ render_backlink(url_for('.index', party_id=party.id), _('Tournaments')) }}
+{%- endblock %}
+
+{% block body %}
+
+  <div class="row row--space-between block">
+    <div>
+      <h1 class="title">{{ tournament.name }}</h1>
+    </div>
+    <div>
+      {%- if has_current_user_permission('lan_tournament.update') %}
+      <div class="button-row is-right-aligned">
+        <a class="button" href="{{ url_for('.update_form', tournament_id=tournament.id) }}">{{ render_icon('edit') }} <span>{{ _('Edit') }}</span></a>
+      </div>
+      {%- endif %}
+    </div>
+  </div>
+
+  {# Basic info #}
+  <div class="row row--space-between row--wrap block">
+
+    <div class="box">
+      <div class="data-label">{{ _('Game') }}</div>
+      <div class="data-value">{{ tournament.game|default(_('not set'), true) }}</div>
+    </div>
+
+    <div class="box column--grow">
+      <div class="data-label">{{ _('Description') }}</div>
+      <div class="data-value">{{ tournament.description|default(_('not set'), true) }}</div>
+    </div>
+
+  </div>
+
+  {# Details grid #}
+  <div class="grid block">
+    <div class="column">
+      <div class="box column-cell--grow">
+        <div class="data-label">{{ _('Contestant type') }}</div>
+        <div class="data-value">
+          {%- if tournament.contestant_type %}
+            {{ tournament.contestant_type.name|title }}
+          {%- else %}
+            {{ _('not set') }}
+          {%- endif %}
+        </div>
+      </div>
+    </div>
+    <div class="column">
+      <div class="box column-cell--grow">
+        <div class="data-label">{{ _('Tournament mode') }}</div>
+        <div class="data-value">
+          {%- if tournament.tournament_mode %}
+            {{ tournament.tournament_mode.name|replace('_', ' ')|title }}
+          {%- else %}
+            {{ _('not set') }}
+          {%- endif %}
+        </div>
+      </div>
+    </div>
+    <div class="column">
+      <div class="box column-cell--grow">
+        <div class="data-label">{{ _('Start') }}</div>
+        <div class="data-value">
+          {%- if tournament.start_time %}
+            {{ tournament.start_time|dateformat }}, {{ tournament.start_time|timeformat('short') }}
+          {%- else %}
+            {{ _('not set') }}
+          {%- endif %}
+        </div>
+      </div>
+    </div>
+    <div class="column">
+      <div class="box column-cell--grow">
+        <div class="data-label">{{ _('Status') }}</div>
+        <div class="data-value">
+          {%- if tournament.tournament_status %}
+            {%- if tournament.tournament_status.name == 'DRAFT' %}
+              {{ render_tag(_('Draft'), class='color-disabled') }}
+            {%- elif tournament.tournament_status.name == 'REGISTRATION_OPEN' %}
+              {{ render_tag(_('Registration open'), class='color-info') }}
+            {%- elif tournament.tournament_status.name == 'REGISTRATION_CLOSED' %}
+              {{ render_tag(_('Registration closed'), class='color-warning') }}
+            {%- elif tournament.tournament_status.name == 'ONGOING' %}
+              {{ render_tag(_('Ongoing'), class='color-success') }}
+            {%- elif tournament.tournament_status.name == 'PAUSED' %}
+              {{ render_tag(_('Paused'), class='color-warning') }}
+            {%- elif tournament.tournament_status.name == 'COMPLETED' %}
+              {{ render_tag(_('Completed'), class='color-success') }}
+            {%- elif tournament.tournament_status.name == 'CANCELLED' %}
+              {{ render_tag(_('Cancelled'), class='color-danger') }}
+            {%- endif %}
+          {%- else %}
+            {{ _('not set') }}
+          {%- endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# Player/team constraints #}
+  <div class="grid block">
+    <div class="column">
+      <div class="box column-cell--grow">
+        <div class="data-label">{{ _('Players') }}</div>
+        <div class="data-value">
+          {{ tournament.min_players|default('–', true) }} – {{ tournament.max_players|default('–', true) }}
+        </div>
+      </div>
+    </div>
+    <div class="column">
+      <div class="box column-cell--grow">
+        <div class="data-label">{{ _('Teams') }}</div>
+        <div class="data-value">
+          {{ tournament.min_teams|default('–', true) }} – {{ tournament.max_teams|default('–', true) }}
+        </div>
+      </div>
+    </div>
+    <div class="column">
+      <div class="box column-cell--grow">
+        <div class="data-label">{{ _('Players per team') }}</div>
+        <div class="data-value">
+          {{ tournament.min_players_in_team|default('–', true) }} – {{ tournament.max_players_in_team|default('–', true) }}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# Ruleset #}
+  {%- if tournament.ruleset %}
+  <div class="box block">
+    <div class="data-label">{{ _('Ruleset') }}</div>
+    <div class="data-value" style="white-space: pre-wrap;">{{ tournament.ruleset }}</div>
+  </div>
+  {%- endif %}
+
+  {# Status transition buttons #}
+  {%- if has_current_user_permission('lan_tournament.administrate') and tournament.tournament_status %}
+  <h2>{{ _('Actions') }}</h2>
+  <div class="button-row block">
+    {%- if tournament.tournament_status.name == 'DRAFT' %}
+      <form action="{{ url_for('.open_registration', tournament_id=tournament.id) }}" method="post">
+        <button type="submit" class="button color-info">{{ _('Open registration') }}</button>
+      </form>
+      <form action="{{ url_for('.cancel', tournament_id=tournament.id) }}" method="post">
+        <button type="submit" class="button color-danger">{{ _('Cancel') }}</button>
+      </form>
+
+    {%- elif tournament.tournament_status.name == 'REGISTRATION_OPEN' %}
+      <form action="{{ url_for('.close_registration', tournament_id=tournament.id) }}" method="post">
+        <button type="submit" class="button color-warning">{{ _('Close registration') }}</button>
+      </form>
+      <form action="{{ url_for('.cancel', tournament_id=tournament.id) }}" method="post">
+        <button type="submit" class="button color-danger">{{ _('Cancel') }}</button>
+      </form>
+
+    {%- elif tournament.tournament_status.name == 'REGISTRATION_CLOSED' %}
+      <form action="{{ url_for('.open_registration', tournament_id=tournament.id) }}" method="post">
+        <button type="submit" class="button color-info">{{ _('Reopen registration') }}</button>
+      </form>
+      <form action="{{ url_for('.generate_bracket', tournament_id=tournament.id) }}" method="post">
+        <button type="submit" class="button">{{ render_icon('arrange') }} {{ _('Generate bracket') }}</button>
+      </form>
+      <form action="{{ url_for('.start', tournament_id=tournament.id) }}" method="post">
+        <button type="submit" class="button color-success">{{ _('Start tournament') }}</button>
+      </form>
+      <form action="{{ url_for('.cancel', tournament_id=tournament.id) }}" method="post">
+        <button type="submit" class="button color-danger">{{ _('Cancel') }}</button>
+      </form>
+
+    {%- elif tournament.tournament_status.name == 'ONGOING' %}
+      <form action="{{ url_for('.pause', tournament_id=tournament.id) }}" method="post">
+        <button type="submit" class="button color-warning">{{ _('Pause') }}</button>
+      </form>
+      <form action="{{ url_for('.complete', tournament_id=tournament.id) }}" method="post">
+        <button type="submit" class="button color-success">{{ _('Complete') }}</button>
+      </form>
+      <form action="{{ url_for('.cancel', tournament_id=tournament.id) }}" method="post">
+        <button type="submit" class="button color-danger">{{ _('Cancel') }}</button>
+      </form>
+
+    {%- elif tournament.tournament_status.name == 'PAUSED' %}
+      <form action="{{ url_for('.resume', tournament_id=tournament.id) }}" method="post">
+        <button type="submit" class="button color-success">{{ _('Resume') }}</button>
+      </form>
+      <form action="{{ url_for('.cancel', tournament_id=tournament.id) }}" method="post">
+        <button type="submit" class="button color-danger">{{ _('Cancel') }}</button>
+      </form>
+    {%- endif %}
+
+    {# Delete button (always available except for completed/cancelled) #}
+    {%- if tournament.tournament_status.name not in ('COMPLETED', 'CANCELLED', 'ONGOING') %}
+      <form action="{{ url_for('.delete', tournament_id=tournament.id) }}" method="post" style="margin-left: auto;">
+        <button type="submit" class="button color-danger" data-action="delete-tournament">{{ render_icon('delete') }} {{ _('Delete') }}</button>
+      </form>
+    {%- endif %}
+  </div>
+  {%- endif %}
+
+{%- endblock %}

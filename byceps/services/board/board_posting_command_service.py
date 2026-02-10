@@ -14,7 +14,7 @@ from byceps.database import db
 from byceps.services.brand import brand_service
 from byceps.services.core.events import EventBrand
 from byceps.services.user import user_service
-from byceps.services.user.models import User, UserID
+from byceps.services.user.models.user import User, UserID
 from byceps.util.result import Err, Ok, Result
 from byceps.util.uuid import generate_uuid7
 
@@ -185,13 +185,14 @@ def add_reaction(
     """Add user reaction to the posting."""
     reaction_exists = _is_reaction_existing(db_posting.id, user.id, kind)
 
-    match board_posting_domain_service.add_reaction(
+    result = board_posting_domain_service.add_reaction(
         db_posting.id, db_posting.creator_id, user, kind, reaction_exists
-    ):
-        case Ok(reaction):
-            pass
-        case Err(e):
-            return Err(e)
+    )
+
+    if result.is_err():
+        return Err(result.unwrap_err())
+
+    reaction = result.unwrap()
 
     db_reaction = DbPostingReaction(
         reaction.id,
@@ -212,11 +213,12 @@ def remove_reaction(
     """Remove user reaction from the posting."""
     reaction_exists = _is_reaction_existing(db_posting.id, user.id, kind)
 
-    match board_posting_domain_service.remove_reaction(
+    result = board_posting_domain_service.remove_reaction(
         db_posting.id, db_posting.creator_id, user, kind, reaction_exists
-    ):
-        case Err(e):
-            return Err(e)
+    )
+
+    if result.is_err():
+        return Err(result.unwrap_err())
 
     db.session.execute(
         delete(DbPostingReaction)

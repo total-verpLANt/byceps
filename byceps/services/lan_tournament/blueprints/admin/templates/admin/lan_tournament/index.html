@@ -1,0 +1,87 @@
+{% extends 'layout/admin/lan_tournament.html' %}
+{% from 'macros/admin.html' import render_extra_in_heading %}
+{% from 'macros/icons.html' import render_icon %}
+{% from 'macros/misc.html' import render_tag %}
+{% set current_page_party = party %}
+{% set current_tab = 'tournaments' %}
+{% set page_title = [_('LAN Tournaments'), party.title] %}
+
+{% block body %}
+
+  <div class="row row--space-between block">
+    <div>
+      <h1 class="title">{{ _('LAN Tournaments') }} {{ render_extra_in_heading(tournaments|length) }}</h1>
+    </div>
+    <div>
+      {%- if has_current_user_permission('lan_tournament.create') %}
+      <div class="button-row is-right-aligned">
+        <a class="button" href="{{ url_for('.create_form', party_id=party.id) }}">{{ render_icon('add') }} <span>{{ _('Create tournament') }}</span></a>
+      </div>
+      {%- endif %}
+    </div>
+  </div>
+
+  {%- if tournaments %}
+  <table class="itemlist is-vcentered is-wide">
+    <thead>
+      <tr>
+        <th>{{ _('Name') }}</th>
+        <th>{{ _('Game') }}</th>
+        <th>{{ _('Mode') }}</th>
+        <th>{{ _('Type') }}</th>
+        <th>{{ _('Start') }}</th>
+        <th>{{ _('Status') }}</th>
+      </tr>
+    </thead>
+    <tbody>
+    {%- for tournament in tournaments|sort(attribute='name') %}
+      <tr>
+        <td>
+          <a href="{{ url_for('.view', tournament_id=tournament.id) }}" class="disguised">
+            <strong>{{ tournament.name }}</strong>
+          </a>
+        </td>
+        <td>{{ tournament.game|default('', true) }}</td>
+        <td>
+          {%- if tournament.tournament_mode %}
+            {{ tournament.tournament_mode.name|replace('_', ' ')|title }}
+          {%- endif %}
+        </td>
+        <td>
+          {%- if tournament.contestant_type %}
+            {{ tournament.contestant_type.name|title }}
+          {%- endif %}
+        </td>
+        <td>
+          {%- if tournament.start_time %}
+            {{ tournament.start_time|dateformat }}, {{ tournament.start_time|timeformat('short') }}
+          {%- endif %}
+        </td>
+        <td>
+          {%- if tournament.tournament_status %}
+            {%- if tournament.tournament_status.name == 'DRAFT' %}
+              {{ render_tag(_('Draft'), class='color-disabled') }}
+            {%- elif tournament.tournament_status.name == 'REGISTRATION_OPEN' %}
+              {{ render_tag(_('Registration open'), class='color-info') }}
+            {%- elif tournament.tournament_status.name == 'REGISTRATION_CLOSED' %}
+              {{ render_tag(_('Registration closed'), class='color-warning') }}
+            {%- elif tournament.tournament_status.name == 'ONGOING' %}
+              {{ render_tag(_('Ongoing'), class='color-success') }}
+            {%- elif tournament.tournament_status.name == 'PAUSED' %}
+              {{ render_tag(_('Paused'), class='color-warning') }}
+            {%- elif tournament.tournament_status.name == 'COMPLETED' %}
+              {{ render_tag(_('Completed'), class='color-success') }}
+            {%- elif tournament.tournament_status.name == 'CANCELLED' %}
+              {{ render_tag(_('Cancelled'), class='color-danger') }}
+            {%- endif %}
+          {%- endif %}
+        </td>
+      </tr>
+    {%- endfor %}
+    </tbody>
+  </table>
+  {%- else %}
+  <div class="box no-data-message">{{ _('No tournaments exist.') }}</div>
+  {%- endif %}
+
+{%- endblock %}

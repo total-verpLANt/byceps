@@ -1,17 +1,21 @@
 """
-byceps.blueprints.site
-~~~~~~~~~~~~~~~~~~~~~~
+byceps.application.blueprints.site
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 :Copyright: 2014-2026 Jochen Kupperschmidt
 :License: Revised BSD (see `LICENSE` file for details)
 """
 
 from flask import Flask
+import structlog
 
 from byceps.util.framework.blueprint import register_blueprints
+from importlib import util as importlib_util
 
 from .common import get_common_blueprints
 
+
+log = structlog.get_logger()
 
 def register_site_blueprints(
     app: Flask, *, style_guide_enabled: bool = False
@@ -65,5 +69,15 @@ def register_site_blueprints(
         ('services.user_message.blueprints.site', '/user_messages'),
         ('services.user_profile.blueprints.site', '/users'),
     ]
+
+    if importlib_util.find_spec('byceps.services.lan_tournament.blueprints.site'):
+        blueprints.append(
+            ('services.lan_tournament.blueprints.site', '/lan-tournaments')
+        )
+    else:
+        log.warning(
+            'Module byceps.services.lan_tournament.blueprints.site '
+            'is not importable; skipping site blueprints for lan_tournament'
+        )
 
     register_blueprints(app, blueprints)

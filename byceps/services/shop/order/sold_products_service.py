@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
+from typing import TypeAlias
 
 from flask_babel import lazy_gettext
 
@@ -19,7 +20,7 @@ from byceps.services.shop.order.models.number import OrderNumber
 from byceps.services.shop.order.models.order import Order, OrderID, PaymentState
 from byceps.services.shop.product.models import Product, ProductNumber
 from byceps.services.user import user_service
-from byceps.services.user.models import UserForAdmin, UserID
+from byceps.services.user.models.user import UserForAdmin, UserID
 from byceps.util.export import serialize_tuples_to_csv
 from byceps.util.iterables import find
 
@@ -44,7 +45,7 @@ class SoldProductsReport:
     order_summaries: list[OrderSummary]
 
 
-CsvRow = tuple[str, ...]
+CsvRow: TypeAlias = tuple[str, ...]
 
 
 def get_sold_products_report(
@@ -138,9 +139,9 @@ def export_sold_products_as_csv(report: SoldProductsReport) -> str:
 
 def _assemble_csv_header_row(report: SoldProductsReport) -> CsvRow:
     fixed_column_names = (
-        str(lazy_gettext('Order number')),
-        str(lazy_gettext('Username')),
-        str(lazy_gettext('Name')),
+        lazy_gettext('Order number'),
+        lazy_gettext('Username'),
+        lazy_gettext('Name'),
     )
     product_names = tuple(product.name for product in report.products)
     return fixed_column_names + product_names

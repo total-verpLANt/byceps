@@ -12,8 +12,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from byceps.database import db
 from byceps.services.brand.models import BrandID
-from byceps.services.user.dbmodels import DbUser
-from byceps.services.user.models import UserID
+from byceps.services.user.dbmodels.user import DbUser
+from byceps.services.user.models.user import UserID
+from byceps.util.uuid import generate_uuid4
 
 from .models import ConsentSubjectID
 
@@ -23,7 +24,9 @@ class DbConsentSubject(db.Model):
 
     __tablename__ = 'consent_subjects'
 
-    id: Mapped[ConsentSubjectID] = mapped_column(db.Uuid, primary_key=True)
+    id: Mapped[ConsentSubjectID] = mapped_column(
+        db.Uuid, default=generate_uuid4, primary_key=True
+    )
     name: Mapped[str] = mapped_column(db.UnicodeText, unique=True)
     title: Mapped[str] = mapped_column(db.UnicodeText, unique=True)
     checkbox_label: Mapped[str] = mapped_column(db.UnicodeText)
@@ -31,13 +34,11 @@ class DbConsentSubject(db.Model):
 
     def __init__(
         self,
-        subject_id: ConsentSubjectID,
         name: str,
         title: str,
         checkbox_label: str,
         checkbox_link_target: str | None,
     ) -> None:
-        self.id = subject_id
         self.name = name
         self.title = title
         self.checkbox_label = checkbox_label
@@ -69,11 +70,11 @@ class DbConsent(db.Model):
     user_id: Mapped[UserID] = mapped_column(
         db.Uuid, db.ForeignKey('users.id'), primary_key=True
     )
-    user: Mapped[DbUser] = relationship()
+    user: Mapped[DbUser] = relationship(DbUser)
     subject_id: Mapped[ConsentSubjectID] = mapped_column(
         db.Uuid, db.ForeignKey('consent_subjects.id'), primary_key=True
     )
-    subject: Mapped[DbConsentSubject] = relationship()
+    subject: Mapped[DbConsentSubject] = relationship(DbConsentSubject)
     expressed_at: Mapped[datetime]
 
     def __init__(

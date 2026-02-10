@@ -23,8 +23,8 @@ from byceps.services.tourney.models import (
     ParticipantMembershipStatus,
     TourneyID,
 )
-from byceps.services.user.dbmodels import DbUser
-from byceps.services.user.models import UserID
+from byceps.services.user.dbmodels.user import DbUser
+from byceps.services.user.models.user import UserID
 
 from .tourney import DbTourney
 
@@ -38,13 +38,13 @@ class DbParticipant(db.Model):
     tourney_id: Mapped[TourneyID] = mapped_column(
         db.Uuid, db.ForeignKey('tourneys.id'), index=True
     )
-    tourney: Mapped[DbTourney] = relationship()
+    tourney: Mapped[DbTourney] = relationship(DbTourney)
     created_at: Mapped[datetime]
     name: Mapped[str] = mapped_column(db.UnicodeText)
     manager_id: Mapped[UserID] = mapped_column(
         db.Uuid, db.ForeignKey('users.id')
     )
-    manager: Mapped[DbUser] = relationship()
+    manager: Mapped[DbUser] = relationship(DbUser)
 
     def __init__(
         self,

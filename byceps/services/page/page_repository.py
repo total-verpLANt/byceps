@@ -14,9 +14,8 @@ from sqlalchemy import delete, select
 from byceps.database import db
 from byceps.services.site.models import SiteID
 from byceps.services.site_navigation.models import NavMenuID
-from byceps.services.user.models import UserID
+from byceps.services.user.models.user import UserID
 from byceps.util.result import Err, Ok, Result
-from byceps.util.uuid import generate_uuid7
 
 from .dbmodels import DbCurrentPageVersionAssociation, DbPage, DbPageVersion
 from .errors import PageDeletionFailedError
@@ -35,14 +34,13 @@ def create_page(
     body: str,
 ) -> tuple[DbPage, DbPageVersion]:
     """Create a page and its initial version."""
-    page_id = PageID(generate_uuid7())
-    version_id = PageVersionID(generate_uuid7())
+    created_at = datetime.utcnow()
 
-    db_page = DbPage(page_id, site_id, name, language_code, url_path)
+    db_page = DbPage(site_id, name, language_code, url_path)
     db.session.add(db_page)
 
     db_version = DbPageVersion(
-        version_id, db_page, created_at, creator_id, title, head, body
+        db_page, created_at, creator_id, title, head, body
     )
     db.session.add(db_version)
 
@@ -67,15 +65,13 @@ def update_page(
     body: str,
 ) -> tuple[DbPage, DbPageVersion]:
     """Update page with a new version."""
-    version_id = PageVersionID(generate_uuid7())
-
     db_page = get_page(page_id)
 
     db_page.language_code = language_code
     db_page.url_path = url_path
 
     db_version = DbPageVersion(
-        version_id, db_page, created_at, creator_id, title, head, body
+        db_page, created_at, creator_id, title, head, body
     )
     db.session.add(db_version)
 

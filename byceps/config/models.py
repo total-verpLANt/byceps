@@ -51,6 +51,7 @@ class BycepsConfig:
     testing: bool
     timezone: str
     secret_key: str
+    apps: AppsConfig
     database: DatabaseConfig
     development: DevelopmentConfig
     discord: DiscordConfig | None
@@ -63,10 +64,10 @@ class BycepsConfig:
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
-class WebAppsConfig:
-    admin: AdminWebAppConfig | None
-    api: ApiWebAppConfig | None
-    sites: list[SiteWebAppConfig]
+class AppsConfig:
+    admin: AdminAppConfig | None
+    api: ApiAppConfig | None
+    sites: list[SiteAppConfig]
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -80,12 +81,12 @@ class WebAppConfig(AppConfig):
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
-class AdminWebAppConfig(WebAppConfig):
+class AdminAppConfig(WebAppConfig):
     pass
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
-class ApiWebAppConfig(WebAppConfig):
+class ApiAppConfig(WebAppConfig):
     pass
 
 
@@ -95,7 +96,7 @@ class CliAppConfig(AppConfig):
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
-class SiteWebAppConfig(WebAppConfig):
+class SiteAppConfig(WebAppConfig):
     site_id: SiteID
 
 

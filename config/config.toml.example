@@ -58,3 +58,8 @@ url = "redis://127.0.0.1:6379/0"
 #username = "smtp-user"
 #password = "smtp-password"
 #suppress_send = false
+
+# Module extensions for byceps
+# LAN_TOURNAMENT is a modular extension for byceps to create simple tournaments used for LAN tournaments.
+# Module has to be available and will be checked. If failed to load, a log entry will be generated. 
+#enable_lan_tournament = false

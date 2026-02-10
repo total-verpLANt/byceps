@@ -12,11 +12,16 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Literal, Never
+from typing import Generic, Literal, Never, TypeVar
+
+
+T = TypeVar('T')
+E = TypeVar('E')
+U = TypeVar('U')
 
 
 @dataclass(eq=True, frozen=True)
-class Ok[T]:
+class Ok(Generic[T]):
     _value: T
 
     def is_ok(self) -> Literal[True]:
@@ -25,15 +30,13 @@ class Ok[T]:
     def is_err(self) -> Literal[False]:
         return False
 
-    def map[U](self, f: Callable[[T], U]) -> Ok[U]:
+    def map(self, f: Callable[[T], U]) -> Ok[U]:
         return Ok(f(self._value))
 
-    def map_err[E, U](self, f: Callable[[E], U]) -> Ok[T]:
+    def map_err(self, f: Callable[[E], U]) -> Ok[T]:
         return self
 
-    def map_or_else[E, U](
-        self, f: Callable[[T], U], default: Callable[[E], U]
-    ) -> U:
+    def map_or_else(self, f: Callable[[T], U], default: Callable[[E], U]) -> U:
         return f(self._value)
 
     def unwrap(self) -> T:
@@ -48,7 +51,7 @@ class Ok[T]:
     def unwrap_or_else(self, default: Callable[[], T]) -> T:
         return self._value
 
-    def and_then[E, U](self, f: Callable[[T], Result[U, E]]) -> Result:
+    def and_then(self, f: Callable[[T], Result[U, E]]) -> Result[U, E]:
         return f(self._value)
 
     def __repr__(self) -> str:
@@ -56,7 +59,7 @@ class Ok[T]:
 
 
 @dataclass(eq=True, frozen=True)
-class Err[E]:
+class Err(Generic[E]):
     _error: E
 
     def is_ok(self) -> Literal[False]:
@@ -65,15 +68,13 @@ class Err[E]:
     def is_err(self) -> Literal[True]:
         return True
 
-    def map[T, U](self, f: Callable[[T], U]) -> Err[E]:
+    def map(self, f: Callable[[T], U]) -> Err[E]:
         return self
 
-    def map_err[U](self, f: Callable[[E], U]) -> Err[U]:
+    def map_err(self, f: Callable[[E], U]) -> Err[U]:
         return Err(f(self._error))
 
-    def map_or_else[T, U](
-        self, f: Callable[[T], U], default: Callable[[E], U]
-    ) -> U:
+    def map_or_else(self, f: Callable[[T], U], default: Callable[[E], U]) -> U:
         return default(self._error)
 
     def unwrap(self) -> Never:
@@ -82,20 +83,20 @@ class Err[E]:
     def unwrap_err(self) -> E:
         return self._error
 
-    def unwrap_or[T](self, default: T) -> T:
+    def unwrap_or(self, default: T) -> T:
         return default
 
-    def unwrap_or_else[T](self, default: Callable[[E], T]) -> T:
+    def unwrap_or_else(self, default: Callable[[E], T]) -> T:
         return default(self._error)
 
-    def and_then[T, U](self, f: Callable[[T], Result[U, E]]) -> Result:
+    def and_then(self, f: Callable[[T], Result[U, E]]) -> Result[U, E]:
         return self
 
     def __repr__(self) -> str:
         return f'Err({self._error})'
 
 
-type Result[T, E] = Ok[T] | Err[E]
+Result = Ok[T] | Err[E]
 
 
 class UnwrapError(Exception): ...

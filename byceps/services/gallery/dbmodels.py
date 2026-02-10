@@ -30,7 +30,8 @@ class DbGallery(db.Model):
     brand_id: Mapped[BrandID] = mapped_column(
         db.UnicodeText, db.ForeignKey('brands.id'), index=True
     )
-    brand: Mapped[DbBrand] = relationship(
+    brand = relationship(
+        DbBrand,
         backref=backref(
             'galleries',
             order_by='DbGallery.position',
@@ -71,7 +72,8 @@ class DbGalleryImage(db.Model):
     gallery_id: Mapped[GalleryID] = mapped_column(
         db.Uuid, db.ForeignKey('galleries.id'), index=True, nullable=False
     )
-    gallery: Mapped[DbGallery] = relationship(
+    gallery = relationship(
+        DbGallery,
         backref=backref(
             'images',
             order_by='DbGalleryImage.position',
@@ -112,12 +114,13 @@ class DbGalleryTitleImage(db.Model):
         db.Uuid, db.ForeignKey('galleries.id'), primary_key=True
     )
     gallery: Mapped[DbGallery] = relationship(
+        DbGallery,
         backref=backref('title_image_association', uselist=False),
     )
     image_id: Mapped[GalleryImageID] = mapped_column(
         db.Uuid, db.ForeignKey('gallery_images.id')
     )
-    image: Mapped[DbGalleryImage] = relationship()
+    image: Mapped[DbGalleryImage] = relationship(DbGalleryImage)
 
     def __init__(self, gallery_id: GalleryID, image_id: GalleryImageID) -> None:
         self.gallery_id = gallery_id

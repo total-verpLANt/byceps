@@ -10,11 +10,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import BinaryIO
 
+from flask import current_app
 from sqlalchemy import select
 
-from byceps.byceps_app import get_current_byceps_app
 from byceps.database import db
-from byceps.services.user.models import User
+from byceps.services.user.models.user import User
 from byceps.util import upload
 from byceps.util.image.dimensions import determine_dimensions, Dimensions
 from byceps.util.image.image_type import determine_image_type, ImageType
@@ -48,11 +48,11 @@ def create_image(
     attribution: str | None = None,
 ) -> Result[NewsImage, str]:
     """Create an image for a news item."""
-    match determine_image_type(stream, ALLOWED_IMAGE_TYPES):
-        case Ok(image_type):
-            pass
-        case Err(e):
-            return Err(e)
+    image_type_result = determine_image_type(stream, ALLOWED_IMAGE_TYPES)
+    if image_type_result.is_err():
+        return Err(image_type_result.unwrap_err())
+
+    image_type = image_type_result.unwrap()
 
     if image_type != ImageType.svg:
         image_dimensions = determine_dimensions(stream)
@@ -151,7 +151,7 @@ def delete_image(image_id: NewsImageID) -> None:
 
 
 def find_image(image_id: NewsImageID) -> NewsImage | None:
-    """Return the image with that ID, or `None` if not found."""
+    """Return the image with that id, or `None` if not found."""
     db_image = _find_db_image(image_id)
 
     if db_image is None:
@@ -161,7 +161,7 @@ def find_image(image_id: NewsImageID) -> NewsImage | None:
 
 
 def _find_db_image(image_id: NewsImageID) -> DbNewsImage | None:
-    """Return the image with that ID, or `None` if not found."""
+    """Return the image with that id, or `None` if not found."""
     return db.session.scalars(
         select(DbNewsImage)
         .filter(DbNewsImage.id == image_id)
@@ -172,7 +172,7 @@ def _find_db_image(image_id: NewsImageID) -> DbNewsImage | None:
 
 
 def _get_db_image(image_id: NewsImageID) -> DbNewsImage:
-    """Return the image with that ID."""
+    """Return the image with that id."""
     db_image = _find_db_image(image_id)
 
     if db_image is None:
@@ -183,7 +183,7 @@ def _get_db_image(image_id: NewsImageID) -> DbNewsImage:
 
 def _assemble_image_file_path(channel_id: NewsChannelID, filename: str) -> Path:
     return (
-        get_current_byceps_app().byceps_config.data_path
+        current_app.byceps_config.data_path
         / 'global'
         / 'news_channels'
         / channel_id

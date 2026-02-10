@@ -14,7 +14,7 @@ from byceps.services.ticketing.models.ticket import (
     TicketBundleID,
     TicketCategoryID,
 )
-from byceps.services.user.models import User
+from byceps.services.user.models.user import User
 from byceps.util.result import Err, Ok, Result
 
 from . import seat_group_domain_service, seat_group_repository, seat_service
@@ -176,7 +176,7 @@ def count_groups_for_party(party_id: PartyID) -> int:
 
 
 def find_group(group_id: SeatGroupID) -> SeatGroup | None:
-    """Return the seat group with that ID, or `None` if not found."""
+    """Return the seat group with that id, or `None` if not found."""
     db_group_and_seat_ids = seat_group_repository.find_group(group_id)
 
     if db_group_and_seat_ids is None:

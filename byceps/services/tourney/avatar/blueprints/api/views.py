@@ -9,11 +9,10 @@ byceps.services.tourney.avatar.blueprints.api.views
 from flask import abort, request
 
 from byceps.services.party import party_service
-from byceps.services.tourney import tourney_avatar_service
+from byceps.services.tourney.avatar import tourney_avatar_service
 from byceps.services.user import user_service
 from byceps.util.framework.blueprint import create_blueprint
 from byceps.util.image.image_type import ImageType
-from byceps.util.result import Err, Ok
 from byceps.util.views import (
     api_token_required,
     respond_created,
@@ -72,13 +71,13 @@ def _create(party_id, creator_id, image):
         abort(400, 'No file to upload has been specified.')
 
     try:
-        match tourney_avatar_service.create_avatar_image(
+        creation_result = tourney_avatar_service.create_avatar_image(
             party_id, creator, image.stream, ALLOWED_IMAGE_TYPES
-        ):
-            case Ok(avatar):
-                return avatar
-            case Err(e):
-                abort(400, e)
+        )
+        if creation_result.is_err():
+            abort(400, creation_result.unwrap_err())
+
+        return creation_result.unwrap()
     except FileExistsError:
         abort(409, 'File already exists, not overwriting.')
 
@@ -88,6 +87,7 @@ def _create(party_id, creator_id, image):
 @respond_no_content
 def delete(avatar_id):
     """Delete the avatar image."""
-    match tourney_avatar_service.delete_avatar_image(avatar_id):
-        case Err(e):
-            abort(404, e)
+    result = tourney_avatar_service.delete_avatar_image(avatar_id)
+
+    if result.is_err():
+        abort(404, result.unwrap_err())

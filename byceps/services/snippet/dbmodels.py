@@ -17,8 +17,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from byceps.database import db
 from byceps.services.language.dbmodels import DbLanguage
-from byceps.services.user.dbmodels import DbUser
-from byceps.services.user.models import UserID
+from byceps.services.user.dbmodels.user import DbUser
+from byceps.services.user.models.user import UserID
+from byceps.util.uuid import generate_uuid7
 
 from .models import SnippetID, SnippetScope, SnippetVersionID
 
@@ -38,7 +39,9 @@ class DbSnippet(db.Model):
         ),
     )
 
-    id: Mapped[SnippetID] = mapped_column(db.Uuid, primary_key=True)
+    id: Mapped[SnippetID] = mapped_column(
+        db.Uuid, default=generate_uuid7, primary_key=True
+    )
     scope_type: Mapped[str] = mapped_column(db.UnicodeText)
     scope_name: Mapped[str] = mapped_column(db.UnicodeText)
     name: Mapped[str] = mapped_column(db.UnicodeText, index=True)
@@ -47,19 +50,14 @@ class DbSnippet(db.Model):
         db.ForeignKey('languages.code'),
         index=True,
     )
-    language: Mapped[DbLanguage] = relationship()
+    language: Mapped[DbLanguage] = relationship(DbLanguage)
     current_version = association_proxy(
         'current_version_association', 'version'
     )
 
     def __init__(
-        self,
-        snippet_id: SnippetID,
-        scope: SnippetScope,
-        name: str,
-        language_code: str,
+        self, scope: SnippetScope, name: str, language_code: str
     ) -> None:
-        self.id = snippet_id
         self.scope_type = scope.type_
         self.scope_name = scope.name
         self.name = name
@@ -75,27 +73,27 @@ class DbSnippetVersion(db.Model):
 
     __tablename__ = 'snippet_versions'
 
-    id: Mapped[SnippetVersionID] = mapped_column(db.Uuid, primary_key=True)
+    id: Mapped[SnippetVersionID] = mapped_column(
+        db.Uuid, default=generate_uuid7, primary_key=True
+    )
     snippet_id: Mapped[SnippetID] = mapped_column(
         db.Uuid, db.ForeignKey('snippets.id'), index=True
     )
-    snippet: Mapped[DbSnippet] = relationship()
+    snippet: Mapped[DbSnippet] = relationship(DbSnippet)
     created_at: Mapped[datetime]
     creator_id: Mapped[UserID] = mapped_column(
         db.Uuid, db.ForeignKey('users.id')
     )
-    creator: Mapped[DbUser] = relationship()
+    creator: Mapped[DbUser] = relationship(DbUser)
     body: Mapped[str] = mapped_column(db.UnicodeText)
 
     def __init__(
         self,
-        version_id: SnippetVersionID,
         snippet: DbSnippet,
         created_at: datetime,
         creator_id: UserID,
         body: str,
     ) -> None:
-        self.id = version_id
         self.snippet = snippet
         self.created_at = created_at
         self.creator_id = creator_id
@@ -116,6 +114,7 @@ class DbCurrentSnippetVersionAssociation(db.Model):
         db.Uuid, db.ForeignKey('snippets.id'), primary_key=True
     )
     snippet: Mapped[DbSnippet] = relationship(
+        DbSnippet,
         backref=db.backref('current_version_association', uselist=False),
     )
     version_id: Mapped[SnippetVersionID] = mapped_column(
@@ -123,7 +122,7 @@ class DbCurrentSnippetVersionAssociation(db.Model):
         db.ForeignKey('snippet_versions.id'),
         unique=True,
     )
-    version: Mapped[DbSnippetVersion] = relationship()
+    version: Mapped[DbSnippetVersion] = relationship(DbSnippetVersion)
 
     def __init__(self, snippet: DbSnippet, version: DbSnippetVersion) -> None:
         self.snippet = snippet

@@ -7,8 +7,9 @@ from pathlib import Path
 
 from byceps.config.parser import parse_config
 from byceps.config.models import (
-    AdminWebAppConfig,
-    ApiWebAppConfig,
+    AdminAppConfig,
+    ApiAppConfig,
+    AppsConfig,
     BycepsConfig,
     DatabaseConfig,
     DevelopmentConfig,
@@ -19,10 +20,9 @@ from byceps.config.models import (
     PaymentGatewaysConfig,
     PaypalConfig,
     RedisConfig,
-    SiteWebAppConfig,
+    SiteAppConfig,
     SmtpConfig,
     StripeConfig,
-    WebAppsConfig,
 )
 from byceps.services.site.models import SiteID
 from byceps.util.result import Err, Ok
@@ -30,85 +30,83 @@ from byceps.util.result import Err, Ok
 
 def test_parse_config():
     expected = Ok(
-        (
-            BycepsConfig(
-                data_path=Path('./data'),
-                locale='de',
-                propagate_exceptions=True,
-                secret_key='<RANDOM-BYTES>',
-                testing=False,
-                timezone='Europe/Berlin',
-                database=DatabaseConfig(
-                    host='db-host',
-                    port=54321,
-                    username='db-user',
-                    password='db-password',
-                    database='db-database',
-                ),
-                development=DevelopmentConfig(
-                    style_guide_enabled=True,
-                    toolbar_enabled=True,
-                ),
-                discord=DiscordConfig(
-                    enabled=True,
-                    client_id='discord-client-id',
-                    client_secret='discord-client-secret',
-                ),
-                invoiceninja=InvoiceNinjaConfig(
-                    enabled=True,
-                    base_url='https://invoiceninja.example',
-                    api_key='invoiceninja-api-key',
-                ),
-                jobs=JobsConfig(
-                    asynchronous=False,
-                ),
-                metrics=MetricsConfig(
-                    enabled=True,
-                ),
-                payment_gateways=PaymentGatewaysConfig(
-                    paypal=PaypalConfig(
-                        enabled=True,
-                        client_id='paypal-client-id',
-                        client_secret='paypal-client-secret',
-                        environment='sandbox',
-                    ),
-                    stripe=StripeConfig(
-                        enabled=True,
-                        secret_key='stripe-secret-key',
-                        publishable_key='stripe-publishable-key',
-                        webhook_secret='stripe-webhook-secret',
-                    ),
-                ),
-                redis=RedisConfig(
-                    url='redis://127.0.0.1:6379/0',
-                ),
-                smtp=SmtpConfig(
-                    host='smtp-host',
-                    port=2525,
-                    starttls=True,
-                    use_ssl=True,
-                    username='smtp-user',
-                    password='smtp-password',
-                    suppress_send=True,
-                ),
-            ),
-            WebAppsConfig(
-                admin=AdminWebAppConfig(
+        BycepsConfig(
+            data_path=Path('./data'),
+            locale='de',
+            propagate_exceptions=True,
+            secret_key='<RANDOM-BYTES>',
+            testing=False,
+            timezone='Europe/Berlin',
+            apps=AppsConfig(
+                admin=AdminAppConfig(
                     server_name='admin.test',
                 ),
-                api=ApiWebAppConfig(
+                api=ApiAppConfig(
                     server_name='api.test',
                 ),
                 sites=[
-                    SiteWebAppConfig(
+                    SiteAppConfig(
                         server_name='site1.test',
                         site_id=SiteID('site1'),
                     ),
-                    SiteWebAppConfig(
+                    SiteAppConfig(
                         server_name='site2.test',
                         site_id=SiteID('site2'),
                     ),
                 ],
+            ),
+            database=DatabaseConfig(
+                host='db-host',
+                port=54321,
+                username='db-user',
+                password='db-password',
+                database='db-database',
+            ),
+            development=DevelopmentConfig(
+                style_guide_enabled=True,
+                toolbar_enabled=True,
+            ),
+            discord=DiscordConfig(
+                enabled=True,
+                client_id='discord-client-id',
+                client_secret='discord-client-secret',
+            ),
+            invoiceninja=InvoiceNinjaConfig(
+                enabled=True,
+                base_url='https://invoiceninja.example',
+                api_key='invoiceninja-api-key',
+            ),
+            jobs=JobsConfig(
+                asynchronous=False,
+            ),
+            metrics=MetricsConfig(
+                enabled=True,
+            ),
+            payment_gateways=PaymentGatewaysConfig(
+                paypal=PaypalConfig(
+                    enabled=True,
+                    client_id='paypal-client-id',
+                    client_secret='paypal-client-secret',
+                    environment='sandbox',
+                ),
+                stripe=StripeConfig(
+                    enabled=True,
+                    secret_key='stripe-secret-key',
+                    publishable_key='stripe-publishable-key',
+                    webhook_secret='stripe-webhook-secret',
+                ),
+            ),
+            redis=RedisConfig(
+                url='redis://127.0.0.1:6379/0',
+            ),
+            smtp=SmtpConfig(
+                host='smtp-host',
+                port=2525,
+                starttls=True,
+                use_ssl=True,
+                username='smtp-user',
+                password='smtp-password',
+                suppress_send=True,
             ),
         )
     )
@@ -184,56 +182,54 @@ def test_parse_config():
 
 def test_parse_config_defaults():
     expected = Ok(
-        (
-            BycepsConfig(
-                data_path=Path('./data'),
-                locale='en',
-                propagate_exceptions=None,
-                secret_key='<RANDOM-BYTES>',
-                testing=False,
-                timezone='Europe/London',
-                database=DatabaseConfig(
-                    host='localhost',
-                    port=5432,
-                    username='db-user',
-                    password='db-password',
-                    database='db-database',
-                ),
-                development=DevelopmentConfig(
-                    style_guide_enabled=False,
-                    toolbar_enabled=False,
-                ),
-                discord=None,
-                invoiceninja=None,
-                jobs=JobsConfig(
-                    asynchronous=True,
-                ),
-                metrics=MetricsConfig(
-                    enabled=False,
-                ),
-                payment_gateways=PaymentGatewaysConfig(
-                    paypal=None,
-                    stripe=None,
-                ),
-                redis=RedisConfig(
-                    url='redis://127.0.0.1:6379/0',
-                ),
-                smtp=SmtpConfig(
-                    host='localhost',
-                    port=25,
-                    starttls=False,
-                    use_ssl=False,
-                    username='',
-                    password='',
-                    suppress_send=False,
-                ),
-            ),
-            WebAppsConfig(
-                admin=AdminWebAppConfig(
+        BycepsConfig(
+            data_path=Path('./data'),
+            locale='en',
+            propagate_exceptions=None,
+            secret_key='<RANDOM-BYTES>',
+            testing=False,
+            timezone='Europe/London',
+            apps=AppsConfig(
+                admin=AdminAppConfig(
                     server_name='admin.test',
                 ),
                 api=None,
                 sites=[],
+            ),
+            database=DatabaseConfig(
+                host='localhost',
+                port=5432,
+                username='db-user',
+                password='db-password',
+                database='db-database',
+            ),
+            development=DevelopmentConfig(
+                style_guide_enabled=False,
+                toolbar_enabled=False,
+            ),
+            discord=None,
+            invoiceninja=None,
+            jobs=JobsConfig(
+                asynchronous=True,
+            ),
+            metrics=MetricsConfig(
+                enabled=False,
+            ),
+            payment_gateways=PaymentGatewaysConfig(
+                paypal=None,
+                stripe=None,
+            ),
+            redis=RedisConfig(
+                url='redis://127.0.0.1:6379/0',
+            ),
+            smtp=SmtpConfig(
+                host='localhost',
+                port=25,
+                starttls=False,
+                use_ssl=False,
+                username='',
+                password='',
+                suppress_send=False,
             ),
         )
     )

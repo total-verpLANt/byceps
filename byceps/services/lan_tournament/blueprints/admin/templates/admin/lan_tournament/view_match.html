@@ -1,0 +1,136 @@
+{% extends 'layout/admin/lan_tournament.html' %}
+{% from 'macros/admin.html' import render_backlink %}
+{% from 'macros/icons.html' import render_icon %}
+{% from 'macros/misc.html' import render_tag %}
+{% set current_page_party = party %}
+{% set current_tab = 'tournaments' %}
+{% set page_title = [_('Match'), tournament.name, party.title] %}
+
+{% block before_body %}
+{{ render_backlink(url_for('.matches_for_tournament',
+                           tournament_id=tournament.id), _('Matches')) }}
+{%- endblock %}
+
+{% block body %}
+
+  <h1 class='title'>{{ _('Match #') }}{{ match.match_order }}</h1>
+
+  {# Match status #}
+  <div class='block'>
+    {%- if match.confirmed_by %}
+      {{ render_tag(_('Confirmed'), class='color-success') }}
+    {%- else %}
+      {{ render_tag(_('Pending'), class='color-warning') }}
+    {%- endif %}
+  </div>
+
+  {# Contestants and scores #}
+  <div class='box block'>
+    <h2>{{ _('Contestants') }}</h2>
+
+    {%- for contestant in contestants %}
+    <div class='row row--space-between' style='margin-bottom: 1rem;'>
+      <div>
+        <strong>
+          {%- if contestant.team_id %}
+            {{ _('Team') }}: {{ contestant.team_id }}
+          {%- elif contestant.participant_id %}
+            {{ _('Player') }}: {{ contestant.participant_id }}
+          {%- else %}
+            BYE
+          {%- endif %}
+        </strong>
+      </div>
+      <div>
+        <strong>{{ _('Score') }}:</strong>
+        {{ contestant.score|default('–', true) }}
+      </div>
+      <div>
+        {%- if not match.confirmed_by and
+               has_current_user_permission('lan_tournament.update') %}
+        <form action='{{ url_for('.set_match_score', match_id=match.id) }}'
+              method='post' style='display: inline;'>
+          <input type='hidden' name='contestant_id'
+                 value='{{ contestant.team_id or contestant.participant_id }}'>
+          <input type='number' name='score' min='0'
+                 value='{{ contestant.score or 0 }}'
+                 style='width: 80px;' required>
+          <button type='submit' class='button button--compact'>
+            {{ _('Set Score') }}
+          </button>
+        </form>
+        {%- endif %}
+      </div>
+    </div>
+    {%- endfor %}
+  </div>
+
+  {# Confirm button #}
+  {%- if not match.confirmed_by and
+         has_current_user_permission('lan_tournament.administrate') %}
+  <div class='block'>
+    <form action='{{ url_for('.confirm_match', match_id=match.id) }}'
+          method='post'>
+      <button type='submit' class='button color-success'>
+        {{ render_icon('success') }} {{ _('Confirm Match') }}
+      </button>
+    </form>
+  </div>
+  {%- endif %}
+
+  {# Comments section #}
+  <div class='block'>
+    <h2>{{ _('Comments') }}</h2>
+
+    {%- if comments %}
+    <div class='main-body-box'>
+      {%- for comment in comments %}
+      <div class='row row--space-between'
+           style='padding: 0.5rem; border-bottom: 1px solid #ccc;'>
+        <div>
+          <div><strong>{{ comment.created_by }}</strong></div>
+          <div style='margin-top: 0.25rem;'>{{ comment.comment }}</div>
+          <div class='dimmed' style='margin-top: 0.25rem; font-size: 0.875rem;'>
+            {{ comment.created_at|dateformat }},
+            {{ comment.created_at|timeformat('short') }}
+          </div>
+        </div>
+        <div>
+          {%- if has_current_user_permission('lan_tournament.administrate') %}
+          <form action='{{ url_for('.delete_match_comment',
+                                   match_id=match.id,
+                                   comment_id=comment.id) }}'
+                method='post'>
+            <button type='submit' class='button button--compact color-danger'>
+              {{ render_icon('delete') }}
+            </button>
+          </form>
+          {%- endif %}
+        </div>
+      </div>
+      {%- endfor %}
+    </div>
+    {%- else %}
+    <p class='dimmed'>{{ _('No comments yet.') }}</p>
+    {%- endif %}
+
+    {# Add comment form #}
+    {%- if has_current_user_permission('lan_tournament.update') %}
+    <div style='margin-top: 1rem;'>
+      <form action='{{ url_for('.add_match_comment', match_id=match.id) }}'
+            method='post'>
+        <div class='form-group'>
+          <label for='comment'>{{ _('Add Comment') }}</label>
+          <textarea name='comment' id='comment' rows='3'
+                    maxlength='1000' required
+                    style='width: 100%;'></textarea>
+        </div>
+        <button type='submit' class='button'>
+          {{ _('Add Comment') }}
+        </button>
+      </form>
+    </div>
+    {%- endif %}
+  </div>
+
+{%- endblock %}

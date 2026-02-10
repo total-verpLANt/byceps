@@ -1,0 +1,21 @@
+# LAN Tournament Module Roles
+# This file contains role definitions for the LAN Tournament module.
+# Import with: flask import-roles -f scripts/data/lan_tournament_roles.toml
+
+[[roles]]
+id = 'lan_tournament_admin'
+title = 'LAN-Turniere verwalten'
+assigned_permissions = [
+    'lan_tournament.administrate',
+    'lan_tournament.create',
+    'lan_tournament.delete',
+    'lan_tournament.update',
+    'lan_tournament.view',
+]
+
+[[roles]]
+id = 'lan_tournament_viewer'
+title = 'LAN-Turniere ansehen'
+assigned_permissions = [
+    'lan_tournament.view',
+]
