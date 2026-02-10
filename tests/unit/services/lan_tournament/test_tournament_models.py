@@ -250,6 +250,8 @@ def test_tournament_match_creation():
         tournament_id=tournament_id,
         group_order=1,
         match_order=3,
+        round=0,
+        next_match_id=None,
         confirmed_by=confirmed_by,
         created_at=NOW,
     )
@@ -258,6 +260,8 @@ def test_tournament_match_creation():
     assert match.tournament_id == tournament_id
     assert match.group_order == 1
     assert match.match_order == 3
+    assert match.round == 0
+    assert match.next_match_id is None
     assert match.confirmed_by == confirmed_by
     assert match.created_at == NOW
 
@@ -268,12 +272,16 @@ def test_tournament_match_unconfirmed():
         tournament_id=TournamentID(generate_uuid()),
         group_order=None,
         match_order=None,
+        round=None,
+        next_match_id=None,
         confirmed_by=None,
         created_at=NOW,
     )
 
     assert match.group_order is None
     assert match.match_order is None
+    assert match.round is None
+    assert match.next_match_id is None
     assert match.confirmed_by is None
 
 
@@ -338,11 +346,13 @@ def test_tournament_match_to_contestant_with_participant():
 def test_tournament_seed_creation():
     seed = TournamentSeed(
         match_order=1,
+        round=0,
         entry_a='Team A',
         entry_b='Team B',
     )
 
     assert seed.match_order == 1
+    assert seed.round == 0
     assert seed.entry_a == 'Team A'
     assert seed.entry_b == 'Team B'
 
@@ -350,6 +360,7 @@ def test_tournament_seed_creation():
 def test_tournament_seed_is_frozen():
     seed = TournamentSeed(
         match_order=1,
+        round=0,
         entry_a='Team A',
         entry_b='Team B',
     )

@@ -1,9 +1,14 @@
-from datetime import UTC
+from datetime import UTC, datetime
 
 from byceps.services.user.models.user import UserID
 from byceps.util.result import Err, Ok, Result
 
 from . import tournament_repository
+from .events import (
+    ContestantAdvancedEvent,
+    MatchConfirmedEvent,
+    MatchUnconfirmedEvent,
+)
 from .models.tournament import TournamentID
 from .models.tournament_match import (
     TournamentMatch,
@@ -20,6 +25,12 @@ from .models.tournament_match_to_contestant import (
 from .models.tournament_participant import TournamentParticipantID
 from .models.tournament_seed import TournamentSeed
 from .models.tournament_team import TournamentTeamID
+from .signals import (
+    contestant_advanced,
+    match_confirmed,
+    match_unconfirmed,
+)
+from .tournament_domain_service import determine_match_winner
 
 
 def set_seed(
@@ -27,10 +38,8 @@ def set_seed(
     tournament_id: TournamentID,
 ) -> Result[None, str]:
     """Set seeding for a tournament."""
-    from datetime import datetime
     from uuid import UUID
 
-    from byceps.database import db
     from byceps.util.uuid import generate_uuid7
 
     from . import signals
@@ -57,6 +66,8 @@ def set_seed(
             tournament_id=tournament_id,
             group_order=None,
             match_order=seed.match_order,
+            round=seed.round,
+            next_match_id=None,
             confirmed_by=None,
             created_at=now,
         )
@@ -117,7 +128,7 @@ def set_seed(
             tournament_repository.create_match_contestant(contestant_b)
 
     # Commit entire seeding as a single transaction
-    db.session.commit()
+    tournament_repository.commit_session()
 
     # Dispatch events after successful commit
     for match_event in match_events:
@@ -128,11 +139,17 @@ def set_seed(
 
 def generate_single_elimination_bracket(
     tournament_id: TournamentID,
-) -> Result[list[TournamentSeed], str]:
-    """Generate single elimination bracket with seeding."""
+) -> Result[int, str]:
+    """Generate single elimination bracket with all rounds."""
     import math
+    from uuid import UUID
 
+    from byceps.util.uuid import generate_uuid7
+
+    from . import signals
+    from .events import MatchCreatedEvent
     from .models.contestant_type import ContestantType
+    from .tournament_domain_service import _standard_seed_order
 
     # Get tournament to check contestant type
     tournament = tournament_repository.get_tournament(tournament_id)
@@ -153,44 +170,119 @@ def generate_single_elimination_bracket(
     if num_contestants < 2:
         return Err('Need at least 2 contestants for bracket.')
 
-    # Calculate next power of 2
+    # Calculate bracket geometry
     bracket_size = 2 ** math.ceil(math.log2(num_contestants))
+    num_rounds = int(math.log2(bracket_size))
+    is_team = tournament.contestant_type == ContestantType.TEAM
+    now = datetime.now(UTC)
 
-    # Create seed list
-    seeds = []
-    match_order = 0
+    # Build rounds from final backwards so we can set next_match_id
+    # rounds_matches[r] holds match IDs for round r
+    rounds_matches: list[list[TournamentMatchID]] = [
+        [] for _ in range(num_rounds)
+    ]
+    match_events: list[MatchCreatedEvent] = []
 
-    # Standard single elimination seeding pattern
-    # For 8 players: 1v8, 4v5, 2v7, 3v6
-    # For 4 players: 1v4, 2v3
-    # With BYEs: higher seeds get BYEs
+    # Create matches round by round, final first
+    for r in range(num_rounds - 1, -1, -1):
+        num_matches_in_round = 2 ** (num_rounds - 1 - r)
+        for m in range(num_matches_in_round):
+            match_id = TournamentMatchID(generate_uuid7())
 
-    # Simple approach: pair contestants sequentially, add BYEs at end
-    contestant_index = 0
-    for _i in range(bracket_size // 2):
-        # Get entry_a
-        if contestant_index < num_contestants:
-            entry_a = contestant_ids[contestant_index]
-            contestant_index += 1
+            # Determine next_match_id from the next round
+            if r < num_rounds - 1:
+                next_match_id = rounds_matches[r + 1][m // 2]
+            else:
+                next_match_id = None
+
+            match = TournamentMatch(
+                id=match_id,
+                tournament_id=tournament_id,
+                group_order=None,
+                match_order=m,
+                round=r,
+                next_match_id=next_match_id,
+                confirmed_by=None,
+                created_at=now,
+            )
+            tournament_repository.create_match(match)
+            rounds_matches[r].append(match_id)
+
+            match_events.append(
+                MatchCreatedEvent(
+                    occurred_at=now,
+                    initiator=None,
+                    tournament_id=tournament_id,
+                    match_id=match_id,
+                )
+            )
+
+    # Seed round 0 using standard seed order
+    seed_order = _standard_seed_order(bracket_size)
+
+    # Pad contestant list with None for BYEs
+    padded: list[str | None] = list(contestant_ids) + [None] * (
+        bracket_size - num_contestants
+    )
+
+    # Place contestants into round 0 matches
+    for slot_idx, seed_pos in enumerate(seed_order):
+        match_idx = slot_idx // 2
+        match_id = rounds_matches[0][match_idx]
+        cid = padded[seed_pos]
+
+        if cid is None:
+            continue  # BYE — no contestant to place
+
+        contestant_id = TournamentMatchToContestantID(generate_uuid7())
+        if is_team:
+            contestant = TournamentMatchToContestant(
+                id=contestant_id,
+                tournament_match_id=match_id,
+                team_id=TournamentTeamID(UUID(cid)),
+                participant_id=None,
+                score=None,
+                created_at=now,
+            )
         else:
-            entry_a = 'BYE'
+            contestant = TournamentMatchToContestant(
+                id=contestant_id,
+                tournament_match_id=match_id,
+                team_id=None,
+                participant_id=TournamentParticipantID(UUID(cid)),
+                score=None,
+                created_at=now,
+            )
+        tournament_repository.create_match_contestant(contestant)
 
-        # Get entry_b
-        if contestant_index < num_contestants:
-            entry_b = contestant_ids[contestant_index]
-            contestant_index += 1
-        else:
-            entry_b = 'BYE'
+    # Auto-advance BYE matches: if a round 0 match has only
+    # 1 contestant, advance that contestant to the next match
+    for match_idx, match_id in enumerate(rounds_matches[0]):
+        contestants = tournament_repository.get_contestants_for_match(match_id)
+        if len(contestants) == 1 and num_rounds > 1:
+            # Advance the sole contestant to the next round
+            sole = contestants[0]
+            next_mid = rounds_matches[1][match_idx // 2]
+            adv_id = TournamentMatchToContestantID(generate_uuid7())
+            advanced = TournamentMatchToContestant(
+                id=adv_id,
+                tournament_match_id=next_mid,
+                team_id=sole.team_id,
+                participant_id=sole.participant_id,
+                score=None,
+                created_at=now,
+            )
+            tournament_repository.create_match_contestant(advanced)
 
-        seed = TournamentSeed(
-            match_order=match_order,
-            entry_a=entry_a,
-            entry_b=entry_b,
-        )
-        seeds.append(seed)
-        match_order += 1
+    # Single transaction commit
+    tournament_repository.commit_session()
 
-    return Ok(seeds)
+    # Dispatch events after successful commit
+    for event in match_events:
+        signals.match_created.send(None, event=event)
+
+    total_matches = bracket_size - 1
+    return Ok(total_matches)
 
 
 def reset_match(match_id: TournamentMatchID) -> None:
@@ -235,12 +327,107 @@ def confirm_match(
                 'Cannot confirm match: all contestants must have scores.'
             )
 
-    tournament_repository.confirm_match(match_id, confirmed_by_user_id)
+    # Determine winner.
+    winner_result = determine_match_winner(contestants)
+    if winner_result.is_err():
+        return Err(winner_result.unwrap_err())
 
-    # TODO: Bracket advancement logic
-    # - Determine winner
-    # - Find next match in bracket
-    # - Add winner to next match
+    winner = winner_result.unwrap()
+
+    tournament_repository.confirm_match(match_id, confirmed_by_user_id)
+    tournament_repository.commit_session()
+
+    now = datetime.now(UTC)
+    winner_team_id = winner.team_id
+    winner_participant_id = winner.participant_id
+
+    match_confirmed.send(
+        MatchConfirmedEvent(
+            occurred_at=now,
+            initiator=None,
+            tournament_id=match.tournament_id,
+            match_id=match_id,
+            winner_team_id=winner_team_id,
+            winner_participant_id=winner_participant_id,
+        )
+    )
+
+    if match.next_match_id is not None:
+        from byceps.util.uuid import generate_uuid7
+
+        contestant_id = TournamentMatchToContestantID(generate_uuid7())
+        new_contestant = TournamentMatchToContestant(
+            id=contestant_id,
+            tournament_match_id=match.next_match_id,
+            team_id=winner_team_id,
+            participant_id=winner_participant_id,
+            score=None,
+            created_at=now,
+        )
+        tournament_repository.create_match_contestant(new_contestant)
+        tournament_repository.commit_session()
+
+        contestant_advanced.send(
+            ContestantAdvancedEvent(
+                occurred_at=now,
+                initiator=None,
+                tournament_id=match.tournament_id,
+                match_id=match.next_match_id,
+                from_match_id=match_id,
+                advanced_team_id=winner_team_id,
+                advanced_participant_id=winner_participant_id,
+            )
+        )
+
+    return Ok(None)
+
+
+def unconfirm_match(
+    match_id: TournamentMatchID,
+    initiator_id: UserID,
+) -> Result[None, str]:
+    """Unconfirm a match and cascade-retract advanced contestants."""
+    match = tournament_repository.get_match(match_id)
+    if match is None:
+        return Err('Match not found.')
+
+    if match.confirmed_by is None:
+        return Err('Match is not confirmed.')
+
+    contestants = tournament_repository.get_contestants_for_match(match_id)
+
+    # Determine winner for cascade retraction.
+    winner_result = determine_match_winner(contestants)
+
+    if match.next_match_id is not None and winner_result.is_ok():
+        winner = winner_result.unwrap()
+        next_match = tournament_repository.get_match(match.next_match_id)
+        if next_match is not None and next_match.confirmed_by is not None:
+            # Recursively unconfirm downstream match first.
+            cascade_result = unconfirm_match(match.next_match_id, initiator_id)
+            if cascade_result.is_err():
+                return cascade_result
+
+        # Remove advanced contestant from next match.
+        tournament_repository.delete_contestant_from_match(
+            match.next_match_id,
+            team_id=winner.team_id,
+            participant_id=winner.participant_id,
+        )
+
+    tournament_repository.unconfirm_match(match_id)
+    tournament_repository.commit_session()
+
+    now = datetime.now(UTC)
+    match_unconfirmed.send(
+        MatchUnconfirmedEvent(
+            occurred_at=now,
+            initiator=None,
+            tournament_id=match.tournament_id,
+            match_id=match_id,
+            unconfirmed_by=initiator_id,
+        )
+    )
 
     return Ok(None)
 
@@ -281,8 +468,6 @@ def add_comment(
     comment: str,
 ) -> Result[None, str]:
     """Add a comment to a match."""
-    from datetime import datetime
-
     from byceps.util.uuid import generate_uuid7
 
     # Validate comment length (max 1000 chars per Task #17)
@@ -339,8 +524,6 @@ def delete_match(
     2. Match contestants
     3. Match itself
     """
-    from datetime import datetime
-
     from . import signals
     from .events import MatchDeletedEvent
 

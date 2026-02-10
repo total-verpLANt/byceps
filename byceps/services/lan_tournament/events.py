@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from byceps.services.core.events import BaseEvent
+from byceps.services.user.models.user import UserID
 
 from .models.tournament import TournamentID
 from .models.tournament_match import TournamentMatchID
@@ -100,3 +101,21 @@ class MatchCreatedEvent(_BaseMatchEvent):
 @dataclass(frozen=True, kw_only=True)
 class MatchDeletedEvent(_BaseMatchEvent):
     pass
+
+
+@dataclass(frozen=True, kw_only=True)
+class MatchConfirmedEvent(_BaseMatchEvent):
+    winner_team_id: TournamentTeamID | None
+    winner_participant_id: TournamentParticipantID | None
+
+
+@dataclass(frozen=True, kw_only=True)
+class MatchUnconfirmedEvent(_BaseMatchEvent):
+    unconfirmed_by: UserID
+
+
+@dataclass(frozen=True, kw_only=True)
+class ContestantAdvancedEvent(_BaseMatchEvent):
+    from_match_id: TournamentMatchID
+    advanced_team_id: TournamentTeamID | None
+    advanced_participant_id: TournamentParticipantID | None
