@@ -21,9 +21,7 @@ class DbTournamentTeam(db.Model):
     """A team in a LAN tournament."""
 
     __tablename__ = 'lan_tournament_teams'
-    __table_args__ = (
-        db.UniqueConstraint('tournament_id', 'name'),
-    )
+    __table_args__ = (db.UniqueConstraint('tournament_id', 'name'),)
 
     id: Mapped[TournamentTeamID] = mapped_column(
         db.Uuid, default=generate_uuid7, primary_key=True

@@ -176,7 +176,7 @@ This guide documents all available URLs for the LAN Tournament module, covering 
 ### Match Management (Admin)
 
 #### List Matches for Tournament
-- **URL**: `/lan-tournaments/tournaments/<tournament_id>/matches`
+- **URL**: `/<tournament_id>/matches`
 - **Method**: GET
 - **Permission**: `lan_tournament.view`
 - **Description**: Lists all matches for a tournament with contestants
