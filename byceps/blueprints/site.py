@@ -40,6 +40,7 @@ def register_site_blueprints(
         ('services.page.blueprints.site', None),
         ('services.party_history.blueprints.site', '/party_history'),
         ('services.seating.blueprints.site', '/seating'),
+        ('services.chair_optout.blueprints.site', '/chair_optout'),
         ('services.shop.order.blueprints.site', '/shop'),
         ('services.shop.orders.blueprints.site', '/shop/orders'),
         (

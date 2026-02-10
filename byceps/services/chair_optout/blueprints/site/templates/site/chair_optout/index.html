@@ -1,0 +1,55 @@
+{% extends 'layout/base.html' %}
+{% from 'macros/forms.html' import form_buttons, form_field_errors, form_form_errors %}
+{% set current_page = 'chair_optout' %}
+{% set page_title = _('Eigener Stuhl') %}
+
+{% block body %}
+
+  <h1 class="title">{{ page_title }}</h1>
+
+  <div class="block">
+    {{ _('Wähle die Tickets aus, für die du deinen eigenen Stuhl mitbringst.') }}
+  </div>
+
+  <form method="post">
+    {{ form_form_errors(form) }}
+    <table class="itemlist is-vcentered is-wide">
+      <thead>
+        <tr>
+          <th>{{ _('Ticketnummer') }}</th>
+          <th>{{ _('Sitzplatz') }}</th>
+          <th class="centered">{{ _('Eigenen Stuhl mitbringen') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {%- for ticket in ticket_optouts|sort(attribute='code') %}
+        <tr>
+          <td><span class="monospace">{{ ticket.code }}</span></td>
+          <td>
+            {%- if ticket.has_seat -%}
+              {{ ticket.seat_label|fallback(_('ohne Bezeichnung')) }}
+            {%- else -%}
+              {{ _('kein Sitzplatz')|dim }}
+            {%- endif -%}
+          </td>
+          <td class="centered">
+            <input
+              type="checkbox"
+              name="{{ form.ticket_ids.name }}"
+              value="{{ ticket.id }}"
+              aria-label="{{ _('Eigenen Stuhl mitbringen für Ticket %(ticket_code)s', ticket_code=ticket.code) }}"
+              {%- if ticket.brings_own_chair %} checked{% endif -%}
+              {%- if not ticket.has_seat %} disabled{% endif -%}
+            >
+          </td>
+        </tr>
+        {%- endfor %}
+      </tbody>
+    </table>
+
+    {{ form_field_errors(form.ticket_ids) }}
+
+    {{ form_buttons(_('Speichern')) }}
+  </form>
+
+{% endblock %}

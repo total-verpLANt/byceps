@@ -20,5 +20,11 @@
       {%- endfor %}
     </tbody>
   </table>
+
+  <div class="button-row">
+    <a class="button" href="{{ url_for('chair_optout.index') }}">
+      {{ _('Eigenen Stuhl mitbringen') }}
+    </a>
+  </div>
   {%- endif %}
 </div>

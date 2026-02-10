@@ -12,6 +12,11 @@
   <div class="block">{{ ngettext('You are managing seats of <strong>%(quantity)s</strong> ticket.', 'You are managing seats of <strong>%(quantity)s</strong> tickets.', managed_tickets_total, quantity=managed_tickets_total) }}</div>
   {%- endwith %}
 
+  <div class="block">
+    {{ _('Bringst du deinen eigenen Stuhl mit?') }} ->
+    <a href="{{ url_for('chair_optout.index') }}">{{ _('Stuhl-Optionen') }}</a>
+  </div>
+
   <div class="row row--space-between is-vcentered">
     <div class="column--grow">
       <div class="ticket-selector button">
