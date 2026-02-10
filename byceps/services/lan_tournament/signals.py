@@ -18,6 +18,10 @@ team_deleted       = lan_tournament_signals.signal('team-deleted')
 team_member_joined = lan_tournament_signals.signal('team-member-joined')
 team_member_left   = lan_tournament_signals.signal('team-member-left')
 
-match_created = lan_tournament_signals.signal('match-created')
-match_deleted = lan_tournament_signals.signal('match-deleted')
+match_created      = lan_tournament_signals.signal('match-created')
+match_deleted      = lan_tournament_signals.signal('match-deleted')
+match_confirmed    = lan_tournament_signals.signal('match-confirmed')
+match_unconfirmed  = lan_tournament_signals.signal('match-unconfirmed')
+
+contestant_advanced = lan_tournament_signals.signal('contestant-advanced')
 # fmt: on

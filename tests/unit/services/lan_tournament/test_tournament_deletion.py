@@ -24,7 +24,9 @@ from byceps.services.user.models.user import UserID
 from tests.helpers import generate_uuid
 
 
-@patch('byceps.services.lan_tournament.tournament_service.tournament_repository')
+@patch(
+    'byceps.services.lan_tournament.tournament_service.tournament_repository'
+)
 @patch('byceps.services.lan_tournament.tournament_service.signals')
 def test_delete_tournament_cascades_all_dependencies(
     mock_signals, mock_repository
@@ -53,7 +55,9 @@ def test_delete_tournament_cascades_all_dependencies(
     assert mock_signals.tournament_deleted.send.called
 
 
-@patch('byceps.services.lan_tournament.tournament_team_service.tournament_repository')
+@patch(
+    'byceps.services.lan_tournament.tournament_team_service.tournament_repository'
+)
 @patch('byceps.services.lan_tournament.tournament_team_service.signals')
 def test_delete_team_removes_references_before_deletion(
     mock_signals, mock_repository
@@ -101,7 +105,9 @@ def test_delete_team_removes_references_before_deletion(
     assert mock_signals.team_deleted.send.called
 
 
-@patch('byceps.services.lan_tournament.tournament_team_service.tournament_repository')
+@patch(
+    'byceps.services.lan_tournament.tournament_team_service.tournament_repository'
+)
 def test_delete_team_enforces_captain_authorization(mock_repository):
     """Test that delete_team() only allows captain to delete (unless admin bypass)."""
     from datetime import datetime
@@ -140,7 +146,9 @@ def test_delete_team_enforces_captain_authorization(mock_repository):
     mock_repository.delete_team.assert_not_called()
 
 
-@patch('byceps.services.lan_tournament.tournament_match_service.tournament_repository')
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
 def test_delete_match_cascades_comments_and_contestants(mock_repository):
     """Test that delete_match() deletes comments and contestants before match."""
     from datetime import datetime
@@ -159,6 +167,8 @@ def test_delete_match_cascades_comments_and_contestants(mock_repository):
         tournament_id=tournament_id,
         group_order=None,
         match_order=None,
+        round=None,
+        next_match_id=None,
         confirmed_by=None,
         created_at=datetime(2025, 6, 15, 14, 0, 0),
     )

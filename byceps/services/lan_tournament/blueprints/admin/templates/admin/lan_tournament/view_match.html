@@ -78,6 +78,19 @@
   </div>
   {%- endif %}
 
+  {%- if match.confirmed_by and
+         has_current_user_permission('lan_tournament.administrate') %}
+  <div class='block'>
+    <form action='{{ url_for('.unconfirm_match', match_id=match.id) }}'
+          method='post'
+          onsubmit="return confirm('{{ _('This will also unconfirm any downstream matches that used this result. Continue?') }}');">
+      <button type='submit' class='button color-warning'>
+        {{ render_icon('warning') }} {{ _('Unconfirm Match') }}
+      </button>
+    </form>
+  </div>
+  {%- endif %}
+
   {# Comments section #}
   <div class='block'>
     <h2>{{ _('Comments') }}</h2>

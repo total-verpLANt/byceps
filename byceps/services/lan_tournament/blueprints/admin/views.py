@@ -410,22 +410,13 @@ def generate_bracket(tournament_id):
     match tournament_match_service.generate_single_elimination_bracket(
         tournament.id
     ):
-        case Ok(seeds):
-            match tournament_match_service.set_seed(seeds, tournament.id):
-                case Ok(_):
-                    flash_success(
-                        gettext(
-                            'Bracket generated with %(count)d matches.',
-                            count=len(seeds),
-                        )
-                    )
-                case Err(error_message):
-                    flash_error(
-                        gettext(
-                            'Bracket generation failed: %(error)s',
-                            error=error_message,
-                        )
-                    )
+        case Ok(match_count):
+            flash_success(
+                gettext(
+                    'Bracket generated with %(count)d matches.',
+                    count=match_count,
+                )
+            )
         case Err(error_message):
             flash_error(
                 gettext(
@@ -824,6 +815,26 @@ def confirm_match(match_id):
             flash_error(
                 gettext(
                     'Error confirming match: %(error)s',
+                    error=error_message,
+                )
+            )
+
+    return redirect_to('.view_match', match_id=match_id)
+
+
+@blueprint.post('/matches/<match_id>/unconfirm')
+@permission_required('lan_tournament.administrate')
+def unconfirm_match(match_id):
+    """Unconfirm a match result."""
+    match_id_obj = TournamentMatchID(match_id)
+
+    match tournament_match_service.unconfirm_match(match_id_obj, g.user.id):
+        case Ok(_):
+            flash_success(gettext('Match has been unconfirmed.'))
+        case Err(error_message):
+            flash_error(
+                gettext(
+                    'Error unconfirming match: %(error)s',
                     error=error_message,
                 )
             )
