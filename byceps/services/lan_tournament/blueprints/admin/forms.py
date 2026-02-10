@@ -89,7 +89,6 @@ class TournamentUpdateForm(_BaseForm):
     pass
 
 
-
 class TeamCreateForm(LocalizedForm):
     name = StringField(lazy_gettext('Name'), [InputRequired(), Length(max=80)])
     tag = StringField(lazy_gettext('Tag'), [Optional(), Length(max=20)])
@@ -115,17 +114,4 @@ class TeamUpdateForm(LocalizedForm):
     )
     join_code = StringField(
         lazy_gettext('Join code'), [Optional(), Length(max=80)]
-    )
-
-
-
-class MatchScoreForm(LocalizedForm):
-    score = IntegerField(
-        lazy_gettext('Score'), [InputRequired()]
-    )
-
-
-class MatchCommentForm(LocalizedForm):
-    comment = TextAreaField(
-        lazy_gettext('Comment'), [InputRequired(), Length(max=1000)]
     )

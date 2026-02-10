@@ -449,7 +449,6 @@ def _get_tournament_or_404(tournament_id) -> Tournament:
     return tournament
 
 
-
 # -------------------------------------------------------------------- #
 # matches
 
@@ -467,22 +466,20 @@ def matches(tournament_id):
     ):
         abort(404)
 
-    matches = tournament_match_service.get_matches_for_tournament(
-        tournament.id
-    )
+    matches = tournament_match_service.get_matches_for_tournament(tournament.id)
 
     # Get contestants for each match
-    from byceps.services.lan_tournament import tournament_repository
-
     match_data = []
     for match in matches:
-        contestants = tournament_repository.get_contestants_for_match(
+        contestants = tournament_match_service.get_contestants_for_match(
             match.id
         )
-        match_data.append({
-            'match': match,
-            'contestants': contestants,
-        })
+        match_data.append(
+            {
+                'match': match,
+                'contestants': contestants,
+            }
+        )
 
     return {
         'tournament': tournament,
@@ -509,9 +506,7 @@ def view_match(match_id):
     ):
         abort(404)
 
-    from byceps.services.lan_tournament import tournament_repository
-
-    contestants = tournament_repository.get_contestants_for_match(
+    contestants = tournament_match_service.get_contestants_for_match(
         match_id_obj
     )
     comments = tournament_match_service.get_comments_from_match(match_id_obj)
@@ -522,7 +517,6 @@ def view_match(match_id):
         'contestants': contestants,
         'comments': comments,
     }
-
 
 
 @blueprint.get('/<tournament_id>/bracket')
@@ -538,22 +532,20 @@ def bracket(tournament_id):
     ):
         abort(404)
 
-    matches = tournament_match_service.get_matches_for_tournament(
-        tournament.id
-    )
+    matches = tournament_match_service.get_matches_for_tournament(tournament.id)
 
     # Get contestants for each match
-    from byceps.services.lan_tournament import tournament_repository
-
     match_data = []
     for match in matches:
-        contestants = tournament_repository.get_contestants_for_match(
+        contestants = tournament_match_service.get_contestants_for_match(
             match.id
         )
-        match_data.append({
-            'match': match,
-            'contestants': contestants,
-        })
+        match_data.append(
+            {
+                'match': match,
+                'contestants': contestants,
+            }
+        )
 
     return {
         'tournament': tournament,
