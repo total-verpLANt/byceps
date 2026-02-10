@@ -1,4 +1,7 @@
+from datetime import UTC
+
 from byceps.services.user.models.user import UserID
+from byceps.util.result import Err, Ok, Result
 
 from . import tournament_repository
 from .models.tournament import TournamentID
@@ -10,37 +13,40 @@ from .models.tournament_match_comment import (
     TournamentMatchComment,
     TournamentMatchCommentID,
 )
+from .models.tournament_match_to_contestant import (
+    TournamentMatchToContestant,
+    TournamentMatchToContestantID,
+)
 from .models.tournament_participant import TournamentParticipantID
 from .models.tournament_seed import TournamentSeed
 from .models.tournament_team import TournamentTeamID
-from datetime import UTC
 
 
 def set_seed(
     seed_list: list[TournamentSeed],
     tournament_id: TournamentID,
-) -> None:
+) -> Result[None, str]:
     """Set seeding for a tournament."""
     from datetime import datetime
     from uuid import UUID
 
-    from .models.tournament_match import TournamentMatch, TournamentMatchID
-    from .models.tournament_match_to_contestant import (
-        TournamentMatchToContestant,
-        TournamentMatchToContestantID,
-    )
+    from byceps.database import db
     from byceps.util.uuid import generate_uuid7
+
+    from . import signals
+    from .events import MatchCreatedEvent
+    from .models.contestant_type import ContestantType
 
     # Get tournament to check contestant type
     tournament = tournament_repository.get_tournament(tournament_id)
     if tournament.contestant_type is None:
-        raise ValueError('Tournament contestant type is not set.')
-
-    from .models.contestant_type import ContestantType
+        return Err('Tournament contestant type is not set.')
 
     is_team_tournament = tournament.contestant_type == ContestantType.TEAM
 
     now = datetime.now(UTC)
+
+    match_events: list[MatchCreatedEvent] = []
 
     # Create matches and contestants for each seed
     for seed in seed_list:
@@ -56,13 +62,19 @@ def set_seed(
         )
         tournament_repository.create_match(match)
 
+        match_event = MatchCreatedEvent(
+            occurred_at=now,
+            initiator=None,
+            tournament_id=tournament_id,
+            match_id=match_id,
+        )
+        match_events.append(match_event)
+
         # Create contestants for entry_a and entry_b
         # Skip if entry is "BYE"
         if seed.entry_a.upper() != 'BYE':
             contestant_a_id = TournamentMatchToContestantID(generate_uuid7())
             if is_team_tournament:
-                from .models.tournament_team import TournamentTeamID
-
                 contestant_a = TournamentMatchToContestant(
                     id=contestant_a_id,
                     tournament_match_id=match_id,
@@ -72,17 +84,11 @@ def set_seed(
                     created_at=now,
                 )
             else:
-                from .models.tournament_participant import (
-                    TournamentParticipantID,
-                )
-
                 contestant_a = TournamentMatchToContestant(
                     id=contestant_a_id,
                     tournament_match_id=match_id,
                     team_id=None,
-                    participant_id=TournamentParticipantID(
-                        UUID(seed.entry_a)
-                    ),
+                    participant_id=TournamentParticipantID(UUID(seed.entry_a)),
                     score=None,
                     created_at=now,
                 )
@@ -91,8 +97,6 @@ def set_seed(
         if seed.entry_b.upper() != 'BYE':
             contestant_b_id = TournamentMatchToContestantID(generate_uuid7())
             if is_team_tournament:
-                from .models.tournament_team import TournamentTeamID
-
                 contestant_b = TournamentMatchToContestant(
                     id=contestant_b_id,
                     tournament_match_id=match_id,
@@ -102,27 +106,29 @@ def set_seed(
                     created_at=now,
                 )
             else:
-                from .models.tournament_participant import (
-                    TournamentParticipantID,
-                )
-
                 contestant_b = TournamentMatchToContestant(
                     id=contestant_b_id,
                     tournament_match_id=match_id,
                     team_id=None,
-                    participant_id=TournamentParticipantID(
-                        UUID(seed.entry_b)
-                    ),
+                    participant_id=TournamentParticipantID(UUID(seed.entry_b)),
                     score=None,
                     created_at=now,
                 )
             tournament_repository.create_match_contestant(contestant_b)
 
+    # Commit entire seeding as a single transaction
+    db.session.commit()
+
+    # Dispatch events after successful commit
+    for match_event in match_events:
+        signals.match_created.send(None, event=match_event)
+
+    return Ok(None)
 
 
 def generate_single_elimination_bracket(
     tournament_id: TournamentID,
-) -> list[TournamentSeed]:
+) -> Result[list[TournamentSeed], str]:
     """Generate single elimination bracket with seeding."""
     import math
 
@@ -131,7 +137,7 @@ def generate_single_elimination_bracket(
     # Get tournament to check contestant type
     tournament = tournament_repository.get_tournament(tournament_id)
     if tournament.contestant_type is None:
-        raise ValueError('Tournament contestant type is not set.')
+        return Err('Tournament contestant type is not set.')
 
     # Get contestants (participants or teams)
     if tournament.contestant_type == ContestantType.TEAM:
@@ -145,7 +151,7 @@ def generate_single_elimination_bracket(
 
     num_contestants = len(contestant_ids)
     if num_contestants < 2:
-        raise ValueError('Need at least 2 contestants for bracket.')
+        return Err('Need at least 2 contestants for bracket.')
 
     # Calculate next power of 2
     bracket_size = 2 ** math.ceil(math.log2(num_contestants))
@@ -184,12 +190,12 @@ def generate_single_elimination_bracket(
         seeds.append(seed)
         match_order += 1
 
-    return seeds
+    return Ok(seeds)
 
 
 def reset_match(match_id: TournamentMatchID) -> None:
-    """Reset a match."""
-    tournament_repository.delete_match(match_id)
+    """Reset a match (with cascading delete of dependents)."""
+    delete_match(match_id)
 
 
 def get_match(
@@ -209,88 +215,79 @@ def get_matches_for_tournament(
 def confirm_match(
     match_id: TournamentMatchID,
     confirmed_by_user_id: UserID,
-) -> None:
+) -> Result[None, str]:
     """Confirm a match result."""
-    from .dbmodels.match import DbTournamentMatch
-    from byceps.database import db
-
-    # Get match and set confirmed_by
-    db_match = db.session.get(DbTournamentMatch, match_id)
-    if db_match is None:
-        raise ValueError(f'Unknown match ID "{match_id}"')
+    # Get match via repository
+    match = tournament_repository.get_match(match_id)
 
     # Check if already confirmed
-    if db_match.confirmed_by is not None:
-        raise ValueError('Match is already confirmed.')
+    if match.confirmed_by is not None:
+        return Err('Match is already confirmed.')
 
     # Validate that both contestants have scores
     contestants = tournament_repository.get_contestants_for_match(match_id)
     if len(contestants) < 2:
-        raise ValueError('Cannot confirm match with less than 2 contestants.')
+        return Err('Cannot confirm match with less than 2 contestants.')
 
     for contestant in contestants:
         if contestant.score is None:
-            raise ValueError(
+            return Err(
                 'Cannot confirm match: all contestants must have scores.'
             )
 
-    db_match.confirmed_by = confirmed_by_user_id
-    db.session.commit()
+    tournament_repository.confirm_match(match_id, confirmed_by_user_id)
 
-    # TODO: Bracket advancement logic (Task #4)
+    # TODO: Bracket advancement logic
     # - Determine winner
     # - Find next match in bracket
     # - Add winner to next match
+
+    return Ok(None)
 
 
 def set_score(
     match_id: TournamentMatchID,
     contestant_id: TournamentParticipantID | TournamentTeamID,
     score: int,
-) -> None:
+) -> Result[None, str]:
     """Set the score for a contestant in a match."""
     if score < 0:
-        raise ValueError('Score cannot be negative.')
+        return Err('Score cannot be negative.')
 
-    # Find the contestant entry for this match
-    # Try as participant first, then as team
-    try:
-        contestant = tournament_repository.find_contestant_for_match(
-            match_id,
-            participant_id=contestant_id,  # type: ignore[arg-type]
-        )
-    except ValueError:
-        # Not a valid participant_id, try as team_id
+    # Find the contestant entry for this match.
+    # Try as participant first, then as team.
+    contestant = tournament_repository.find_contestant_for_match(
+        match_id,
+        participant_id=contestant_id,  # type: ignore[arg-type]
+    )
+    if contestant is None:
         contestant = tournament_repository.find_contestant_for_match(
             match_id,
             team_id=contestant_id,  # type: ignore[arg-type]
         )
-
     if contestant is None:
-        raise ValueError(
+        return Err(
             f'Contestant "{contestant_id}" not found in match "{match_id}"'
         )
 
     tournament_repository.update_contestant_score(contestant.id, score)
+
+    return Ok(None)
 
 
 def add_comment(
     match_id: TournamentMatchID,
     created_by_user_id: UserID,
     comment: str,
-) -> None:
+) -> Result[None, str]:
     """Add a comment to a match."""
     from datetime import datetime
 
-    from .models.tournament_match_comment import (
-        TournamentMatchComment,
-        TournamentMatchCommentID,
-    )
     from byceps.util.uuid import generate_uuid7
 
     # Validate comment length (max 1000 chars per Task #17)
     if len(comment) > 1000:
-        raise ValueError('Comment cannot exceed 1000 characters.')
+        return Err('Comment cannot exceed 1000 characters.')
 
     now = datetime.now(UTC)
     comment_id = TournamentMatchCommentID(generate_uuid7())
@@ -305,27 +302,21 @@ def add_comment(
 
     tournament_repository.create_match_comment(match_comment)
 
+    return Ok(None)
+
 
 def update_comment(
     comment_id: TournamentMatchCommentID,
     comment: str,
-) -> None:
+) -> Result[None, str]:
     """Update a match comment."""
-    # Validate comment length (max 1000 chars per Task #17)
+    # Validate comment length (max 1000 chars)
     if len(comment) > 1000:
-        raise ValueError('Comment cannot exceed 1000 characters.')
+        return Err('Comment cannot exceed 1000 characters.')
 
-    # Need to add update method to repository
-    # For now, implement inline with db access
-    from .dbmodels.match_comment import DbTournamentMatchComment
-    from byceps.database import db
+    tournament_repository.update_match_comment(comment_id, comment)
 
-    db_comment = db.session.get(DbTournamentMatchComment, comment_id)
-    if db_comment is None:
-        raise ValueError(f'Unknown comment ID "{comment_id}"')
-
-    db_comment.comment = comment
-    db.session.commit()
+    return Ok(None)
 
 
 def delete_comment(
@@ -375,3 +366,10 @@ def get_comments_from_match(
 ) -> list[TournamentMatchComment]:
     """Return all comments for that match."""
     return tournament_repository.get_comments_for_match(match_id)
+
+
+def get_contestants_for_match(
+    match_id: TournamentMatchID,
+) -> list[TournamentMatchToContestant]:
+    """Return all contestants for that match."""
+    return tournament_repository.get_contestants_for_match(match_id)
