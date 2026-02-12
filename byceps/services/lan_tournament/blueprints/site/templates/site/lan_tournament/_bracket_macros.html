@@ -93,6 +93,22 @@
     margin-bottom: 1rem;
     color: #333;
   }
+
+  .bracket-slot.defwin {
+    border-left: 4px solid #17a2b8;
+    background-color: #e7f5f7;
+  }
+
+  .badge-defwin {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.7rem;
+    font-weight: bold;
+    color: #fff;
+    background-color: #17a2b8;
+    border-radius: 3px;
+    margin-left: 0.5rem;
+  }
 </style>
 
 <div class='bracket-container'>
@@ -130,9 +146,14 @@
       {%- set match = data.match %}
       {%- set contestants = data.contestants %}
       <div class='bracket-match'>
-        <div class='bracket-match-card {% if match.confirmed_by %}confirmed{% endif %}'>
+        <div class='bracket-match-card {% if match.confirmed_by %}confirmed{% endif %} {% if contestants|length == 1 %}defwin{% endif %}'>
           <div class='bracket-match-header'>
             {{ _('Match') }} #{{ match.match_order }}
+            {%- if contestants|length == 1 %}
+              <span class='badge-defwin' title='{{ _("Free Win - Opponent advanced automatically") }}'>
+                {{ _('defwin') }}
+              </span>
+            {%- endif %}
           </div>
 
           {%- for contestant in contestants %}
@@ -210,7 +231,9 @@
       {%- endif %}
     </div>
     <div class='bracket-list-matchup'>
-      {%- for contestant in contestants %}
+      {%- if contestants|length == 1 %}
+        {# Defwin match #}
+        {%- set contestant = contestants[0] %}
         <div style='padding: 0.25rem 0;'>
           {%- if contestant.team_id %}
             {{ _('Team') }} {{ contestant.team_id }}
@@ -220,11 +243,26 @@
             BYE
           {%- endif %}
           <strong>{{ contestant.score|default('–', true) }}</strong>
+          <span class='badge-defwin' title='{{ _("Free Win") }}'>{{ _('defwin') }}</span>
         </div>
-        {%- if not loop.last %}
-        <div style='text-align: center; color: #999;'>vs</div>
-        {%- endif %}
-      {%- endfor %}
+      {%- else %}
+        {# Normal match #}
+        {%- for contestant in contestants %}
+          <div style='padding: 0.25rem 0;'>
+            {%- if contestant.team_id %}
+              {{ _('Team') }} {{ contestant.team_id }}
+            {%- elif contestant.participant_id %}
+              {{ contestant.participant_id }}
+            {%- else %}
+              BYE
+            {%- endif %}
+            <strong>{{ contestant.score|default('–', true) }}</strong>
+          </div>
+          {%- if not loop.last %}
+          <div style='text-align: center; color: #999;'>vs</div>
+          {%- endif %}
+        {%- endfor %}
+      {%- endif %}
     </div>
   </div>
   {%- endfor %}

@@ -149,6 +149,20 @@ def get_tournament(
     return tournament
 
 
+def lock_tournament_for_update(tournament_id: TournamentID) -> None:
+    """Acquire row-level lock on tournament for atomic bracket generation.
+
+    Uses SELECT FOR UPDATE to prevent concurrent bracket generation.
+    Lock is automatically released when transaction commits/rolls back.
+    """
+    from sqlalchemy import text
+
+    db.session.execute(
+        text('SELECT id FROM lan_tournaments WHERE id = :tournament_id FOR UPDATE'),
+        {'tournament_id': str(tournament_id)}
+    )
+
+
 def get_tournament_for_update(
     tournament_id: TournamentID,
 ) -> Tournament:

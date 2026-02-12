@@ -219,12 +219,28 @@ def get_participant_count(
     return tournament_repository.get_participant_count(tournament_id)
 
 
+def _has_bracket_generated(
+    tournament_id: TournamentID,
+) -> bool:
+    """Check if brackets have been generated for the tournament."""
+    matches = tournament_repository.get_matches_for_tournament(tournament_id)
+    return len(matches) > 0
+
+
 def change_status(
     tournament_id: TournamentID,
     new_status: TournamentStatus,
 ) -> Result[tuple[Tournament, TournamentStatusChangedEvent], str]:
     """Change the tournament status."""
     tournament = tournament_repository.get_tournament(tournament_id)
+
+    # Validate bracket exists when starting tournament
+    if new_status == TournamentStatus.ONGOING:
+        if not _has_bracket_generated(tournament_id):
+            return Err(
+                'Cannot start tournament without generated brackets. '
+                'Generate brackets first.'
+            )
 
     result = tournament_domain_service.change_tournament_status(
         tournament, new_status
