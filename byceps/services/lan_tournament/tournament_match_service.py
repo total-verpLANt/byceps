@@ -82,8 +82,8 @@ def set_seed(
         match_events.append(match_event)
 
         # Create contestants for entry_a and entry_b
-        # Skip if entry is "BYE"
-        if seed.entry_a.upper() != 'BYE':
+        # Skip if entry is "DEFWIN"
+        if seed.entry_a.upper() != 'DEFWIN':
             contestant_a_id = TournamentMatchToContestantID(generate_uuid7())
             if is_team_tournament:
                 contestant_a = TournamentMatchToContestant(
@@ -105,7 +105,7 @@ def set_seed(
                 )
             tournament_repository.create_match_contestant(contestant_a)
 
-        if seed.entry_b.upper() != 'BYE':
+        if seed.entry_b.upper() != 'DEFWIN':
             contestant_b_id = TournamentMatchToContestantID(generate_uuid7())
             if is_team_tournament:
                 contestant_b = TournamentMatchToContestant(
@@ -137,8 +137,27 @@ def set_seed(
     return Ok(None)
 
 
+def has_matches(tournament_id: TournamentID) -> bool:
+    """Check if tournament already has matches."""
+    matches = tournament_repository.get_matches_for_tournament(tournament_id)
+    return len(matches) > 0
+
+
+def clear_bracket(tournament_id: TournamentID) -> Result[None, str]:
+    """Clear all matches from a tournament bracket."""
+    matches = tournament_repository.get_matches_for_tournament(tournament_id)
+    
+    for match in matches:
+        delete_match(match.id)
+    
+    tournament_repository.commit_session()
+    
+    return Ok(None)
+
+
 def generate_single_elimination_bracket(
     tournament_id: TournamentID,
+    force_regenerate: bool = False,
 ) -> Result[int, str]:
     """Generate single elimination bracket with all rounds."""
     import math
@@ -150,6 +169,20 @@ def generate_single_elimination_bracket(
     from .events import MatchCreatedEvent
     from .models.contestant_type import ContestantType
     from .tournament_domain_service import _standard_seed_order
+
+    # CRITICAL: Lock tournament to prevent race condition (TOCTOU vulnerability)
+    # This blocks concurrent bracket generation attempts until this transaction commits
+    tournament_repository.lock_tournament_for_update(tournament_id)
+
+    # Check if matches already exist (now atomic with lock)
+    if has_matches(tournament_id) and not force_regenerate:
+        return Err('Tournament already has matches. Use force regenerate to clear and rebuild.')
+
+    # Clear existing matches if force regenerate
+    if force_regenerate and has_matches(tournament_id):
+        clear_result = clear_bracket(tournament_id)
+        if clear_result.is_err():
+            return Err(f'Failed to clear existing bracket: {clear_result.unwrap_err()}')
 
     # Get tournament to check contestant type
     tournament = tournament_repository.get_tournament(tournament_id)
@@ -220,7 +253,7 @@ def generate_single_elimination_bracket(
     # Seed round 0 using standard seed order
     seed_order = _standard_seed_order(bracket_size)
 
-    # Pad contestant list with None for BYEs
+    # Pad contestant list with None for DEFWINs
     padded: list[str | None] = list(contestant_ids) + [None] * (
         bracket_size - num_contestants
     )
@@ -232,7 +265,7 @@ def generate_single_elimination_bracket(
         cid = padded[seed_pos]
 
         if cid is None:
-            continue  # BYE — no contestant to place
+            continue  # DEFWIN — no contestant to place
 
         contestant_id = TournamentMatchToContestantID(generate_uuid7())
         if is_team:
@@ -255,7 +288,7 @@ def generate_single_elimination_bracket(
             )
         tournament_repository.create_match_contestant(contestant)
 
-    # Auto-advance BYE matches: if a round 0 match has only
+    # Auto-advance DEFWIN matches: if a round 0 match has only
     # 1 contestant, advance that contestant to the next match
     for match_idx, match_id in enumerate(rounds_matches[0]):
         contestants = tournament_repository.get_contestants_for_match(match_id)

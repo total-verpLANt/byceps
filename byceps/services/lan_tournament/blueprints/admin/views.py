@@ -72,9 +72,13 @@ def view(tournament_id):
 
     party = party_service.get_party(tournament.party_id)
 
+    # Check if tournament has bracket
+    has_bracket = tournament_match_service.has_matches(tournament.id)
+
     return {
         'party': party,
         'tournament': tournament,
+        'has_bracket': has_bracket,
     }
 
 
@@ -407,8 +411,12 @@ def generate_bracket(tournament_id):
         )
         return redirect_to('.view', tournament_id=tournament.id)
 
+    # Check for force regenerate parameter
+    force_regenerate = request.args.get('force', 'false').lower() == 'true'
+
     match tournament_match_service.generate_single_elimination_bracket(
-        tournament.id
+        tournament.id,
+        force_regenerate=force_regenerate,
     ):
         case Ok(match_count):
             flash_success(
