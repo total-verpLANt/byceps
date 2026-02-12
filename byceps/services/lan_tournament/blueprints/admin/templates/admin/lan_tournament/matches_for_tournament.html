@@ -33,7 +33,9 @@
       <tr>
         <td>{{ match.match_order }}</td>
         <td>
-          {%- for contestant in contestants %}
+          {%- if contestants|length == 1 %}
+            {# Defwin match: only one contestant, free advancement #}
+            {%- set contestant = contestants[0] %}
             {%- if contestant.team_id %}
               Team: {{ contestant.team_id }}
             {%- elif contestant.participant_id %}
@@ -41,8 +43,20 @@
             {%- else %}
               BYE
             {%- endif %}
-            {%- if not loop.last %} vs {% endif %}
-          {%- endfor %}
+            {{ render_tag(_('defwin - Advanced'), class='color-info', icon='arrow-right') }}
+          {%- else %}
+            {# Normal match: multiple contestants #}
+            {%- for contestant in contestants %}
+              {%- if contestant.team_id %}
+                Team: {{ contestant.team_id }}
+              {%- elif contestant.participant_id %}
+                Player: {{ contestant.participant_id }}
+              {%- else %}
+                BYE
+              {%- endif %}
+              {%- if not loop.last %} vs {% endif %}
+            {%- endfor %}
+          {%- endif %}
         </td>
         <td>
           {%- for contestant in contestants %}

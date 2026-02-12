@@ -166,9 +166,15 @@
       <form action="{{ url_for('.open_registration', tournament_id=tournament.id) }}" method="post">
         <button type="submit" class="button color-info">{{ _('Reopen registration') }}</button>
       </form>
+      {%- if has_bracket %}
+      <form action="{{ url_for('.generate_bracket', tournament_id=tournament.id) }}?force=true" method="post" id="regenerate-bracket-form">
+        <button type="submit" class="button color-warning">{{ render_icon('arrange') }} {{ _('Regenerate bracket') }}</button>
+      </form>
+      {%- else %}
       <form action="{{ url_for('.generate_bracket', tournament_id=tournament.id) }}" method="post">
         <button type="submit" class="button">{{ render_icon('arrange') }} {{ _('Generate bracket') }}</button>
       </form>
+      {%- endif %}
       <form action="{{ url_for('.start', tournament_id=tournament.id) }}" method="post">
         <button type="submit" class="button color-success">{{ _('Start tournament') }}</button>
       </form>
@@ -205,4 +211,19 @@
   </div>
   {%- endif %}
 
+{%- endblock %}
+
+{% block scripts %}
+<script>
+  // Regenerate bracket confirmation dialog
+  const regenerateForm = document.getElementById('regenerate-bracket-form');
+  if (regenerateForm) {
+    regenerateForm.addEventListener('submit', function(event) {
+      const confirmed = confirm('WARNING: Regenerating the bracket will DELETE all existing matches, scores, and bracket data. This action cannot be undone. Are you sure you want to continue?');
+      if (!confirmed) {
+        event.preventDefault();
+      }
+    });
+  }
+</script>
 {%- endblock %}

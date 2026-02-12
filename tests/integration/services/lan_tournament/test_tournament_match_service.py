@@ -104,8 +104,8 @@ def test_generate_and_seed_bracket_for_solo_tournament(
 
     # 4 players = 2 matches in first round
     assert len(seeds) == 2
-    assert all(seed.entry_a.upper() != 'BYE' for seed in seeds)
-    assert all(seed.entry_b.upper() != 'BYE' for seed in seeds)
+    assert all(seed.entry_a.upper() != 'DEFWIN' for seed in seeds)
+    assert all(seed.entry_b.upper() != 'DEFWIN' for seed in seeds)
 
     # Set seeds to create matches
     tournament_match_service.set_seed(seeds, tournament.id)
@@ -394,17 +394,17 @@ def test_team_tournament_bracket_workflow(party, user1, user2, user3, user4):
     assert len(matches) == 1
 
 
-def test_bracket_with_byes(party, user1, user2, user3):
-    """Test bracket generation with BYE entries."""
+def test_bracket_with_defwins(party, user1, user2, user3):
+    """Test bracket generation with DEFWIN entries."""
     tournament, _ = tournament_service.create_tournament(
         PARTY_ID,
-        'BYE Test Tournament',
+        'DEFWIN Test Tournament',
         tournament_mode=TournamentMode.SINGLE_ELIMINATION,
         contestant_type=ContestantType.SOLO,
         max_players=8,
     )
 
-    # Add 3 participants (will require BYEs to round up to 4)
+    # Add 3 participants (will require defwins to round up to 4)
     tournament_service.change_status(
         tournament.id, TournamentStatus.REGISTRATION_OPEN
     )
@@ -422,14 +422,14 @@ def test_bracket_with_byes(party, user1, user2, user3):
     # 3 players rounds up to 4 bracket size = 2 matches
     assert len(seeds) == 2
 
-    # Count BYEs (should be 1 BYE since we have 3 players in 4-slot bracket)
-    bye_count = sum(
+    # Count DEFWINs (should be 1 DEFWIN since we have 3 players in 4-slot bracket)
+    defwin_count = sum(
         1
         for seed in seeds
         for entry in [seed.entry_a, seed.entry_b]
-        if entry.upper() == 'BYE'
+        if entry.upper() == 'DEFWIN'
     )
-    assert bye_count == 1
+    assert defwin_count == 1
 
 
 def test_reset_match(party, user1, user2):
