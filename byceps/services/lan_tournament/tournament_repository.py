@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from sqlalchemy import delete, select
 
 from byceps.database import db
@@ -158,8 +160,10 @@ def lock_tournament_for_update(tournament_id: TournamentID) -> None:
     from sqlalchemy import text
 
     db.session.execute(
-        text('SELECT id FROM lan_tournaments WHERE id = :tournament_id FOR UPDATE'),
-        {'tournament_id': str(tournament_id)}
+        text(
+            'SELECT id FROM lan_tournaments WHERE id = :tournament_id FOR UPDATE'
+        ),
+        {'tournament_id': str(tournament_id)},
     )
 
 
@@ -193,11 +197,11 @@ def get_tournaments_for_party(
 def get_participant_count(
     tournament_id: TournamentID,
 ) -> int:
-    """Return the number of participants."""
+    """Return the number of active participants."""
     return db.session.execute(
-        select(db.func.count(DbTournamentParticipant.id)).filter_by(
-            tournament_id=tournament_id
-        )
+        select(db.func.count(DbTournamentParticipant.id))
+        .filter_by(tournament_id=tournament_id)
+        .where(DbTournamentParticipant.removed_at.is_(None))
     ).scalar_one()
 
 
@@ -270,10 +274,28 @@ def update_team(team: TournamentTeam) -> None:
     db.session.commit()
 
 
+def update_team_captain(
+    team_id: TournamentTeamID,
+    new_captain_user_id: UserID,
+) -> None:
+    """Update the captain of a team (flush only, caller commits)."""
+    db_team = db.session.get(DbTournamentTeam, team_id)
+    if db_team is None:
+        raise ValueError(f'Unknown team ID "{team_id}"')
+    db_team.captain_user_id = new_captain_user_id
+    db.session.flush()
+
+
 def delete_team(team_id: TournamentTeamID) -> None:
     """Delete a team."""
     db.session.execute(delete(DbTournamentTeam).filter_by(id=team_id))
     db.session.commit()
+
+
+def delete_team_flush(team_id: TournamentTeamID) -> None:
+    """Delete a team (flush only, caller commits)."""
+    db.session.execute(delete(DbTournamentTeam).filter_by(id=team_id))
+    db.session.flush()
 
 
 def delete_teams_for_tournament(tournament_id: TournamentID) -> None:
@@ -320,11 +342,26 @@ def get_team_for_update(team_id: TournamentTeamID) -> TournamentTeam:
 
 def get_teams_for_tournament(
     tournament_id: TournamentID,
+    *,
+    include_removed: bool = False,
 ) -> list[TournamentTeam]:
     """Return all teams for that tournament."""
+    stmt = select(DbTournamentTeam).filter_by(tournament_id=tournament_id)
+    if not include_removed:
+        stmt = stmt.where(DbTournamentTeam.removed_at.is_(None))
+    db_teams = db.session.execute(stmt).scalars().all()
+    return [_db_team_to_team(t) for t in db_teams]
+
+
+def get_teams_by_ids(
+    team_ids: set[TournamentTeamID],
+) -> list[TournamentTeam]:
+    """Return teams matching the given IDs."""
+    if not team_ids:
+        return []
     db_teams = (
         db.session.execute(
-            select(DbTournamentTeam).filter_by(tournament_id=tournament_id)
+            select(DbTournamentTeam).where(DbTournamentTeam.id.in_(team_ids))
         )
         .scalars()
         .all()
@@ -344,6 +381,7 @@ def _db_team_to_team(db_team: DbTournamentTeam) -> TournamentTeam:
         join_code=db_team.join_code,
         created_at=db_team.created_at,
         updated_at=db_team.updated_at,
+        removed_at=db_team.removed_at,
     )
 
 
@@ -364,7 +402,7 @@ def create_participant(
     )
 
     db.session.add(db_participant)
-    db.session.commit()
+    db.session.flush()
 
 
 def update_participant(participant: TournamentParticipant) -> None:
@@ -389,6 +427,20 @@ def delete_participant(
     db.session.commit()
 
 
+def delete_participants_by_ids(
+    participant_ids: set[TournamentParticipantID],
+) -> None:
+    """Delete multiple participants (flush only, caller commits)."""
+    if not participant_ids:
+        return
+    db.session.execute(
+        delete(DbTournamentParticipant).where(
+            DbTournamentParticipant.id.in_(participant_ids)
+        )
+    )
+    db.session.flush()
+
+
 def delete_participants_for_tournament(tournament_id: TournamentID) -> None:
     """Delete all participants for a tournament."""
     db.session.execute(
@@ -405,6 +457,49 @@ def remove_team_from_participants(team_id: TournamentTeamID) -> None:
         .values(team_id=None)
     )
     db.session.commit()
+
+
+def remove_team_from_participants_flush(
+    team_id: TournamentTeamID,
+) -> None:
+    """Set team_id to NULL for all participants in this team
+    (flush only, caller commits)."""
+    db.session.execute(
+        db.update(DbTournamentParticipant)
+        .filter_by(team_id=team_id)
+        .values(team_id=None)
+    )
+    db.session.flush()
+
+
+def soft_delete_participants_by_ids(
+    participant_ids: set[TournamentParticipantID],
+    removed_at: datetime,
+) -> None:
+    """Soft-delete participants by setting removed_at
+    (flush only, caller commits)."""
+    if not participant_ids:
+        return
+    db.session.execute(
+        db.update(DbTournamentParticipant)
+        .where(DbTournamentParticipant.id.in_(participant_ids))
+        .values(removed_at=removed_at)
+    )
+    db.session.flush()
+
+
+def soft_delete_team_flush(
+    team_id: TournamentTeamID,
+    removed_at: datetime,
+) -> None:
+    """Soft-delete a team by setting removed_at
+    (flush only, caller commits)."""
+    db.session.execute(
+        db.update(DbTournamentTeam)
+        .where(DbTournamentTeam.id == team_id)
+        .values(removed_at=removed_at)
+    )
+    db.session.flush()
 
 
 def find_participant(
@@ -434,46 +529,108 @@ def find_participant_by_user(
     tournament_id: TournamentID,
     user_id: UserID,
 ) -> TournamentParticipant | None:
-    """Return the participant for a user in a tournament, or `None`."""
+    """Return the active participant for a user in a tournament,
+    or `None`."""
     db_participant = db.session.execute(
-        select(DbTournamentParticipant).filter_by(
+        select(DbTournamentParticipant)
+        .filter_by(
             tournament_id=tournament_id,
             user_id=user_id,
         )
+        .where(DbTournamentParticipant.removed_at.is_(None))
     ).scalar_one_or_none()
     if db_participant is None:
         return None
     return _db_participant_to_participant(db_participant)
 
 
+def find_soft_deleted_participant_by_user(
+    tournament_id: TournamentID,
+    user_id: UserID,
+) -> TournamentParticipant | None:
+    """Return a soft-deleted participant for a user in a tournament,
+    or `None`."""
+    db_participant = db.session.execute(
+        select(DbTournamentParticipant)
+        .filter_by(
+            tournament_id=tournament_id,
+            user_id=user_id,
+        )
+        .where(DbTournamentParticipant.removed_at.is_not(None))
+    ).scalar_one_or_none()
+    if db_participant is None:
+        return None
+    return _db_participant_to_participant(db_participant)
+
+
+def reactivate_participant(
+    participant_id: TournamentParticipantID,
+    *,
+    substitute_player: bool,
+    team_id: TournamentTeamID | None,
+    created_at: datetime,
+) -> None:
+    """Reactivate a soft-deleted participant."""
+    db_participant = db.session.get(DbTournamentParticipant, participant_id)
+    if db_participant is None:
+        raise ValueError(f'Unknown participant ID "{participant_id}"')
+
+    db_participant.removed_at = None
+    db_participant.substitute_player = substitute_player
+    db_participant.team_id = team_id
+    db_participant.created_at = created_at
+    db.session.flush()
+
+
 def get_participants_for_tournament(
     tournament_id: TournamentID,
+    *,
+    include_removed: bool = False,
 ) -> list[TournamentParticipant]:
     """Return all participants for that tournament."""
-    db_participants = (
-        db.session.execute(
-            select(DbTournamentParticipant).filter_by(
-                tournament_id=tournament_id
-            )
-        )
-        .scalars()
-        .all()
+    stmt = select(DbTournamentParticipant).filter_by(
+        tournament_id=tournament_id
     )
+    if not include_removed:
+        stmt = stmt.where(DbTournamentParticipant.removed_at.is_(None))
+    db_participants = db.session.execute(stmt).scalars().all()
     return [_db_participant_to_participant(p) for p in db_participants]
 
 
 def get_participants_for_team(
     team_id: TournamentTeamID,
+    *,
+    include_removed: bool = False,
 ) -> list[TournamentParticipant]:
     """Return all participants for that team."""
-    db_participants = (
+    stmt = select(DbTournamentParticipant).filter_by(team_id=team_id)
+    if not include_removed:
+        stmt = stmt.where(DbTournamentParticipant.removed_at.is_(None))
+    db_participants = db.session.execute(stmt).scalars().all()
+    return [_db_participant_to_participant(p) for p in db_participants]
+
+
+def get_team_member_counts(
+    tournament_id: TournamentID,
+) -> dict[TournamentTeamID, int]:
+    """Return active member count per team in a single query."""
+    rows = (
         db.session.execute(
-            select(DbTournamentParticipant).filter_by(team_id=team_id)
+            select(
+                DbTournamentParticipant.team_id,
+                db.func.count(DbTournamentParticipant.id),
+            )
+            .filter_by(tournament_id=tournament_id)
+            .where(
+                DbTournamentParticipant.team_id.is_not(None),
+                DbTournamentParticipant.removed_at.is_(None),
+            )
+            .group_by(DbTournamentParticipant.team_id)
         )
-        .scalars()
+        .tuples()
         .all()
     )
-    return [_db_participant_to_participant(p) for p in db_participants]
+    return dict(rows)
 
 
 def _db_participant_to_participant(
@@ -486,6 +643,7 @@ def _db_participant_to_participant(
         substitute_player=db_participant.substitute_player,
         team_id=db_participant.team_id,
         created_at=db_participant.created_at,
+        removed_at=db_participant.removed_at,
     )
 
 
@@ -812,6 +970,62 @@ def delete_match_contestant(
         delete(DbTournamentMatchToContestant).filter_by(id=contestant_id)
     )
     db.session.commit()
+
+
+def find_contestant_entries_for_participant_in_tournament(
+    tournament_id: TournamentID,
+    participant_id: TournamentParticipantID,
+) -> list[tuple[TournamentMatchToContestant, TournamentMatch]]:
+    """Find all contestant entries for a participant across
+    unconfirmed matches in a tournament."""
+    rows = db.session.execute(
+        select(DbTournamentMatchToContestant, DbTournamentMatch)
+        .join(
+            DbTournamentMatch,
+            DbTournamentMatchToContestant.tournament_match_id
+            == DbTournamentMatch.id,
+        )
+        .where(
+            DbTournamentMatch.tournament_id == tournament_id,
+            DbTournamentMatchToContestant.participant_id == participant_id,
+            DbTournamentMatch.confirmed_by.is_(None),
+        )
+    ).all()
+    return [
+        (
+            _db_contestant_to_contestant(db_c),
+            _db_match_to_match(db_m),
+        )
+        for db_c, db_m in rows
+    ]
+
+
+def find_contestant_entries_for_team_in_tournament(
+    tournament_id: TournamentID,
+    team_id: TournamentTeamID,
+) -> list[tuple[TournamentMatchToContestant, TournamentMatch]]:
+    """Find all contestant entries for a team across
+    unconfirmed matches in a tournament."""
+    rows = db.session.execute(
+        select(DbTournamentMatchToContestant, DbTournamentMatch)
+        .join(
+            DbTournamentMatch,
+            DbTournamentMatchToContestant.tournament_match_id
+            == DbTournamentMatch.id,
+        )
+        .where(
+            DbTournamentMatch.tournament_id == tournament_id,
+            DbTournamentMatchToContestant.team_id == team_id,
+            DbTournamentMatch.confirmed_by.is_(None),
+        )
+    ).all()
+    return [
+        (
+            _db_contestant_to_contestant(db_c),
+            _db_match_to_match(db_m),
+        )
+        for db_c, db_m in rows
+    ]
 
 
 def delete_contestant_from_match(

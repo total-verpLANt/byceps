@@ -1,5 +1,6 @@
 from datetime import datetime
 
+from sqlalchemy import text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from byceps.database import db
@@ -25,7 +26,14 @@ class DbTournamentParticipant(db.Model):
     """A participant in a LAN tournament."""
 
     __tablename__ = 'lan_tournament_participants'
-    __table_args__ = (db.UniqueConstraint('tournament_id', 'user_id'),)
+    __table_args__ = (
+        db.UniqueConstraint('tournament_id', 'user_id'),
+        db.Index(
+            'ix_lan_tournament_participants_active',
+            'tournament_id',
+            postgresql_where=text('removed_at IS NULL'),
+        ),
+    )
 
     id: Mapped[TournamentParticipantID] = mapped_column(
         db.Uuid, default=generate_uuid7, primary_key=True
@@ -49,6 +57,7 @@ class DbTournamentParticipant(db.Model):
     )
     team: Mapped[DbTournamentTeam | None] = relationship(DbTournamentTeam)
     created_at: Mapped[datetime]
+    removed_at: Mapped[datetime | None] = mapped_column(default=None)
 
     def __init__(
         self,

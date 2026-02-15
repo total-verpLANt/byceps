@@ -593,9 +593,7 @@ def test_unconfirm_match_retracts_advanced_contestant(mock_repo):
     ]
 
     # Next match is not confirmed, so no cascade needed
-    next_match = _create_match(
-        match_id=next_match_id, confirmed_by=None
-    )
+    next_match = _create_match(match_id=next_match_id, confirmed_by=None)
 
     mock_repo.get_match.side_effect = [match, next_match]
     mock_repo.get_contestants_for_match.return_value = contestants

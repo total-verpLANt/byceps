@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 
 from byceps.services.user.models.user import UserID
 from byceps.util.result import Err, Ok, Result
+from byceps.util.uuid import generate_uuid7
 
 from . import tournament_repository
 from .events import (
@@ -146,12 +147,12 @@ def has_matches(tournament_id: TournamentID) -> bool:
 def clear_bracket(tournament_id: TournamentID) -> Result[None, str]:
     """Clear all matches from a tournament bracket."""
     matches = tournament_repository.get_matches_for_tournament(tournament_id)
-    
+
     for match in matches:
         delete_match(match.id)
-    
+
     tournament_repository.commit_session()
-    
+
     return Ok(None)
 
 
@@ -176,13 +177,17 @@ def generate_single_elimination_bracket(
 
     # Check if matches already exist (now atomic with lock)
     if has_matches(tournament_id) and not force_regenerate:
-        return Err('Tournament already has matches. Use force regenerate to clear and rebuild.')
+        return Err(
+            'Tournament already has matches. Use force regenerate to clear and rebuild.'
+        )
 
     # Clear existing matches if force regenerate
     if force_regenerate and has_matches(tournament_id):
         clear_result = clear_bracket(tournament_id)
         if clear_result.is_err():
-            return Err(f'Failed to clear existing bracket: {clear_result.unwrap_err()}')
+            return Err(
+                f'Failed to clear existing bracket: {clear_result.unwrap_err()}'
+            )
 
     # Get tournament to check contestant type
     tournament = tournament_repository.get_tournament(tournament_id)
@@ -337,6 +342,120 @@ def get_matches_for_tournament(
     return tournament_repository.get_matches_for_tournament(tournament_id)
 
 
+def handle_defwin_for_removed_participant(
+    tournament_id: TournamentID,
+    participant_id: TournamentParticipantID,
+) -> list[ContestantAdvancedEvent]:
+    """Handle defwin logic when removing a participant from an
+    active tournament. Removes their contestant entries from
+    unconfirmed matches and auto-advances sole remaining opponents.
+
+    Does NOT commit — caller must call commit_session().
+    Returns events to dispatch after commit.
+    """
+    entries = tournament_repository.find_contestant_entries_for_participant_in_tournament(
+        tournament_id, participant_id
+    )
+
+    for _contestant, match in entries:
+        tournament_repository.delete_contestant_from_match(
+            match.id, participant_id=participant_id
+        )
+
+    return _process_defwin_entries(tournament_id, entries)
+
+
+def handle_defwin_for_removed_team(
+    tournament_id: TournamentID,
+    team_id: TournamentTeamID,
+) -> list[ContestantAdvancedEvent]:
+    """Handle defwin logic when removing a team from an active
+    tournament.
+
+    Removes team's contestant entries from unconfirmed matches and
+    auto-advances sole remaining opponents.
+    Does NOT commit — caller must call commit_session().
+    """
+    entries = (
+        tournament_repository.find_contestant_entries_for_team_in_tournament(
+            tournament_id, team_id
+        )
+    )
+
+    for _contestant, match in entries:
+        tournament_repository.delete_contestant_from_match(
+            match.id, team_id=team_id
+        )
+
+    return _process_defwin_entries(tournament_id, entries)
+
+
+def _process_defwin_entries(
+    tournament_id: TournamentID,
+    entries: list[tuple[TournamentMatchToContestant, TournamentMatch]],
+) -> list[ContestantAdvancedEvent]:
+    """Shared defwin advancement logic for removed contestants.
+
+    After the removed contestant's entry has been deleted from each
+    match, check whether the sole remaining opponent should be
+    auto-advanced to the next round.
+
+    Does NOT commit — caller handles the transaction.
+    """
+    now = datetime.now(UTC)
+    events: list[ContestantAdvancedEvent] = []
+
+    # Each entry's contestant has already been deleted from its match
+    # by the caller, so `remaining` below reflects the post-deletion
+    # state of that match.
+    for _contestant, match in entries:
+        remaining = tournament_repository.get_contestants_for_match(match.id)
+
+        # If both contestants were removed (len == 0),
+        # no advancement is possible — skip silently.
+        if len(remaining) != 1 or match.next_match_id is None:
+            continue
+
+        sole = remaining[0]
+
+        # Guard: skip if contestant already in next match
+        next_contestants = tournament_repository.get_contestants_for_match(
+            match.next_match_id
+        )
+        already_advanced = any(
+            c.participant_id == sole.participant_id
+            and c.team_id == sole.team_id
+            for c in next_contestants
+        )
+        if already_advanced:
+            continue
+
+        adv_id = TournamentMatchToContestantID(generate_uuid7())
+        advanced = TournamentMatchToContestant(
+            id=adv_id,
+            tournament_match_id=match.next_match_id,
+            team_id=sole.team_id,
+            participant_id=sole.participant_id,
+            score=None,
+            created_at=now,
+        )
+        tournament_repository.create_match_contestant(advanced)
+
+        events.append(
+            ContestantAdvancedEvent(
+                occurred_at=now,
+                initiator=None,
+                tournament_id=tournament_id,
+                match_id=match.next_match_id,
+                from_match_id=match.id,
+                advanced_team_id=sole.team_id,
+                advanced_participant_id=sole.participant_id,
+            )
+        )
+
+    return events
+
+
 def confirm_match(
     match_id: TournamentMatchID,
     confirmed_by_user_id: UserID,
@@ -386,8 +505,6 @@ def confirm_match(
     )
 
     if match.next_match_id is not None:
-        from byceps.util.uuid import generate_uuid7
-
         contestant_id = TournamentMatchToContestantID(generate_uuid7())
         new_contestant = TournamentMatchToContestant(
             id=contestant_id,
@@ -501,8 +618,6 @@ def add_comment(
     comment: str,
 ) -> Result[None, str]:
     """Add a comment to a match."""
-    from byceps.util.uuid import generate_uuid7
-
     # Validate comment length (max 1000 chars per Task #17)
     if len(comment) > 1000:
         return Err('Comment cannot exceed 1000 characters.')

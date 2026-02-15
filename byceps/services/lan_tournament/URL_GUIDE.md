@@ -173,6 +173,44 @@ This guide documents all available URLs for the LAN Tournament module, covering 
 - **Description**: Deletes a team and removes all members
 - **Example**: `/lan-tournaments/teams/fedcba98-7654-3210-fedc-ba9876543210/delete`
 
+### Participant Management (Admin)
+
+#### List Participants for Tournament
+- **URL**: `/lan-tournaments/tournaments/<tournament_id>/participants`
+- **Method**: GET
+- **Permission**: `lan_tournament.view`
+- **Description**: Lists all participants with ticket status and team assignment
+- **Example**: `/lan-tournaments/tournaments/01234567-89ab-cdef-0123-456789abcdef/participants`
+
+#### Add Participant Form
+- **URL**: `/lan-tournaments/tournaments/<tournament_id>/participants/add`
+- **Method**: GET
+- **Permission**: `lan_tournament.administrate`
+- **Description**: Displays form to add a participant by screen name (admin only, no ticket check)
+- **Example**: `/lan-tournaments/tournaments/01234567-89ab-cdef-0123-456789abcdef/participants/add`
+
+#### Add Participant (Submit)
+- **URL**: `/lan-tournaments/tournaments/<tournament_id>/participants/add`
+- **Method**: POST
+- **Permission**: `lan_tournament.administrate`
+- **Description**: Adds a participant by screen name lookup. Skips ticket validation. Works during REGISTRATION_OPEN and REGISTRATION_CLOSED. Reactivates soft-deleted participants if they previously left.
+- **Form Fields**:
+  - `screen_name`: User's screen name (required)
+
+#### Remove Participant
+- **URL**: `/lan-tournaments/tournaments/<tournament_id>/participants/<participant_id>/remove`
+- **Method**: POST
+- **Permission**: `lan_tournament.administrate`
+- **Description**: Removes a single participant from the tournament
+- **Example**: `/lan-tournaments/tournaments/01234567-89ab-cdef-0123-456789abcdef/participants/fedcba98-7654-3210-fedc-ba9876543210/remove`
+
+#### Remove Participants Without Tickets
+- **URL**: `/lan-tournaments/tournaments/<tournament_id>/participants/remove_without_tickets`
+- **Method**: POST
+- **Permission**: `lan_tournament.administrate`
+- **Description**: Bulk removes all participants who lack valid party tickets. In team tournaments, transfers captain roles before removal. During ONGOING status, uses soft-delete to preserve match history.
+- **Example**: `/lan-tournaments/tournaments/01234567-89ab-cdef-0123-456789abcdef/participants/remove_without_tickets`
+
 ### Match Management (Admin)
 
 #### List Matches for Tournament
@@ -382,11 +420,13 @@ Currently, there are no dedicated REST API endpoints. All interactions happen th
 ### Admin: Creating and Running a Tournament
 1. Create tournament → `/lan-tournaments/for_party/<party_id>/create`
 2. Open registration → `/lan-tournaments/tournaments/<tournament_id>/open_registration`
-3. Close registration → `/lan-tournaments/tournaments/<tournament_id>/close_registration`
-4. Generate bracket → `/lan-tournaments/tournaments/<tournament_id>/generate_bracket`
-5. Start tournament → `/lan-tournaments/tournaments/<tournament_id>/start`
-6. Manage matches → `/lan-tournaments/matches/<match_id>`
-7. Complete tournament → `/lan-tournaments/tournaments/<tournament_id>/complete`
+3. (Optional) Add participants manually → `/lan-tournaments/tournaments/<tournament_id>/participants/add`
+4. Close registration → `/lan-tournaments/tournaments/<tournament_id>/close_registration`
+5. (Optional) Add late participants → `/lan-tournaments/tournaments/<tournament_id>/participants/add` (works after registration closes)
+6. Generate bracket → `/lan-tournaments/tournaments/<tournament_id>/generate_bracket`
+7. Start tournament → `/lan-tournaments/tournaments/<tournament_id>/start`
+8. Manage matches → `/lan-tournaments/matches/<match_id>`
+9. Complete tournament → `/lan-tournaments/tournaments/<tournament_id>/complete`
 
 ### User: Solo Tournament Participation
 1. View tournaments → `/lan-tournaments/`

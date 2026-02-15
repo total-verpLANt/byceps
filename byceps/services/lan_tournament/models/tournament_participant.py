@@ -19,3 +19,4 @@ class TournamentParticipant:
     substitute_player: bool
     team_id: TournamentTeamID | None
     created_at: datetime
+    removed_at: datetime | None = None
