@@ -57,6 +57,19 @@ Creates the complete LAN tournament schema with 6 tables:
 - All indexes for query performance
 - Zero CASCADE behaviors (BYCEPS convention)
 
+### 003_add_soft_delete_columns.sql
+
+Adds soft-delete support to participants and teams:
+
+1. **`removed_at` column** on `lan_tournament_participants` — nullable timestamp marking soft-deleted rows
+2. **`removed_at` column** on `lan_tournament_teams` — same for teams
+3. **Tightened constraint** `ck_exactly_one_contestant` — replaces `ck_at_most_one_contestant` so match contestants always reference exactly one team or participant
+4. **Partial indexes** `ix_lan_tournament_participants_active` and `ix_lan_tournament_teams_active` — efficient lookup of active (non-deleted) rows
+
+**Why soft-delete?** During ONGOING tournaments, participants/teams removed (e.g. ticketless) must keep their rows so that `lan_tournament_match_contestants` foreign keys remain valid. The service layer re-joins soft-deleted participants by clearing `removed_at` instead of inserting a new row, avoiding `UniqueConstraint('tournament_id', 'user_id')` conflicts.
+
+**Rollback:** `rollback_003.sql`
+
 ## Pre-Application Checklist
 
 Before applying any migration, complete these steps:

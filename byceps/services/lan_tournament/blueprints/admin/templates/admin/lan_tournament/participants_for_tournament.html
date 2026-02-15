@@ -18,6 +18,10 @@
     .column-joined {
       width: 20%;
     }
+    .column-ticket {
+      width: 10%;
+      text-align: center;
+    }
   </style>
 {%- endblock %}
 
@@ -32,7 +36,26 @@
 
   <h1 class="title">{{ _('Participants') }} {{ render_extra_in_heading(participants|length) }}</h1>
 
+  <div class="button-row">
+    <a class="button" href="{{ url_for('.add_participant_form', tournament_id=tournament.id) }}">{{ render_icon('add') }} {{ _('Add participant') }}</a>
+  </div>
+
   {%- if participants %}
+  {%- if participants_without_tickets %}
+  <div class="button-row">
+    <form action="{{ url_for('.remove_participants_without_tickets', tournament_id=tournament.id) }}" method="post" style="display: inline;">
+      {%- if is_team_tournament %}
+      <button type="submit" class="button is-warning" onclick="return confirm('{{ _('Remove %(count)s ticketless participants and transfer captain roles?', count=participants_without_tickets|length) }}');">
+        {{ render_icon('delete') }} {{ _('Remove Ticketless Participants') }} ({{ participants_without_tickets|length }})
+      </button>
+      {%- else %}
+      <button type="submit" class="button is-danger" onclick="return confirm('{{ _('Remove %(count)s participants without tickets?', count=participants_without_tickets|length) }}');">
+        {{ render_icon('delete') }} {{ _('Remove All Without Tickets') }} ({{ participants_without_tickets|length }})
+      </button>
+      {%- endif %}
+    </form>
+  </div>
+  {%- endif %}
   <table class="itemlist is-vcentered is-wide participant-list">
     <thead>
       <tr>
@@ -40,6 +63,7 @@
         <th class="column-substitute">{{ _('Substitute') }}</th>
         <th class="column-team">{{ _('Team') }}</th>
         <th class="column-joined">{{ _('Joined') }}</th>
+        <th class="column-ticket">{{ _('Ticket') }}</th>
         <th></th>
       </tr>
     </thead>
@@ -62,6 +86,13 @@
           {%- endif %}
         </td>
         <td class="column-joined">{{ participant.created_at|dateformat }}</td>
+        <td class="column-ticket">
+          {%- if participant.user_id in users_with_tickets %}
+            <span class="tag is-success">{{ render_icon('success') }} {{ _('Valid') }}</span>
+          {%- else %}
+            <span class="tag is-danger">{{ render_icon('warning') }} {{ _('No ticket') }}</span>
+          {%- endif %}
+        </td>
         <td class="bared">
           <div class="button-row is-compact is-right-aligned">
             <form action="{{ url_for('.remove_participant', tournament_id=tournament.id, participant_id=participant.id) }}" method="post" style="display: inline;">

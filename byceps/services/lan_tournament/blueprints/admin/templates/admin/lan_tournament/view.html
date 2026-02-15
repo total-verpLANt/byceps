@@ -1,7 +1,7 @@
 {% extends 'layout/admin/lan_tournament.html' %}
 {% from 'macros/admin.html' import render_backlink %}
 {% from 'macros/icons.html' import render_icon %}
-{% from 'macros/misc.html' import render_tag %}
+{% from 'macros/misc.html' import render_notification_block, render_tag %}
 {% set current_page_party = party %}
 {% set current_tab = 'tournaments' %}
 {% set page_title = [_('Tournament'), party.title] %}
@@ -133,6 +133,17 @@
       </div>
     </div>
   </div>
+
+  {%- if teams_below_minimum %}
+  {%- call render_notification_block(category='warning', icon='warning') %}
+    {{ _('The following teams are below the minimum team size:') }}
+    <ul>
+    {%- for team, count in teams_below_minimum %}
+      <li>{{ team.name }} ({{ count }} {{ _('member') if count == 1 else _('members') }})</li>
+    {%- endfor %}
+    </ul>
+  {%- endcall %}
+  {%- endif %}
 
   {# Ruleset #}
   {%- if tournament.ruleset %}

@@ -21,3 +21,4 @@ class TournamentTeam:
     join_code: str | None
     created_at: datetime
     updated_at: datetime | None = None
+    removed_at: datetime | None = None
