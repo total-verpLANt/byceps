@@ -6,8 +6,9 @@ from wtforms import (
     StringField,
     TextAreaField,
 )
-from wtforms.validators import InputRequired, Length, Optional
+from wtforms.validators import InputRequired, Length, Optional, ValidationError
 
+from byceps.services.user import screen_name_validator, user_service
 from byceps.util.l10n import LocalizedForm
 
 from byceps.services.lan_tournament.models.contestant_type import (
@@ -101,6 +102,32 @@ class TeamCreateForm(LocalizedForm):
     join_code = StringField(
         lazy_gettext('Join code'), [Optional(), Length(max=80)]
     )
+
+
+class AddParticipantForm(LocalizedForm):
+    screen_name = StringField(
+        lazy_gettext('Screen name'),
+        [
+            InputRequired(),
+            Length(
+                min=screen_name_validator.MIN_LENGTH,
+                max=screen_name_validator.MAX_LENGTH,
+            ),
+        ],
+    )
+
+    @staticmethod
+    def validate_screen_name(form, field):
+        screen_name = field.data.strip()
+
+        if not screen_name_validator.contains_only_valid_chars(screen_name):
+            raise ValidationError(lazy_gettext('Contains invalid characters.'))
+
+        user = user_service.find_user_by_screen_name(screen_name)
+        if user is None:
+            raise ValidationError(lazy_gettext('Unknown username'))
+
+        field.data = user
 
 
 class TeamUpdateForm(LocalizedForm):

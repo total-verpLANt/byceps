@@ -6,7 +6,11 @@ from flask_babel import gettext, to_user_timezone, to_utc
 from byceps.services.party import party_service
 from byceps.services.party.models import Party
 from byceps.util.framework.blueprint import create_blueprint
-from byceps.util.framework.flash import flash_error, flash_success
+from byceps.util.framework.flash import (
+    flash_error,
+    flash_notice,
+    flash_success,
+)
 from byceps.util.framework.templating import templated
 from byceps.util.result import Err, Ok
 from byceps.util.views import permission_required, redirect_to
@@ -38,6 +42,7 @@ from byceps.services.lan_tournament.models.tournament_status import (
 )
 
 from .forms import (
+    AddParticipantForm,
     TeamCreateForm,
     TeamUpdateForm,
     TournamentCreateForm,
@@ -75,10 +80,21 @@ def view(tournament_id):
     # Check if tournament has bracket
     has_bracket = tournament_match_service.has_matches(tournament.id)
 
+    is_team_tournament = tournament.contestant_type == ContestantType.TEAM
+    teams_below_minimum = []
+    if is_team_tournament:
+        teams_below_minimum = (
+            tournament_participant_service.get_teams_below_minimum_size(
+                tournament.id, tournament=tournament
+            )
+        )
+
     return {
         'party': party,
         'tournament': tournament,
         'has_bracket': has_bracket,
+        'is_team_tournament': is_team_tournament,
+        'teams_below_minimum': teams_below_minimum,
     }
 
 
@@ -635,11 +651,80 @@ def participants_for_tournament(tournament_id):
         )
     )
 
+    # Fetch ticket status via service layer, reusing already-fetched
+    # participants to avoid a redundant DB query.
+    users_with_tickets, participants_without_tickets = (
+        tournament_participant_service.get_ticket_status_for_participants(
+            tournament.id,
+            party.id,
+            participants=participants,
+        )
+    )
+
+    is_team_tournament = tournament.contestant_type == ContestantType.TEAM
+
     return {
         'party': party,
         'tournament': tournament,
         'participants': participants,
+        'users_with_tickets': users_with_tickets,
+        'participants_without_tickets': participants_without_tickets,
+        'is_team_tournament': is_team_tournament,
     }
+
+
+@blueprint.get('/tournaments/<tournament_id>/participants/add')
+@permission_required('lan_tournament.administrate')
+@templated
+def add_participant_form(tournament_id, erroneous_form=None):
+    """Show form to add a participant."""
+    tournament = _get_tournament_or_404(tournament_id)
+    party = party_service.get_party(tournament.party_id)
+
+    form = erroneous_form if erroneous_form else AddParticipantForm()
+
+    return {
+        'party': party,
+        'tournament': tournament,
+        'form': form,
+    }
+
+
+@blueprint.post('/tournaments/<tournament_id>/participants/add')
+@permission_required('lan_tournament.administrate')
+def add_participant(tournament_id):
+    """Add a participant to the tournament."""
+    tournament = _get_tournament_or_404(tournament_id)
+
+    form = AddParticipantForm(request.form)
+
+    if not form.validate():
+        return add_participant_form(tournament.id, form)
+
+    user = form.screen_name.data
+
+    match tournament_participant_service.admin_add_participant(
+        tournament.id, user.id, initiator=g.user
+    ):
+        case Ok((_, _event)):
+            flash_success(
+                gettext(
+                    'Participant "%(name)s" has been added.',
+                    name=user.screen_name,
+                )
+            )
+            return redirect_to(
+                '.participants_for_tournament',
+                tournament_id=tournament.id,
+            )
+        case Err(error_message):
+            flash_error(
+                gettext(
+                    'Could not add participant: %(error)s',
+                    error=error_message,
+                )
+            )
+            return add_participant_form(tournament.id, form)
 
 
 @blueprint.post(
@@ -668,6 +753,55 @@ def remove_participant(tournament_id, participant_id):
     return redirect_to(
         '.participants_for_tournament',
         tournament_id=tournament.id,
+    )
+
+
+@blueprint.post(
+    '/tournaments/<tournament_id>/participants/remove_without_tickets'
+)
+@permission_required('lan_tournament.administrate')
+def remove_participants_without_tickets(tournament_id):
+    """Remove all participants who don't have valid tickets."""
+    tournament = _get_tournament_or_404(tournament_id)
+    party = party_service.get_party(tournament.party_id)
+
+    result = tournament_participant_service.remove_participants_without_tickets(
+        tournament.id, party.id
+    )
+
+    match result:
+        case Ok(count):
+            if count == 0:
+                flash_notice(
+                    gettext(
+                        'No participants without tickets found.'
+                        ' Ticket status may have changed'
+                        ' since the page was loaded.'
+                    )
+                )
+            elif tournament.contestant_type == ContestantType.TEAM:
+                flash_success(
+                    gettext(
+                        '%(count)s participant(s) removed. '
+                        'Captain roles transferred where '
+                        'needed.',
+                        count=count,
+                    )
+                )
+            else:
+                flash_success(
+                    gettext(
+                        '%(count)s participant(s) removed.',
+                        count=count,
+                    )
+                )
+        case Err(error_message):
+            flash_error(
+                gettext('Could not remove: %(error)s', error=error_message)
+            )
+
+    return redirect_to(
+        '.participants_for_tournament', tournament_id=tournament.id
     )
 
 

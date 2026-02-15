@@ -29,8 +29,8 @@ class DbTournamentMatchToContestant(db.Model):
     __tablename__ = 'lan_tournament_match_contestants'
     __table_args__ = (
         db.CheckConstraint(
-            '(team_id IS NOT NULL AND participant_id IS NULL) '
-            'OR (team_id IS NULL AND participant_id IS NOT NULL)',
+            '(team_id IS NOT NULL AND participant_id IS NULL)'
+            ' OR (team_id IS NULL AND participant_id IS NOT NULL)',
             name='ck_exactly_one_contestant',
         ),
     )
