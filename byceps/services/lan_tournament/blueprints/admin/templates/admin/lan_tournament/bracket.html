@@ -14,7 +14,7 @@
 
   <h1 class='title'>{{ _('Tournament Bracket') }}</h1>
 
-  {{ render_bracket(match_data, tournament) }}
+  {{ render_bracket(match_data, tournament, teams_by_id, participants_by_id) }}
 
   <div style='margin-top: 2rem;'>
     <a href='{{ url_for('.matches_for_tournament',

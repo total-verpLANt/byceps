@@ -107,7 +107,9 @@
   </div>
 
   {# Player/team constraints #}
+  {%- if tournament.contestant_type %}
   <div class="grid block">
+    {%- if tournament.contestant_type.name == 'SOLO' %}
     <div class="column">
       <div class="box column-cell--grow">
         <div class="data-label">{{ _('Players') }}</div>
@@ -116,6 +118,7 @@
         </div>
       </div>
     </div>
+    {%- elif tournament.contestant_type.name == 'TEAM' %}
     <div class="column">
       <div class="box column-cell--grow">
         <div class="data-label">{{ _('Teams') }}</div>
@@ -132,7 +135,9 @@
         </div>
       </div>
     </div>
+    {%- endif %}
   </div>
+  {%- endif %}
 
   {%- if teams_below_minimum %}
   {%- call render_notification_block(category='warning', icon='warning') %}

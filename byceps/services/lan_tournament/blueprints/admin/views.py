@@ -5,6 +5,7 @@ from flask_babel import gettext, to_user_timezone, to_utc
 
 from byceps.services.party import party_service
 from byceps.services.party.models import Party
+from byceps.services.user import user_service
 from byceps.util.framework.blueprint import create_blueprint
 from byceps.util.framework.flash import (
     flash_error,
@@ -39,6 +40,9 @@ from byceps.services.lan_tournament.models.tournament_mode import (
 )
 from byceps.services.lan_tournament.models.tournament_status import (
     TournamentStatus,
+)
+from byceps.services.lan_tournament.lan_tournament_view_helpers import (
+    build_contestant_name_lookups,
 )
 
 from .forms import (
@@ -163,6 +167,16 @@ def create(party_id):
     min_players_in_team = form.min_players_in_team.data
     max_players_in_team = form.max_players_in_team.data
 
+    # Clear constraints irrelevant to the selected contestant type.
+    if contestant_type == ContestantType.SOLO:
+        min_teams = None
+        max_teams = None
+        min_players_in_team = None
+        max_players_in_team = None
+    elif contestant_type == ContestantType.TEAM:
+        min_players = None
+        max_players = None
+
     result = tournament_service.create_tournament(
         party.id,
         name,
@@ -284,6 +298,16 @@ def update(tournament_id):
     max_teams = form.max_teams.data
     min_players_in_team = form.min_players_in_team.data
     max_players_in_team = form.max_players_in_team.data
+
+    # Clear constraints irrelevant to the selected contestant type.
+    if contestant_type == ContestantType.SOLO:
+        min_teams = None
+        max_teams = None
+        min_players_in_team = None
+        max_players_in_team = None
+    elif contestant_type == ContestantType.TEAM:
+        min_players = None
+        max_players = None
 
     result = tournament_service.update_tournament(
         tournament.id,
@@ -663,10 +687,22 @@ def participants_for_tournament(tournament_id):
 
     is_team_tournament = tournament.contestant_type == ContestantType.TEAM
 
+    # Resolve user names
+    user_ids = {p.user_id for p in participants}
+    users_by_id = user_service.get_users_indexed_by_id(user_ids)
+
+    # Resolve team names
+    teams_by_id = {}
+    if is_team_tournament:
+        teams = tournament_team_service.get_teams_for_tournament(tournament.id)
+        teams_by_id = {t.id: t for t in teams}
+
     return {
         'party': party,
         'tournament': tournament,
         'participants': participants,
+        'users_by_id': users_by_id,
+        'teams_by_id': teams_by_id,
         'users_with_tickets': users_with_tickets,
         'participants_without_tickets': participants_without_tickets,
         'is_team_tournament': is_team_tournament,
@@ -848,6 +884,7 @@ def matches_for_tournament(tournament_id):
 
     # Get contestants for each match
     match_data = []
+    all_contestants = []
     for match in matches:
         contestants = tournament_match_service.get_contestants_for_match(
             match.id
@@ -858,11 +895,18 @@ def matches_for_tournament(tournament_id):
                 'contestants': contestants,
             }
         )
+        all_contestants.append(contestants)
+
+    teams_by_id, participants_by_id = build_contestant_name_lookups(
+        tournament.id, all_contestants
+    )
 
     return {
         'party': party,
         'tournament': tournament,
         'match_data': match_data,
+        'teams_by_id': teams_by_id,
+        'participants_by_id': participants_by_id,
     }
 
 
@@ -881,12 +925,23 @@ def view_match(match_id):
     )
     comments = tournament_match_service.get_comments_from_match(match_id_obj)
 
+    teams_by_id, participants_by_id = build_contestant_name_lookups(
+        tournament.id, [contestants]
+    )
+
+    # Resolve comment author names
+    comment_user_ids = {c.created_by for c in comments}
+    comment_users_by_id = user_service.get_users_indexed_by_id(comment_user_ids)
+
     return {
         'party': party,
         'tournament': tournament,
         'match': match,
         'contestants': contestants,
         'comments': comments,
+        'teams_by_id': teams_by_id,
+        'participants_by_id': participants_by_id,
+        'comment_users_by_id': comment_users_by_id,
     }
 
 
@@ -1024,6 +1079,7 @@ def bracket(tournament_id):
 
     # Get contestants for each match
     match_data = []
+    all_contestants = []
     for match in matches:
         contestants = tournament_match_service.get_contestants_for_match(
             match.id
@@ -1034,11 +1090,18 @@ def bracket(tournament_id):
                 'contestants': contestants,
             }
         )
+        all_contestants.append(contestants)
+
+    teams_by_id, participants_by_id = build_contestant_name_lookups(
+        tournament.id, all_contestants
+    )
 
     return {
         'party': party,
         'tournament': tournament,
         'match_data': match_data,
+        'teams_by_id': teams_by_id,
+        'participants_by_id': participants_by_id,
     }
 
 
