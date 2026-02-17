@@ -75,9 +75,9 @@
         <div class='match-contestants'>
           {%- for contestant in contestants %}
             {%- if contestant.team_id %}
-              {{ _('Team') }} {{ contestant.team_id }}
+              {{ _('Team') }} {{ teams_by_id.get(contestant.team_id, {}).name|default(contestant.team_id|string, true) }}
             {%- elif contestant.participant_id %}
-              {{ _('Player') }} {{ contestant.participant_id }}
+              {{ participants_by_id.get(contestant.participant_id, {}).screen_name|default(contestant.participant_id|string, true) }}
             {%- else %}
               BYE
             {%- endif %}

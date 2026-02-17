@@ -70,7 +70,7 @@
     <tbody>
       {%- for participant in participants %}
       <tr>
-        <td class="column-user">{{ participant.user_id }}</td>
+        <td class="column-user">{{ users_by_id.get(participant.user_id, {}).screen_name|default(participant.user_id|string, true) }}</td>
         <td class="column-substitute">
           {%- if participant.substitute_player %}
             {{ render_icon('enabled') }}
@@ -80,7 +80,7 @@
         </td>
         <td class="column-team">
           {%- if participant.team_id %}
-            {{ participant.team_id }}
+            {{ teams_by_id.get(participant.team_id, {}).name|default(participant.team_id|string, true) }}
           {%- else %}
             <span class="dimmed">-</span>
           {%- endif %}

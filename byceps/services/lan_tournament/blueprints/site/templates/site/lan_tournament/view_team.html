@@ -61,7 +61,7 @@
     <ul>
       {%- for member in team_members %}
       <li>
-        {{ member.user_id }}
+        {{ users_by_id.get(member.user_id, {}).screen_name|default(member.user_id|string, true) }}
         {%- if member.user_id == team.captain_user_id %}
           {{ render_tag(_('Captain'), class='color-success') }}
         {%- endif %}

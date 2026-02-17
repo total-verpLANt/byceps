@@ -33,9 +33,9 @@
       <div>
         <strong>
           {%- if contestant.team_id %}
-            {{ _('Team') }}: {{ contestant.team_id }}
+            {{ _('Team') }}: {{ teams_by_id.get(contestant.team_id, {}).name|default(contestant.team_id|string, true) }}
           {%- elif contestant.participant_id %}
-            {{ _('Player') }}: {{ contestant.participant_id }}
+            {{ _('Player') }}: {{ participants_by_id.get(contestant.participant_id, {}).screen_name|default(contestant.participant_id|string, true) }}
           {%- else %}
             BYE
           {%- endif %}
@@ -101,7 +101,7 @@
       <div class='row row--space-between'
            style='padding: 0.5rem; border-bottom: 1px solid #ccc;'>
         <div>
-          <div><strong>{{ comment.created_by }}</strong></div>
+          <div><strong>{{ comment_users_by_id.get(comment.created_by, {}).screen_name|default(comment.created_by|string, true) }}</strong></div>
           <div style='margin-top: 0.25rem;'>{{ comment.comment }}</div>
           <div class='dimmed' style='margin-top: 0.25rem; font-size: 0.875rem;'>
             {{ comment.created_at|dateformat }},
