@@ -23,7 +23,18 @@ class DbTournamentTeam(db.Model):
 
     __tablename__ = 'lan_tournament_teams'
     __table_args__ = (
-        db.UniqueConstraint('tournament_id', 'name'),
+        db.Index(
+            'uq_lan_tournament_teams_active_name_ci',
+            text('tournament_id, LOWER(name)'),
+            unique=True,
+            postgresql_where=text('removed_at IS NULL'),
+        ),
+        db.Index(
+            'uq_lan_tournament_teams_active_tag_ci',
+            text('tournament_id, UPPER(tag)'),
+            unique=True,
+            postgresql_where=text('removed_at IS NULL AND tag IS NOT NULL'),
+        ),
         db.Index(
             'ix_lan_tournament_teams_active',
             'tournament_id',

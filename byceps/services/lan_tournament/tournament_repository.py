@@ -353,6 +353,44 @@ def get_teams_for_tournament(
     return [_db_team_to_team(t) for t in db_teams]
 
 
+def find_active_team_by_name(
+    tournament_id: TournamentID,
+    name: str,
+) -> TournamentTeam | None:
+    """Return the active team with that name in the tournament,
+    or `None`.
+    """
+    db_team = db.session.execute(
+        select(DbTournamentTeam).where(
+            DbTournamentTeam.tournament_id == tournament_id,
+            db.func.lower(DbTournamentTeam.name) == name.lower(),
+            DbTournamentTeam.removed_at.is_(None),
+        )
+    ).scalar_one_or_none()
+    if db_team is None:
+        return None
+    return _db_team_to_team(db_team)
+
+
+def find_active_team_by_tag(
+    tournament_id: TournamentID,
+    tag: str,
+) -> TournamentTeam | None:
+    """Return the active team with that tag in the tournament,
+    or `None`.
+    """
+    db_team = db.session.execute(
+        select(DbTournamentTeam).where(
+            DbTournamentTeam.tournament_id == tournament_id,
+            db.func.upper(DbTournamentTeam.tag) == tag.upper(),
+            DbTournamentTeam.removed_at.is_(None),
+        )
+    ).scalar_one_or_none()
+    if db_team is None:
+        return None
+    return _db_team_to_team(db_team)
+
+
 def get_teams_by_ids(
     team_ids: set[TournamentTeamID],
 ) -> list[TournamentTeam]:
