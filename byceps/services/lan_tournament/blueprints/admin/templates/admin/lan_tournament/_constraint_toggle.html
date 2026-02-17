@@ -1,0 +1,24 @@
+<script>
+  const contestantTypeSelect = document.getElementById('contestant_type');
+  if (contestantTypeSelect) {
+    const soloConstraints = document.getElementById('solo-constraints');
+    const teamConstraints = document.getElementById('team-constraints');
+
+    function updateConstraintVisibility() {
+      const value = contestantTypeSelect.value;
+      if (value === 'SOLO') {
+        soloConstraints.style.display = '';
+        teamConstraints.style.display = 'none';
+      } else if (value === 'TEAM') {
+        soloConstraints.style.display = 'none';
+        teamConstraints.style.display = '';
+      } else {
+        soloConstraints.style.display = 'none';
+        teamConstraints.style.display = 'none';
+      }
+    }
+
+    contestantTypeSelect.addEventListener('change', updateConstraintVisibility);
+    updateConstraintVisibility();
+  }
+</script>

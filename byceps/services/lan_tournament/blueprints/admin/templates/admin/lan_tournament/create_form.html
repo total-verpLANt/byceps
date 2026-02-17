@@ -27,15 +27,23 @@
 
     <div class="box">
       <h3>{{ _('Player/team constraints') }}</h3>
-      {{ form_field(form.min_players, min=0, style='width: 5rem;') }}
-      {{ form_field(form.max_players, min=0, style='width: 5rem;') }}
-      {{ form_field(form.min_teams, min=0, style='width: 5rem;') }}
-      {{ form_field(form.max_teams, min=0, style='width: 5rem;') }}
-      {{ form_field(form.min_players_in_team, min=0, style='width: 5rem;') }}
-      {{ form_field(form.max_players_in_team, min=0, style='width: 5rem;') }}
+      <div id="solo-constraints" style="display: none;">
+        {{ form_field(form.min_players, min=0, style='width: 5rem;') }}
+        {{ form_field(form.max_players, min=0, style='width: 5rem;') }}
+      </div>
+      <div id="team-constraints" style="display: none;">
+        {{ form_field(form.min_teams, min=0, style='width: 5rem;') }}
+        {{ form_field(form.max_teams, min=0, style='width: 5rem;') }}
+        {{ form_field(form.min_players_in_team, min=0, style='width: 5rem;') }}
+        {{ form_field(form.max_players_in_team, min=0, style='width: 5rem;') }}
+      </div>
     </div>
 
     {{ form_buttons(_('Create')) }}
   </form>
 
+{%- endblock %}
+
+{% block scripts %}
+{% include 'admin/lan_tournament/_constraint_toggle.html' %}
 {%- endblock %}

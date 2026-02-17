@@ -202,6 +202,13 @@ def get_teams_for_tournament(
     return tournament_repository.get_teams_for_tournament(tournament_id)
 
 
+def get_teams_by_ids(
+    team_ids: set[TournamentTeamID],
+) -> list[TournamentTeam]:
+    """Return teams matching the given IDs."""
+    return tournament_repository.get_teams_by_ids(team_ids)
+
+
 def join_team(
     participant_id: TournamentParticipantID,
     team_id: TournamentTeamID,

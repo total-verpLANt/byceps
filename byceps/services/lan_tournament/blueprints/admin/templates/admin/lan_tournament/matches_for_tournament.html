@@ -37,9 +37,9 @@
             {# Defwin match: only one contestant, free advancement #}
             {%- set contestant = contestants[0] %}
             {%- if contestant.team_id %}
-              Team: {{ contestant.team_id }}
+              Team: {{ teams_by_id.get(contestant.team_id, {}).name|default(contestant.team_id|string, true) }}
             {%- elif contestant.participant_id %}
-              Player: {{ contestant.participant_id }}
+              Player: {{ participants_by_id.get(contestant.participant_id, {}).screen_name|default(contestant.participant_id|string, true) }}
             {%- else %}
               BYE
             {%- endif %}
@@ -48,9 +48,9 @@
             {# Normal match: multiple contestants #}
             {%- for contestant in contestants %}
               {%- if contestant.team_id %}
-                Team: {{ contestant.team_id }}
+                Team: {{ teams_by_id.get(contestant.team_id, {}).name|default(contestant.team_id|string, true) }}
               {%- elif contestant.participant_id %}
-                Player: {{ contestant.participant_id }}
+                Player: {{ participants_by_id.get(contestant.participant_id, {}).screen_name|default(contestant.participant_id|string, true) }}
               {%- else %}
                 BYE
               {%- endif %}

@@ -181,7 +181,7 @@
   {%- if participants %}
     <ul>
       {%- for participant in participants %}
-      <li>{{ participant.user_id }}</li>
+      <li>{{ users_by_id.get(participant.user_id, {}).screen_name|default(participant.user_id|string, true) }}</li>
       {%- endfor %}
     </ul>
   {%- else %}
