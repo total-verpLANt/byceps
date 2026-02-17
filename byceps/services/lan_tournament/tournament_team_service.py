@@ -3,6 +3,9 @@ from datetime import datetime, UTC
 from urllib.parse import urlparse
 
 
+from sqlalchemy.exc import IntegrityError
+
+from byceps.database import db
 from byceps.services.user.models.user import UserID
 from byceps.util.result import Err, Ok, Result
 from byceps.util.uuid import generate_uuid7
@@ -71,6 +74,26 @@ def create_team(
     if count_result.is_err():
         return Err(count_result.unwrap_err())
 
+    # Normalize tag to uppercase
+    tag = tag.upper() if tag else None
+
+    # Check for duplicate team name
+    existing = tournament_repository.find_active_team_by_name(
+        tournament_id, name
+    )
+    if existing is not None:
+        return Err('A team with this name already exists in this tournament.')
+
+    # Check for duplicate team tag
+    if tag:
+        existing = tournament_repository.find_active_team_by_tag(
+            tournament_id, tag
+        )
+        if existing is not None:
+            return Err(
+                'A team with this tag already exists in this tournament.'
+            )
+
     now = datetime.now(UTC)
     team_id = TournamentTeamID(generate_uuid7())
 
@@ -86,7 +109,20 @@ def create_team(
         created_at=now,
     )
 
-    tournament_repository.create_team(team)
+    try:
+        tournament_repository.create_team(team)
+    except IntegrityError as e:
+        db.session.rollback()
+        constraint = getattr(e.orig, 'constraint_name', '') or ''
+        if 'uq_lan_tournament_teams_active_name_ci' in constraint:
+            return Err(
+                'A team with this name already exists in this tournament.'
+            )
+        if 'uq_lan_tournament_teams_active_tag_ci' in constraint:
+            return Err(
+                'A team with this tag already exists in this tournament.'
+            )
+        raise
 
     event = TeamCreatedEvent(
         occurred_at=now,
@@ -120,11 +156,37 @@ def update_team(
     if validation_result.is_err():
         return Err(validation_result.unwrap_err())
 
+    # Normalize tag to uppercase
+    tag = tag.upper() if tag else None
+
     team = tournament_repository.get_team(team_id)
+
+    # Serialize concurrent team updates within the same tournament
+    tournament_repository.lock_tournament_for_update(team.tournament_id)
 
     # Business logic: Only team captain can update (unless admin bypass)
     if current_user_id is not None and team.captain_user_id != current_user_id:
         return Err('Only the team captain can update this team.')
+
+    # Check for duplicate team name (skip if unchanged)
+    if name.lower() != team.name.lower():
+        existing = tournament_repository.find_active_team_by_name(
+            team.tournament_id, name
+        )
+        if existing is not None and existing.id != team.id:
+            return Err(
+                'A team with this name already exists in this tournament.'
+            )
+
+    # Check for duplicate team tag (skip if unchanged or empty)
+    if tag and tag != (team.tag.upper() if team.tag else ''):
+        existing = tournament_repository.find_active_team_by_tag(
+            team.tournament_id, tag
+        )
+        if existing is not None and existing.id != team.id:
+            return Err(
+                'A team with this tag already exists in this tournament.'
+            )
 
     updated = dataclasses.replace(
         team,
@@ -136,7 +198,20 @@ def update_team(
         updated_at=datetime.now(UTC),
     )
 
-    tournament_repository.update_team(updated)
+    try:
+        tournament_repository.update_team(updated)
+    except IntegrityError as e:
+        db.session.rollback()
+        constraint = getattr(e.orig, 'constraint_name', '') or ''
+        if 'uq_lan_tournament_teams_active_name_ci' in constraint:
+            return Err(
+                'A team with this name already exists in this tournament.'
+            )
+        if 'uq_lan_tournament_teams_active_tag_ci' in constraint:
+            return Err(
+                'A team with this tag already exists in this tournament.'
+            )
+        raise
 
     return Ok(updated)
 
