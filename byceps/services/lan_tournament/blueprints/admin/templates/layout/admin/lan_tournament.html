@@ -8,6 +8,11 @@
   render_main_tabs(
     Navigation()
       .add_item(
+        url_for('lan_tournament_admin.overview', party_id=party.id),
+        _('Overview'),
+        id='overview',
+        required_permission='lan_tournament.view')
+      .add_item(
         url_for('lan_tournament_admin.index', party_id=party.id),
         _('Tournaments'),
         id='tournaments',

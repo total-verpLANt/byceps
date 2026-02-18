@@ -1,0 +1,165 @@
+{% extends 'layout/admin/lan_tournament.html' %}
+{% from 'macros/admin.html' import render_extra_in_heading %}
+{% from 'macros/icons.html' import render_icon %}
+{% from 'macros/misc.html' import render_tag %}
+{% set current_page_party = party %}
+{% set current_tab = 'overview' %}
+{% set page_title = [_('Overview'), _('LAN Tournaments'), party.title] %}
+
+{% block head %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='style/admin_dashboard.css') }}">
+  <style>
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .stat-card .box {
+      text-align: center;
+      padding: 1rem;
+    }
+    .stat-card .stat-number {
+      font-size: 2rem;
+      font-weight: bold;
+      line-height: 1.2;
+    }
+    .stat-card .data-label {
+      margin-top: 0.25rem;
+    }
+    .stat-number--success { color: var(--color-success, #55a532); }
+    .stat-number--info { color: var(--color-info, #1b7fcc); }
+  </style>
+{%- endblock %}
+
+{% block body %}
+
+  <div class="row row--space-between block">
+    <div>
+      <h1 class="title">
+        {{ _('Overview') }}
+      </h1>
+    </div>
+    <div>
+      {%- if has_current_user_permission('lan_tournament.create') %}
+      <div class="button-row is-right-aligned">
+        <a class="button" href="{{ url_for('.create_form', party_id=party.id) }}">{{ render_icon('add') }} <span>{{ _('Create tournament') }}</span></a>
+      </div>
+      {%- endif %}
+    </div>
+  </div>
+
+  {# Stats cards #}
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="box">
+        <div class="stat-number">
+          {{ stats.tournament_count }}
+        </div>
+        <div class="data-label">
+          {{ _('Tournaments') }}
+        </div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="box">
+        <div class="stat-number">
+          {{ stats.total_participant_count }}
+        </div>
+        <div class="data-label">
+          {{ _('Total participants') }}
+        </div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="box">
+        <div class="stat-number stat-number--success">
+          {{ stats.ongoing_count }}
+        </div>
+        <div class="data-label">
+          {{ _('Ongoing') }}
+        </div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="box">
+        <div class="stat-number stat-number--info">
+          {{ stats.registration_open_count }}
+        </div>
+        <div class="data-label">
+          {{ _('Registration open') }}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# Tournament list #}
+  {%- if tournaments %}
+  <h2>{{ _('Tournaments') }} {{ render_extra_in_heading(tournaments|length) }}</h2>
+  <table class="itemlist is-vcentered is-wide">
+    <thead>
+      <tr>
+        <th>{{ _('Name') }}</th>
+        <th>{{ _('Game') }}</th>
+        <th>{{ _('Status') }}</th>
+        <th class="centered">{{ _('Participants') }}</th>
+        <th>{{ _('Start') }}</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+    {%- for tournament in tournaments|sort(attribute='name') %}
+      <tr>
+        <td>
+          <a href="{{ url_for('.view', tournament_id=tournament.id) }}" class="disguised">
+            <strong>{{ tournament.name }}</strong>
+          </a>
+        </td>
+        <td>{{ tournament.game|default('', true) }}</td>
+        <td>
+          {%- if tournament.tournament_status %}
+            {%- if tournament.tournament_status.name == 'DRAFT' %}
+              {{ render_tag(_('Draft'), class='color-disabled') }}
+            {%- elif tournament.tournament_status.name == 'REGISTRATION_OPEN' %}
+              {{ render_tag(_('Registration open'), class='color-info') }}
+            {%- elif tournament.tournament_status.name == 'REGISTRATION_CLOSED' %}
+              {{ render_tag(_('Registration closed'), class='color-warning') }}
+            {%- elif tournament.tournament_status.name == 'ONGOING' %}
+              {{ render_tag(_('Ongoing'), class='color-success') }}
+            {%- elif tournament.tournament_status.name == 'PAUSED' %}
+              {{ render_tag(_('Paused'), class='color-warning') }}
+            {%- elif tournament.tournament_status.name == 'COMPLETED' %}
+              {{ render_tag(_('Completed'), class='color-success') }}
+            {%- elif tournament.tournament_status.name == 'CANCELLED' %}
+              {{ render_tag(_('Cancelled'), class='color-danger') }}
+            {%- endif %}
+          {%- endif %}
+        </td>
+        <td class="centered">
+          {%- set count = participant_counts.get(tournament.id, 0) %}
+          {%- if tournament.contestant_type and tournament.contestant_type.name == 'TEAM' %}
+            {%- set cap = tournament.max_teams %}
+          {%- else %}
+            {%- set cap = tournament.max_players %}
+          {%- endif %}
+          {{ count }}{% if cap %} / {{ cap }}{% endif %}
+        </td>
+        <td>
+          {%- if tournament.start_time %}
+            {{ tournament.start_time|dateformat }}, {{ tournament.start_time|timeformat('short') }}
+          {%- endif %}
+        </td>
+        <td>
+          <a href="{{ url_for('.view', tournament_id=tournament.id) }}" class="button button--compact" title="{{ _('View') }}">{{ render_icon('view') }}</a>
+        </td>
+      </tr>
+    {%- endfor %}
+    </tbody>
+  </table>
+  {%- else %}
+  <div class="box no-data-message">
+    {{ _('No tournaments exist.') }}
+  </div>
+  {%- endif %}
+
+{%- endblock %}
