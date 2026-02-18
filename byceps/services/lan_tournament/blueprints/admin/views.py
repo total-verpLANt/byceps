@@ -1,6 +1,6 @@
 import dataclasses
 
-from flask import abort, g, request
+from flask import abort, g, request, url_for
 from flask_babel import gettext, to_user_timezone, to_utc
 
 from byceps.services.party import party_service
@@ -20,6 +20,7 @@ from byceps.services.lan_tournament import (
     tournament_match_service,
     tournament_participant_service,
     tournament_service,
+    tournament_stats_service,
     tournament_team_service,
 )
 from byceps.services.lan_tournament.models.tournament import Tournament
@@ -44,6 +45,8 @@ from byceps.services.lan_tournament.models.tournament_status import (
 from byceps.services.lan_tournament.lan_tournament_view_helpers import (
     build_contestant_name_lookups,
 )
+from byceps.services.more.blueprints.admin import item_service
+from byceps.services.more.blueprints.admin.item_service import MoreItem
 
 from .forms import (
     AddParticipantForm,
@@ -55,6 +58,53 @@ from .forms import (
 
 
 blueprint = create_blueprint('lan_tournament_admin', __name__)
+
+
+# --- Monkey-patch "More" party items to include LAN Tournaments ---
+_original_get_party_items = item_service.get_party_items
+
+
+def _get_party_items_with_lan_tournaments(party):
+    items = _original_get_party_items(party)
+    items = [
+        item for item in items if item.required_permission != 'tourney.view'
+    ]
+    items.append(
+        MoreItem(
+            label=gettext('LAN Tournaments'),
+            icon='trophy',
+            url=url_for('lan_tournament_admin.overview', party_id=party.id),
+            required_permission='lan_tournament.view',
+        )
+    )
+    return items
+
+
+item_service.get_party_items = _get_party_items_with_lan_tournaments
+
+
+@blueprint.get('/for_party/<party_id>/overview')
+@permission_required('lan_tournament.view')
+@templated
+def overview(party_id):
+    """Show tournament overview dashboard for a party."""
+    party = _get_party_or_404(party_id)
+    tournaments = tournament_service.get_tournaments_for_party(party.id)
+    participant_counts = (
+        tournament_service.get_participant_counts_for_tournaments(
+            [t.id for t in tournaments]
+        )
+    )
+    stats = tournament_stats_service.get_stats_for_party(
+        tournaments, participant_counts
+    )
+
+    return {
+        'party': party,
+        'tournaments': tournaments,
+        'stats': stats,
+        'participant_counts': participant_counts,
+    }
 
 
 @blueprint.get('/for_party/<party_id>')
