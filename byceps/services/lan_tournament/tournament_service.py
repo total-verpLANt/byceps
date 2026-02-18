@@ -219,6 +219,15 @@ def get_participant_count(
     return tournament_repository.get_participant_count(tournament_id)
 
 
+def get_participant_counts_for_tournaments(
+    tournament_ids: list[TournamentID],
+) -> dict[TournamentID, int]:
+    """Return participant counts keyed by tournament ID."""
+    return tournament_repository.get_participant_counts_for_tournaments(
+        tournament_ids
+    )
+
+
 def _has_bracket_generated(
     tournament_id: TournamentID,
 ) -> bool:
