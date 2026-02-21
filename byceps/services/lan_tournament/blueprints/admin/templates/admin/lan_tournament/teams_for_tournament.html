@@ -54,8 +54,7 @@
           {%- endif %}
         </td>
         <td class="column-members">
-          {# TODO: Show actual member count #}
-          -
+          {{ member_counts.get(team.id, 0) }}
         </td>
         <td class="bared">
           <div class="button-row is-compact is-right-aligned">

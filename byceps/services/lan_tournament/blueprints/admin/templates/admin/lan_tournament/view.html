@@ -25,6 +25,14 @@
     </div>
   </div>
 
+  {# Sub-section navigation #}
+  <div class="button-row block">
+    <a class="button" href="{{ url_for('.participants_for_tournament', tournament_id=tournament.id) }}">{{ _('Participants') }}</a>
+    <a class="button" href="{{ url_for('.teams_for_tournament', tournament_id=tournament.id) }}">{{ _('Teams') }}</a>
+    <a class="button" href="{{ url_for('.matches_for_tournament', tournament_id=tournament.id) }}">{{ _('Matches') }}</a>
+    <a class="button" href="{{ url_for('.bracket', tournament_id=tournament.id) }}">{{ _('Bracket') }}</a>
+  </div>
+
   {# Basic info #}
   <div class="row row--space-between row--wrap block">
 

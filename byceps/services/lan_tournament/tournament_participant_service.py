@@ -187,12 +187,15 @@ def leave_tournament(
     if participant is None:
         return Err('Participant not found.')
 
+    if participant.tournament_id != tournament_id:
+        return Err('Participant does not belong to this tournament.')
+
     tournament = tournament_repository.get_tournament(tournament_id)
-    if tournament.tournament_status not in (
-        TournamentStatus.REGISTRATION_OPEN,
-        TournamentStatus.REGISTRATION_CLOSED,
-    ):
-        return Err('Cannot leave tournament after it has started or completed.')
+    if tournament.tournament_status != TournamentStatus.REGISTRATION_OPEN:
+        return Err(
+            'You can only leave during the registration period. '
+            'Contact an admin to be removed.'
+        )
 
     tournament_repository.delete_participant(participant_id)
 
@@ -206,6 +209,135 @@ def leave_tournament(
     signals.participant_left.send(None, event=event)
 
     return Ok(event)
+
+
+def _remove_single_participant_bracket_aware(
+    tournament: Tournament,
+    participant: TournamentParticipant,
+    now: datetime,
+) -> tuple[list[ContestantAdvancedEvent], TournamentTeamID | None]:
+    """Remove one participant, handling bracket defwins if needed.
+
+    Flushes but does NOT commit — caller owns the transaction.
+    Returns (defwin_events, deleted_team_id).
+    deleted_team_id is non-None only when removing this participant
+    caused their team to become empty and the team was soft-deleted.
+    """
+    is_team_tournament = (
+        tournament.contestant_type == ContestantType.TEAM
+    )
+    bracket_is_active = tournament.tournament_status in (
+        TournamentStatus.ONGOING,
+        TournamentStatus.PAUSED,
+    )
+
+    defwin_events: list[ContestantAdvancedEvent] = []
+    deleted_team_id: TournamentTeamID | None = None
+
+    # Step 1: remove the participant row (soft or hard).
+    if bracket_is_active:
+        tournament_repository.soft_delete_participants_by_ids(
+            {participant.id}, now
+        )
+    else:
+        tournament_repository.delete_participants_by_ids({participant.id})
+
+    # Step 2: handle bracket consequences.
+    if bracket_is_active and not is_team_tournament:
+        defwin_events.extend(
+            tournament_match_service.handle_defwin_for_removed_participant(
+                tournament.id, participant.id
+            )
+        )
+    elif (
+        bracket_is_active
+        and is_team_tournament
+        and participant.team_id is not None
+    ):
+        # Only forfeit/delete the team if it is now empty.
+        remaining = tournament_repository.get_participants_for_team(
+            participant.team_id
+        )
+        if not remaining:
+            defwin_events.extend(
+                tournament_match_service.handle_defwin_for_removed_team(
+                    tournament.id, participant.team_id
+                )
+            )
+            tournament_repository.remove_team_from_participants_flush(
+                participant.team_id
+            )
+            tournament_repository.soft_delete_team_flush(
+                participant.team_id, now
+            )
+            deleted_team_id = participant.team_id
+
+    return defwin_events, deleted_team_id
+
+
+def admin_remove_participant(
+    tournament_id: TournamentID,
+    participant_id: TournamentParticipantID,
+    *,
+    initiator: User | None = None,
+) -> Result[ParticipantLeftEvent, str]:
+    """Remove a participant from a tournament (admin action).
+
+    Bracket-aware: handles defwins when bracket is active.
+    Emits TeamMemberLeftEvent and TeamDeletedEvent when applicable.
+    """
+    participant = tournament_repository.find_participant(participant_id)
+    if participant is None:
+        return Err('Participant not found.')
+
+    if participant.tournament_id != tournament_id:
+        return Err('Participant does not belong to this tournament.')
+
+    team_id = participant.team_id  # capture before removal
+
+    tournament = tournament_repository.get_tournament_for_update(tournament_id)
+
+    now = datetime.now(UTC)
+    defwin_events, deleted_team_id = _remove_single_participant_bracket_aware(
+        tournament, participant, now
+    )
+    tournament_repository.commit_session()
+
+    for event in defwin_events:
+        signals.contestant_advanced.send(None, event=event)
+
+    if team_id is not None:
+        signals.team_member_left.send(
+            None,
+            event=TeamMemberLeftEvent(
+                occurred_at=now,
+                initiator=initiator,
+                tournament_id=tournament_id,
+                team_id=team_id,
+                participant_id=participant_id,
+            ),
+        )
+
+    if deleted_team_id is not None:
+        signals.team_deleted.send(
+            None,
+            event=TeamDeletedEvent(
+                occurred_at=now,
+                initiator=initiator,
+                tournament_id=tournament_id,
+                team_id=deleted_team_id,
+            ),
+        )
+
+    left_event = ParticipantLeftEvent(
+        occurred_at=now,
+        initiator=initiator,
+        tournament_id=tournament_id,
+        participant_id=participant_id,
+    )
+    signals.participant_left.send(None, event=left_event)
+
+    return Ok(left_event)
 
 
 def remove_participants_without_tickets(
@@ -248,10 +380,6 @@ def remove_participants_without_tickets(
         return Ok(0)
 
     is_team_tournament = tournament.contestant_type == ContestantType.TEAM
-    bracket_is_active = tournament.tournament_status in (
-        TournamentStatus.ONGOING,
-        TournamentStatus.PAUSED,
-    )
 
     # Team tournaments: transfer captains + identify empty teams
     teams_to_delete: list[TournamentTeamID] = []
@@ -260,41 +388,44 @@ def remove_participants_without_tickets(
             tournament_id, ticketless, participants
         )
 
-    # Solo: handle defwins for unconfirmed matches
-    # (team contestants reference team_id, not participant_id)
     defwin_events: list[ContestantAdvancedEvent] = []
-    if not is_team_tournament and bracket_is_active:
+
+    if not is_team_tournament:
+        # Solo: delegate per-participant bracket logic to helper
         for p in ticketless:
-            defwin_events.extend(
-                tournament_match_service.handle_defwin_for_removed_participant(
-                    tournament_id, p.id
-                )
+            p_defwin_events, _ = _remove_single_participant_bracket_aware(
+                tournament, p, now
             )
-
-    ids_to_remove = {p.id for p in ticketless}
-
-    if bracket_is_active:
-        # Soft-delete: preserve match contestant FKs
-        tournament_repository.soft_delete_participants_by_ids(
-            ids_to_remove, now
-        )
+            defwin_events.extend(p_defwin_events)
     else:
-        # Hard-delete: no match history to preserve
-        tournament_repository.delete_participants_by_ids(ids_to_remove)
-
-    # Clean up empty teams (defwin + soft/hard delete)
-    for team_id in teams_to_delete:
+        # Team: bulk-remove participant rows, then clean up empty teams
+        bracket_is_active = tournament.tournament_status in (
+            TournamentStatus.ONGOING,
+            TournamentStatus.PAUSED,
+        )
+        ids_to_remove = {p.id for p in ticketless}
         if bracket_is_active:
-            defwin_events.extend(
-                tournament_match_service.handle_defwin_for_removed_team(
-                    tournament_id, team_id
-                )
+            # Soft-delete: preserve match contestant FKs
+            tournament_repository.soft_delete_participants_by_ids(
+                ids_to_remove, now
             )
-        tournament_repository.remove_team_from_participants_flush(team_id)
-        if bracket_is_active:
-            tournament_repository.soft_delete_team_flush(team_id, now)
         else:
-            tournament_repository.delete_team_flush(team_id)
+            # Hard-delete: no match history to preserve
+            tournament_repository.delete_participants_by_ids(ids_to_remove)
+
+        # Clean up empty teams (defwin + soft/hard delete)
+        for team_id in teams_to_delete:
+            if bracket_is_active:
+                defwin_events.extend(
+                    tournament_match_service.handle_defwin_for_removed_team(
+                        tournament_id, team_id
+                    )
+                )
+            tournament_repository.remove_team_from_participants_flush(team_id)
+            if bracket_is_active:
+                tournament_repository.soft_delete_team_flush(team_id, now)
+            else:
+                tournament_repository.delete_team_flush(team_id)
 
     # Single atomic commit
     tournament_repository.commit_session()

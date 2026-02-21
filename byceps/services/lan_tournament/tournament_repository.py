@@ -241,7 +241,7 @@ def _db_tournament_to_tournament(
 
 
 def create_team(team: TournamentTeam) -> None:
-    """Persist a team."""
+    """Persist a team (flush only — caller commits)."""
     db_team = DbTournamentTeam(
         team.id,
         team.tournament_id,
@@ -255,7 +255,7 @@ def create_team(team: TournamentTeam) -> None:
     )
 
     db.session.add(db_team)
-    db.session.commit()
+    db.session.flush()
 
 
 def update_team(team: TournamentTeam) -> None:
@@ -849,6 +849,16 @@ def _db_match_to_match(
 
 
 # -- match comment --
+
+
+def find_match_comment(
+    comment_id: TournamentMatchCommentID,
+) -> TournamentMatchComment | None:
+    """Return the match comment, or `None` if not found."""
+    db_comment = db.session.get(DbTournamentMatchComment, comment_id)
+    if db_comment is None:
+        return None
+    return _db_comment_to_comment(db_comment)
 
 
 def create_match_comment(

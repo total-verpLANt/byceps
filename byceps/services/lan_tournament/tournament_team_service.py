@@ -94,6 +94,16 @@ def create_team(
                 'A team with this tag already exists in this tournament.'
             )
 
+    # Captain must be a registered participant in this tournament
+    captain_participant = tournament_repository.find_participant_by_user(
+        tournament_id, captain_user_id
+    )
+    if captain_participant is None:
+        return Err(
+            'The team captain must be a registered participant'
+            ' in this tournament.'
+        )
+
     now = datetime.now(UTC)
     team_id = TournamentTeamID(generate_uuid7())
 
@@ -122,6 +132,16 @@ def create_team(
             return Err(
                 'A team with this tag already exists in this tournament.'
             )
+        raise
+
+    # Auto-assign captain to the new team
+    updated_captain = dataclasses.replace(
+        captain_participant, team_id=team_id
+    )
+    try:
+        tournament_repository.update_participant(updated_captain)
+    except Exception:
+        db.session.rollback()
         raise
 
     event = TeamCreatedEvent(
@@ -275,6 +295,13 @@ def get_teams_for_tournament(
 ) -> list[TournamentTeam]:
     """Return all teams for that tournament."""
     return tournament_repository.get_teams_for_tournament(tournament_id)
+
+
+def get_team_member_counts(
+    tournament_id: TournamentID,
+) -> dict[TournamentTeamID, int]:
+    """Return active member count per team in a single query."""
+    return tournament_repository.get_team_member_counts(tournament_id)
 
 
 def get_teams_by_ids(
