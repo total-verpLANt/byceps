@@ -1,7 +1,7 @@
 {% extends 'layout/base.html' %}
 {% from 'macros/icons.html' import render_icon %}
 {% from 'macros/misc.html' import render_tag %}
-{% from 'site/lan_tournament/_hover_card.html' import render_hover_name, hover_card_styles %}
+{% from 'macros/lan_tournament.html' import render_hover_name, hover_card_styles %}
 {% set page_title = [_('Matches'), tournament.name] %}
 
 {% block head %}

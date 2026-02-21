@@ -1,6 +1,6 @@
 {% extends 'layout/base.html' %}
-{% from 'site/lan_tournament/_bracket_macros.html' import render_bracket, render_bracket_responsive_styles, render_simple_bracket_list %}
-{% from 'site/lan_tournament/_hover_card.html' import hover_card_styles %}
+{% from 'macros/lan_tournament.html' import render_bracket, render_bracket_responsive_styles, render_simple_bracket_list %}
+{% from 'macros/lan_tournament.html' import hover_card_styles %}
 {% set page_title = [_('Bracket'), tournament.name] %}
 
 {% block head %}
