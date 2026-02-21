@@ -1,4 +1,6 @@
 {% extends 'layout/admin/lan_tournament.html' %}
+{% set current_page_party = party %}
+{% set current_tab = 'tournaments' %}
 {% from 'macros/admin.html' import render_extra_in_heading %}
 {% from 'macros/icons.html' import render_icon %}
 {% from 'site/lan_tournament/_hover_card.html' import render_hover_name, hover_card_styles %}
@@ -38,9 +40,11 @@
 
   <h1 class="title">{{ _('Participants') }} {{ render_extra_in_heading(participants|length) }}</h1>
 
+  {%- if tournament.tournament_status and tournament.tournament_status.name in ('REGISTRATION_OPEN', 'REGISTRATION_CLOSED') %}
   <div class="button-row">
     <a class="button" href="{{ url_for('.add_participant_form', tournament_id=tournament.id) }}">{{ render_icon('add') }} {{ _('Add participant') }}</a>
   </div>
+  {%- endif %}
 
   {%- if participants %}
   {%- if participants_without_tickets %}

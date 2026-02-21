@@ -127,7 +127,8 @@ class AddParticipantForm(LocalizedForm):
         if user is None:
             raise ValidationError(lazy_gettext('Unknown username'))
 
-        field.data = user
+        field.data = screen_name  # keep string for re-render
+        form.user = user  # stash resolved User on the form
 
 
 class TeamUpdateForm(LocalizedForm):
