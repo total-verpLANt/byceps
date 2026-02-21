@@ -1,9 +1,11 @@
 {% extends 'layout/base.html' %}
 {% from 'macros/icons.html' import render_icon %}
 {% from 'macros/misc.html' import render_tag %}
+{% from 'site/lan_tournament/_hover_card.html' import render_hover_name, hover_card_styles %}
 {% set page_title = [_('Tournament'), tournament.name] %}
 
 {% block head %}
+{{ hover_card_styles() }}
 <style>
   .tournament-header {
     margin-bottom: 1.5rem;
@@ -181,7 +183,14 @@
   {%- if participants %}
     <ul>
       {%- for participant in participants %}
-      <li>{{ users_by_id.get(participant.user_id, {}).screen_name|default(participant.user_id|string, true) }}</li>
+      <li>
+        {%- set _user = users_by_id.get(participant.user_id) -%}
+        {%- if _user -%}
+          {{ render_hover_name(_user.screen_name, user_id=_user.id, seats_by_user_id=seats_by_user_id) }}
+        {%- else -%}
+          {{ participant.user_id|string }}
+        {%- endif -%}
+      </li>
       {%- endfor %}
     </ul>
   {%- else %}

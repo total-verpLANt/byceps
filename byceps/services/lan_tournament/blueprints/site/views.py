@@ -1,3 +1,4 @@
+from datetime import datetime
 from flask import abort, g, request
 from flask_babel import gettext
 
@@ -13,6 +14,8 @@ from byceps.services.lan_tournament.models.tournament_status import (
 )
 from byceps.services.lan_tournament.lan_tournament_view_helpers import (
     build_contestant_name_lookups,
+    build_hover_lookups,
+    build_seat_lookup,
 )
 from byceps.services.party import party_service
 from byceps.services.user import user_service
@@ -42,11 +45,13 @@ def index():
     ]
 
     # Sort: registration open first, then by start time.
+    _EPOCH = datetime.min
+
     def _sort_key(t: Tournament) -> tuple:
         is_registration_open = (
             t.tournament_status == TournamentStatus.REGISTRATION_OPEN
         )
-        return (not is_registration_open, t.start_time or '')
+        return (not is_registration_open, t.start_time or _EPOCH)
 
     visible_tournaments.sort(key=_sort_key)
 
@@ -108,6 +113,9 @@ def view(tournament_id):
     user_ids = {p.user_id for p in participants}
     users_by_id = user_service.get_users_indexed_by_id(user_ids)
 
+    # Build seat lookup
+    seats_by_user_id = build_seat_lookup(user_ids, tournament.party_id)
+
     return {
         'tournament': tournament,
         'participants': participants,
@@ -116,6 +124,7 @@ def view(tournament_id):
         'can_join': can_join,
         'can_leave': can_leave,
         'users_by_id': users_by_id,
+        'seats_by_user_id': seats_by_user_id,
     }
 
 
@@ -327,6 +336,11 @@ def view_team(team_id):
     user_ids.add(team.captain_user_id)
     users_by_id = user_service.get_users_indexed_by_id(user_ids)
 
+    # Build seat lookup
+    seats_by_user_id = build_seat_lookup(
+        user_ids, tournament.party_id
+    )
+
     return {
         'tournament': tournament,
         'team': team,
@@ -336,6 +350,7 @@ def view_team(team_id):
         'can_join_team': can_join_team,
         'can_leave_team': can_leave_team,
         'users_by_id': users_by_id,
+        'seats_by_user_id': seats_by_user_id,
     }
 
 
@@ -502,11 +517,17 @@ def matches(tournament_id):
         tournament.id, all_contestants
     )
 
+    seats_by_user_id, team_members_by_team_id = build_hover_lookups(
+        tournament, participants_by_id, teams_by_id, tournament.party_id
+    )
+
     return {
         'tournament': tournament,
         'match_data': match_data,
         'teams_by_id': teams_by_id,
         'participants_by_id': participants_by_id,
+        'seats_by_user_id': seats_by_user_id,
+        'team_members_by_team_id': team_members_by_team_id,
     }
 
 
@@ -538,9 +559,15 @@ def view_match(match_id):
         tournament.id, [contestants]
     )
 
+    seats_by_user_id, team_members_by_team_id = build_hover_lookups(
+        tournament, participants_by_id, teams_by_id, tournament.party_id
+    )
+
     # Resolve comment author names
     comment_user_ids = {c.created_by for c in comments}
-    comment_users_by_id = user_service.get_users_indexed_by_id(comment_user_ids)
+    comment_users_by_id = user_service.get_users_indexed_by_id(
+        comment_user_ids
+    )
 
     return {
         'tournament': tournament,
@@ -549,6 +576,8 @@ def view_match(match_id):
         'comments': comments,
         'teams_by_id': teams_by_id,
         'participants_by_id': participants_by_id,
+        'seats_by_user_id': seats_by_user_id,
+        'team_members_by_team_id': team_members_by_team_id,
         'comment_users_by_id': comment_users_by_id,
     }
 
@@ -587,9 +616,15 @@ def bracket(tournament_id):
         tournament.id, all_contestants
     )
 
+    seats_by_user_id, team_members_by_team_id = build_hover_lookups(
+        tournament, participants_by_id, teams_by_id, tournament.party_id
+    )
+
     return {
         'tournament': tournament,
         'match_data': match_data,
         'teams_by_id': teams_by_id,
         'participants_by_id': participants_by_id,
+        'seats_by_user_id': seats_by_user_id,
+        'team_members_by_team_id': team_members_by_team_id,
     }
