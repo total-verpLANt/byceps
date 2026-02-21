@@ -86,7 +86,15 @@
 
   .bracket-connector {
     position: absolute;
-    border: 2px solid #ccc;
+    border-right: 2px solid #ccc;
+    border-top: 2px solid #ccc;
+    border-bottom: 2px solid #ccc;
+    right: -20px;
+    width: 20px;
+  }
+
+  .bracket-connector-group {
+    position: relative;
   }
 
   .bracket-round-label {
@@ -144,9 +152,13 @@
         {%- endif %}
       </div>
 
-      {%- for data in rounds[round_num] %}
+      {%- set round_matches = rounds[round_num] %}
+      {%- for data in round_matches %}
       {%- set match = data.match %}
       {%- set contestants = data.contestants %}
+      {%- set is_even_index = loop.index0 % 2 == 0 %}
+      {%- set is_last_in_pair = loop.index0 % 2 == 1 %}
+      {%- if is_even_index %}<div class='bracket-connector-group' style='position: relative;'>{%- endif %}
       <div class='bracket-match'>
         <div class='bracket-match-card {% if match.confirmed_by %}confirmed{% endif %} {% if contestants|length == 1 %}defwin{% endif %}'>
           <div class='bracket-match-header'>
@@ -209,6 +221,7 @@
           {%- endif %}
         </div>
       </div>
+      {%- if is_last_in_pair or loop.last %}<div class='bracket-connector'></div></div>{%- endif %}
       {%- endfor %}
     </div>
     {%- endfor %}
@@ -323,3 +336,15 @@
 </style>
 
 {%- endmacro %}
+
+
+{% macro render_bracket_responsive_styles() %}<style>
+  @media (max-width: 768px) {
+    .bracket-desktop { display: none; }
+    .bracket-mobile { display: block; }
+  }
+  @media (min-width: 769px) {
+    .bracket-desktop { display: block; }
+    .bracket-mobile { display: none; }
+  }
+</style>{%- endmacro %}

@@ -286,7 +286,10 @@ def test_match_comments_workflow(party, user1, user2, admin_user):
     assert updated_comments[0].comment == 'Amazing match!'
 
     # Delete comment
-    tournament_match_service.delete_comment(comment_id)
+    delete_result = tournament_match_service.delete_comment(
+        comment_id, match.id
+    )
+    assert delete_result.is_ok()
 
     # Verify deletion
     final_comments = tournament_match_service.get_comments_from_match(match.id)

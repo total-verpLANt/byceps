@@ -32,6 +32,7 @@ from byceps.services.lan_tournament.models.tournament_team import (
     TournamentTeamID,
 )
 from byceps.services.lan_tournament.models.tournament_match import (
+    TournamentMatch,
     TournamentMatchID,
 )
 from byceps.services.lan_tournament.models.tournament_match_comment import (
@@ -65,26 +66,32 @@ blueprint = create_blueprint('lan_tournament_admin', __name__)
 
 
 # --- Monkey-patch "More" party items to include LAN Tournaments ---
-_original_get_party_items = item_service.get_party_items
+if not getattr(
+    item_service.get_party_items, '_lan_tournament_patched', False
+):
+    _original_get_party_items = item_service.get_party_items
 
-
-def _get_party_items_with_lan_tournaments(party):
-    items = _original_get_party_items(party)
-    items = [
-        item for item in items if item.required_permission != 'tourney.view'
-    ]
-    items.append(
-        MoreItem(
-            label=gettext('LAN Tournaments'),
-            icon='trophy',
-            url=url_for('lan_tournament_admin.overview', party_id=party.id),
-            required_permission='lan_tournament.view',
+    def _get_party_items_with_lan_tournaments(party):
+        items = _original_get_party_items(party)
+        items = [
+            item
+            for item in items
+            if item.required_permission != 'tourney.view'
+        ]
+        items.append(
+            MoreItem(
+                label=gettext('LAN Tournaments'),
+                icon='trophy',
+                url=url_for(
+                    'lan_tournament_admin.overview', party_id=party.id
+                ),
+                required_permission='lan_tournament.view',
+            )
         )
-    )
-    return items
+        return items
 
-
-item_service.get_party_items = _get_party_items_with_lan_tournaments
+    _get_party_items_with_lan_tournaments._lan_tournament_patched = True
+    item_service.get_party_items = _get_party_items_with_lan_tournaments
 
 
 @blueprint.get('/for_party/<party_id>/overview')
@@ -543,11 +550,15 @@ def teams_for_tournament(tournament_id):
     party = party_service.get_party(tournament.party_id)
 
     teams = tournament_team_service.get_teams_for_tournament(tournament.id)
+    member_counts = tournament_team_service.get_team_member_counts(
+        tournament.id
+    )
 
     return {
         'party': party,
         'tournament': tournament,
         'teams': teams,
+        'member_counts': member_counts,
     }
 
 
@@ -841,8 +852,8 @@ def remove_participant(tournament_id, participant_id):
     """Remove a participant from the tournament."""
     tournament = _get_tournament_or_404(tournament_id)
 
-    result = tournament_participant_service.leave_tournament(
-        tournament.id, participant_id
+    result = tournament_participant_service.admin_remove_participant(
+        tournament.id, participant_id, initiator=g.user
     )
 
     match result:
@@ -938,6 +949,15 @@ def _get_team_or_404(team_id) -> TournamentTeam:
     return team
 
 
+def _get_match_or_404(match_id) -> TournamentMatch:
+    match = tournament_match_service.find_match(
+        TournamentMatchID(match_id)
+    )
+    if match is None:
+        abort(404)
+    return match
+
+
 # -------------------------------------------------------------------- #
 # matches
 
@@ -950,7 +970,7 @@ def matches_for_tournament(tournament_id):
     tournament = _get_tournament_or_404(tournament_id)
     party = party_service.get_party(tournament.party_id)
 
-    matches = tournament_match_service.get_matches_for_tournament(tournament.id)
+    matches = tournament_match_service.get_matches_for_tournament_ordered(tournament.id)
 
     # Get contestants for each match
     match_data = []
@@ -991,15 +1011,14 @@ def matches_for_tournament(tournament_id):
 @templated
 def view_match(match_id):
     """Show a match."""
-    match_id_obj = TournamentMatchID(match_id)
-    match = tournament_match_service.get_match(match_id_obj)
+    match = _get_match_or_404(match_id)
     tournament = _get_tournament_or_404(match.tournament_id)
     party = party_service.get_party(tournament.party_id)
 
     contestants = tournament_match_service.get_contestants_for_match(
-        match_id_obj
+        match.id
     )
-    comments = tournament_match_service.get_comments_from_match(match_id_obj)
+    comments = tournament_match_service.get_comments_from_match(match.id)
 
     teams_by_id, participants_by_id = build_contestant_name_lookups(
         tournament.id, [contestants]
@@ -1157,7 +1176,7 @@ def bracket(tournament_id):
     tournament = _get_tournament_or_404(tournament_id)
     party = party_service.get_party(tournament.party_id)
 
-    matches = tournament_match_service.get_matches_for_tournament(tournament.id)
+    matches = tournament_match_service.get_matches_for_tournament_ordered(tournament.id)
 
     # Get contestants for each match
     match_data = []
@@ -1198,11 +1217,16 @@ def bracket(tournament_id):
 def delete_match_comment(match_id, comment_id):
     """Delete a match comment."""
     comment_id_obj = TournamentMatchCommentID(comment_id)
+    match_id_obj = TournamentMatchID(match_id)
 
-    try:
-        tournament_match_service.delete_comment(comment_id_obj)
-        flash_success(gettext('Comment has been deleted.'))
-    except ValueError as e:
-        flash_error(gettext('Error deleting comment: %(error)s', error=str(e)))
+    match tournament_match_service.delete_comment(
+        comment_id_obj, match_id_obj
+    ):
+        case Ok():
+            flash_success(gettext('Comment has been deleted.'))
+        case Err(e):
+            flash_error(
+                gettext('Error deleting comment: %(error)s', error=e)
+            )
 
     return redirect_to('.view_match', match_id=match_id)

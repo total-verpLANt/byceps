@@ -136,6 +136,13 @@
   </div>
   {%- endif %}
 
+  {# Sub-section navigation #}
+  <div class="button-row block">
+    <a class="button" href="{{ url_for('.teams', tournament_id=tournament.id) }}">{{ _('Teams') }}</a>
+    <a class="button" href="{{ url_for('.matches', tournament_id=tournament.id) }}">{{ _('Matches') }}</a>
+    <a class="button" href="{{ url_for('.bracket', tournament_id=tournament.id) }}">{{ _('Bracket') }}</a>
+  </div>
+
   {# Participants section #}
   <h2>
     <div class="row" style="align-items: center;">

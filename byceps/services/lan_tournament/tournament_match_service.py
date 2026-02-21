@@ -335,11 +335,27 @@ def get_match(
     return tournament_repository.get_match(match_id)
 
 
+def find_match(
+    match_id: TournamentMatchID,
+) -> TournamentMatch | None:
+    """Return the match, or `None` if not found."""
+    return tournament_repository.find_match(match_id)
+
+
 def get_matches_for_tournament(
     tournament_id: TournamentID,
 ) -> list[TournamentMatch]:
     """Return all matches for that tournament."""
     return tournament_repository.get_matches_for_tournament(tournament_id)
+
+
+def get_matches_for_tournament_ordered(
+    tournament_id: TournamentID,
+) -> list[TournamentMatch]:
+    """Return all matches for that tournament, ordered by round."""
+    return tournament_repository.get_matches_for_tournament_ordered(
+        tournament_id
+    )
 
 
 def handle_defwin_for_removed_participant(
@@ -654,9 +670,16 @@ def update_comment(
 
 def delete_comment(
     comment_id: TournamentMatchCommentID,
-) -> None:
-    """Delete a match comment."""
+    match_id: TournamentMatchID,
+) -> Result[None, str]:
+    """Delete a match comment, verifying it belongs to the match."""
+    comment = tournament_repository.find_match_comment(comment_id)
+    if comment is None:
+        return Err('Comment not found.')
+    if comment.tournament_match_id != match_id:
+        return Err('Comment does not belong to this match.')
     tournament_repository.delete_match_comment(comment_id)
+    return Ok(None)
 
 
 def delete_match(

@@ -9,6 +9,7 @@ from byceps.services.lan_tournament import (
     tournament_team_service,
 )
 from byceps.services.lan_tournament.models.tournament import Tournament
+from byceps.services.lan_tournament.models.tournament_team import TournamentTeam
 from byceps.services.lan_tournament.models.tournament_status import (
     TournamentStatus,
 )
@@ -29,6 +30,9 @@ from byceps.util.views import login_required, redirect_to
 blueprint = create_blueprint('lan_tournament', __name__)
 
 
+_EPOCH = datetime.min
+
+
 @blueprint.get('/')
 @templated
 def index():
@@ -45,8 +49,6 @@ def index():
     ]
 
     # Sort: registration open first, then by start time.
-    _EPOCH = datetime.min
-
     def _sort_key(t: Tournament) -> tuple:
         is_registration_open = (
             t.tournament_status == TournamentStatus.REGISTRATION_OPEN
@@ -288,7 +290,7 @@ def create_team(tournament_id):
 @templated
 def view_team(team_id):
     """Show team details."""
-    team = tournament_team_service.get_team(team_id)
+    team = _get_team_or_404(team_id)
     tournament = _get_tournament_or_404(team.tournament_id)
 
     # Hide drafts from site visitors.
@@ -479,6 +481,15 @@ def _get_tournament_or_404(tournament_id) -> Tournament:
     return tournament
 
 
+def _get_team_or_404(team_id) -> TournamentTeam:
+    team = tournament_team_service.find_team(team_id)
+
+    if team is None:
+        abort(404)
+
+    return team
+
+
 # -------------------------------------------------------------------- #
 # matches
 
@@ -496,7 +507,7 @@ def matches(tournament_id):
     ):
         abort(404)
 
-    matches = tournament_match_service.get_matches_for_tournament(tournament.id)
+    matches = tournament_match_service.get_matches_for_tournament_ordered(tournament.id)
 
     # Get contestants for each match
     match_data = []
@@ -595,7 +606,7 @@ def bracket(tournament_id):
     ):
         abort(404)
 
-    matches = tournament_match_service.get_matches_for_tournament(tournament.id)
+    matches = tournament_match_service.get_matches_for_tournament_ordered(tournament.id)
 
     # Get contestants for each match
     match_data = []
