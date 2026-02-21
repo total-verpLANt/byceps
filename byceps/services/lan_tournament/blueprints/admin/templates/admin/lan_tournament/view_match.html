@@ -2,7 +2,7 @@
 {% from 'macros/admin.html' import render_backlink %}
 {% from 'macros/icons.html' import render_icon %}
 {% from 'macros/misc.html' import render_tag %}
-{% from 'site/lan_tournament/_hover_card.html' import render_hover_name, hover_card_styles %}
+{% from 'macros/lan_tournament.html' import render_hover_name, hover_card_styles %}
 {% set current_page_party = party %}
 {% set current_tab = 'tournaments' %}
 {% set page_title = [_('Match'), tournament.name, party.title] %}

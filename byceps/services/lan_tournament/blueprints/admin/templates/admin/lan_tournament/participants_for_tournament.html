@@ -3,7 +3,7 @@
 {% set current_tab = 'tournaments' %}
 {% from 'macros/admin.html' import render_extra_in_heading %}
 {% from 'macros/icons.html' import render_icon %}
-{% from 'site/lan_tournament/_hover_card.html' import render_hover_name, hover_card_styles %}
+{% from 'macros/lan_tournament.html' import render_hover_name, hover_card_styles %}
 {% set page_title = [_('LAN'), party.title, _('Tournaments'), tournament.name, _('Participants')] %}
 
 {% block head %}
