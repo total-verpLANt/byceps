@@ -1,0 +1,152 @@
+{% extends 'layout/admin/lan_tournament.html' %}
+{% from 'macros/icons.html' import render_icon %}
+{% set current_page_party = party %}
+{% set current_tab = 'tournaments' %}
+{% set page_title = [_('LAN'), party.title, _('Tournaments'), tournament.name, _('Teams'), team.name] %}
+
+{% block body %}
+
+  <nav class="breadcrumbs">
+    <ol>
+      <li><a href="{{ url_for('.index', party_id=party.id) }}">{{ party.title }}</a></li>
+      <li><a href="{{ url_for('.view', tournament_id=tournament.id) }}">{{ tournament.name }}</a></li>
+      <li><a href="{{ url_for('.teams_for_tournament', tournament_id=tournament.id) }}">{{ _('Teams') }}</a></li>
+    </ol>
+  </nav>
+
+  <div class="row row--space-between block">
+    <div>
+      <h1 class="title">{{ team.name }}{% if team.tag %} <span class="dimmed">[{{ team.tag }}]</span>{% endif %}</h1>
+    </div>
+    <div>
+      {%- if has_current_user_permission('lan_tournament.update') %}
+      <div class="button-row is-right-aligned">
+        <a class="button" href="{{ url_for('.update_team_form', team_id=team.id) }}">{{ render_icon('edit') }} <span>{{ _('Edit') }}</span></a>
+      </div>
+      {%- endif %}
+    </div>
+  </div>
+
+  {# Team metadata #}
+  <div class="grid block">
+    <div class="column">
+      <div class="box column-cell--grow">
+        <div class="data-label">{{ _('Captain') }}</div>
+        <div class="data-value">
+          {%- set captain_user = users_by_id.get(team.captain_user_id) %}
+          {%- if captain_user %}
+            {{ captain_user.screen_name }}
+          {%- else %}
+            {{ _('Unknown') }}
+          {%- endif %}
+        </div>
+      </div>
+    </div>
+    <div class="column">
+      <div class="box column-cell--grow">
+        <div class="data-label">{{ _('Members') }}</div>
+        <div class="data-value">{{ members|length }}</div>
+      </div>
+    </div>
+    <div class="column">
+      <div class="box column-cell--grow">
+        <div class="data-label">{{ _('Created') }}</div>
+        <div class="data-value">{{ team.created_at|dateformat }}</div>
+      </div>
+    </div>
+  </div>
+
+  {%- if team.description %}
+  <div class="box block">
+    <div class="data-label">{{ _('Description') }}</div>
+    <div class="data-value">{{ team.description }}</div>
+  </div>
+  {%- endif %}
+
+  {# Members table #}
+  <h2>{{ _('Members') }}</h2>
+
+  {%- if members %}
+  <table class="itemlist is-vcentered is-wide">
+    <thead>
+      <tr>
+        <th>{{ _('User') }}</th>
+        <th>{{ _('Seat') }}</th>
+        <th>{{ _('Joined') }}</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {%- for member in members %}
+      {%- set user = users_by_id.get(member.user_id) %}
+      <tr>
+        <td>
+          {%- if user %}
+            {{ user.screen_name }}
+            {%- if member.user_id == team.captain_user_id %}
+              <span class="tag color-info">{{ _('Captain') }}</span>
+            {%- endif %}
+          {%- else %}
+            {{ _('Unknown') }}
+          {%- endif %}
+        </td>
+        <td>{{ seats_by_user_id.get(member.user_id, '–') }}</td>
+        <td>{{ member.created_at|dateformat }}</td>
+        <td class="bared">
+          {%- if has_current_user_permission('lan_tournament.administrate') %}
+          <div class="button-row is-compact is-right-aligned">
+            {%- if member.user_id != team.captain_user_id %}
+            <form action="{{ url_for('.admin_remove_team_member', team_id=team.id, user_id=member.user_id) }}" method="post" class="inline">
+              <button type="submit" class="button is-compact" title="{{ _('Remove') }}" onclick="return confirm('{{ _('Remove this member from the team?') }}');">{{ render_icon('delete') }}</button>
+            </form>
+            {%- endif %}
+          </div>
+          {%- endif %}
+        </td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+  {%- else %}
+  <div class="box">
+    <div class="dimmed">{{ _('No members in this team.') }}</div>
+  </div>
+  {%- endif %}
+
+  {# Add member #}
+  {%- if has_current_user_permission('lan_tournament.administrate') %}
+  <h2>{{ _('Add member') }}</h2>
+  <div class="box block">
+    <form action="{{ url_for('.admin_add_team_member', team_id=team.id) }}" method="post">
+      <div class="row row--space-between row--v-centered">
+        <div>
+          {{ add_member_form.screen_name.label }}
+          {{ add_member_form.screen_name(class='form-control') }}
+        </div>
+        <div>
+          <button type="submit" class="button">{{ render_icon('add') }} {{ _('Add') }}</button>
+        </div>
+      </div>
+    </form>
+  </div>
+  {%- endif %}
+
+  {# Transfer captain #}
+  {%- if has_current_user_permission('lan_tournament.administrate') and transfer_form.new_captain.choices %}
+  <h2>{{ _('Transfer captain') }}</h2>
+  <div class="box block">
+    <form action="{{ url_for('.transfer_captain', team_id=team.id) }}" method="post">
+      <div class="row row--space-between row--v-centered">
+        <div>
+          <label for="new_captain">{{ _('New captain') }}</label>
+          {{ transfer_form.new_captain(class='form-control') }}
+        </div>
+        <div>
+          <button type="submit" class="button" onclick="return confirm('{{ _('Transfer captain role?') }}');">{{ _('Transfer') }}</button>
+        </div>
+      </div>
+    </form>
+  </div>
+  {%- endif %}
+
+{%- endblock %}

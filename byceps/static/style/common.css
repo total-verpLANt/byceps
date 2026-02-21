@@ -528,8 +528,12 @@ table.itemlist:is(.itemlist--wide, .is-wide) {
   width: 100%;
 }
 
-table:is(.index, .itemlist) .bignumber {
+.bignumber {
   font-size: 1.5rem;
+}
+
+.data-value.bignumber {
+  font-weight: bold;
 }
 
 table.index .details {

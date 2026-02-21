@@ -16,6 +16,7 @@ from . import (
     tournament_repository,
 )
 from .events import (
+    CaptainTransferredEvent,
     TeamCreatedEvent,
     TeamDeletedEvent,
     TeamMemberJoinedEvent,
@@ -23,6 +24,7 @@ from .events import (
 )
 from .models.tournament import TournamentID
 from .models.tournament_participant import (
+    TournamentParticipant,
     TournamentParticipantID,
 )
 from .models.tournament_status import TournamentStatus
@@ -135,9 +137,7 @@ def create_team(
         raise
 
     # Auto-assign captain to the new team
-    updated_captain = dataclasses.replace(
-        captain_participant, team_id=team_id
-    )
+    updated_captain = dataclasses.replace(captain_participant, team_id=team_id)
     try:
         tournament_repository.update_participant(updated_captain)
     except Exception:
@@ -297,6 +297,13 @@ def get_teams_for_tournament(
     return tournament_repository.get_teams_for_tournament(tournament_id)
 
 
+def get_team_members(
+    team_id: TournamentTeamID,
+) -> list[TournamentParticipant]:
+    """Return active members of a team."""
+    return tournament_repository.get_participants_for_team(team_id)
+
+
 def get_team_member_counts(
     tournament_id: TournamentID,
 ) -> dict[TournamentTeamID, int]:
@@ -411,6 +418,127 @@ def leave_team(
     remaining_members = tournament_repository.get_participants_for_team(team_id)
     if len(remaining_members) == 0:
         tournament_repository.delete_team(team_id)
+
+    return Ok(event)
+
+
+def transfer_captain(
+    team_id: TournamentTeamID,
+    new_captain_user_id: UserID,
+) -> Result[TournamentTeam, str]:
+    """Transfer captain role to another team member."""
+    team = tournament_repository.find_team(team_id)
+    if team is None:
+        return Err('Unknown team.')
+
+    if team.captain_user_id == new_captain_user_id:
+        return Err('User is already the captain.')
+
+    # Verify the new captain is a member of the team
+    members = tournament_repository.get_participants_for_team(team_id)
+    member_user_ids = {m.user_id for m in members}
+    if new_captain_user_id not in member_user_ids:
+        return Err('User is not a member of this team.')
+
+    old_captain_user_id = team.captain_user_id
+    tournament_repository.update_team_captain(team_id, new_captain_user_id)
+
+    updated_team = tournament_repository.get_team(team_id)
+
+    now = datetime.now(UTC)
+    event = CaptainTransferredEvent(
+        occurred_at=now,
+        initiator=None,
+        tournament_id=team.tournament_id,
+        team_id=team_id,
+        old_captain_user_id=old_captain_user_id,
+        new_captain_user_id=new_captain_user_id,
+    )
+    signals.captain_transferred.send(None, event=event)
+
+    return Ok(updated_team)
+
+
+def admin_add_member(
+    team_id: TournamentTeamID,
+    user_id: UserID,
+) -> Result[TeamMemberJoinedEvent, str]:
+    """Admin: add a tournament participant to a team (no join code)."""
+    team = tournament_repository.find_team(team_id)
+    if team is None:
+        return Err('Unknown team.')
+
+    participant = tournament_repository.find_active_participant_by_user(
+        team.tournament_id, user_id
+    )
+    if participant is None:
+        return Err('User is not a participant in this tournament.')
+
+    if participant.team_id is not None:
+        return Err('Participant is already on a team.')
+
+    # Check team capacity
+    tournament = tournament_repository.get_tournament(team.tournament_id)
+    if tournament.max_players_in_team is not None:
+        current_members = tournament_repository.get_participants_for_team(
+            team_id
+        )
+        if len(current_members) >= tournament.max_players_in_team:
+            return Err('Team is full.')
+
+    updated = dataclasses.replace(participant, team_id=team_id)
+    tournament_repository.update_participant(updated)
+
+    now = datetime.now(UTC)
+    event = TeamMemberJoinedEvent(
+        occurred_at=now,
+        initiator=None,
+        tournament_id=team.tournament_id,
+        team_id=team_id,
+        participant_id=participant.id,
+    )
+    signals.team_member_joined.send(None, event=event)
+
+    return Ok(event)
+
+
+def admin_remove_member(
+    team_id: TournamentTeamID,
+    user_id: UserID,
+) -> Result[TeamMemberLeftEvent, str]:
+    """Admin: remove a member from a team."""
+    # Note: Unlike self-service `leave_team`, admin removal
+    # intentionally skips tournament status checks.
+    team = tournament_repository.find_team(team_id)
+    if team is None:
+        return Err('Unknown team.')
+
+    if team.captain_user_id == user_id:
+        return Err('Cannot remove the captain. Transfer captain role first.')
+
+    # Find the participant
+    members = tournament_repository.get_participants_for_team(team_id)
+    participant = None
+    for m in members:
+        if m.user_id == user_id:
+            participant = m
+            break
+
+    if participant is None:
+        return Err('User is not a member of this team.')
+
+    updated = dataclasses.replace(participant, team_id=None)
+    tournament_repository.update_participant(updated)
+
+    now = datetime.now(UTC)
+    event = TeamMemberLeftEvent(
+        occurred_at=now,
+        initiator=None,
+        tournament_id=team.tournament_id,
+        team_id=team_id,
+        participant_id=participant.id,
+    )
+    signals.team_member_left.send(None, event=event)
 
     return Ok(event)
 

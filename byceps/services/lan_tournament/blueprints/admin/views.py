@@ -6,6 +6,7 @@ from flask_babel import gettext, to_user_timezone, to_utc
 from byceps.services.party import party_service
 from byceps.services.party.models import Party
 from byceps.services.user import user_service
+from byceps.services.user.models.user import UserID
 from byceps.util.framework.blueprint import create_blueprint
 from byceps.util.framework.flash import (
     flash_error,
@@ -55,8 +56,10 @@ from byceps.services.more.blueprints.admin.item_service import MoreItem
 
 from .forms import (
     AddParticipantForm,
+    AddTeamMemberForm,
     TeamCreateForm,
     TeamUpdateForm,
+    TransferCaptainForm,
     TournamentCreateForm,
     TournamentUpdateForm,
 )
@@ -66,25 +69,19 @@ blueprint = create_blueprint('lan_tournament_admin', __name__)
 
 
 # --- Monkey-patch "More" party items to include LAN Tournaments ---
-if not getattr(
-    item_service.get_party_items, '_lan_tournament_patched', False
-):
+if not getattr(item_service.get_party_items, '_lan_tournament_patched', False):
     _original_get_party_items = item_service.get_party_items
 
     def _get_party_items_with_lan_tournaments(party):
         items = _original_get_party_items(party)
         items = [
-            item
-            for item in items
-            if item.required_permission != 'tourney.view'
+            item for item in items if item.required_permission != 'tourney.view'
         ]
         items.append(
             MoreItem(
                 label=gettext('LAN Tournaments'),
                 icon='trophy',
-                url=url_for(
-                    'lan_tournament_admin.overview', party_id=party.id
-                ),
+                url=url_for('lan_tournament_admin.overview', party_id=party.id),
                 required_permission='lan_tournament.view',
             )
         )
@@ -146,8 +143,20 @@ def view(tournament_id):
     has_bracket = tournament_match_service.has_matches(tournament.id)
 
     is_team_tournament = tournament.contestant_type == ContestantType.TEAM
+
+    participant_counts = (
+        tournament_service.get_participant_counts_for_tournaments(
+            [tournament.id]
+        )
+    )
+    participant_count = participant_counts.get(tournament.id, 0)
+
+    teams = []
+    team_count = 0
     teams_below_minimum = []
     if is_team_tournament:
+        teams = tournament_team_service.get_teams_for_tournament(tournament.id)
+        team_count = len(teams)
         teams_below_minimum = (
             tournament_participant_service.get_teams_below_minimum_size(
                 tournament.id, tournament=tournament
@@ -159,6 +168,9 @@ def view(tournament_id):
         'tournament': tournament,
         'has_bracket': has_bracket,
         'is_team_tournament': is_team_tournament,
+        'participant_count': participant_count,
+        'team_count': team_count,
+        'teams': teams,
         'teams_below_minimum': teams_below_minimum,
     }
 
@@ -562,6 +574,134 @@ def teams_for_tournament(tournament_id):
     }
 
 
+@blueprint.get('/teams/<team_id>')
+@permission_required('lan_tournament.view')
+@templated
+def view_team(team_id):
+    """Show team detail with member management."""
+    team = _get_team_or_404(team_id)
+    tournament = _get_tournament_or_404(team.tournament_id)
+    party = party_service.get_party(tournament.party_id)
+
+    members, users_by_id = _get_team_members(team.id)
+
+    # Build seat lookup
+    user_ids = {m.user_id for m in members}
+    seats_by_user_id = build_seat_lookup(user_ids, party.id)
+
+    # Build transfer captain form
+    transfer_form = TransferCaptainForm()
+    non_captain_members = [
+        m for m in members if m.user_id != team.captain_user_id
+    ]
+    transfer_form.new_captain.choices = [
+        (str(u.id), u.screen_name)
+        for m in non_captain_members
+        if (u := users_by_id.get(m.user_id)) and u.screen_name
+    ]
+
+    return {
+        'party': party,
+        'tournament': tournament,
+        'team': team,
+        'members': members,
+        'users_by_id': users_by_id,
+        'seats_by_user_id': seats_by_user_id,
+        'transfer_form': transfer_form,
+        'add_member_form': AddTeamMemberForm(),
+    }
+
+
+@blueprint.post('/teams/<team_id>/transfer_captain')
+@permission_required('lan_tournament.administrate')
+def transfer_captain(team_id):
+    """Transfer captain role to another team member."""
+    team = _get_team_or_404(team_id)
+
+    form = TransferCaptainForm(request.form)
+
+    # Build choices from team members (excluding current captain)
+    members, users_by_id = _get_team_members(team.id)
+    non_captain_members = [
+        m for m in members if m.user_id != team.captain_user_id
+    ]
+    form.new_captain.choices = [
+        (str(u.id), u.screen_name)
+        for m in non_captain_members
+        if (u := users_by_id.get(m.user_id)) and u.screen_name
+    ]
+
+    if not form.validate():
+        flash_error(gettext('Transfer failed.'))
+        return redirect_to('.view_team', team_id=team.id)
+
+    new_captain_user_id = UserID(form.new_captain.data)
+
+    result = tournament_team_service.transfer_captain(
+        team.id, new_captain_user_id
+    )
+    match result:
+        case Ok(_):
+            new_captain = users_by_id.get(new_captain_user_id)
+            name = new_captain.screen_name if new_captain else '?'
+            flash_success(
+                gettext(
+                    'Captain transferred to %(name)s.',
+                    name=name,
+                )
+            )
+        case Err(error):
+            flash_error(error)
+
+    return redirect_to('.view_team', team_id=team.id)
+
+
+@blueprint.post('/teams/<team_id>/add_member')
+@permission_required('lan_tournament.administrate')
+def admin_add_team_member(team_id):
+    """Admin: add a participant to a team."""
+    team = _get_team_or_404(team_id)
+
+    form = AddTeamMemberForm(request.form)
+    if not form.validate():
+        flash_error(gettext('Could not add member.'))
+        return redirect_to('.view_team', team_id=team.id)
+
+    user = form.user
+
+    result = tournament_team_service.admin_add_member(team.id, user.id)
+    match result:
+        case Ok(_):
+            flash_success(
+                gettext(
+                    '%(name)s added to the team.',
+                    name=user.screen_name,
+                )
+            )
+        case Err(error):
+            flash_error(error)
+
+    return redirect_to('.view_team', team_id=team.id)
+
+
+@blueprint.post('/teams/<team_id>/remove_member/<user_id>')
+@permission_required('lan_tournament.administrate')
+def admin_remove_team_member(team_id, user_id):
+    """Admin: remove a member from a team."""
+    team = _get_team_or_404(team_id)
+
+    result = tournament_team_service.admin_remove_member(
+        team.id, UserID(user_id)
+    )
+    match result:
+        case Ok(_):
+            flash_success(gettext('Member removed from the team.'))
+        case Err(error):
+            flash_error(error)
+
+    return redirect_to('.view_team', team_id=team.id)
+
+
 @blueprint.get('/tournaments/<tournament_id>/teams/create')
 @permission_required('lan_tournament.create')
 @templated
@@ -767,7 +907,9 @@ def participants_for_tournament(tournament_id):
     seats_by_user_id = build_seat_lookup(all_user_ids, party.id)
 
     # Build team members lookup (only for team tournaments)
-    team_members_by_team_id: dict[TournamentTeamID, list[tuple[str, str | None]]] = {}
+    team_members_by_team_id: dict[
+        TournamentTeamID, list[tuple[str, str | None]]
+    ] = {}
     if tournament.contestant_type == ContestantType.TEAM:
         team_members_by_team_id = build_team_members_lookup(
             participants,
@@ -922,6 +1064,14 @@ def remove_participants_without_tickets(tournament_id):
     )
 
 
+def _get_team_members(team_id):
+    """Fetch active team members and resolve their user info."""
+    members = tournament_team_service.get_team_members(team_id)
+    user_ids = {m.user_id for m in members}
+    users_by_id = user_service.get_users_indexed_by_id(user_ids)
+    return members, users_by_id
+
+
 def _get_party_or_404(party_id) -> Party:
     party = party_service.find_party(party_id)
 
@@ -950,9 +1100,7 @@ def _get_team_or_404(team_id) -> TournamentTeam:
 
 
 def _get_match_or_404(match_id) -> TournamentMatch:
-    match = tournament_match_service.find_match(
-        TournamentMatchID(match_id)
-    )
+    match = tournament_match_service.find_match(TournamentMatchID(match_id))
     if match is None:
         abort(404)
     return match
@@ -970,7 +1118,9 @@ def matches_for_tournament(tournament_id):
     tournament = _get_tournament_or_404(tournament_id)
     party = party_service.get_party(tournament.party_id)
 
-    matches = tournament_match_service.get_matches_for_tournament_ordered(tournament.id)
+    matches = tournament_match_service.get_matches_for_tournament_ordered(
+        tournament.id
+    )
 
     # Get contestants for each match
     match_data = []
@@ -1015,9 +1165,7 @@ def view_match(match_id):
     tournament = _get_tournament_or_404(match.tournament_id)
     party = party_service.get_party(tournament.party_id)
 
-    contestants = tournament_match_service.get_contestants_for_match(
-        match.id
-    )
+    contestants = tournament_match_service.get_contestants_for_match(match.id)
     comments = tournament_match_service.get_comments_from_match(match.id)
 
     teams_by_id, participants_by_id = build_contestant_name_lookups(
@@ -1176,7 +1324,9 @@ def bracket(tournament_id):
     tournament = _get_tournament_or_404(tournament_id)
     party = party_service.get_party(tournament.party_id)
 
-    matches = tournament_match_service.get_matches_for_tournament_ordered(tournament.id)
+    matches = tournament_match_service.get_matches_for_tournament_ordered(
+        tournament.id
+    )
 
     # Get contestants for each match
     match_data = []
@@ -1219,14 +1369,10 @@ def delete_match_comment(match_id, comment_id):
     comment_id_obj = TournamentMatchCommentID(comment_id)
     match_id_obj = TournamentMatchID(match_id)
 
-    match tournament_match_service.delete_comment(
-        comment_id_obj, match_id_obj
-    ):
+    match tournament_match_service.delete_comment(comment_id_obj, match_id_obj):
         case Ok():
             flash_success(gettext('Comment has been deleted.'))
         case Err(e):
-            flash_error(
-                gettext('Error deleting comment: %(error)s', error=e)
-            )
+            flash_error(gettext('Error deleting comment: %(error)s', error=e))
 
     return redirect_to('.view_match', match_id=match_id)

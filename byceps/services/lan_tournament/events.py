@@ -85,6 +85,12 @@ class TeamMemberLeftEvent(_BaseTeamEvent):
     participant_id: TournamentParticipantID
 
 
+@dataclass(frozen=True, kw_only=True)
+class CaptainTransferredEvent(_BaseTeamEvent):
+    old_captain_user_id: UserID
+    new_captain_user_id: UserID
+
+
 # match
 
 

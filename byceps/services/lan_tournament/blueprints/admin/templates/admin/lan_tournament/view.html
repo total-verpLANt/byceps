@@ -114,6 +114,52 @@
     </div>
   </div>
 
+  {# Participant & team summaries #}
+  <div class="grid block">
+    <div class="column">
+      <div class="box column-cell--grow">
+        <div class="data-label">{{ _('Participants') }}</div>
+        <div class="data-value bignumber">{{ participant_count }}</div>
+        <div class="mt">
+          <a class="button button--compact" href="{{ url_for('.participants_for_tournament', tournament_id=tournament.id) }}">{{ _('View all') }}</a>
+        </div>
+      </div>
+    </div>
+    {%- if is_team_tournament %}
+    <div class="column">
+      <div class="box column-cell--grow">
+        <div class="data-label">{{ _('Teams') }}</div>
+        <div class="data-value bignumber">{{ team_count }}</div>
+        <div class="mt">
+          <a class="button button--compact" href="{{ url_for('.teams_for_tournament', tournament_id=tournament.id) }}">{{ _('View all') }}</a>
+        </div>
+      </div>
+    </div>
+    {%- endif %}
+  </div>
+
+  {%- if is_team_tournament and teams %}
+  <div class="box block">
+    <div class="data-label">{{ _('Registered teams') }}</div>
+    <table class="index mt">
+      <thead>
+        <tr>
+          <th>{{ _('Name') }}</th>
+          <th>{{ _('Tag') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {%- for team in teams %}
+        <tr>
+          <td><a href="{{ url_for('.view_team', team_id=team.id) }}">{{ team.name }}</a></td>
+          <td>{{ team.tag|default('–', true) }}</td>
+        </tr>
+        {%- endfor %}
+      </tbody>
+    </table>
+  </div>
+  {%- endif %}
+
   {# Player/team constraints #}
   {%- if tournament.contestant_type %}
   <div class="grid block">
