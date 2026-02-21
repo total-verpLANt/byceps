@@ -1,0 +1,73 @@
+{%- macro render_hover_name(
+    display_name,
+    user_id=None,
+    team_id=None,
+    seats_by_user_id={},
+    team_members_by_team_id={},
+    truncate_len=0
+) -%}
+{%- set has_hover_data = (
+    (team_id and team_id in team_members_by_team_id)
+    or (user_id and user_id in seats_by_user_id)
+) -%}
+<span class="lt-hover-wrap">
+  {%- if truncate_len > 0 -%}
+    {{ display_name|truncate(truncate_len) }}
+  {%- else -%}
+    {{ display_name }}
+  {%- endif -%}
+  {%- if has_hover_data %}
+  <span class="lt-hover-card">
+    {%- if team_id and team_id in team_members_by_team_id -%}
+      {%- for name, seat in team_members_by_team_id[team_id] %}
+    <span class="lt-hover-member">{{ name }}{% if seat %} [{{ seat }}]{% endif %}</span>
+      {%- endfor -%}
+    {%- elif user_id and user_id in seats_by_user_id -%}
+    <span class="lt-hover-seat">{{ seats_by_user_id[user_id] }}</span>
+    {%- endif %}
+  </span>
+  {%- endif %}
+</span>
+{%- endmacro -%}
+
+{%- macro hover_card_styles() -%}
+<style>
+.lt-hover-wrap {
+  position: relative;
+  cursor: help;
+  display: inline-block;
+  text-decoration: underline dotted;
+}
+.lt-hover-card {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  background: var(--bg-card, #ffffff);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--border-color, #ccc);
+  border-radius: var(--radius-md, var(--border-radius, 0.25rem));
+  padding: 0.4rem 0.6rem;
+  white-space: nowrap;
+  z-index: 999;
+  font-size: 0.8125rem;
+  box-shadow: var(--shadow-soft, 0 2px 8px rgba(0, 0, 0, 0.15));
+  margin-bottom: 4px;
+  transition: opacity 0.15s ease, visibility 0.15s ease;
+}
+.lt-hover-wrap:hover .lt-hover-card {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+}
+.lt-hover-member {
+  display: block;
+  line-height: 1.6;
+}
+.lt-hover-seat {
+  font-weight: bold;
+}
+</style>
+{%- endmacro -%}

@@ -1,5 +1,8 @@
 from datetime import datetime, UTC
 
+from sqlalchemy import select
+
+from byceps.database import db
 from byceps.services.party.models import PartyID
 from byceps.services.ticketing import ticket_service
 from byceps.services.user.models.user import User, UserID
@@ -461,4 +464,47 @@ def get_teams_below_minimum_size(
         member_count = counts.get(team.id, 0)
         if member_count < tournament.min_players_in_team:
             result.append((team, member_count))
+    return result
+
+
+def get_seats_for_users(
+    user_ids: set[UserID],
+    party_id: PartyID,
+) -> dict[UserID, str]:
+    """Return seat labels for users at the given party.
+
+    Issues a single batch query. Users without seats are omitted.
+    """
+    if not user_ids:
+        return {}
+
+    # Local imports to avoid circular dependency with seating/ticketing modules.
+    from byceps.services.seating.dbmodels.seat import DbSeat
+    from byceps.services.ticketing.dbmodels.ticket import DbTicket
+
+    stmt = (
+        select(DbTicket)
+        .filter(DbTicket.party_id == party_id)
+        .filter(DbTicket.used_by_id.in_(user_ids))
+        .filter(DbTicket.revoked.is_(False))
+        .filter(DbTicket.occupied_seat_id.is_not(None))
+        .options(
+            db.joinedload(DbTicket.occupied_seat).joinedload(DbSeat.area),
+        )
+    )
+    tickets = db.session.scalars(stmt).all()
+
+    result: dict[UserID, str] = {}
+    for ticket in tickets:
+        if ticket.used_by_id is None:
+            continue
+        if ticket.used_by_id in result:
+            continue  # take first seat per user
+        seat = ticket.occupied_seat
+        if seat is None:
+            continue
+        label = seat.label or (seat.area.title if seat.area else None)
+        if label is None:
+            continue
+        result[ticket.used_by_id] = label
     return result

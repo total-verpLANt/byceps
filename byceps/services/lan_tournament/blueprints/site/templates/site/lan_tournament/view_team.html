@@ -1,7 +1,10 @@
 {% extends 'layout/base.html' %}
 {% from 'macros/icons.html' import render_icon %}
 {% from 'macros/misc.html' import render_tag %}
+{% from 'site/lan_tournament/_hover_card.html' import render_hover_name, hover_card_styles %}
 {% set page_title = [_('Tournament'), tournament.name, _('Team'), team.name] %}
+
+{% block head %}{{ hover_card_styles() }}{% endblock %}
 
 {% block body %}
 
@@ -61,7 +64,12 @@
     <ul>
       {%- for member in team_members %}
       <li>
-        {{ users_by_id.get(member.user_id, {}).screen_name|default(member.user_id|string, true) }}
+        {%- set _user = users_by_id.get(member.user_id) -%}
+        {%- if _user -%}
+          {{ render_hover_name(_user.screen_name, user_id=_user.id, seats_by_user_id=seats_by_user_id) }}
+        {%- else -%}
+          {{ member.user_id|string }}
+        {%- endif -%}
         {%- if member.user_id == team.captain_user_id %}
           {{ render_tag(_('Captain'), class='color-success') }}
         {%- endif %}

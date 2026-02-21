@@ -1,9 +1,11 @@
 {% extends 'layout/base.html' %}
 {% from 'macros/icons.html' import render_icon %}
 {% from 'macros/misc.html' import render_tag %}
+{% from 'site/lan_tournament/_hover_card.html' import render_hover_name, hover_card_styles %}
 {% set page_title = [_('Matches'), tournament.name] %}
 
 {% block head %}
+{{ hover_card_styles() }}
 <style>
   .match-table {
     width: 100%;
@@ -16,12 +18,14 @@
     align-items: center;
     padding: 1rem;
     margin-bottom: 0.5rem;
-    background-color: #f5f5f5;
-    border-radius: 4px;
+    background-color: var(--bg-card, #f5f5f5);
+    border: 1px solid var(--border-color, #cccccc);
+    border-radius: var(--radius-md, var(--border-radius, 0.25rem));
   }
 
   .match-row:hover {
-    background-color: #e8e8e8;
+    background-color: var(--bg-card-hover, #e8e8e8);
+    border-color: var(--border-color-hover, #bbbbbb);
   }
 
   .match-number {
@@ -75,9 +79,19 @@
         <div class='match-contestants'>
           {%- for contestant in contestants %}
             {%- if contestant.team_id %}
-              {{ _('Team') }} {{ teams_by_id.get(contestant.team_id, {}).name|default(contestant.team_id|string, true) }}
+              {%- set _team = teams_by_id.get(contestant.team_id) -%}
+              {%- if _team -%}
+                {{ _('Team') }} {{ render_hover_name(_team.name, team_id=_team.id, team_members_by_team_id=team_members_by_team_id, truncate_len=15) }}
+              {%- else -%}
+                {{ contestant.team_id|string }}
+              {%- endif -%}
             {%- elif contestant.participant_id %}
-              {{ participants_by_id.get(contestant.participant_id, {}).screen_name|default(contestant.participant_id|string, true) }}
+              {%- set _user = participants_by_id.get(contestant.participant_id) -%}
+              {%- if _user -%}
+                {{ render_hover_name(_user.screen_name, user_id=_user.id, seats_by_user_id=seats_by_user_id, truncate_len=15) }}
+              {%- else -%}
+                {{ contestant.participant_id|string }}
+              {%- endif -%}
             {%- else %}
               BYE
             {%- endif %}
