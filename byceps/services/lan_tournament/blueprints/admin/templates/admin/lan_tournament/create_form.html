@@ -15,7 +15,7 @@
 
   <form action="{{ url_for('.create', party_id=party.id) }}" method="post">
     <div class="box">
-      {{ form_field(form.name, autofocus='autofocus') }}
+      {{ form_field(form.name, maxlength=80, autofocus='autofocus') }}
       {{ form_field(form.game) }}
       {{ form_field(form.description) }}
       {{ form_field(form.image_url) }}

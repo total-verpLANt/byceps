@@ -2,6 +2,7 @@
 {% from 'macros/admin.html' import render_extra_in_heading %}
 {% from 'macros/icons.html' import render_icon %}
 {% set current_page_party = party %}
+{% set current_tab = 'tournaments' %}
 {% set page_title = [_('LAN'), party.title, _('Tournaments'), tournament.name, _('Teams')] %}
 
 {% block head %}
