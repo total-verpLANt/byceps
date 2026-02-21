@@ -818,7 +818,7 @@ def add_participant(tournament_id):
     if not form.validate():
         return add_participant_form(tournament.id, form)
 
-    user = form.screen_name.data
+    user = form.user
 
     match tournament_participant_service.admin_add_participant(
         tournament.id, user.id, initiator=g.user

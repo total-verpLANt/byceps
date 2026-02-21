@@ -63,6 +63,10 @@ def create_tournament(
     SECURITY NOTE: Authorization must be checked at blueprint layer before
     calling this function (requires 'lan_tournament.create' permission).
     """
+    # Validate name length
+    if len(name.strip()) > 80:
+        return Err('Tournament name must not exceed 80 characters.')
+
     # Validate image URL
     validation_result = _validate_image_url(image_url)
     if validation_result.is_err():
@@ -121,6 +125,10 @@ def update_tournament(
     changes must go through ``change_status`` to enforce the
     state machine.
     """
+    # Validate name length
+    if len(name.strip()) > 80:
+        return Err('Tournament name must not exceed 80 characters.')
+
     # Validate image URL
     validation_result = _validate_image_url(image_url)
     if validation_result.is_err():
@@ -243,19 +251,20 @@ def change_status(
     """Change the tournament status."""
     tournament = tournament_repository.get_tournament(tournament_id)
 
-    # Validate bracket exists when starting tournament
+    # Validate state machine transition first
+    result = tournament_domain_service.change_tournament_status(
+        tournament, new_status
+    )
+    if result.is_err():
+        return Err(result.unwrap_err())
+
+    # Only after a valid transition: check bracket exists when starting
     if new_status == TournamentStatus.ONGOING:
         if not _has_bracket_generated(tournament_id):
             return Err(
                 'Cannot start tournament without generated brackets. '
                 'Generate brackets first.'
             )
-
-    result = tournament_domain_service.change_tournament_status(
-        tournament, new_status
-    )
-    if result.is_err():
-        return Err(result.unwrap_err())
 
     (event,) = result.unwrap()
 
