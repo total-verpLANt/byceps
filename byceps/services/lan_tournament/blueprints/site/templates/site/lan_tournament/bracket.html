@@ -1,6 +1,9 @@
 {% extends 'layout/base.html' %}
 {% from 'site/lan_tournament/_bracket_macros.html' import render_bracket %}
+{% from 'site/lan_tournament/_hover_card.html' import hover_card_styles %}
 {% set page_title = [_('Bracket'), tournament.name] %}
+
+{% block head %}{{ hover_card_styles() }}{% endblock %}
 
 {% block body %}
 
@@ -15,7 +18,7 @@
 
   <h1 class='title'>{{ _('Tournament Bracket') }}</h1>
 
-  {{ render_bracket(match_data, tournament, teams_by_id, participants_by_id) }}
+  {{ render_bracket(match_data, tournament, teams_by_id, participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id) }}
 
   <div style='text-align: center; margin-top: 2rem;'>
     <a href='{{ url_for('.matches', tournament_id=tournament.id) }}'

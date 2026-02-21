@@ -29,6 +29,7 @@ from byceps.services.lan_tournament.models.contestant_type import (
 )
 from byceps.services.lan_tournament.models.tournament_team import (
     TournamentTeam,
+    TournamentTeamID,
 )
 from byceps.services.lan_tournament.models.tournament_match import (
     TournamentMatchID,
@@ -44,6 +45,9 @@ from byceps.services.lan_tournament.models.tournament_status import (
 )
 from byceps.services.lan_tournament.lan_tournament_view_helpers import (
     build_contestant_name_lookups,
+    build_hover_lookups,
+    build_seat_lookup,
+    build_team_members_lookup,
 )
 from byceps.services.more.blueprints.admin import item_service
 from byceps.services.more.blueprints.admin.item_service import MoreItem
@@ -747,6 +751,20 @@ def participants_for_tournament(tournament_id):
         teams = tournament_team_service.get_teams_for_tournament(tournament.id)
         teams_by_id = {t.id: t for t in teams}
 
+    # Build seat lookup
+    all_user_ids = set(users_by_id.keys())
+    seats_by_user_id = build_seat_lookup(all_user_ids, party.id)
+
+    # Build team members lookup (only for team tournaments)
+    team_members_by_team_id: dict[TournamentTeamID, list[tuple[str, str | None]]] = {}
+    if tournament.contestant_type == ContestantType.TEAM:
+        team_members_by_team_id = build_team_members_lookup(
+            participants,
+            set(teams_by_id.keys()),
+            users_by_id,
+            seats_by_user_id,
+        )
+
     return {
         'party': party,
         'tournament': tournament,
@@ -756,6 +774,8 @@ def participants_for_tournament(tournament_id):
         'users_with_tickets': users_with_tickets,
         'participants_without_tickets': participants_without_tickets,
         'is_team_tournament': is_team_tournament,
+        'seats_by_user_id': seats_by_user_id,
+        'team_members_by_team_id': team_members_by_team_id,
     }
 
 
@@ -951,12 +971,18 @@ def matches_for_tournament(tournament_id):
         tournament.id, all_contestants
     )
 
+    seats_by_user_id, team_members_by_team_id = build_hover_lookups(
+        tournament, participants_by_id, teams_by_id, party.id
+    )
+
     return {
         'party': party,
         'tournament': tournament,
         'match_data': match_data,
         'teams_by_id': teams_by_id,
         'participants_by_id': participants_by_id,
+        'seats_by_user_id': seats_by_user_id,
+        'team_members_by_team_id': team_members_by_team_id,
     }
 
 
@@ -983,6 +1009,10 @@ def view_match(match_id):
     comment_user_ids = {c.created_by for c in comments}
     comment_users_by_id = user_service.get_users_indexed_by_id(comment_user_ids)
 
+    seats_by_user_id, team_members_by_team_id = build_hover_lookups(
+        tournament, participants_by_id, teams_by_id, party.id
+    )
+
     return {
         'party': party,
         'tournament': tournament,
@@ -992,6 +1022,8 @@ def view_match(match_id):
         'teams_by_id': teams_by_id,
         'participants_by_id': participants_by_id,
         'comment_users_by_id': comment_users_by_id,
+        'seats_by_user_id': seats_by_user_id,
+        'team_members_by_team_id': team_members_by_team_id,
     }
 
 
@@ -1146,12 +1178,18 @@ def bracket(tournament_id):
         tournament.id, all_contestants
     )
 
+    seats_by_user_id, team_members_by_team_id = build_hover_lookups(
+        tournament, participants_by_id, teams_by_id, party.id
+    )
+
     return {
         'party': party,
         'tournament': tournament,
         'match_data': match_data,
         'teams_by_id': teams_by_id,
         'participants_by_id': participants_by_id,
+        'seats_by_user_id': seats_by_user_id,
+        'team_members_by_team_id': team_members_by_team_id,
     }
 
 

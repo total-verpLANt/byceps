@@ -1,9 +1,11 @@
 {% extends 'layout/base.html' %}
 {% from 'macros/icons.html' import render_icon %}
 {% from 'macros/misc.html' import render_tag %}
+{% from 'site/lan_tournament/_hover_card.html' import render_hover_name, hover_card_styles %}
 {% set page_title = [_('Match'), tournament.name] %}
 
 {% block head %}
+{{ hover_card_styles() }}
 <style>
   .match-detail {
     margin-top: 1.5rem;
@@ -110,9 +112,19 @@
       <div class='contestant'>
         <div class='contestant-name'>
           {%- if contestant.team_id %}
-            {{ _('Team') }}<br>{{ teams_by_id.get(contestant.team_id, {}).name|default(contestant.team_id|string, true) }}
+            {%- set _team = teams_by_id.get(contestant.team_id) -%}
+            {%- if _team -%}
+              {{ _('Team') }}<br>{{ render_hover_name(_team.name, team_id=_team.id, team_members_by_team_id=team_members_by_team_id) }}
+            {%- else -%}
+              {{ contestant.team_id|string }}
+            {%- endif -%}
           {%- elif contestant.participant_id %}
-            {{ participants_by_id.get(contestant.participant_id, {}).screen_name|default(contestant.participant_id|string, true) }}
+            {%- set _user = participants_by_id.get(contestant.participant_id) -%}
+            {%- if _user -%}
+              {{ render_hover_name(_user.screen_name, user_id=_user.id, seats_by_user_id=seats_by_user_id) }}
+            {%- else -%}
+              {{ contestant.participant_id|string }}
+            {%- endif -%}
           {%- else %}
             BYE
           {%- endif %}

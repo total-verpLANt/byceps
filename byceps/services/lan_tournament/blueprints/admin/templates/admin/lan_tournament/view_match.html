@@ -2,9 +2,12 @@
 {% from 'macros/admin.html' import render_backlink %}
 {% from 'macros/icons.html' import render_icon %}
 {% from 'macros/misc.html' import render_tag %}
+{% from 'site/lan_tournament/_hover_card.html' import render_hover_name, hover_card_styles %}
 {% set current_page_party = party %}
 {% set current_tab = 'tournaments' %}
 {% set page_title = [_('Match'), tournament.name, party.title] %}
+
+{% block head %}{{ super() }}{{ hover_card_styles() }}{% endblock %}
 
 {% block before_body %}
 {{ render_backlink(url_for('.matches_for_tournament',
@@ -33,9 +36,21 @@
       <div>
         <strong>
           {%- if contestant.team_id %}
-            {{ _('Team') }}: {{ teams_by_id.get(contestant.team_id, {}).name|default(contestant.team_id|string, true) }}
+            {{ _('Team') }}:
+            {%- set _team = teams_by_id.get(contestant.team_id) -%}
+            {%- if _team -%}
+              {{ render_hover_name(_team.name, team_id=_team.id, team_members_by_team_id=team_members_by_team_id) }}
+            {%- else -%}
+              {{ contestant.team_id|string }}
+            {%- endif -%}
           {%- elif contestant.participant_id %}
-            {{ _('Player') }}: {{ participants_by_id.get(contestant.participant_id, {}).screen_name|default(contestant.participant_id|string, true) }}
+            {{ _('Player') }}:
+            {%- set _user = participants_by_id.get(contestant.participant_id) -%}
+            {%- if _user -%}
+              {{ render_hover_name(_user.screen_name, user_id=_user.id, seats_by_user_id=seats_by_user_id) }}
+            {%- else -%}
+              {{ contestant.participant_id|string }}
+            {%- endif -%}
           {%- else %}
             BYE
           {%- endif %}
@@ -101,7 +116,14 @@
       <div class='row row--space-between'
            style='padding: 0.5rem; border-bottom: 1px solid #ccc;'>
         <div>
-          <div><strong>{{ comment_users_by_id.get(comment.created_by, {}).screen_name|default(comment.created_by|string, true) }}</strong></div>
+          <div><strong>
+            {%- set _comment_user = comment_users_by_id.get(comment.created_by) -%}
+            {%- if _comment_user -%}
+              {{ render_hover_name(_comment_user.screen_name, user_id=_comment_user.id, seats_by_user_id=seats_by_user_id) }}
+            {%- else -%}
+              {{ comment.created_by|string }}
+            {%- endif -%}
+          </strong></div>
           <div style='margin-top: 0.25rem;'>{{ comment.comment }}</div>
           <div class='dimmed' style='margin-top: 0.25rem; font-size: 0.875rem;'>
             {{ comment.created_at|dateformat }},
