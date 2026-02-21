@@ -278,12 +278,12 @@ def update_team_captain(
     team_id: TournamentTeamID,
     new_captain_user_id: UserID,
 ) -> None:
-    """Update the captain of a team (flush only, caller commits)."""
+    """Update the captain of a team."""
     db_team = db.session.get(DbTournamentTeam, team_id)
     if db_team is None:
         raise ValueError(f'Unknown team ID "{team_id}"')
     db_team.captain_user_id = new_captain_user_id
-    db.session.flush()
+    db.session.commit()
 
 
 def delete_team(team_id: TournamentTeamID) -> None:
@@ -545,6 +545,24 @@ def find_participant(
 ) -> TournamentParticipant | None:
     """Return the participant, or `None` if not found."""
     db_participant = db.session.get(DbTournamentParticipant, participant_id)
+    if db_participant is None:
+        return None
+    return _db_participant_to_participant(db_participant)
+
+
+def find_active_participant_by_user(
+    tournament_id: TournamentID,
+    user_id: UserID,
+) -> TournamentParticipant | None:
+    """Return the active (non-removed) participant for a user in a
+    tournament, or `None` if not found.
+    """
+    stmt = (
+        select(DbTournamentParticipant)
+        .filter_by(tournament_id=tournament_id, user_id=user_id)
+        .where(DbTournamentParticipant.removed_at.is_(None))
+    )
+    db_participant = db.session.execute(stmt).scalars().first()
     if db_participant is None:
         return None
     return _db_participant_to_participant(db_participant)

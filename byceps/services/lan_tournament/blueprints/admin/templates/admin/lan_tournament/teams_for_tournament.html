@@ -48,7 +48,7 @@
     <tbody>
       {%- for team in teams %}
       <tr>
-        <td class="column-name">{{ team.name }}</td>
+        <td class="column-name"><a href="{{ url_for('.view_team', team_id=team.id) }}">{{ team.name }}</a></td>
         <td class="column-tag">
           {%- if team.tag %}
             <span class="dimmed">[{{ team.tag }}]</span>
