@@ -1374,8 +1374,8 @@ def bracket(tournament_id):
 @permission_required('lan_tournament.administrate')
 def delete_match_comment(match_id, comment_id):
     """Delete a match comment."""
-    comment_id_obj = TournamentMatchCommentID(comment_id)
-    match_id_obj = TournamentMatchID(match_id)
+    comment_id_obj = TournamentMatchCommentID(UUID(comment_id))
+    match_id_obj = TournamentMatchID(UUID(match_id))
 
     match tournament_match_service.delete_comment(comment_id_obj, match_id_obj):
         case Ok():
