@@ -117,12 +117,14 @@ def test_create_team_hashes_join_code(party, captain1):
 
     # Verify join code was hashed (should not be plaintext)
     # We can't directly access the hash, but we can verify with verify function
-    assert tournament_team_service.verify_team_join_code(
-        team.id, join_code
-    ) is True
-    assert tournament_team_service.verify_team_join_code(
-        team.id, 'wrong_code'
-    ) is False
+    assert (
+        tournament_team_service.verify_team_join_code(team.id, join_code)
+        is True
+    )
+    assert (
+        tournament_team_service.verify_team_join_code(team.id, 'wrong_code')
+        is False
+    )
 
 
 def test_update_team(party, captain1):
@@ -164,13 +166,15 @@ def test_update_team(party, captain1):
     assert updated.name == new_name
 
     # Verify new join code works
-    assert tournament_team_service.verify_team_join_code(
-        team.id, new_join_code
-    ) is True
+    assert (
+        tournament_team_service.verify_team_join_code(team.id, new_join_code)
+        is True
+    )
     # Verify old join code doesn't work
-    assert tournament_team_service.verify_team_join_code(
-        team.id, 'code123'
-    ) is False
+    assert (
+        tournament_team_service.verify_team_join_code(team.id, 'code123')
+        is False
+    )
 
 
 def test_join_team(party, captain1, member1):

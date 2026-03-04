@@ -32,9 +32,13 @@ from byceps.services.lan_tournament.models.tournament_match_to_contestant import
 from byceps.services.lan_tournament.models.tournament_participant import (
     TournamentParticipantID,
 )
+from byceps.services.lan_tournament.models.tournament_mode import (
+    TournamentMode,
+)
 from byceps.services.lan_tournament.models.tournament_team import (
     TournamentTeamID,
 )
+from byceps.services.lan_tournament.events import MatchConfirmedEvent
 from byceps.services.lan_tournament import tournament_match_service
 from byceps.services.party.models import PartyID
 from byceps.services.user.models.user import UserID
@@ -247,6 +251,233 @@ def test_generate_bracket_with_one_contestant(mock_repo):
 
     assert result.is_err()
     assert '2 contestants' in result.unwrap_err().lower()
+
+
+# -------------------------------------------------------------------- #
+# generate_round_robin_bracket
+# -------------------------------------------------------------------- #
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_generate_round_robin_4_players_total_matches(
+    mock_repo,
+):
+    """4 players => 6 matches (N*(N-1)/2 = 4*3/2)."""
+    tournament = _create_tournament(contestant_type=ContestantType.SOLO)
+    participants = [
+        _create_mock_participant(TournamentParticipantID(generate_uuid()))
+        for _ in range(4)
+    ]
+
+    mock_repo.get_tournament.return_value = tournament
+    mock_repo.get_participants_for_tournament.return_value = participants
+
+    result = tournament_match_service.generate_round_robin_bracket(
+        TOURNAMENT_ID
+    )
+
+    assert result.is_ok()
+    assert result.unwrap() == 6  # 4*3/2 = 6
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_generate_round_robin_8_teams_total_matches(
+    mock_repo,
+):
+    """8 teams => 28 matches (N*(N-1)/2 = 8*7/2)."""
+    tournament = _create_tournament(contestant_type=ContestantType.TEAM)
+    teams = [
+        _create_mock_team(TournamentTeamID(generate_uuid())) for _ in range(8)
+    ]
+
+    mock_repo.get_tournament.return_value = tournament
+    mock_repo.get_teams_for_tournament.return_value = teams
+
+    result = tournament_match_service.generate_round_robin_bracket(
+        TOURNAMENT_ID
+    )
+
+    assert result.is_ok()
+    assert result.unwrap() == 28  # 8*7/2 = 28
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_generate_round_robin_creates_all_rounds(
+    mock_repo,
+):
+    """4 players => 3 rounds (N-1 for even N)."""
+    tournament = _create_tournament(contestant_type=ContestantType.SOLO)
+    participants = [
+        _create_mock_participant(TournamentParticipantID(generate_uuid()))
+        for _ in range(4)
+    ]
+
+    mock_repo.get_tournament.return_value = tournament
+    mock_repo.get_participants_for_tournament.return_value = participants
+
+    result = tournament_match_service.generate_round_robin_bracket(
+        TOURNAMENT_ID
+    )
+
+    assert result.is_ok()
+
+    created_matches = [
+        call.args[0] for call in mock_repo.create_match.call_args_list
+    ]
+    rounds = sorted({m.round for m in created_matches})
+    assert rounds == [0, 1, 2]
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_generate_round_robin_no_next_match_linking(
+    mock_repo,
+):
+    """All RR matches have next_match_id=None."""
+    tournament = _create_tournament(contestant_type=ContestantType.SOLO)
+    participants = [
+        _create_mock_participant(TournamentParticipantID(generate_uuid()))
+        for _ in range(4)
+    ]
+
+    mock_repo.get_tournament.return_value = tournament
+    mock_repo.get_participants_for_tournament.return_value = participants
+
+    result = tournament_match_service.generate_round_robin_bracket(
+        TOURNAMENT_ID
+    )
+
+    assert result.is_ok()
+
+    created_matches = [
+        call.args[0] for call in mock_repo.create_match.call_args_list
+    ]
+    for m in created_matches:
+        assert m.next_match_id is None
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_generate_round_robin_contestants_placed(
+    mock_repo,
+):
+    """Each RR match has 2 contestants created."""
+    tournament = _create_tournament(contestant_type=ContestantType.SOLO)
+    participants = [
+        _create_mock_participant(TournamentParticipantID(generate_uuid()))
+        for _ in range(4)
+    ]
+
+    mock_repo.get_tournament.return_value = tournament
+    mock_repo.get_participants_for_tournament.return_value = participants
+
+    result = tournament_match_service.generate_round_robin_bracket(
+        TOURNAMENT_ID
+    )
+
+    assert result.is_ok()
+
+    # 6 matches * 2 contestants each = 12 contestant entries
+    assert mock_repo.create_match_contestant.call_count == 12
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_generate_round_robin_with_force_regenerate(
+    mock_repo,
+):
+    """force_regenerate=True clears existing bracket first."""
+    tournament = _create_tournament(
+        contestant_type=ContestantType.SOLO,
+    )
+    participants = [
+        _create_mock_participant(
+            TournamentParticipantID(generate_uuid()),
+        )
+        for _ in range(3)
+    ]
+
+    mock_repo.get_tournament.return_value = tournament
+    mock_repo.get_participants_for_tournament.return_value = (
+        participants
+    )
+    # Simulate existing matches on the first call,
+    # then none after clearing.
+    mock_repo.get_matches_for_tournament.side_effect = [
+        [_create_match()],  # has_matches -> True
+        [_create_match()],  # has_matches in clear_bracket
+        [],  # delete_match -> get_match
+    ]
+
+    result = (
+        tournament_match_service.generate_round_robin_bracket(
+            TOURNAMENT_ID, force_regenerate=True
+        )
+    )
+
+    assert result.is_ok()
+    assert result.unwrap() == 3  # C(3,2) = 3
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_generate_round_robin_less_than_2_contestants(
+    mock_repo,
+):
+    """Fewer than 2 contestants returns Err."""
+    tournament = _create_tournament(
+        contestant_type=ContestantType.SOLO,
+    )
+    participants = [
+        _create_mock_participant(
+            TournamentParticipantID(generate_uuid()),
+        )
+    ]
+
+    mock_repo.get_tournament.return_value = tournament
+    mock_repo.get_participants_for_tournament.return_value = (
+        participants
+    )
+
+    result = (
+        tournament_match_service.generate_round_robin_bracket(
+            TOURNAMENT_ID
+        )
+    )
+
+    assert result.is_err()
+    assert '2 contestants' in result.unwrap_err().lower()
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_generate_round_robin_no_contestant_type(
+    mock_repo,
+):
+    """No contestant_type set returns Err."""
+    tournament = _create_tournament(contestant_type=None)
+
+    mock_repo.get_tournament.return_value = tournament
+
+    result = (
+        tournament_match_service.generate_round_robin_bracket(
+            TOURNAMENT_ID
+        )
+    )
+
+    assert result.is_err()
+    assert 'contestant type' in result.unwrap_err().lower()
 
 
 # -------------------------------------------------------------------- #
@@ -509,6 +740,121 @@ def test_confirm_match_no_advancement_without_next_match(mock_repo):
 
 
 # -------------------------------------------------------------------- #
+# confirm_match — draw handling
+# -------------------------------------------------------------------- #
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_confirm_match_draw_ok_in_round_robin(mock_repo):
+    """Draw in round-robin mode confirms successfully."""
+    tournament = _create_tournament(
+        tournament_mode=TournamentMode.ROUND_ROBIN,
+    )
+    match = _create_match(confirmed_by=None, next_match_id=None)
+
+    contestants = [
+        _create_match_contestant(
+            participant_id=TournamentParticipantID(generate_uuid()),
+            score=5,
+        ),
+        _create_match_contestant(
+            participant_id=TournamentParticipantID(generate_uuid()),
+            score=5,
+        ),
+    ]
+
+    mock_repo.get_match.return_value = match
+    mock_repo.get_contestants_for_match.return_value = contestants
+    mock_repo.get_tournament.return_value = tournament
+
+    result = tournament_match_service.confirm_match(MATCH_ID, USER_ID)
+
+    assert result.is_ok()
+    mock_repo.confirm_match.assert_called_once_with(MATCH_ID, USER_ID)
+    mock_repo.commit_session.assert_called()
+    # No advancement should occur for a draw.
+    mock_repo.create_match_contestant.assert_not_called()
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_confirm_match_draw_blocked_in_single_elimination(
+    mock_repo,
+):
+    """Draw in single-elimination mode returns Err."""
+    tournament = _create_tournament(
+        tournament_mode=TournamentMode.SINGLE_ELIMINATION,
+    )
+    match = _create_match(confirmed_by=None, next_match_id=None)
+
+    contestants = [
+        _create_match_contestant(
+            participant_id=TournamentParticipantID(generate_uuid()),
+            score=5,
+        ),
+        _create_match_contestant(
+            participant_id=TournamentParticipantID(generate_uuid()),
+            score=5,
+        ),
+    ]
+
+    mock_repo.get_match.return_value = match
+    mock_repo.get_contestants_for_match.return_value = contestants
+    mock_repo.get_tournament.return_value = tournament
+
+    result = tournament_match_service.confirm_match(MATCH_ID, USER_ID)
+
+    assert result.is_err()
+    assert 'draw' in result.unwrap_err().lower()
+    mock_repo.confirm_match.assert_not_called()
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.match_confirmed'
+)
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_confirm_match_draw_event_has_no_winner(mock_repo, mock_signal):
+    """MatchConfirmedEvent for a draw has no winner IDs."""
+    tournament = _create_tournament(
+        tournament_mode=TournamentMode.ROUND_ROBIN,
+    )
+    match = _create_match(confirmed_by=None, next_match_id=None)
+
+    contestants = [
+        _create_match_contestant(
+            participant_id=TournamentParticipantID(generate_uuid()),
+            score=5,
+        ),
+        _create_match_contestant(
+            participant_id=TournamentParticipantID(generate_uuid()),
+            score=5,
+        ),
+    ]
+
+    mock_repo.get_match.return_value = match
+    mock_repo.get_contestants_for_match.return_value = contestants
+    mock_repo.get_tournament.return_value = tournament
+
+    result = tournament_match_service.confirm_match(MATCH_ID, USER_ID)
+
+    assert result.is_ok()
+
+    # Verify the signal was sent with a MatchConfirmedEvent.
+    mock_signal.send.assert_called_once()
+    event = mock_signal.send.call_args[0][0]
+    assert isinstance(event, MatchConfirmedEvent)
+    assert event.winner_team_id is None
+    assert event.winner_participant_id is None
+    assert event.match_id == MATCH_ID
+    assert event.tournament_id == TOURNAMENT_ID
+
+
+# -------------------------------------------------------------------- #
 # unconfirm_match
 # -------------------------------------------------------------------- #
 
@@ -608,6 +954,40 @@ def test_unconfirm_match_retracts_advanced_contestant(mock_repo):
         team_id=None,
         participant_id=winner_participant_id,
     )
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_unconfirm_match_draw_skips_cascade(mock_repo):
+    """Unconfirming a drawn round-robin match skips cascade retraction."""
+    next_match_id = TournamentMatchID(generate_uuid())
+    confirmed_by = UserID(generate_uuid())
+    match = _create_match(
+        confirmed_by=confirmed_by, next_match_id=next_match_id
+    )
+
+    # Equal scores => draw => determine_match_winner returns Ok(None)
+    contestants = [
+        _create_match_contestant(
+            participant_id=TournamentParticipantID(generate_uuid()),
+            score=5,
+        ),
+        _create_match_contestant(
+            participant_id=TournamentParticipantID(generate_uuid()),
+            score=5,
+        ),
+    ]
+
+    mock_repo.get_match.return_value = match
+    mock_repo.get_contestants_for_match.return_value = contestants
+
+    result = tournament_match_service.unconfirm_match(MATCH_ID, USER_ID)
+
+    assert result.is_ok()
+    mock_repo.unconfirm_match.assert_called_once_with(MATCH_ID)
+    # Draw: no winner => no cascade retraction
+    mock_repo.delete_contestant_from_match.assert_not_called()
 
 
 # -------------------------------------------------------------------- #

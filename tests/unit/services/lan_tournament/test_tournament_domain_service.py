@@ -31,11 +31,17 @@ from byceps.services.lan_tournament.models.tournament_match_to_contestant import
     TournamentMatchToContestantID,
 )
 from byceps.services.lan_tournament.tournament_domain_service import (
+    _contestant_id,
     _standard_seed_order,
+    compute_round_robin_standings,
     create_tournament,
     determine_match_winner,
+    generate_round_robin_schedule,
     validate_participant_count,
     validate_team_count,
+)
+from byceps.services.lan_tournament.models.tournament_participant import (
+    TournamentParticipantID,
 )
 from byceps.services.party.models import PartyID
 
@@ -182,6 +188,19 @@ def test_validate_team_count(max_teams, current_count, expected_ok):
 
 
 # -------------------------------------------------------------------- #
+# _contestant_id
+
+
+def test_contestant_id_raises_on_null_null():
+    contestant = _create_contestant(score=0)
+    # Both participant_id and team_id are None.
+    assert contestant.participant_id is None
+    assert contestant.team_id is None
+    with pytest.raises(ValueError):
+        _contestant_id(contestant)
+
+
+# -------------------------------------------------------------------- #
 # determine_match_winner
 
 
@@ -207,15 +226,15 @@ def test_determine_match_winner_clear_win_reversed_order():
     assert result.unwrap() == winner
 
 
-def test_determine_match_winner_tie_error():
+def test_determine_match_winner_draw():
     match_id = TournamentMatchID(generate_uuid())
     c1 = _create_contestant(match_id=match_id, score=7)
     c2 = _create_contestant(match_id=match_id, score=7)
 
     result = determine_match_winner([c1, c2])
 
-    assert result.is_err()
-    assert 'tied' in result.unwrap_err().lower()
+    assert result.is_ok()
+    assert result.unwrap() is None
 
 
 def test_determine_match_winner_missing_scores_error():
@@ -295,7 +314,212 @@ def test_standard_seed_order_1_player():
 
 
 # -------------------------------------------------------------------- #
+# generate_round_robin_schedule
+
+
+def test_generate_round_robin_schedule_4_players():
+    ids = ['A', 'B', 'C', 'D']
+    schedule = generate_round_robin_schedule(ids)
+
+    assert len(schedule) == 3  # n-1 rounds
+    total_matches = sum(len(r) for r in schedule)
+    assert total_matches == 6  # C(4,2) = 6
+
+
+def test_generate_round_robin_schedule_5_players():
+    ids = ['A', 'B', 'C', 'D', 'E']
+    schedule = generate_round_robin_schedule(ids)
+
+    # Padded to 6 → 5 rounds; byes are skipped so 10 real matches.
+    assert len(schedule) == 5
+    total_matches = sum(len(r) for r in schedule)
+    assert total_matches == 10  # C(5,2) = 10
+
+
+def test_generate_round_robin_schedule_6_players():
+    ids = ['A', 'B', 'C', 'D', 'E', 'F']
+    schedule = generate_round_robin_schedule(ids)
+
+    assert len(schedule) == 5
+    total_matches = sum(len(r) for r in schedule)
+    assert total_matches == 15  # C(6,2) = 15
+
+
+def test_generate_round_robin_schedule_2_players():
+    ids = ['A', 'B']
+    schedule = generate_round_robin_schedule(ids)
+
+    assert len(schedule) == 1
+    assert len(schedule[0]) == 1
+    assert schedule[0][0] == ('A', 'B')
+
+
+def test_generate_round_robin_schedule_3_players():
+    ids = ['A', 'B', 'C']
+    schedule = generate_round_robin_schedule(ids)
+
+    # Padded to 4 -> 3 rounds; byes skipped so 3 real matches.
+    assert len(schedule) == 3  # n-1 rounds (padded to 4)
+    total_matches = sum(len(r) for r in schedule)
+    assert total_matches == 3  # C(3,2) = 3
+
+
+def test_generate_round_robin_schedule_no_duplicate_pairings():
+    ids = ['A', 'B', 'C', 'D', 'E']
+    schedule = generate_round_robin_schedule(ids)
+
+    all_pairings: list[tuple[str | None, str | None]] = []
+    for round_matches in schedule:
+        all_pairings.extend(round_matches)
+
+    # Normalise so (A,B) and (B,A) are the same.
+    normalised = {tuple(sorted(pair)) for pair in all_pairings}
+    assert len(normalised) == len(all_pairings)
+
+
+# -------------------------------------------------------------------- #
+# compute_round_robin_standings
+
+
+def test_compute_round_robin_standings_empty_input():
+    standings = compute_round_robin_standings([])
+
+    assert standings == []
+
+
+def test_compute_round_robin_standings_basic():
+    """3-player RR with a clear winner."""
+    pid_a = TournamentParticipantID(generate_uuid())
+    pid_b = TournamentParticipantID(generate_uuid())
+    pid_c = TournamentParticipantID(generate_uuid())
+
+    match_id1 = TournamentMatchID(generate_uuid())
+    match_id2 = TournamentMatchID(generate_uuid())
+    match_id3 = TournamentMatchID(generate_uuid())
+
+    # A beats B (10-5), A beats C (8-3), B beats C (7-2)
+    matches = [
+        [
+            _create_contestant_with_pid(pid_a, match_id=match_id1, score=10),
+            _create_contestant_with_pid(pid_b, match_id=match_id1, score=5),
+        ],
+        [
+            _create_contestant_with_pid(pid_a, match_id=match_id2, score=8),
+            _create_contestant_with_pid(pid_c, match_id=match_id2, score=3),
+        ],
+        [
+            _create_contestant_with_pid(pid_b, match_id=match_id3, score=7),
+            _create_contestant_with_pid(pid_c, match_id=match_id3, score=2),
+        ],
+    ]
+
+    standings = compute_round_robin_standings(matches)
+
+    assert len(standings) == 3
+    # A: 2 wins = 6 pts, B: 1 win = 3 pts, C: 0 wins = 0 pts
+    assert standings[0].contestant_id == str(pid_a)
+    assert standings[0].points == 6
+    assert standings[0].wins == 2
+    assert standings[0].losses == 0
+
+    assert standings[1].contestant_id == str(pid_b)
+    assert standings[1].points == 3
+
+    assert standings[2].contestant_id == str(pid_c)
+    assert standings[2].points == 0
+
+
+def test_compute_round_robin_standings_points_draw():
+    """Equal points resolved by score_diff."""
+    pid_a = TournamentParticipantID(generate_uuid())
+    pid_b = TournamentParticipantID(generate_uuid())
+    pid_c = TournamentParticipantID(generate_uuid())
+
+    m1 = TournamentMatchID(generate_uuid())
+    m2 = TournamentMatchID(generate_uuid())
+    m3 = TournamentMatchID(generate_uuid())
+
+    # A beats B (10-1), C beats A (2-1), B beats C (10-1)
+    # A: 3 pts, sf=11 sa=3  diff=+8
+    # B: 3 pts, sf=11 sa=11 diff=0
+    # C: 3 pts, sf=3  sa=11 diff=-8
+    matches = [
+        [
+            _create_contestant_with_pid(pid_a, match_id=m1, score=10),
+            _create_contestant_with_pid(pid_b, match_id=m1, score=1),
+        ],
+        [
+            _create_contestant_with_pid(pid_c, match_id=m2, score=2),
+            _create_contestant_with_pid(pid_a, match_id=m2, score=1),
+        ],
+        [
+            _create_contestant_with_pid(pid_b, match_id=m3, score=10),
+            _create_contestant_with_pid(pid_c, match_id=m3, score=1),
+        ],
+    ]
+
+    standings = compute_round_robin_standings(matches)
+
+    # All have 3 points; A has best score_diff.
+    assert standings[0].contestant_id == str(pid_a)
+    assert standings[0].points == 3
+    assert standings[0].score_diff == 8
+
+    assert standings[1].contestant_id == str(pid_b)
+    assert standings[1].score_diff == 0
+
+    assert standings[2].contestant_id == str(pid_c)
+    assert standings[2].score_diff == -8
+
+
+def test_compute_round_robin_standings_draw_handling():
+    """Draw gives 1 point to each contestant."""
+    pid_a = TournamentParticipantID(generate_uuid())
+    pid_b = TournamentParticipantID(generate_uuid())
+
+    m1 = TournamentMatchID(generate_uuid())
+
+    # A vs B: 5-5 draw
+    matches = [
+        [
+            _create_contestant_with_pid(pid_a, match_id=m1, score=5),
+            _create_contestant_with_pid(pid_b, match_id=m1, score=5),
+        ],
+    ]
+
+    standings = compute_round_robin_standings(matches)
+
+    assert len(standings) == 2
+    for standing in standings:
+        assert standing.points == 1
+        assert standing.draws == 1
+        assert standing.wins == 0
+        assert standing.losses == 0
+        assert standing.score_for == 5
+        assert standing.score_against == 5
+        assert standing.score_diff == 0
+
+
+# -------------------------------------------------------------------- #
 # helpers
+
+
+def _create_contestant_with_pid(
+    participant_id: TournamentParticipantID,
+    *,
+    match_id: TournamentMatchID | None = None,
+    score: int | None = None,
+) -> TournamentMatchToContestant:
+    if match_id is None:
+        match_id = TournamentMatchID(generate_uuid())
+    return TournamentMatchToContestant(
+        id=TournamentMatchToContestantID(generate_uuid()),
+        tournament_match_id=match_id,
+        team_id=None,
+        participant_id=participant_id,
+        score=score,
+        created_at=NOW,
+    )
 
 
 def _create_contestant(

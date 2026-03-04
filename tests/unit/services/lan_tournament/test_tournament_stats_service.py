@@ -92,9 +92,7 @@ def test_stats_with_single_tournament_zero_participants():
         tournament_status=TournamentStatus.ONGOING,
     )
 
-    stats = tournament_stats_service.get_stats_for_party(
-        [tournament], {}
-    )
+    stats = tournament_stats_service.get_stats_for_party([tournament], {})
 
     assert stats.tournament_count == 1
     assert stats.total_participant_count == 0

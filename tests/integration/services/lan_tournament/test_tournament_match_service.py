@@ -111,16 +111,12 @@ def test_generate_and_seed_bracket_for_solo_tournament(
     tournament_match_service.set_seed(seeds, tournament.id)
 
     # Verify matches created
-    matches = tournament_match_service.get_matches_for_tournament(
-        tournament.id
-    )
+    matches = tournament_match_service.get_matches_for_tournament(tournament.id)
     assert len(matches) == 2
     assert all(match.confirmed_by is None for match in matches)
 
 
-def test_set_scores_and_confirm_match(
-    party, user1, user2, admin_user
-):
+def test_set_scores_and_confirm_match(party, user1, user2, admin_user):
     """Test setting scores and confirming match results."""
     # Create tournament
     tournament, _ = tournament_service.create_tournament(
@@ -152,9 +148,7 @@ def test_set_scores_and_confirm_match(
     tournament_match_service.set_seed(seeds, tournament.id)
 
     # Get the match
-    matches = tournament_match_service.get_matches_for_tournament(
-        tournament.id
-    )
+    matches = tournament_match_service.get_matches_for_tournament(tournament.id)
     match = matches[0]
 
     # Set scores
@@ -169,9 +163,7 @@ def test_set_scores_and_confirm_match(
     assert confirmed_match.confirmed_by == admin_user.id
 
 
-def test_cannot_confirm_match_without_scores(
-    party, user1, user2, admin_user
-):
+def test_cannot_confirm_match_without_scores(party, user1, user2, admin_user):
     """Test that match cannot be confirmed without scores."""
     tournament, _ = tournament_service.create_tournament(
         PARTY_ID,
@@ -193,9 +185,7 @@ def test_cannot_confirm_match_without_scores(
     )
     tournament_match_service.set_seed(seeds, tournament.id)
 
-    matches = tournament_match_service.get_matches_for_tournament(
-        tournament.id
-    )
+    matches = tournament_match_service.get_matches_for_tournament(tournament.id)
     match = matches[0]
 
     # Try to confirm without setting scores
@@ -228,9 +218,7 @@ def test_cannot_set_negative_score(party, user1, user2):
     )
     tournament_match_service.set_seed(seeds, tournament.id)
 
-    matches = tournament_match_service.get_matches_for_tournament(
-        tournament.id
-    )
+    matches = tournament_match_service.get_matches_for_tournament(tournament.id)
     match = matches[0]
 
     with pytest.raises(ValueError, match='cannot be negative'):
@@ -259,9 +247,7 @@ def test_match_comments_workflow(party, user1, user2, admin_user):
     )
     tournament_match_service.set_seed(seeds, tournament.id)
 
-    matches = tournament_match_service.get_matches_for_tournament(
-        tournament.id
-    )
+    matches = tournament_match_service.get_matches_for_tournament(tournament.id)
     match = matches[0]
 
     # Add comment
@@ -318,9 +304,7 @@ def test_comment_length_validation(party, user1, user2, admin_user):
     )
     tournament_match_service.set_seed(seeds, tournament.id)
 
-    matches = tournament_match_service.get_matches_for_tournament(
-        tournament.id
-    )
+    matches = tournament_match_service.get_matches_for_tournament(tournament.id)
     match = matches[0]
 
     # Try to add comment that's too long
@@ -332,9 +316,7 @@ def test_comment_length_validation(party, user1, user2, admin_user):
 
     # Comment at exactly 1000 chars should work
     limit_comment = 'x' * 1000
-    tournament_match_service.add_comment(
-        match.id, admin_user.id, limit_comment
-    )
+    tournament_match_service.add_comment(match.id, admin_user.id, limit_comment)
 
     comments = tournament_match_service.get_comments_from_match(match.id)
     assert len(comments) == 1
@@ -391,9 +373,7 @@ def test_team_tournament_bracket_workflow(party, user1, user2, user3, user4):
     tournament_match_service.set_seed(seeds, tournament.id)
 
     # Verify matches created
-    matches = tournament_match_service.get_matches_for_tournament(
-        tournament.id
-    )
+    matches = tournament_match_service.get_matches_for_tournament(tournament.id)
     assert len(matches) == 1
 
 
@@ -458,9 +438,7 @@ def test_reset_match(party, user1, user2):
     tournament_match_service.set_seed(seeds, tournament.id)
 
     # Get match
-    matches = tournament_match_service.get_matches_for_tournament(
-        tournament.id
-    )
+    matches = tournament_match_service.get_matches_for_tournament(tournament.id)
     assert len(matches) == 1
     match = matches[0]
 

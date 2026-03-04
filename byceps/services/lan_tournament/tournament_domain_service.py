@@ -11,6 +11,7 @@ from .events import (
 from .models.contestant_type import ContestantType
 from .models.tournament import Tournament, TournamentID
 from .models.tournament_mode import TournamentMode
+from .models.round_robin_standing import RoundRobinStanding
 from .models.tournament_match_to_contestant import (
     TournamentMatchToContestant,
 )
@@ -170,8 +171,13 @@ def validate_team_count(
 
 def determine_match_winner(
     contestants: list[TournamentMatchToContestant],
-) -> Result[TournamentMatchToContestant, str]:
-    """Determine the winner of a match by highest score."""
+) -> Result[TournamentMatchToContestant | None, str]:
+    """Determine the winner of a match by highest score.
+
+    Returns ``Ok(winner)`` when there is a clear winner,
+    ``Ok(None)`` when the match is a draw (equal scores),
+    or ``Err(reason)`` on validation failure.
+    """
     if len(contestants) < 2:
         return Err('Need at least 2 contestants to determine winner.')
 
@@ -184,9 +190,139 @@ def determine_match_winner(
     )
 
     if sorted_contestants[0].score == sorted_contestants[1].score:
-        return Err('Match is tied; cannot determine winner.')
+        return Ok(None)
 
     return Ok(sorted_contestants[0])
+
+
+def generate_round_robin_schedule(
+    contestant_ids: list[str],
+) -> list[list[tuple[str | None, str | None]]]:
+    """Generate round-robin schedule using circle method."""
+    players: list[str | None] = list(contestant_ids)
+    if len(players) % 2 == 1:
+        players.append(None)  # bye
+
+    n = len(players)
+    num_rounds = n - 1
+    schedule: list[list[tuple[str | None, str | None]]] = []
+
+    for _round_num in range(num_rounds):
+        round_matches: list[tuple[str | None, str | None]] = []
+        top = players[: n // 2]
+        bottom = players[n // 2 :][::-1]
+        for p1, p2 in zip(top, bottom, strict=True):
+            if p1 is not None and p2 is not None:
+                round_matches.append((p1, p2))
+        schedule.append(round_matches)
+        players = [players[0]] + [players[-1]] + players[1:-1]
+
+    return schedule
+
+
+def _contestant_id(
+    c: TournamentMatchToContestant,
+) -> str:
+    """Return the effective contestant ID as a string."""
+    if c.participant_id is None and c.team_id is None:
+        raise ValueError(
+            'Contestant has neither participant_id'
+            ' nor team_id.'
+        )
+    return str(
+        c.participant_id
+        if c.participant_id is not None
+        else c.team_id
+    )
+
+
+def compute_round_robin_standings(
+    matches: list[list[TournamentMatchToContestant]],
+) -> list[RoundRobinStanding]:
+    """Compute round-robin standings from confirmed matches.
+
+    Each element in *matches* is a list of exactly two
+    ``TournamentMatchToContestant`` entries representing one
+    completed match.  Points are awarded as: Win = 3, Draw = 1,
+    Loss = 0.  The returned list is sorted by points DESC,
+    score_diff DESC, score_for DESC.
+    """
+    stats: dict[str, dict[str, int]] = {}
+
+    def _ensure(cid: str) -> dict[str, int]:
+        if cid not in stats:
+            stats[cid] = {
+                'points': 0,
+                'wins': 0,
+                'draws': 0,
+                'losses': 0,
+                'score_for': 0,
+                'score_against': 0,
+            }
+        return stats[cid]
+
+    for contestants in matches:
+        if len(contestants) != 2:
+            continue
+
+        c1, c2 = contestants
+        cid1 = _contestant_id(c1)
+        cid2 = _contestant_id(c2)
+
+        s1 = _ensure(cid1)
+        s2 = _ensure(cid2)
+
+        score1 = c1.score if c1.score is not None else 0
+        score2 = c2.score if c2.score is not None else 0
+
+        s1['score_for'] += score1
+        s1['score_against'] += score2
+        s2['score_for'] += score2
+        s2['score_against'] += score1
+
+        winner_result = determine_match_winner(contestants)
+        if winner_result.is_err():
+            # Validation failure — skip this match.
+            continue
+
+        winner = winner_result.unwrap()
+        if winner is None:
+            # Draw (equal scores).
+            s1['draws'] += 1
+            s1['points'] += 1
+            s2['draws'] += 1
+            s2['points'] += 1
+        else:
+            winner_id = _contestant_id(winner)
+            if winner_id == cid1:
+                s1['wins'] += 1
+                s1['points'] += 3
+                s2['losses'] += 1
+            else:
+                s2['wins'] += 1
+                s2['points'] += 3
+                s1['losses'] += 1
+
+    standings = [
+        RoundRobinStanding(
+            contestant_id=cid,
+            points=s['points'],
+            wins=s['wins'],
+            draws=s['draws'],
+            losses=s['losses'],
+            score_for=s['score_for'],
+            score_against=s['score_against'],
+            score_diff=s['score_for'] - s['score_against'],
+        )
+        for cid, s in stats.items()
+    ]
+
+    standings.sort(
+        key=lambda s: (s.points, s.score_diff, s.score_for),
+        reverse=True,
+    )
+
+    return standings
 
 
 def _standard_seed_order(bracket_size: int) -> list[int]:
@@ -197,6 +333,7 @@ def _standard_seed_order(bracket_size: int) -> list[int]:
     """
     if bracket_size == 1:
         return [0]
+
     if bracket_size == 2:
         return [0, 1]
 

@@ -38,9 +38,7 @@ PARTY_ID = PartyID('lan-2025')
 # -------------------------------------------------------------------- #
 
 
-@patch(
-    'byceps.services.lan_tournament.tournament_participant_service.signals'
-)
+@patch('byceps.services.lan_tournament.tournament_participant_service.signals')
 @patch(
     'byceps.services.lan_tournament.tournament_participant_service.ticket_service'
 )
@@ -72,9 +70,7 @@ def test_rejoin_reactivates_soft_deleted_participant(
     mock_repo.find_participant_by_user.return_value = None
     mock_repo.get_participant_count.return_value = 0
     mock_domain.validate_participant_count.return_value = Ok(None)
-    mock_repo.find_soft_deleted_participant_by_user.return_value = (
-        soft_deleted
-    )
+    mock_repo.find_soft_deleted_participant_by_user.return_value = soft_deleted
 
     result = tournament_participant_service.join_tournament(
         TOURNAMENT_ID, user_id
@@ -87,9 +83,7 @@ def test_rejoin_reactivates_soft_deleted_participant(
     mock_repo.create_participant.assert_not_called()
 
 
-@patch(
-    'byceps.services.lan_tournament.tournament_participant_service.signals'
-)
+@patch('byceps.services.lan_tournament.tournament_participant_service.signals')
 @patch(
     'byceps.services.lan_tournament.tournament_participant_service.ticket_service'
 )
@@ -122,9 +116,7 @@ def test_rejoin_updates_fields_on_reactivation(
     mock_repo.find_participant_by_user.return_value = None
     mock_repo.get_participant_count.return_value = 0
     mock_domain.validate_participant_count.return_value = Ok(None)
-    mock_repo.find_soft_deleted_participant_by_user.return_value = (
-        soft_deleted
-    )
+    mock_repo.find_soft_deleted_participant_by_user.return_value = soft_deleted
 
     result = tournament_participant_service.join_tournament(
         TOURNAMENT_ID,
@@ -134,16 +126,12 @@ def test_rejoin_updates_fields_on_reactivation(
     )
 
     assert result.is_ok()
-    call_kwargs = (
-        mock_repo.reactivate_participant.call_args
-    )
+    call_kwargs = mock_repo.reactivate_participant.call_args
     assert call_kwargs[1]['substitute_player'] is True
     assert call_kwargs[1]['team_id'] == team_id
 
 
-@patch(
-    'byceps.services.lan_tournament.tournament_participant_service.signals'
-)
+@patch('byceps.services.lan_tournament.tournament_participant_service.signals')
 @patch(
     'byceps.services.lan_tournament.tournament_participant_service.ticket_service'
 )
@@ -174,9 +162,7 @@ def test_rejoin_fires_participant_joined_event(
     mock_repo.find_participant_by_user.return_value = None
     mock_repo.get_participant_count.return_value = 0
     mock_domain.validate_participant_count.return_value = Ok(None)
-    mock_repo.find_soft_deleted_participant_by_user.return_value = (
-        soft_deleted
-    )
+    mock_repo.find_soft_deleted_participant_by_user.return_value = soft_deleted
 
     result = tournament_participant_service.join_tournament(
         TOURNAMENT_ID, user_id
@@ -230,9 +216,7 @@ def test_rejoin_blocked_when_tournament_full(
     mock_repo.reactivate_participant.assert_not_called()
 
 
-@patch(
-    'byceps.services.lan_tournament.tournament_participant_service.signals'
-)
+@patch('byceps.services.lan_tournament.tournament_participant_service.signals')
 @patch(
     'byceps.services.lan_tournament.tournament_participant_service.ticket_service'
 )
@@ -272,9 +256,7 @@ def test_join_creates_new_when_no_soft_deleted_row(
 # -------------------------------------------------------------------- #
 
 
-@patch(
-    'byceps.services.lan_tournament.tournament_participant_service.signals'
-)
+@patch('byceps.services.lan_tournament.tournament_participant_service.signals')
 @patch(
     'byceps.services.lan_tournament.tournament_participant_service.tournament_repository'
 )
@@ -329,9 +311,7 @@ def test_admin_add_fails_with_ongoing_status(mock_repo):
 # -------------------------------------------------------------------- #
 
 
-@patch(
-    'byceps.services.lan_tournament.tournament_participant_service.signals'
-)
+@patch('byceps.services.lan_tournament.tournament_participant_service.signals')
 @patch(
     'byceps.services.lan_tournament.tournament_participant_service.tournament_repository'
 )
@@ -358,9 +338,7 @@ def test_admin_add_reactivates_soft_deleted_participant(
     mock_repo.find_participant_by_user.return_value = None
     mock_repo.get_participant_count.return_value = 0
     mock_domain.validate_participant_count.return_value = Ok(None)
-    mock_repo.find_soft_deleted_participant_by_user.return_value = (
-        soft_deleted
-    )
+    mock_repo.find_soft_deleted_participant_by_user.return_value = soft_deleted
 
     result = tournament_participant_service.admin_add_participant(
         TOURNAMENT_ID, user_id
@@ -373,9 +351,7 @@ def test_admin_add_reactivates_soft_deleted_participant(
     mock_repo.create_participant.assert_not_called()
 
 
-@patch(
-    'byceps.services.lan_tournament.tournament_participant_service.signals'
-)
+@patch('byceps.services.lan_tournament.tournament_participant_service.signals')
 @patch(
     'byceps.services.lan_tournament.tournament_participant_service.tournament_repository'
 )

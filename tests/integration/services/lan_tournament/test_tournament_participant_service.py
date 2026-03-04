@@ -165,8 +165,10 @@ def test_get_participants_for_tournament(party, user1, user2, user3):
     tournament_participant_service.join_tournament(tournament.id, user3.id)
 
     # Get all participants
-    participants = tournament_participant_service.get_participants_for_tournament(
-        tournament.id
+    participants = (
+        tournament_participant_service.get_participants_for_tournament(
+            tournament.id
+        )
     )
 
     assert len(participants) == 3

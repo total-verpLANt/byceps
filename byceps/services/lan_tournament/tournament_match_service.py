@@ -10,11 +10,12 @@ from .events import (
     MatchConfirmedEvent,
     MatchUnconfirmedEvent,
 )
-from .models.tournament import TournamentID
+from .models.tournament import Tournament, TournamentID
 from .models.tournament_match import (
     TournamentMatch,
     TournamentMatchID,
 )
+from .models.tournament_mode import TournamentMode
 from .models.tournament_match_comment import (
     TournamentMatchComment,
     TournamentMatchCommentID,
@@ -31,7 +32,10 @@ from .signals import (
     match_confirmed,
     match_unconfirmed,
 )
-from .tournament_domain_service import determine_match_winner
+from .tournament_domain_service import (
+    determine_match_winner,
+    generate_round_robin_schedule,
+)
 
 
 def set_seed(
@@ -156,6 +160,71 @@ def clear_bracket(tournament_id: TournamentID) -> Result[None, str]:
     return Ok(None)
 
 
+def _prepare_bracket_generation(
+    tournament_id: TournamentID,
+    force_regenerate: bool = False,
+) -> Result[tuple[Tournament, list[str], bool], str]:
+    """Shared preamble for bracket generation functions.
+
+    Locks the tournament, validates contestant type, fetches
+    contestant IDs, checks minimum count, and optionally clears
+    existing matches when *force_regenerate* is set.
+
+    Returns ``Ok((tournament, contestant_ids, had_matches))``
+    on success or ``Err(reason)`` on failure.
+    """
+    from .models.contestant_type import ContestantType
+
+    # Lock tournament to prevent race conditions.
+    tournament_repository.lock_tournament_for_update(tournament_id)
+
+    # Check if matches already exist (atomic with lock).
+    had_matches = has_matches(tournament_id)
+    if had_matches and not force_regenerate:
+        return Err(
+            'Tournament already has matches.'
+            ' Use force regenerate to clear'
+            ' and rebuild.'
+        )
+
+    # Clear existing matches if force regenerate.
+    if force_regenerate and had_matches:
+        clear_result = clear_bracket(tournament_id)
+        if clear_result.is_err():
+            return Err(
+                f'Failed to clear existing bracket:'
+                f' {clear_result.unwrap_err()}'
+            )
+
+    # Get tournament to check contestant type.
+    tournament = tournament_repository.get_tournament(
+        tournament_id
+    )
+    if tournament.contestant_type is None:
+        return Err('Tournament contestant type is not set.')
+
+    # Get contestants (participants or teams).
+    if tournament.contestant_type == ContestantType.TEAM:
+        teams = tournament_repository.get_teams_for_tournament(
+            tournament_id
+        )
+        contestant_ids = [str(team.id) for team in teams]
+    else:
+        participants = (
+            tournament_repository.get_participants_for_tournament(
+                tournament_id
+            )
+        )
+        contestant_ids = [str(p.id) for p in participants]
+
+    if len(contestant_ids) < 2:
+        return Err(
+            'Need at least 2 contestants for bracket.'
+        )
+
+    return Ok((tournament, contestant_ids, had_matches))
+
+
 def generate_single_elimination_bracket(
     tournament_id: TournamentID,
     force_regenerate: bool = False,
@@ -171,42 +240,15 @@ def generate_single_elimination_bracket(
     from .models.contestant_type import ContestantType
     from .tournament_domain_service import _standard_seed_order
 
-    # CRITICAL: Lock tournament to prevent race condition (TOCTOU vulnerability)
-    # This blocks concurrent bracket generation attempts until this transaction commits
-    tournament_repository.lock_tournament_for_update(tournament_id)
+    # Shared preamble: lock, validate, fetch contestants.
+    prep_result = _prepare_bracket_generation(
+        tournament_id, force_regenerate
+    )
+    if prep_result.is_err():
+        return Err(prep_result.unwrap_err())
 
-    # Check if matches already exist (now atomic with lock)
-    if has_matches(tournament_id) and not force_regenerate:
-        return Err(
-            'Tournament already has matches. Use force regenerate to clear and rebuild.'
-        )
-
-    # Clear existing matches if force regenerate
-    if force_regenerate and has_matches(tournament_id):
-        clear_result = clear_bracket(tournament_id)
-        if clear_result.is_err():
-            return Err(
-                f'Failed to clear existing bracket: {clear_result.unwrap_err()}'
-            )
-
-    # Get tournament to check contestant type
-    tournament = tournament_repository.get_tournament(tournament_id)
-    if tournament.contestant_type is None:
-        return Err('Tournament contestant type is not set.')
-
-    # Get contestants (participants or teams)
-    if tournament.contestant_type == ContestantType.TEAM:
-        teams = tournament_repository.get_teams_for_tournament(tournament_id)
-        contestant_ids = [str(team.id) for team in teams]
-    else:
-        participants = tournament_repository.get_participants_for_tournament(
-            tournament_id
-        )
-        contestant_ids = [str(p.id) for p in participants]
-
+    tournament, contestant_ids, _had_matches = prep_result.unwrap()
     num_contestants = len(contestant_ids)
-    if num_contestants < 2:
-        return Err('Need at least 2 contestants for bracket.')
 
     # Calculate bracket geometry
     bracket_size = 2 ** math.ceil(math.log2(num_contestants))
@@ -320,6 +362,94 @@ def generate_single_elimination_bracket(
         signals.match_created.send(None, event=event)
 
     total_matches = bracket_size - 1
+    return Ok(total_matches)
+
+
+def generate_round_robin_bracket(
+    tournament_id: TournamentID,
+    force_regenerate: bool = False,
+) -> Result[int, str]:
+    """Generate round-robin bracket with all pairings."""
+    from uuid import UUID
+
+    from byceps.util.uuid import generate_uuid7
+
+    from . import signals
+    from .events import MatchCreatedEvent
+    from .models.contestant_type import ContestantType
+
+    # Shared preamble: lock, validate, fetch contestants.
+    prep_result = _prepare_bracket_generation(
+        tournament_id, force_regenerate
+    )
+    if prep_result.is_err():
+        return Err(prep_result.unwrap_err())
+
+    tournament, contestant_ids, _had_matches = prep_result.unwrap()
+
+    # Generate round-robin schedule via domain service.
+    schedule = generate_round_robin_schedule(contestant_ids)
+
+    is_team = tournament.contestant_type == ContestantType.TEAM
+    now = datetime.now(UTC)
+    match_events: list[MatchCreatedEvent] = []
+    total_matches = 0
+
+    for round_num, round_pairings in enumerate(schedule):
+        for match_idx, (p1, p2) in enumerate(round_pairings):
+            match_id = TournamentMatchID(generate_uuid7())
+            match = TournamentMatch(
+                id=match_id,
+                tournament_id=tournament_id,
+                group_order=None,
+                match_order=match_idx,
+                round=round_num,
+                next_match_id=None,
+                confirmed_by=None,
+                created_at=now,
+            )
+            tournament_repository.create_match(match)
+
+            # Create contestants for both sides.
+            for cid in (p1, p2):
+                c_id = TournamentMatchToContestantID(generate_uuid7())
+                if is_team:
+                    contestant = TournamentMatchToContestant(
+                        id=c_id,
+                        tournament_match_id=match_id,
+                        team_id=TournamentTeamID(UUID(cid)),
+                        participant_id=None,
+                        score=None,
+                        created_at=now,
+                    )
+                else:
+                    contestant = TournamentMatchToContestant(
+                        id=c_id,
+                        tournament_match_id=match_id,
+                        team_id=None,
+                        participant_id=(TournamentParticipantID(UUID(cid))),
+                        score=None,
+                        created_at=now,
+                    )
+                tournament_repository.create_match_contestant(contestant)
+
+            match_events.append(
+                MatchCreatedEvent(
+                    occurred_at=now,
+                    initiator=None,
+                    tournament_id=tournament_id,
+                    match_id=match_id,
+                )
+            )
+            total_matches += 1
+
+    # Single transaction commit.
+    tournament_repository.commit_session()
+
+    # Dispatch events after successful commit.
+    for event in match_events:
+        signals.match_created.send(None, event=event)
+
     return Ok(total_matches)
 
 
@@ -495,12 +625,37 @@ def confirm_match(
                 'Cannot confirm match: all contestants must have scores.'
             )
 
-    # Determine winner.
+    # Determine winner (may be a draw in round-robin).
     winner_result = determine_match_winner(contestants)
+
     if winner_result.is_err():
         return Err(winner_result.unwrap_err())
 
     winner = winner_result.unwrap()
+
+    if winner is None:
+        # Draw — only permitted in round-robin mode.
+        tournament = tournament_repository.get_tournament(match.tournament_id)
+        if tournament.tournament_mode != TournamentMode.ROUND_ROBIN:
+            return Err(
+                'Match is a draw; a winner is required in this tournament mode.'
+            )
+
+        tournament_repository.confirm_match(match_id, confirmed_by_user_id)
+        tournament_repository.commit_session()
+
+        now = datetime.now(UTC)
+        match_confirmed.send(
+            MatchConfirmedEvent(
+                occurred_at=now,
+                initiator=None,
+                tournament_id=match.tournament_id,
+                match_id=match_id,
+                winner_team_id=None,
+                winner_participant_id=None,
+            )
+        )
+        return Ok(None)
 
     tournament_repository.confirm_match(match_id, confirmed_by_user_id)
     tournament_repository.commit_session()
@@ -565,8 +720,9 @@ def unconfirm_match(
     # Determine winner for cascade retraction.
     winner_result = determine_match_winner(contestants)
 
-    if match.next_match_id is not None and winner_result.is_ok():
-        winner = winner_result.unwrap()
+    winner = winner_result.unwrap() if winner_result.is_ok() else None
+
+    if match.next_match_id is not None and winner is not None:
         next_match = tournament_repository.get_match(match.next_match_id)
         if next_match is not None and next_match.confirmed_by is not None:
             # Recursively unconfirm downstream match first.
