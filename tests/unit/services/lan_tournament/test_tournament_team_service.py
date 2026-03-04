@@ -337,9 +337,7 @@ def test_create_team_integrity_error_returns_err(
     orig = Mock(
         constraint_name='uq_lan_tournament_teams_active_name_ci',
     )
-    mock_repo.create_team.side_effect = IntegrityError(
-        '', {}, orig
-    )
+    mock_repo.create_team.side_effect = IntegrityError('', {}, orig)
 
     result = tournament_team_service.create_team(
         TOURNAMENT_ID,
@@ -375,9 +373,7 @@ def test_create_team_integrity_error_tag_returns_err(
     orig = Mock(
         constraint_name='uq_lan_tournament_teams_active_tag_ci',
     )
-    mock_repo.create_team.side_effect = IntegrityError(
-        '', {}, orig
-    )
+    mock_repo.create_team.side_effect = IntegrityError('', {}, orig)
 
     result = tournament_team_service.create_team(
         TOURNAMENT_ID,
@@ -412,9 +408,7 @@ def test_create_team_integrity_error_unknown_constraint_reraises(
     mock_repo.find_active_team_by_tag.return_value = None
 
     orig = Mock(constraint_name='some_other_constraint')
-    mock_repo.create_team.side_effect = IntegrityError(
-        '', {}, orig
-    )
+    mock_repo.create_team.side_effect = IntegrityError('', {}, orig)
 
     with pytest.raises(IntegrityError):
         tournament_team_service.create_team(
@@ -490,9 +484,7 @@ def test_update_team_integrity_error_returns_err(mock_repo, mock_db):
     orig = Mock(
         constraint_name='uq_lan_tournament_teams_active_tag_ci',
     )
-    mock_repo.update_team.side_effect = IntegrityError(
-        '', {}, orig
-    )
+    mock_repo.update_team.side_effect = IntegrityError('', {}, orig)
 
     result = tournament_team_service.update_team(
         team.id,
@@ -510,9 +502,7 @@ def test_update_team_integrity_error_returns_err(mock_repo, mock_db):
 
 @patch(f'{MOCK_PREFIX}.db')
 @patch(f'{MOCK_PREFIX}.tournament_repository')
-def test_update_team_integrity_error_name_returns_err(
-    mock_repo, mock_db
-):
+def test_update_team_integrity_error_name_returns_err(mock_repo, mock_db):
     """IntegrityError from name DB constraint returns an Err."""
     team = _create_team()
 
@@ -524,9 +514,7 @@ def test_update_team_integrity_error_name_returns_err(
     orig = Mock(
         constraint_name='uq_lan_tournament_teams_active_name_ci',
     )
-    mock_repo.update_team.side_effect = IntegrityError(
-        '', {}, orig
-    )
+    mock_repo.update_team.side_effect = IntegrityError('', {}, orig)
 
     result = tournament_team_service.update_team(
         team.id,
@@ -556,9 +544,7 @@ def test_update_team_integrity_error_unknown_constraint_reraises(
     mock_repo.find_active_team_by_tag.return_value = None
 
     orig = Mock(constraint_name='some_other_constraint')
-    mock_repo.update_team.side_effect = IntegrityError(
-        '', {}, orig
-    )
+    mock_repo.update_team.side_effect = IntegrityError('', {}, orig)
 
     with pytest.raises(IntegrityError):
         tournament_team_service.update_team(

@@ -223,9 +223,7 @@ def _remove_single_participant_bracket_aware(
     deleted_team_id is non-None only when removing this participant
     caused their team to become empty and the team was soft-deleted.
     """
-    is_team_tournament = (
-        tournament.contestant_type == ContestantType.TEAM
-    )
+    is_team_tournament = tournament.contestant_type == ContestantType.TEAM
     bracket_is_active = tournament.tournament_status in (
         TournamentStatus.ONGOING,
         TournamentStatus.PAUSED,

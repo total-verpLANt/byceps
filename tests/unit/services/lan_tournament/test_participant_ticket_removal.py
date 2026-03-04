@@ -63,9 +63,7 @@ def test_join_tournament_without_ticket_fails(mock_repo, mock_ticket):
     assert 'ticket' in result.unwrap_err().lower()
 
 
-@patch(
-    'byceps.services.lan_tournament.tournament_participant_service.signals'
-)
+@patch('byceps.services.lan_tournament.tournament_participant_service.signals')
 @patch(
     'byceps.services.lan_tournament.tournament_participant_service.ticket_service'
 )
@@ -540,9 +538,7 @@ def test_get_ticket_status_skips_query_when_participants_provided(
 # -------------------------------------------------------------------- #
 
 
-@patch(
-    'byceps.services.lan_tournament.tournament_participant_service.signals'
-)
+@patch('byceps.services.lan_tournament.tournament_participant_service.signals')
 @patch(
     'byceps.services.lan_tournament.tournament_participant_service.ticket_service'
 )

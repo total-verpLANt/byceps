@@ -146,9 +146,7 @@ class TeamUpdateForm(LocalizedForm):
 
 
 class TransferCaptainForm(LocalizedForm):
-    new_captain = SelectField(
-        lazy_gettext('New captain'), [InputRequired()]
-    )
+    new_captain = SelectField(lazy_gettext('New captain'), [InputRequired()])
 
 
 class AddTeamMemberForm(LocalizedForm):
@@ -167,12 +165,8 @@ class AddTeamMemberForm(LocalizedForm):
     def validate_screen_name(form, field):
         screen_name = field.data.strip()
 
-        if not screen_name_validator.contains_only_valid_chars(
-            screen_name
-        ):
-            raise ValidationError(
-                lazy_gettext('Contains invalid characters.')
-            )
+        if not screen_name_validator.contains_only_valid_chars(screen_name):
+            raise ValidationError(lazy_gettext('Contains invalid characters.'))
 
         user = user_service.find_user_by_screen_name(screen_name)
         if user is None:

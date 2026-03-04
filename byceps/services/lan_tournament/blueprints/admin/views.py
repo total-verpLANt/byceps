@@ -526,12 +526,41 @@ def generate_bracket(tournament_id):
         return redirect_to('.view', tournament_id=tournament.id)
 
     # Check for force regenerate parameter
-    force_regenerate = request.args.get('force', 'false').lower() == 'true'
+    force_regenerate = request.form.get('force', 'false').lower() == 'true'
 
-    match tournament_match_service.generate_single_elimination_bracket(
-        tournament.id,
-        force_regenerate=force_regenerate,
-    ):
+    result: Ok[int] | Err[str] | None = None
+    match tournament.tournament_mode:
+        case TournamentMode.SINGLE_ELIMINATION:
+            result = (
+                tournament_match_service.generate_single_elimination_bracket(
+                    tournament.id,
+                    force_regenerate=force_regenerate,
+                )
+            )
+        case TournamentMode.DOUBLE_ELIMINATION:
+            flash_error(
+                gettext(
+                    'Double elimination bracket generation'
+                    ' is not yet implemented.'
+                )
+            )
+            return redirect_to('.view', tournament_id=tournament.id)
+        case TournamentMode.ROUND_ROBIN:
+            result = tournament_match_service.generate_round_robin_bracket(
+                tournament.id,
+                force_regenerate=force_regenerate,
+            )
+        case TournamentMode.HIGHSCORE:
+            flash_error(gettext('Highscore tournaments do not use brackets.'))
+            return redirect_to('.view', tournament_id=tournament.id)
+        case _:
+            flash_error(gettext('Unknown tournament mode.'))
+            return redirect_to('.view', tournament_id=tournament.id)
+
+    if result is None:
+        return redirect_to('.view', tournament_id=tournament.id)
+
+    match result:
         case Ok(match_count):
             flash_success(
                 gettext(
@@ -592,8 +621,8 @@ def view_team(team_id):
 
     # Build transfer captain form
     transfer_form = TransferCaptainForm()
-    transfer_form.new_captain.choices = (
-        _build_transfer_captain_choices(team, members, users_by_id)
+    transfer_form.new_captain.choices = _build_transfer_captain_choices(
+        team, members, users_by_id
     )
 
     return {
@@ -618,8 +647,8 @@ def transfer_captain(team_id):
 
     # Build choices from team members (excluding current captain)
     members, users_by_id = _get_team_members(team.id)
-    form.new_captain.choices = (
-        _build_transfer_captain_choices(team, members, users_by_id)
+    form.new_captain.choices = _build_transfer_captain_choices(
+        team, members, users_by_id
     )
 
     if not form.validate():

@@ -339,9 +339,7 @@ def view_team(team_id):
     users_by_id = user_service.get_users_indexed_by_id(user_ids)
 
     # Build seat lookup
-    seats_by_user_id = build_seat_lookup(
-        user_ids, tournament.party_id
-    )
+    seats_by_user_id = build_seat_lookup(user_ids, tournament.party_id)
 
     return {
         'tournament': tournament,
@@ -507,7 +505,9 @@ def matches(tournament_id):
     ):
         abort(404)
 
-    matches = tournament_match_service.get_matches_for_tournament_ordered(tournament.id)
+    matches = tournament_match_service.get_matches_for_tournament_ordered(
+        tournament.id
+    )
 
     # Get contestants for each match
     match_data = []
@@ -576,9 +576,7 @@ def view_match(match_id):
 
     # Resolve comment author names
     comment_user_ids = {c.created_by for c in comments}
-    comment_users_by_id = user_service.get_users_indexed_by_id(
-        comment_user_ids
-    )
+    comment_users_by_id = user_service.get_users_indexed_by_id(comment_user_ids)
 
     return {
         'tournament': tournament,
@@ -606,7 +604,9 @@ def bracket(tournament_id):
     ):
         abort(404)
 
-    matches = tournament_match_service.get_matches_for_tournament_ordered(tournament.id)
+    matches = tournament_match_service.get_matches_for_tournament_ordered(
+        tournament.id
+    )
 
     # Get contestants for each match
     match_data = []

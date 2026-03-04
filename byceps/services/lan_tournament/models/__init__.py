@@ -1,4 +1,7 @@
 from .contestant_type import ContestantType as ContestantType
+from .round_robin_standing import (
+    RoundRobinStanding as RoundRobinStanding,
+)
 from .tournament import Tournament as Tournament
 from .tournament import TournamentID as TournamentID
 from .tournament_match import TournamentMatch as TournamentMatch

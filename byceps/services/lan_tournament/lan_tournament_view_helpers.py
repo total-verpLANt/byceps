@@ -3,7 +3,10 @@ from byceps.services.lan_tournament import (
     tournament_team_service,
 )
 from byceps.services.lan_tournament.models.contestant_type import ContestantType
-from byceps.services.lan_tournament.models.tournament import Tournament, TournamentID
+from byceps.services.lan_tournament.models.tournament import (
+    Tournament,
+    TournamentID,
+)
 from byceps.services.lan_tournament.models.tournament_match_to_contestant import (
     TournamentMatchToContestant,
 )
@@ -102,7 +105,9 @@ def build_hover_lookups(
     participants_by_id: dict[TournamentParticipantID, User],
     teams_by_id: dict[TournamentTeamID, TournamentTeam],
     party_id: PartyID,
-) -> tuple[dict[UserID, str], dict[TournamentTeamID, list[tuple[str, str | None]]]]:
+) -> tuple[
+    dict[UserID, str], dict[TournamentTeamID, list[tuple[str, str | None]]]
+]:
     """Build seat and team-members lookups for hover card rendering.
 
     Returns (seats_by_user_id, team_members_by_team_id).
