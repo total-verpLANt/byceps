@@ -41,6 +41,7 @@ class DbTournament(db.Model):
     contestant_type: Mapped[str | None] = mapped_column(db.UnicodeText)
     tournament_status: Mapped[str | None] = mapped_column(db.UnicodeText)
     tournament_mode: Mapped[str | None] = mapped_column(db.UnicodeText)
+    score_ordering: Mapped[str | None] = mapped_column(db.UnicodeText)
 
     def __init__(
         self,
@@ -63,6 +64,7 @@ class DbTournament(db.Model):
         contestant_type: str | None = None,
         tournament_status: str | None = None,
         tournament_mode: str | None = None,
+        score_ordering: str | None = None,
     ) -> None:
         self.id = tournament_id
         self.party_id = party_id
@@ -83,6 +85,7 @@ class DbTournament(db.Model):
         self.contestant_type = contestant_type
         self.tournament_status = tournament_status
         self.tournament_mode = tournament_mode
+        self.score_ordering = score_ordering
 
     def __repr__(self) -> str:
         return (

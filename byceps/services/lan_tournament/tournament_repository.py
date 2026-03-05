@@ -1,4 +1,6 @@
+import logging
 from datetime import datetime
+from typing import TypeVar
 
 from sqlalchemy import delete, select
 
@@ -10,6 +12,7 @@ from .dbmodels.match import DbTournamentMatch
 from .dbmodels.match_comment import DbTournamentMatchComment
 from .dbmodels.match_contestant import DbTournamentMatchToContestant
 from .dbmodels.participant import DbTournamentParticipant
+from .dbmodels.score_submission import DbScoreSubmission
 from .dbmodels.team import DbTournamentTeam
 from .dbmodels.tournament import DbTournament
 from .models.contestant_type import ContestantType
@@ -23,6 +26,8 @@ from .models.tournament_match_to_contestant import (
     TournamentMatchToContestant,
     TournamentMatchToContestantID,
 )
+from .models.score_ordering import ScoreOrdering
+from .models.score_submission import ScoreSubmission
 from .models.tournament_mode import TournamentMode
 from .models.tournament_participant import (
     TournamentParticipant,
@@ -31,21 +36,36 @@ from .models.tournament_participant import (
 from .models.tournament_status import TournamentStatus
 from .models.tournament_team import TournamentTeam, TournamentTeamID
 
+logger = logging.getLogger(__name__)
+
+_E = TypeVar('_E')
+
 
 # -- tournament --
 
 
-def _safe_enum_lookup(enum_class, value: str | None, default=None):
-    """Safely look up enum by name, returning default if invalid.
+def _safe_enum_lookup(
+    enum_class: type[_E],
+    value: str | None,
+    default: _E | None = None,
+) -> _E | None:
+    """Safely look up enum by name, returning default
+    if invalid.
 
-    Protects against database corruption or invalid enum values.
+    Protects against database corruption or invalid
+    enum values.
     """
     if value is None:
         return None
     try:
         return enum_class[value]
     except KeyError:
-        # Log warning about invalid enum value in production
+        logger.warning(
+            'Invalid enum value %r for %s, returning default %r',
+            value,
+            enum_class.__name__,
+            default,
+        )
         return default
 
 
@@ -82,6 +102,11 @@ def create_tournament(tournament: Tournament) -> None:
             if tournament.tournament_mode
             else None
         ),
+        score_ordering=(
+            tournament.score_ordering.name
+            if tournament.score_ordering
+            else None
+        ),
     )
 
     db.session.add(db_tournament)
@@ -116,6 +141,9 @@ def update_tournament(tournament: Tournament) -> None:
     )
     db_tournament.tournament_mode = (
         tournament.tournament_mode.name if tournament.tournament_mode else None
+    )
+    db_tournament.score_ordering = (
+        tournament.score_ordering.name if tournament.score_ordering else None
     )
     db_tournament.updated_at = tournament.updated_at
 
@@ -233,6 +261,9 @@ def _db_tournament_to_tournament(
         ),
         tournament_mode=_safe_enum_lookup(
             TournamentMode, db_tournament.tournament_mode
+        ),
+        score_ordering=_safe_enum_lookup(
+            ScoreOrdering, db_tournament.score_ordering
         ),
     )
 
@@ -1168,3 +1199,71 @@ def remove_team_from_contestants(team_id: TournamentTeamID) -> None:
         db.delete(DbTournamentMatchToContestant).filter_by(team_id=team_id)
     )
     db.session.commit()
+
+
+# -- score submission --
+
+
+def create_score_submission(
+    submission: ScoreSubmission,
+) -> None:
+    """Persist a score submission."""
+    db_submission = DbScoreSubmission(
+        submission.id,
+        submission.tournament_id,
+        submission.score,
+        submission.submitted_at,
+        participant_id=submission.participant_id,
+        team_id=submission.team_id,
+        submitted_by=submission.submitted_by,
+        is_official=submission.is_official,
+        note=submission.note,
+    )
+    db.session.add(db_submission)
+    db.session.commit()
+
+
+def get_official_submissions_for_tournament(
+    tournament_id: TournamentID,
+) -> list[ScoreSubmission]:
+    """Return all official score submissions for a
+    tournament.
+    """
+    db_subs = (
+        db.session.execute(
+            select(DbScoreSubmission).filter_by(
+                tournament_id=tournament_id,
+                is_official=True,
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [_db_score_submission_to_score_submission(s) for s in db_subs]
+
+
+def delete_submissions_for_tournament(
+    tournament_id: TournamentID,
+) -> None:
+    """Delete all score submissions for a tournament."""
+    db.session.execute(
+        delete(DbScoreSubmission).filter_by(tournament_id=tournament_id)
+    )
+    db.session.commit()
+
+
+def _db_score_submission_to_score_submission(
+    db_sub: DbScoreSubmission,
+) -> ScoreSubmission:
+    """Convert a DB score submission to a domain model."""
+    return ScoreSubmission(
+        id=db_sub.id,
+        tournament_id=db_sub.tournament_id,
+        participant_id=db_sub.participant_id,
+        team_id=db_sub.team_id,
+        score=db_sub.score,
+        submitted_at=db_sub.submitted_at,
+        submitted_by=db_sub.submitted_by,
+        is_official=db_sub.is_official,
+        note=db_sub.note,
+    )

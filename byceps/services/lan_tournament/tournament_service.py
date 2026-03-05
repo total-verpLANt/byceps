@@ -172,18 +172,22 @@ def delete_tournament(
 ) -> None:
     """Delete a tournament and all dependent entities.
 
-    SECURITY NOTE: Authorization must be checked at blueprint layer before
-    calling this function (requires 'lan_tournament.administrate' permission).
+    SECURITY NOTE: Authorization must be checked at blueprint layer
+    before calling this function (requires
+    'lan_tournament.administrate' permission).
 
-    CASCADE HANDLING: Deletes all dependent entities in correct order:
-    1. Match comments
-    2. Match contestants
-    3. Matches
-    4. Participants
-    5. Teams
-    6. Tournament itself
+    CASCADE HANDLING: Deletes all dependent entities in correct
+    order:
+    1. Score submissions (FK to participants/teams)
+    2. Match comments
+    3. Match contestants
+    4. Matches
+    5. Participants
+    6. Teams
+    7. Tournament itself
     """
     # Delete in dependency order (children first, then parent)
+    tournament_repository.delete_submissions_for_tournament(tournament_id)
     tournament_repository.delete_comments_for_tournament(tournament_id)
     tournament_repository.delete_contestants_for_tournament(tournament_id)
     tournament_repository.delete_matches_for_tournament(tournament_id)
