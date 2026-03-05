@@ -6,6 +6,7 @@ from uuid import UUID
 from byceps.services.party.models import PartyID
 from .contestant_type import ContestantType
 from .tournament_status import TournamentStatus
+from .score_ordering import ScoreOrdering
 from .tournament_mode import TournamentMode
 
 TournamentID = NewType('TournamentID', UUID)
@@ -32,3 +33,4 @@ class Tournament:
     contestant_type: ContestantType | None
     tournament_status: TournamentStatus | None
     tournament_mode: TournamentMode | None
+    score_ordering: ScoreOrdering | None = None

@@ -41,6 +41,7 @@ def test_delete_tournament_cascades_all_dependencies(
 
     # Verify deletion calls in correct order (children first, then parent)
     expected_calls = [
+        call.delete_submissions_for_tournament(tournament_id),
         call.delete_comments_for_tournament(tournament_id),
         call.delete_contestants_for_tournament(tournament_id),
         call.delete_matches_for_tournament(tournament_id),
@@ -197,6 +198,7 @@ def test_repository_bulk_deletion_methods_exist():
     from byceps.services.lan_tournament import tournament_repository
 
     # Check tournament bulk deletions
+    assert hasattr(tournament_repository, 'delete_submissions_for_tournament')
     assert hasattr(tournament_repository, 'delete_teams_for_tournament')
     assert hasattr(tournament_repository, 'delete_participants_for_tournament')
     assert hasattr(tournament_repository, 'delete_matches_for_tournament')

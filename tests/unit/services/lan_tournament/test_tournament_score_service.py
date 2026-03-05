@@ -10,13 +10,16 @@ from datetime import datetime, UTC, timedelta
 from unittest.mock import patch
 
 from byceps.services.lan_tournament.models.score_submission import (
+    ScoreSubmission,
     ScoreSubmissionID,
 )
 from byceps.services.lan_tournament.models.tournament import (
     Tournament,
     TournamentID,
 )
-from byceps.services.lan_tournament.models.score_ordering import ScoreOrdering
+from byceps.services.lan_tournament.models.score_ordering import (
+    ScoreOrdering,
+)
 from byceps.services.lan_tournament.models.tournament_mode import (
     TournamentMode,
 )
@@ -64,7 +67,7 @@ def _create_tournament(**kwargs) -> Tournament:
     return Tournament(**defaults)
 
 
-def _make_db_submission(
+def _make_submission(
     *,
     sub_id=None,
     tournament_id=None,
@@ -75,20 +78,18 @@ def _make_db_submission(
     submitted_by=None,
     is_official: bool = True,
     note=None,
-):
-    from types import SimpleNamespace
-
-    sub = SimpleNamespace()
-    sub.id = sub_id or ScoreSubmissionID(generate_uuid())
-    sub.tournament_id = tournament_id or TOURNAMENT_ID
-    sub.participant_id = participant_id
-    sub.team_id = team_id
-    sub.score = score
-    sub.submitted_at = submitted_at or NOW
-    sub.submitted_by = submitted_by
-    sub.is_official = is_official
-    sub.note = note
-    return sub
+) -> ScoreSubmission:
+    return ScoreSubmission(
+        id=sub_id or ScoreSubmissionID(generate_uuid()),
+        tournament_id=tournament_id or TOURNAMENT_ID,
+        participant_id=participant_id,
+        team_id=team_id,
+        score=score,
+        submitted_at=submitted_at or NOW,
+        submitted_by=submitted_by,
+        is_official=is_official,
+        note=note,
+    )
 
 
 # -------------------------------------------------------------------- #
@@ -105,18 +106,11 @@ def test_submit_score_valid(mock_repo):
     mock_repo.get_tournament.return_value = tournament
     pid = TournamentParticipantID(generate_uuid())
 
-    with patch(
-        'byceps.services.lan_tournament.tournament_score_service'
-        '.DbScoreSubmission'
-    ) as MockDbSub:
-        mock_sub = _make_db_submission(score=42, participant_id=pid)
-        MockDbSub.return_value = mock_sub
-
-        result = tournament_score_service.submit_score(
-            TOURNAMENT_ID,
-            42,
-            participant_id=pid,
-        )
+    result = tournament_score_service.submit_score(
+        TOURNAMENT_ID,
+        42,
+        participant_id=pid,
+    )
 
     assert result.is_ok()
     submission = result.unwrap()
@@ -178,7 +172,7 @@ def test_submit_score_both_ids_provided_returns_error():
 def _build_leaderboard_mocks(
     mock_repo,
     *,
-    score_ordering: ScoreOrdering = ScoreOrdering.HIGHER_IS_BETTER,
+    score_ordering: ScoreOrdering = (ScoreOrdering.HIGHER_IS_BETTER),
     submissions: list,
 ):
     tournament = _create_tournament(score_ordering=score_ordering)
@@ -195,8 +189,8 @@ def test_get_leaderboard_higher_is_better(mock_repo):
     pid_a = TournamentParticipantID(generate_uuid())
     pid_b = TournamentParticipantID(generate_uuid())
     subs = [
-        _make_db_submission(score=10, participant_id=pid_a),
-        _make_db_submission(score=50, participant_id=pid_b),
+        _make_submission(score=10, participant_id=pid_a),
+        _make_submission(score=50, participant_id=pid_b),
     ]
     _build_leaderboard_mocks(
         mock_repo,
@@ -221,8 +215,8 @@ def test_get_leaderboard_lower_is_better(mock_repo):
     pid_a = TournamentParticipantID(generate_uuid())
     pid_b = TournamentParticipantID(generate_uuid())
     subs = [
-        _make_db_submission(score=10, participant_id=pid_a),
-        _make_db_submission(score=50, participant_id=pid_b),
+        _make_submission(score=10, participant_id=pid_a),
+        _make_submission(score=50, participant_id=pid_b),
     ]
     _build_leaderboard_mocks(
         mock_repo,
@@ -249,11 +243,15 @@ def test_get_leaderboard_tiebreak_by_time(mock_repo):
     earlier = NOW - timedelta(hours=1)
     later = NOW
     subs = [
-        _make_db_submission(
-            score=100, participant_id=pid_a, submitted_at=later
+        _make_submission(
+            score=100,
+            participant_id=pid_a,
+            submitted_at=later,
         ),
-        _make_db_submission(
-            score=100, participant_id=pid_b, submitted_at=earlier
+        _make_submission(
+            score=100,
+            participant_id=pid_b,
+            submitted_at=earlier,
         ),
     ]
     _build_leaderboard_mocks(
@@ -277,17 +275,17 @@ def test_get_leaderboard_best_score_only(mock_repo):
     """Multiple submissions from same contestant: only best counts."""
     pid_a = TournamentParticipantID(generate_uuid())
     subs = [
-        _make_db_submission(
+        _make_submission(
             score=30,
             participant_id=pid_a,
             submitted_at=NOW - timedelta(hours=2),
         ),
-        _make_db_submission(
+        _make_submission(
             score=80,
             participant_id=pid_a,
             submitted_at=NOW - timedelta(hours=1),
         ),
-        _make_db_submission(
+        _make_submission(
             score=50,
             participant_id=pid_a,
             submitted_at=NOW,
@@ -316,8 +314,11 @@ def test_get_leaderboard_best_score_only(mock_repo):
     'byceps.services.lan_tournament.tournament_score_service'
     '.tournament_repository'
 )
-def test_delete_scores_for_tournament_calls_repository(mock_repo):
-    """delete_scores_for_tournament delegates to repository and returns Ok."""
+def test_delete_scores_for_tournament_calls_repository(
+    mock_repo,
+):
+    """delete_scores_for_tournament delegates to repository
+    and returns Ok."""
     result = tournament_score_service.delete_scores_for_tournament(
         TOURNAMENT_ID
     )
@@ -363,18 +364,11 @@ def test_submit_score_with_team_id(mock_repo):
     mock_repo.get_tournament.return_value = tournament
     tid = TournamentTeamID(generate_uuid())
 
-    with patch(
-        'byceps.services.lan_tournament.tournament_score_service'
-        '.DbScoreSubmission'
-    ) as MockDbSub:
-        mock_sub = _make_db_submission(score=99, team_id=tid)
-        MockDbSub.return_value = mock_sub
-
-        result = tournament_score_service.submit_score(
-            TOURNAMENT_ID,
-            99,
-            team_id=tid,
-        )
+    result = tournament_score_service.submit_score(
+        TOURNAMENT_ID,
+        99,
+        team_id=tid,
+    )
 
     assert result.is_ok()
     submission = result.unwrap()
