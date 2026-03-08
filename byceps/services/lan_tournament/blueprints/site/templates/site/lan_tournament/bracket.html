@@ -1,11 +1,9 @@
 {% extends 'layout/base.html' %}
-{% from 'macros/lan_tournament.html' import render_bracket, render_bracket_responsive_styles, render_simple_bracket_list %}
-{% from 'macros/lan_tournament.html' import hover_card_styles %}
+{% from 'macros/lan_tournament.html' import bracket_all_styles, render_bracket, render_de_bracket, render_round_robin_standings, render_simple_bracket_list, render_simple_de_bracket_list %}
 {% set page_title = [_('Bracket'), tournament.name] %}
 
 {% block head %}
-{{ hover_card_styles() }}
-{{ render_bracket_responsive_styles() }}
+{{ bracket_all_styles(bracket_id='de-' ~ tournament.id) }}
 {% endblock %}
 
 {% block body %}
@@ -21,13 +19,24 @@
 
   <h1 class='title'>{{ _('Tournament Bracket') }}</h1>
 
-  <div class='bracket-desktop'>
-    {{ render_bracket(match_data, tournament, teams_by_id, participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id) }}
-  </div>
+  {% if tournament.tournament_mode and tournament.tournament_mode.name == 'ROUND_ROBIN' %}
+    {{ render_round_robin_standings(standings, tournament, teams_by_id=teams_by_id, participants_by_id=participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id) }}
+  {% elif tournament.tournament_mode and tournament.tournament_mode.name == 'DOUBLE_ELIMINATION' %}
+    <div class='bracket-desktop'>
+      {{ render_de_bracket(match_data, tournament, teams_by_id, participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id, bracket_id='de-' ~ tournament.id) }}
+    </div>
+    <div class='bracket-mobile'>
+      {{ render_simple_de_bracket_list(match_data, teams_by_id, participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id) }}
+    </div>
+  {% else %}
+    <div class='bracket-desktop'>
+      {{ render_bracket(match_data, tournament, teams_by_id, participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id) }}
+    </div>
 
-  <div class='bracket-mobile'>
-    {{ render_simple_bracket_list(match_data, teams_by_id, participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id) }}
-  </div>
+    <div class='bracket-mobile'>
+      {{ render_simple_bracket_list(match_data, teams_by_id, participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id) }}
+    </div>
+  {% endif %}
 
   <div style='text-align: center; margin-top: 2rem;'>
     <a href='{{ url_for('.matches', tournament_id=tournament.id) }}'

@@ -5,6 +5,7 @@ from flask_babel import gettext
 from byceps.services.lan_tournament import (
     tournament_match_service,
     tournament_participant_service,
+    tournament_score_service,
     tournament_service,
     tournament_team_service,
 )
@@ -16,7 +17,14 @@ from byceps.services.lan_tournament.models.tournament_status import (
 from byceps.services.lan_tournament.lan_tournament_view_helpers import (
     build_contestant_name_lookups,
     build_hover_lookups,
+    build_round_robin_standings,
     build_seat_lookup,
+)
+from byceps.services.lan_tournament.models.contestant_type import (
+    ContestantType,
+)
+from byceps.services.lan_tournament.models.tournament_mode import (
+    TournamentMode,
 )
 from byceps.services.party import party_service
 from byceps.services.user import user_service
@@ -127,6 +135,7 @@ def view(tournament_id):
         'can_leave': can_leave,
         'users_by_id': users_by_id,
         'seats_by_user_id': seats_by_user_id,
+        'active_tab': 'overview',
     }
 
 
@@ -608,7 +617,7 @@ def bracket(tournament_id):
         tournament.id
     )
 
-    # Get contestants for each match
+    # Get contestants for each match.
     match_data = []
     all_contestants = []
     for match in matches:
@@ -628,14 +637,86 @@ def bracket(tournament_id):
     )
 
     seats_by_user_id, team_members_by_team_id = build_hover_lookups(
-        tournament, participants_by_id, teams_by_id, tournament.party_id
+        tournament,
+        participants_by_id,
+        teams_by_id,
+        tournament.party_id,
     )
+
+    # Round-robin: compute standings table.
+    standings = None
+    if tournament.tournament_mode == TournamentMode.ROUND_ROBIN:
+        standings = build_round_robin_standings(match_data)
 
     return {
         'tournament': tournament,
         'match_data': match_data,
+        'standings': standings,
         'teams_by_id': teams_by_id,
         'participants_by_id': participants_by_id,
         'seats_by_user_id': seats_by_user_id,
         'team_members_by_team_id': team_members_by_team_id,
+        'active_tab': 'bracket',
+    }
+
+
+# -------------------------------------------------------------------- #
+# highscore
+
+
+@blueprint.get('/<tournament_id>/highscore')
+@templated
+def highscore(tournament_id):
+    """Show highscore leaderboard for the tournament."""
+    tournament = _get_tournament_or_404(tournament_id)
+
+    # Only HIGHSCORE tournaments have a leaderboard.
+    if tournament.tournament_mode != TournamentMode.HIGHSCORE:
+        abort(404)
+
+    # Hide drafts from site visitors.
+    if (
+        tournament.tournament_status
+        and tournament.tournament_status == TournamentStatus.DRAFT
+    ):
+        abort(404)
+
+    party = party_service.get_party(tournament.party_id)
+
+    leaderboard = []
+    result = tournament_score_service.get_leaderboard(tournament.id)
+    match result:
+        case Ok(entries):
+            leaderboard = entries
+        case Err(e):
+            flash_error(e)
+
+    # Build name lookups for contestants.
+    teams_by_id = {}
+    participants_by_id = {}
+
+    if tournament.contestant_type == ContestantType.TEAM:
+        teams = tournament_team_service.get_teams_for_tournament(tournament.id)
+        teams_by_id = {t.id: t for t in teams}
+    else:
+        participants = (
+            tournament_participant_service.get_participants_for_tournament(
+                tournament.id
+            )
+        )
+        user_ids = {p.user_id for p in participants}
+        users_by_id = user_service.get_users_indexed_by_id(user_ids)
+        participants_by_id = {
+            p.id: users_by_id[p.user_id]
+            for p in participants
+            if p.user_id in users_by_id and p.removed_at is None
+        }
+
+    return {
+        'party': party,
+        'tournament': tournament,
+        'leaderboard': leaderboard,
+        'participants_by_id': participants_by_id,
+        'teams_by_id': teams_by_id,
+        'active_tab': 'highscore',
     }

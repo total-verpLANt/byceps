@@ -1,0 +1,65 @@
+{% extends 'layout/admin/lan_tournament.html' %}
+{% from 'macros/admin.html' import render_backlink %}
+{% from 'macros/lan_tournament.html' import render_highscore_leaderboard %}
+{% from 'macros/lan_tournament.html' import hover_card_styles %}
+{% set current_page_party = party %}
+{% set current_tab = 'tournaments' %}
+{% set page_title = [_('Highscore'), tournament.name, party.title] %}
+
+{% block head %}{{ super() }}{{ hover_card_styles() }}{% endblock %}
+
+{% block before_body %}
+{{ render_backlink(url_for('.view', tournament_id=tournament.id),
+                   _('Tournament')) }}
+{%- endblock %}
+
+{% block body %}
+
+  <h1 class='title'>{{ _('Highscore Leaderboard') }}</h1>
+
+  {{ render_highscore_leaderboard(leaderboard, tournament, teams_by_id=teams_by_id, participants_by_id=participants_by_id) }}
+
+  {# Submit score form (admin-only) #}
+  {%- if has_current_user_permission('lan_tournament.administrate') %}
+  <h2>{{ _('Submit Score') }}</h2>
+  <form action='{{ url_for('.highscore_submit', tournament_id=tournament.id) }}' method='post'>
+    <div class='form-row'>
+      <label for='contestant'>{{ _('Contestant') }}</label>
+      {{ form.contestant(class='form-control') }}
+    </div>
+    <div class='form-row'>
+      <label for='score'>{{ _('Score') }}</label>
+      {{ form.score(class='form-control', min='0') }}
+    </div>
+    <div class='form-row'>
+      <label for='note'>{{ _('Note') }}</label>
+      {{ form.note(class='form-control') }}
+    </div>
+    <div class='form-row'>
+      <button type='submit' class='button color-success'>{{ _('Submit') }}</button>
+    </div>
+  </form>
+
+  {# Danger zone: delete all scores #}
+  <h2>{{ _('Danger Zone') }}</h2>
+  <form action='{{ url_for('.highscore_delete_all', tournament_id=tournament.id) }}'
+        method='post' id='delete-all-scores-form'>
+    <button type='submit' class='button color-danger'>{{ _('Delete all scores') }}</button>
+  </form>
+  {%- endif %}
+
+{%- endblock %}
+
+{% block scripts %}
+<script>
+  var deleteForm = document.getElementById('delete-all-scores-form');
+  if (deleteForm) {
+    deleteForm.addEventListener('submit', function(event) {
+      var confirmed = confirm('{{ _("Are you sure you want to delete ALL scores? This cannot be undone.") }}');
+      if (!confirmed) {
+        event.preventDefault();
+      }
+    });
+  }
+</script>
+{%- endblock %}
