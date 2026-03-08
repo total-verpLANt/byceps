@@ -4,6 +4,7 @@ from typing import NewType
 from uuid import UUID
 
 from byceps.services.user.models.user import UserID
+from .bracket import Bracket
 from .tournament import TournamentID
 
 TournamentMatchID = NewType('TournamentMatchID', UUID)
@@ -19,3 +20,5 @@ class TournamentMatch:
     next_match_id: TournamentMatchID | None
     confirmed_by: UserID | None
     created_at: datetime
+    bracket: Bracket | None = None
+    loser_next_match_id: TournamentMatchID | None = None

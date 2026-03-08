@@ -39,6 +39,17 @@ class TournamentStatusChangedEvent(_BaseTournamentEvent):
     new_status: TournamentStatus | None
 
 
+@dataclass(frozen=True, kw_only=True)
+class TournamentCompletedEvent(_BaseTournamentEvent):
+    winner_team_id: TournamentTeamID | None
+    winner_participant_id: TournamentParticipantID | None
+
+
+@dataclass(frozen=True, kw_only=True)
+class TournamentUncompletedEvent(_BaseTournamentEvent):
+    pass
+
+
 # participant
 
 

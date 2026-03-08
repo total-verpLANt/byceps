@@ -6,6 +6,12 @@ from byceps.database import db
 from byceps.services.lan_tournament.models.tournament import (
     TournamentID,
 )
+from byceps.services.lan_tournament.models.tournament_participant import (
+    TournamentParticipantID,
+)
+from byceps.services.lan_tournament.models.tournament_team import (
+    TournamentTeamID,
+)
 from byceps.services.party.models import PartyID
 from byceps.util.instances import ReprBuilder
 from byceps.util.uuid import generate_uuid7
@@ -42,6 +48,16 @@ class DbTournament(db.Model):
     tournament_status: Mapped[str | None] = mapped_column(db.UnicodeText)
     tournament_mode: Mapped[str | None] = mapped_column(db.UnicodeText)
     score_ordering: Mapped[str | None] = mapped_column(db.UnicodeText)
+    winner_team_id: Mapped[TournamentTeamID | None] = mapped_column(
+        db.Uuid,
+        db.ForeignKey('lan_tournament_teams.id'),
+    )
+    winner_participant_id: Mapped[TournamentParticipantID | None] = (
+        mapped_column(
+            db.Uuid,
+            db.ForeignKey('lan_tournament_participants.id'),
+        )
+    )
 
     def __init__(
         self,
@@ -65,6 +81,8 @@ class DbTournament(db.Model):
         tournament_status: str | None = None,
         tournament_mode: str | None = None,
         score_ordering: str | None = None,
+        winner_team_id: TournamentTeamID | None = None,
+        winner_participant_id: TournamentParticipantID | None = None,
     ) -> None:
         self.id = tournament_id
         self.party_id = party_id
@@ -86,6 +104,8 @@ class DbTournament(db.Model):
         self.tournament_status = tournament_status
         self.tournament_mode = tournament_mode
         self.score_ordering = score_ordering
+        self.winner_team_id = winner_team_id
+        self.winner_participant_id = winner_participant_id
 
     def __repr__(self) -> str:
         return (

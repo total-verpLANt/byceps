@@ -7,6 +7,7 @@ from sqlalchemy import delete, select
 from byceps.database import db
 from byceps.services.party.models import PartyID
 from byceps.services.user.models.user import UserID
+from byceps.util.result import Err, Ok, Result
 
 from .dbmodels.match import DbTournamentMatch
 from .dbmodels.match_comment import DbTournamentMatchComment
@@ -15,6 +16,7 @@ from .dbmodels.participant import DbTournamentParticipant
 from .dbmodels.score_submission import DbScoreSubmission
 from .dbmodels.team import DbTournamentTeam
 from .dbmodels.tournament import DbTournament
+from .models.bracket import Bracket
 from .models.contestant_type import ContestantType
 from .models.tournament import Tournament, TournamentID
 from .models.tournament_match import TournamentMatch, TournamentMatchID
@@ -145,6 +147,8 @@ def update_tournament(tournament: Tournament) -> None:
     db_tournament.score_ordering = (
         tournament.score_ordering.name if tournament.score_ordering else None
     )
+    db_tournament.winner_team_id = tournament.winner_team_id
+    db_tournament.winner_participant_id = tournament.winner_participant_id
     db_tournament.updated_at = tournament.updated_at
 
     db.session.commit()
@@ -222,6 +226,35 @@ def get_tournaments_for_party(
     return [_db_tournament_to_tournament(t) for t in db_tournaments]
 
 
+def set_tournament_winner(
+    tournament_id: TournamentID,
+    *,
+    winner_team_id: TournamentTeamID | None,
+    winner_participant_id: TournamentParticipantID | None,
+) -> Result[None, str]:
+    """Store the winner on the tournament row (flush only)."""
+    db_tournament = db.session.get(DbTournament, tournament_id)
+    if db_tournament is None:
+        return Err(f'Unknown tournament ID "{tournament_id}"')
+    db_tournament.winner_team_id = winner_team_id
+    db_tournament.winner_participant_id = winner_participant_id
+    db.session.flush()
+    return Ok(None)
+
+
+def set_tournament_status_flush(
+    tournament_id: TournamentID,
+    status: TournamentStatus,
+) -> Result[None, str]:
+    """Update tournament status (flush only)."""
+    db_tournament = db.session.get(DbTournament, tournament_id)
+    if db_tournament is None:
+        return Err(f'Unknown tournament ID "{tournament_id}"')
+    db_tournament.tournament_status = status.name
+    db.session.flush()
+    return Ok(None)
+
+
 def get_participant_count(
     tournament_id: TournamentID,
 ) -> int:
@@ -265,6 +298,8 @@ def _db_tournament_to_tournament(
         score_ordering=_safe_enum_lookup(
             ScoreOrdering, db_tournament.score_ordering
         ),
+        winner_team_id=db_tournament.winner_team_id,
+        winner_participant_id=db_tournament.winner_participant_id,
     )
 
 
@@ -776,6 +811,8 @@ def create_match(match: TournamentMatch) -> None:
         match_order=match.match_order,
         round=match.round,
         next_match_id=match.next_match_id,
+        bracket=match.bracket.value if match.bracket else None,
+        loser_next_match_id=match.loser_next_match_id,
         confirmed_by=match.confirmed_by,
     )
 
@@ -795,7 +832,7 @@ def delete_matches_for_tournament(tournament_id: TournamentID) -> None:
     db.session.execute(
         db.update(DbTournamentMatch)
         .filter_by(tournament_id=tournament_id)
-        .values(next_match_id=None)
+        .values(next_match_id=None, loser_next_match_id=None)
     )
     db.session.execute(
         delete(DbTournamentMatch).filter_by(tournament_id=tournament_id)
@@ -824,6 +861,28 @@ def get_match(
     if match is None:
         raise ValueError(f'Unknown match ID "{match_id}"')
     return match
+
+
+def get_match_for_update(
+    match_id: TournamentMatchID,
+) -> TournamentMatch:
+    """Return the match with a row-level lock.
+
+    Issues ``SELECT ... FOR UPDATE`` to prevent concurrent
+    modification (TOCTOU race on confirm).
+
+    Raise an exception if not found.
+    """
+    db_match = db.session.execute(
+        select(DbTournamentMatch)
+        .filter_by(id=match_id)
+        .with_for_update()
+    ).scalar_one_or_none()
+    if db_match is None:
+        raise ValueError(
+            f'Unknown match ID "{match_id}"'
+        )
+    return _db_match_to_match(db_match)
 
 
 def get_matches_for_tournament(
@@ -869,7 +928,7 @@ def confirm_match(
         raise ValueError(f'Unknown match ID "{match_id}"')
 
     db_match.confirmed_by = confirmed_by
-    db.session.commit()
+    db.session.flush()
 
 
 def unconfirm_match(match_id: TournamentMatchID) -> None:
@@ -880,6 +939,65 @@ def unconfirm_match(match_id: TournamentMatchID) -> None:
 
     db_match.confirmed_by = None
     db.session.flush()
+
+
+def clear_loser_next_match_id(
+    match_id: TournamentMatchID,
+) -> None:
+    """Remove loser routing from a match (e.g. DEFWIN match
+    with no loser to route).
+    """
+    db_match = db.session.get(DbTournamentMatch, match_id)
+    if db_match is not None:
+        db_match.loser_next_match_id = None
+        db.session.flush()
+
+
+def clear_next_match_id(
+    match_id: TournamentMatchID,
+) -> None:
+    """Remove winner routing from a match (e.g. dead LB
+    match with no incoming feeds).
+    """
+    db_match = db.session.get(DbTournamentMatch, match_id)
+    if db_match is not None:
+        db_match.next_match_id = None
+        db.session.flush()
+
+
+def count_incoming_feeds(
+    match_id: TournamentMatchID,
+) -> int:
+    """Count matches that route winners or losers to this
+    match.
+    """
+    return (
+        db.session.scalar(
+            db.select(db.func.count())
+            .select_from(DbTournamentMatch)
+            .where(
+                (DbTournamentMatch.next_match_id == match_id)
+                | (DbTournamentMatch.loser_next_match_id == match_id)
+            )
+        )
+        or 0
+    )
+
+
+def _safe_bracket_lookup(value: str | None) -> Bracket | None:
+    """Safely convert bracket string to enum, returning
+    None on invalid values.
+    """
+    if value is None:
+        return None
+    try:
+        return Bracket(value)
+    except ValueError:
+        logger.warning(
+            'Invalid bracket value %r, returning None',
+            value,
+        )
+        return None
 
 
 def _db_match_to_match(
@@ -894,6 +1012,8 @@ def _db_match_to_match(
         next_match_id=db_match.next_match_id,
         confirmed_by=db_match.confirmed_by,
         created_at=db_match.created_at,
+        bracket=_safe_bracket_lookup(db_match.bracket),
+        loser_next_match_id=db_match.loser_next_match_id,
     )
 
 

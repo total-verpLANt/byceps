@@ -9,6 +9,8 @@ tournament_created        = lan_tournament_signals.signal('tournament-created')
 tournament_updated        = lan_tournament_signals.signal('tournament-updated')
 tournament_deleted        = lan_tournament_signals.signal('tournament-deleted')
 tournament_status_changed = lan_tournament_signals.signal('tournament-status-changed')
+tournament_completed      = lan_tournament_signals.signal('tournament-completed')
+tournament_uncompleted    = lan_tournament_signals.signal('tournament-uncompleted')
 
 participant_joined = lan_tournament_signals.signal('participant-joined')
 participant_left   = lan_tournament_signals.signal('participant-left')

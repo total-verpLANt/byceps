@@ -50,7 +50,9 @@ class DbTournamentTeam(db.Model):
         db.ForeignKey('lan_tournaments.id'),
         index=True,
     )
-    tournament: Mapped[DbTournament] = relationship(DbTournament)
+    tournament: Mapped[DbTournament] = relationship(
+        DbTournament, foreign_keys=[tournament_id]
+    )
     name: Mapped[str] = mapped_column(db.UnicodeText)
     tag: Mapped[str | None] = mapped_column(db.UnicodeText)
     description: Mapped[str | None] = mapped_column(db.UnicodeText)

@@ -49,7 +49,9 @@ class DbTournamentParticipant(db.Model):
         db.ForeignKey('lan_tournaments.id'),
         index=True,
     )
-    tournament: Mapped[DbTournament] = relationship(DbTournament)
+    tournament: Mapped[DbTournament] = relationship(
+        DbTournament, foreign_keys=[tournament_id]
+    )
     substitute_player: Mapped[bool] = mapped_column(default=False)
     team_id: Mapped[TournamentTeamID | None] = mapped_column(
         db.Uuid,
