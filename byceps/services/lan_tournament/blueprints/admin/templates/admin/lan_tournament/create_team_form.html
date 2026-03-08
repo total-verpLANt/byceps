@@ -15,6 +15,7 @@
 
   <form action="{{ url_for('.create_team', tournament_id=tournament.id) }}" method="post">
     <div class="box">
+      {{ form_field(form.captain) }}
       {{ form_field(form.name, autofocus='autofocus') }}
       {{ form_field(form.tag) }}
       {{ form_field(form.description) }}

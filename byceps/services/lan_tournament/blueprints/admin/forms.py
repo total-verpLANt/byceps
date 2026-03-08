@@ -97,6 +97,7 @@ class TournamentUpdateForm(_BaseForm):
 
 
 class TeamCreateForm(LocalizedForm):
+    captain = SelectField(lazy_gettext('Captain'), [InputRequired()])
     name = StringField(lazy_gettext('Name'), [InputRequired(), Length(max=80)])
     tag = StringField(lazy_gettext('Tag'), [Optional(), Length(max=20)])
     description = TextAreaField(
