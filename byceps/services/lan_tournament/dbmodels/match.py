@@ -39,6 +39,14 @@ class DbTournamentMatch(db.Model):
         db.ForeignKey('lan_tournament_matches.id'),
         index=True,
     )
+    bracket: Mapped[str | None] = mapped_column(
+        db.String(8),
+    )
+    loser_next_match_id: Mapped[TournamentMatchID | None] = mapped_column(
+        db.Uuid,
+        db.ForeignKey('lan_tournament_matches.id'),
+        index=True,
+    )
     confirmed_by: Mapped[UserID | None] = mapped_column(
         db.Uuid,
         db.ForeignKey('users.id'),
@@ -56,6 +64,8 @@ class DbTournamentMatch(db.Model):
         match_order: int | None = None,
         round: int | None = None,
         next_match_id: TournamentMatchID | None = None,
+        bracket: str | None = None,
+        loser_next_match_id: TournamentMatchID | None = None,
         confirmed_by: UserID | None = None,
     ) -> None:
         self.id = match_id
@@ -65,6 +75,8 @@ class DbTournamentMatch(db.Model):
         self.match_order = match_order
         self.round = round
         self.next_match_id = next_match_id
+        self.bracket = bracket
+        self.loser_next_match_id = loser_next_match_id
         self.confirmed_by = confirmed_by
 
     def __repr__(self) -> str:

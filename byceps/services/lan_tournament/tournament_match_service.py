@@ -9,6 +9,8 @@ from .events import (
     ContestantAdvancedEvent,
     MatchConfirmedEvent,
     MatchUnconfirmedEvent,
+    TournamentCompletedEvent,
+    TournamentUncompletedEvent,
 )
 from .models.tournament import Tournament, TournamentID
 from .models.tournament_match import (
@@ -27,10 +29,13 @@ from .models.tournament_match_to_contestant import (
 from .models.tournament_participant import TournamentParticipantID
 from .models.tournament_seed import TournamentSeed
 from .models.tournament_team import TournamentTeamID
+from .models.tournament_status import TournamentStatus
 from .signals import (
     contestant_advanced,
     match_confirmed,
     match_unconfirmed,
+    tournament_completed,
+    tournament_uncompleted,
 )
 from .tournament_domain_service import (
     determine_match_winner,
@@ -192,35 +197,26 @@ def _prepare_bracket_generation(
         clear_result = clear_bracket(tournament_id)
         if clear_result.is_err():
             return Err(
-                f'Failed to clear existing bracket:'
-                f' {clear_result.unwrap_err()}'
+                f'Failed to clear existing bracket: {clear_result.unwrap_err()}'
             )
 
     # Get tournament to check contestant type.
-    tournament = tournament_repository.get_tournament(
-        tournament_id
-    )
+    tournament = tournament_repository.get_tournament(tournament_id)
     if tournament.contestant_type is None:
         return Err('Tournament contestant type is not set.')
 
     # Get contestants (participants or teams).
     if tournament.contestant_type == ContestantType.TEAM:
-        teams = tournament_repository.get_teams_for_tournament(
-            tournament_id
-        )
+        teams = tournament_repository.get_teams_for_tournament(tournament_id)
         contestant_ids = [str(team.id) for team in teams]
     else:
-        participants = (
-            tournament_repository.get_participants_for_tournament(
-                tournament_id
-            )
+        participants = tournament_repository.get_participants_for_tournament(
+            tournament_id
         )
         contestant_ids = [str(p.id) for p in participants]
 
     if len(contestant_ids) < 2:
-        return Err(
-            'Need at least 2 contestants for bracket.'
-        )
+        return Err('Need at least 2 contestants for bracket.')
 
     return Ok((tournament, contestant_ids, had_matches))
 
@@ -241,9 +237,7 @@ def generate_single_elimination_bracket(
     from .tournament_domain_service import _standard_seed_order
 
     # Shared preamble: lock, validate, fetch contestants.
-    prep_result = _prepare_bracket_generation(
-        tournament_id, force_regenerate
-    )
+    prep_result = _prepare_bracket_generation(tournament_id, force_regenerate)
     if prep_result.is_err():
         return Err(prep_result.unwrap_err())
 
@@ -365,6 +359,290 @@ def generate_single_elimination_bracket(
     return Ok(total_matches)
 
 
+def generate_double_elimination_bracket(
+    tournament_id: TournamentID,
+    force_regenerate: bool = False,
+) -> Result[int, str]:
+    """Generate double elimination bracket with WB, LB, and
+    GF.  The Grand Final is the terminal match.
+    """
+    import math
+    from uuid import UUID
+
+    from . import signals
+    from .events import MatchCreatedEvent
+    from .models.bracket import Bracket
+    from .models.contestant_type import ContestantType
+    from .tournament_domain_service import _standard_seed_order
+
+    # Shared preamble: lock, validate, fetch contestants.
+    prep_result = _prepare_bracket_generation(tournament_id, force_regenerate)
+    if prep_result.is_err():
+        return Err(prep_result.unwrap_err())
+
+    tournament, contestant_ids, _had_matches = prep_result.unwrap()
+    num_contestants = len(contestant_ids)
+
+    # Double-elimination requires at least 4 contestants.
+    if num_contestants < 4:
+        return Err(
+            'Need at least 4 contestants for double-elimination bracket.'
+        )
+
+    # Validate tournament mode.
+    if tournament.tournament_mode != TournamentMode.DOUBLE_ELIMINATION:
+        return Err('Tournament mode must be DOUBLE_ELIMINATION.')
+
+    # Calculate bracket geometry.
+    p = math.ceil(math.log2(num_contestants))
+    bracket_size = 2**p
+    wb_rounds = p  # WB rounds 0..p-1
+    lb_rounds = 2 * (p - 1)  # LB rounds 1..lb_rounds
+
+    is_team = tournament.contestant_type == ContestantType.TEAM
+    now = datetime.now(UTC)
+    match_events: list[MatchCreatedEvent] = []
+
+    # -- Pre-generate all match IDs so linkage can be
+    # -- computed before any create_match call.
+
+    # WB: wb_ids[r][m]
+    wb_ids: list[list[TournamentMatchID]] = []
+    for r in range(wb_rounds):
+        n = 2 ** (wb_rounds - 1 - r)
+        wb_ids.append([TournamentMatchID(generate_uuid7()) for _ in range(n)])
+
+    # LB: lb_ids[lb_r][m]  (index 0 unused)
+    lb_ids: list[list[TournamentMatchID]] = [[]]
+    lb_count = bracket_size // 4
+    for lb_r in range(1, lb_rounds + 1):
+        lb_ids.append(
+            [TournamentMatchID(generate_uuid7()) for _ in range(lb_count)]
+        )
+        if lb_r % 2 == 0:
+            lb_count = max(lb_count // 2, 1)
+
+    # Grand Final
+    gf_id = TournamentMatchID(generate_uuid7())
+
+    # -- Compute LB next_match_id mapping.
+    def _lb_next(
+        lb_r: int,
+        m: int,
+    ) -> TournamentMatchID | None:
+        if lb_r >= lb_rounds:
+            return gf_id
+        next_round = lb_r + 1
+        if lb_r % 2 == 1:
+            # Minor round: same index in next round.
+            return lb_ids[next_round][m]
+        # Major round: halves.
+        return lb_ids[next_round][m // 2]
+
+    # -- Compute WB loser -> LB routing.
+    def _wb_loser_target(
+        wb_r: int,
+        m_idx: int,
+    ) -> TournamentMatchID | None:
+        target_round = 1 if wb_r == 0 else 2 * wb_r
+        targets = lb_ids[target_round]
+        if not targets:
+            return None
+        return targets[m_idx % len(targets)]
+
+    # ---- Create WB matches (final first) ----
+    for r in range(wb_rounds - 1, -1, -1):
+        for m in range(len(wb_ids[r])):
+            mid = wb_ids[r][m]
+
+            # Winner next: next WB round, or GF for
+            # the WB final.
+            if r < wb_rounds - 1:
+                next_mid = wb_ids[r + 1][m // 2]
+            else:
+                next_mid = gf_id
+
+            loser_mid = _wb_loser_target(r, m)
+
+            match = TournamentMatch(
+                id=mid,
+                tournament_id=tournament_id,
+                group_order=None,
+                match_order=m,
+                round=r,
+                next_match_id=next_mid,
+                bracket=Bracket.WINNERS,
+                loser_next_match_id=loser_mid,
+                confirmed_by=None,
+                created_at=now,
+            )
+            tournament_repository.create_match(match)
+
+            match_events.append(
+                MatchCreatedEvent(
+                    occurred_at=now,
+                    initiator=None,
+                    tournament_id=tournament_id,
+                    match_id=mid,
+                )
+            )
+
+    # ---- Create LB matches (last round first) ----
+    for lb_r in range(lb_rounds, 0, -1):
+        for m in range(len(lb_ids[lb_r])):
+            mid = lb_ids[lb_r][m]
+            next_mid = _lb_next(lb_r, m)
+
+            match = TournamentMatch(
+                id=mid,
+                tournament_id=tournament_id,
+                group_order=None,
+                match_order=m,
+                round=lb_r,
+                next_match_id=next_mid,
+                bracket=Bracket.LOSERS,
+                loser_next_match_id=None,
+                confirmed_by=None,
+                created_at=now,
+            )
+            tournament_repository.create_match(match)
+
+            match_events.append(
+                MatchCreatedEvent(
+                    occurred_at=now,
+                    initiator=None,
+                    tournament_id=tournament_id,
+                    match_id=mid,
+                )
+            )
+
+    # ---- Grand Final (bracket='GF', round=0) ----
+    gf_match = TournamentMatch(
+        id=gf_id,
+        tournament_id=tournament_id,
+        group_order=None,
+        match_order=0,
+        round=0,
+        next_match_id=None,
+        bracket=Bracket.GRAND_FINAL,
+        loser_next_match_id=None,
+        confirmed_by=None,
+        created_at=now,
+    )
+    tournament_repository.create_match(gf_match)
+    match_events.append(
+        MatchCreatedEvent(
+            occurred_at=now,
+            initiator=None,
+            tournament_id=tournament_id,
+            match_id=gf_id,
+        )
+    )
+
+    # ---- Seed WBR0 ----
+    seed_order = _standard_seed_order(bracket_size)
+    padded: list[str | None] = list(contestant_ids) + [None] * (
+        bracket_size - num_contestants
+    )
+
+    for slot_idx, seed_pos in enumerate(seed_order):
+        match_idx = slot_idx // 2
+        match_id = wb_ids[0][match_idx]
+        cid = padded[seed_pos]
+
+        if cid is None:
+            continue  # DEFWIN slot
+
+        contestant_id = TournamentMatchToContestantID(generate_uuid7())
+        if is_team:
+            contestant = TournamentMatchToContestant(
+                id=contestant_id,
+                tournament_match_id=match_id,
+                team_id=TournamentTeamID(UUID(cid)),
+                participant_id=None,
+                score=None,
+                created_at=now,
+            )
+        else:
+            contestant = TournamentMatchToContestant(
+                id=contestant_id,
+                tournament_match_id=match_id,
+                team_id=None,
+                participant_id=TournamentParticipantID(UUID(cid)),
+                score=None,
+                created_at=now,
+            )
+        tournament_repository.create_match_contestant(contestant)
+
+    # ---- Auto-advance DEFWIN in WBR0 ----
+    for match_idx, match_id in enumerate(wb_ids[0]):
+        contestants = tournament_repository.get_contestants_for_match(match_id)
+        if len(contestants) == 1 and wb_rounds > 1:
+            sole = contestants[0]
+            next_mid = wb_ids[1][match_idx // 2]
+            adv_id = TournamentMatchToContestantID(generate_uuid7())
+            advanced = TournamentMatchToContestant(
+                id=adv_id,
+                tournament_match_id=next_mid,
+                team_id=sole.team_id,
+                participant_id=sole.participant_id,
+                score=None,
+                created_at=now,
+            )
+            tournament_repository.create_match_contestant(advanced)
+
+    # ---- Null loser_next_match_id for WBR0 DEFWIN matches ----
+    # A DEFWIN match produces no loser, so the loser link
+    # is invalid and must be cleared to prevent downstream
+    # LB matches from expecting a feeder that will never arrive.
+    for _match_idx, match_id in enumerate(wb_ids[0]):
+        contestants = tournament_repository.get_contestants_for_match(match_id)
+        if len(contestants) <= 1:
+            tournament_repository.clear_loser_next_match_id(match_id)
+
+    # ---- Propagate dead LB matches ----
+    # After DEFWIN nullification, some LB matches may have
+    # zero incoming feeds.  Walk LB rounds forward and break
+    # their next_match_id links so downstream matches do not
+    # expect phantom feeders.
+    _propagate_dead_lb_matches(lb_ids, lb_rounds)
+
+    # Single transaction commit.
+    tournament_repository.commit_session()
+
+    # Dispatch events after successful commit.
+    for event in match_events:
+        signals.match_created.send(None, event=event)
+
+    return Ok(len(match_events))
+
+
+def _propagate_dead_lb_matches(
+    lb_ids: list[list[TournamentMatchID]],
+    lb_rounds: int,
+) -> None:
+    """Clear next_match_id on LB matches with zero incoming
+    feeds.
+
+    After WBR0 DEFWIN nullification removes loser links,
+    some LB matches lose all feeders.  Walk LB rounds
+    forward: any match with 0 incoming feeds is dead and
+    its next_match_id must be cleared so the downstream
+    match does not expect a phantom feeder.
+    """
+    for lb_r in range(1, lb_rounds + 1):
+        for match_id in lb_ids[lb_r]:
+            feeds = (
+                tournament_repository.count_incoming_feeds(
+                    match_id
+                )
+            )
+            if feeds == 0:
+                tournament_repository.clear_next_match_id(
+                    match_id
+                )
+
+
 def generate_round_robin_bracket(
     tournament_id: TournamentID,
     force_regenerate: bool = False,
@@ -379,9 +657,7 @@ def generate_round_robin_bracket(
     from .models.contestant_type import ContestantType
 
     # Shared preamble: lock, validate, fetch contestants.
-    prep_result = _prepare_bracket_generation(
-        tournament_id, force_regenerate
-    )
+    prep_result = _prepare_bracket_generation(tournament_id, force_regenerate)
     if prep_result.is_err():
         return Err(prep_result.unwrap_err())
 
@@ -602,133 +878,402 @@ def _process_defwin_entries(
     return events
 
 
-def confirm_match(
-    match_id: TournamentMatchID,
-    confirmed_by_user_id: UserID,
-) -> Result[None, str]:
-    """Confirm a match result."""
-    # Get match via repository
-    match = tournament_repository.get_match(match_id)
+def _determine_loser(
+    contestants: list[TournamentMatchToContestant],
+    winner: TournamentMatchToContestant,
+) -> Result[TournamentMatchToContestant, str]:
+    """Return the contestant that is NOT the winner."""
+    if len(contestants) != 2:
+        return Err(f'Expected 2 contestants, got {len(contestants)}')
+    for contestant in contestants:
+        if contestant.id != winner.id:
+            return Ok(contestant)
+    return Err('Could not determine loser.')
 
-    # Check if already confirmed
+
+def _validate_match_confirmable(
+    match: TournamentMatch,
+    contestants: list[TournamentMatchToContestant],
+) -> Result[None, str]:
+    """Check that the match can be confirmed.
+
+    Pure validation — no DB writes.
+    """
     if match.confirmed_by is not None:
         return Err('Match is already confirmed.')
 
-    # Validate that both contestants have scores
-    contestants = tournament_repository.get_contestants_for_match(match_id)
     if len(contestants) < 2:
-        return Err('Cannot confirm match with less than 2 contestants.')
+        return Err(
+            'Cannot confirm match with less than 2 contestants.'
+        )
 
     for contestant in contestants:
         if contestant.score is None:
             return Err(
-                'Cannot confirm match: all contestants must have scores.'
+                'Cannot confirm match: '
+                'all contestants must have scores.'
             )
-
-    # Determine winner (may be a draw in round-robin).
-    winner_result = determine_match_winner(contestants)
-
-    if winner_result.is_err():
-        return Err(winner_result.unwrap_err())
-
-    winner = winner_result.unwrap()
-
-    if winner is None:
-        # Draw — only permitted in round-robin mode.
-        tournament = tournament_repository.get_tournament(match.tournament_id)
-        if tournament.tournament_mode != TournamentMode.ROUND_ROBIN:
-            return Err(
-                'Match is a draw; a winner is required in this tournament mode.'
-            )
-
-        tournament_repository.confirm_match(match_id, confirmed_by_user_id)
-        tournament_repository.commit_session()
-
-        now = datetime.now(UTC)
-        match_confirmed.send(
-            MatchConfirmedEvent(
-                occurred_at=now,
-                initiator=None,
-                tournament_id=match.tournament_id,
-                match_id=match_id,
-                winner_team_id=None,
-                winner_participant_id=None,
-            )
-        )
-        return Ok(None)
-
-    tournament_repository.confirm_match(match_id, confirmed_by_user_id)
-    tournament_repository.commit_session()
-
-    now = datetime.now(UTC)
-    winner_team_id = winner.team_id
-    winner_participant_id = winner.participant_id
-
-    match_confirmed.send(
-        MatchConfirmedEvent(
-            occurred_at=now,
-            initiator=None,
-            tournament_id=match.tournament_id,
-            match_id=match_id,
-            winner_team_id=winner_team_id,
-            winner_participant_id=winner_participant_id,
-        )
-    )
-
-    if match.next_match_id is not None:
-        contestant_id = TournamentMatchToContestantID(generate_uuid7())
-        new_contestant = TournamentMatchToContestant(
-            id=contestant_id,
-            tournament_match_id=match.next_match_id,
-            team_id=winner_team_id,
-            participant_id=winner_participant_id,
-            score=None,
-            created_at=now,
-        )
-        tournament_repository.create_match_contestant(new_contestant)
-        tournament_repository.commit_session()
-
-        contestant_advanced.send(
-            ContestantAdvancedEvent(
-                occurred_at=now,
-                initiator=None,
-                tournament_id=match.tournament_id,
-                match_id=match.next_match_id,
-                from_match_id=match_id,
-                advanced_team_id=winner_team_id,
-                advanced_participant_id=winner_participant_id,
-            )
-        )
 
     return Ok(None)
 
 
-def unconfirm_match(
+def _confirm_draw(
+    match: TournamentMatch,
+    match_id: TournamentMatchID,
+    initiator_id: UserID,
+    tournament: Tournament,
+) -> Result[None, str]:
+    """Confirm a drawn match (round-robin only).
+
+    Self-contained: owns its own commit + event dispatch.
+    """
+    if tournament.tournament_mode != TournamentMode.ROUND_ROBIN:
+        return Err(
+            'Match is a draw; a winner is required '
+            'in this tournament mode.'
+        )
+
+    tournament_repository.confirm_match(
+        match_id, initiator_id,
+    )
+
+    tournament_repository.commit_session()
+
+    now = datetime.now(UTC)
+    match_confirmed.send(
+        None,
+        event=MatchConfirmedEvent(
+            occurred_at=now,
+            initiator=None,
+            tournament_id=match.tournament_id,
+            match_id=match_id,
+            winner_team_id=None,
+            winner_participant_id=None,
+        ),
+    )
+    return Ok(None)
+
+
+def _advance_winner(
+    match: TournamentMatch,
+    winner: TournamentMatchToContestant,
+    now: datetime,
+) -> list[ContestantAdvancedEvent]:
+    """Create winner entry in next match (flush only).
+
+    Caller owns commit and event dispatch.
+    """
+    if match.next_match_id is None:
+        return []
+
+    contestant_id = TournamentMatchToContestantID(
+        generate_uuid7()
+    )
+    new_contestant = TournamentMatchToContestant(
+        id=contestant_id,
+        tournament_match_id=match.next_match_id,
+        team_id=winner.team_id,
+        participant_id=winner.participant_id,
+        score=None,
+        created_at=now,
+    )
+    tournament_repository.create_match_contestant(new_contestant)
+
+    return [
+        ContestantAdvancedEvent(
+            occurred_at=now,
+            initiator=None,
+            tournament_id=match.tournament_id,
+            match_id=match.next_match_id,
+            from_match_id=match.id,
+            advanced_team_id=winner.team_id,
+            advanced_participant_id=winner.participant_id,
+        )
+    ]
+
+
+def _advance_loser_to_lb(
+    match: TournamentMatch,
+    contestants: list[TournamentMatchToContestant],
+    winner: TournamentMatchToContestant,
+    now: datetime,
+) -> Result[list[ContestantAdvancedEvent], str]:
+    """Route loser to losers bracket (flush only).
+
+    Caller owns commit and event dispatch.
+    """
+    if match.loser_next_match_id is None:
+        return Ok([])
+
+    loser_result = _determine_loser(contestants, winner)
+    if loser_result.is_err():
+        return Err(loser_result.unwrap_err())
+    loser = loser_result.unwrap()
+
+    loser_contestant_id = TournamentMatchToContestantID(
+        generate_uuid7()
+    )
+    loser_entry = TournamentMatchToContestant(
+        id=loser_contestant_id,
+        tournament_match_id=match.loser_next_match_id,
+        team_id=loser.team_id,
+        participant_id=loser.participant_id,
+        score=None,
+        created_at=now,
+    )
+    tournament_repository.create_match_contestant(loser_entry)
+
+    events: list[ContestantAdvancedEvent] = [
+        ContestantAdvancedEvent(
+            occurred_at=now,
+            initiator=None,
+            tournament_id=match.tournament_id,
+            match_id=match.loser_next_match_id,
+            from_match_id=match.id,
+            advanced_team_id=loser.team_id,
+            advanced_participant_id=loser.participant_id,
+        )
+    ]
+
+    events += _try_lb_defwin_advance(
+        match.loser_next_match_id,
+        match.tournament_id,
+        now,
+    )
+
+    return Ok(events)
+
+
+def _try_lb_defwin_advance(
+    lb_match_id: TournamentMatchID,
+    tournament_id: TournamentID,
+    now: datetime,
+) -> list[ContestantAdvancedEvent]:
+    """Auto-advance if LB match is a structural DEFWIN (flush only).
+
+    Only one feeder remains after WBR0 DEFWIN nullification.
+    Caller owns commit and event dispatch.
+    """
+    lb_contestants = (
+        tournament_repository.get_contestants_for_match(
+            lb_match_id
+        )
+    )
+    if len(lb_contestants) != 1:
+        return []
+
+    incoming = tournament_repository.count_incoming_feeds(
+        lb_match_id
+    )
+    if incoming > 1:
+        return []
+
+    lb_match = tournament_repository.find_match(lb_match_id)
+    if lb_match is None or lb_match.next_match_id is None:
+        return []
+
+    sole = lb_contestants[0]
+    adv_id = TournamentMatchToContestantID(generate_uuid7())
+    advanced = TournamentMatchToContestant(
+        id=adv_id,
+        tournament_match_id=lb_match.next_match_id,
+        team_id=sole.team_id,
+        participant_id=sole.participant_id,
+        score=None,
+        created_at=now,
+    )
+    tournament_repository.create_match_contestant(advanced)
+
+    return [
+        ContestantAdvancedEvent(
+            occurred_at=now,
+            initiator=None,
+            tournament_id=tournament_id,
+            match_id=lb_match.next_match_id,
+            from_match_id=lb_match_id,
+            advanced_team_id=sole.team_id,
+            advanced_participant_id=sole.participant_id,
+        )
+    ]
+
+
+def _try_auto_complete_tournament(
+    match: TournamentMatch,
+    tournament: Tournament,
+    winner: TournamentMatchToContestant,
+) -> Result[bool, str]:
+    """Complete the tournament if this is a terminal elimination
+    match (flush only).
+
+    Returns ``Ok(True)`` when the tournament was completed,
+    ``Ok(False)`` when the condition does not apply.
+    Caller owns commit and event dispatch.
+    """
+    if match.next_match_id is not None:
+        return Ok(False)
+
+    if tournament.tournament_mode not in (
+        TournamentMode.SINGLE_ELIMINATION,
+        TournamentMode.DOUBLE_ELIMINATION,
+    ):
+        return Ok(False)
+
+    winner_set = tournament_repository.set_tournament_winner(
+        match.tournament_id,
+        winner_team_id=winner.team_id,
+        winner_participant_id=winner.participant_id,
+    )
+    if winner_set.is_err():
+        return Err(winner_set.unwrap_err())
+
+    status_set = tournament_repository.set_tournament_status_flush(
+        match.tournament_id,
+        TournamentStatus.COMPLETED,
+    )
+    if status_set.is_err():
+        return Err(status_set.unwrap_err())
+
+    return Ok(True)
+
+
+def confirm_match(
     match_id: TournamentMatchID,
     initiator_id: UserID,
 ) -> Result[None, str]:
-    """Unconfirm a match and cascade-retract advanced contestants."""
-    match = tournament_repository.get_match(match_id)
-    if match is None:
-        return Err('Match not found.')
+    """Confirm a match result."""
+    match = tournament_repository.get_match_for_update(match_id)
+    contestants = (
+        tournament_repository.get_contestants_for_match(match_id)
+    )
+    validation = _validate_match_confirmable(match, contestants)
+    if validation.is_err():
+        return validation
+    winner_result = determine_match_winner(contestants)
+    if winner_result.is_err():
+        return Err(winner_result.unwrap_err())
+    winner = winner_result.unwrap()
+    tournament = tournament_repository.get_tournament(
+        match.tournament_id,
+    )
+    if winner is None:
+        return _confirm_draw(
+            match, match_id, initiator_id, tournament,
+        )
+    tournament_repository.confirm_match(
+        match_id, initiator_id,
+    )
+    now = datetime.now(UTC)
+    adv_events = _advance_winner(match, winner, now)
+    if match.loser_next_match_id is not None:
+        lb = _advance_loser_to_lb(
+            match, contestants, winner, now,
+        )
+        if lb.is_err():
+            return Err(lb.unwrap_err())
+        adv_events += lb.unwrap()
+    comp = _try_auto_complete_tournament(
+        match, tournament, winner,
+    )
+    if comp.is_err():
+        return comp
+    tournament_was_completed = comp.unwrap()
+    tournament_repository.commit_session()
+    tid = match.tournament_id
+    match_confirmed.send(None, event=MatchConfirmedEvent(
+        occurred_at=now, initiator=None,
+        tournament_id=tid, match_id=match_id,
+        winner_team_id=winner.team_id,
+        winner_participant_id=winner.participant_id,
+    ))
+    if tournament_was_completed:
+        tournament_completed.send(None, event=TournamentCompletedEvent(
+            occurred_at=now, initiator=None,
+            tournament_id=tid,
+            winner_team_id=winner.team_id,
+            winner_participant_id=winner.participant_id,
+        ))
+    for event in adv_events:
+        contestant_advanced.send(None, event=event)
+    return Ok(None)
+
+
+def _unconfirm_match_impl(
+    match_id: TournamentMatchID,
+    initiator_id: UserID,
+    _visited: set[TournamentMatchID] | None = None,
+    _match: TournamentMatch | None = None,
+) -> Result[tuple[list[MatchUnconfirmedEvent], bool], str]:
+    """Flush-only, event-collecting helper for unconfirm_match.
+
+    Performs all unconfirmation logic (including cascade) using
+    ``db.session.flush()`` for intermediate operations.  Collects
+    and returns domain events rather than dispatching them.  The
+    caller is responsible for the single ``commit()`` and event
+    dispatch.
+
+    Returns ``Ok((events, tournament_was_uncompleted))`` where
+    ``tournament_was_uncompleted`` is ``True`` when tournament
+    winner/status was reverted (elimination terminal match).
+
+    When ``_match`` is provided (pre-locked by the caller) it
+    is used directly.  Recursive calls acquire their own row
+    locks via ``get_match_for_update`` to prevent TOCTOU races
+    on concurrent unconfirmations.
+    """
+    if _visited is None:
+        _visited = set()
+    if match_id in _visited:
+        return Err('Circular match reference detected.')
+    _visited.add(match_id)
+
+    # Use provided match or acquire row lock.
+    if _match is not None:
+        match = _match
+    else:
+        match = tournament_repository.get_match_for_update(
+            match_id
+        )
 
     if match.confirmed_by is None:
         return Err('Match is not confirmed.')
 
-    contestants = tournament_repository.get_contestants_for_match(match_id)
+    collected_events: list[MatchUnconfirmedEvent] = []
+    tournament_was_uncompleted = False
+
+    contestants = tournament_repository.get_contestants_for_match(
+        match_id
+    )
 
     # Determine winner for cascade retraction.
     winner_result = determine_match_winner(contestants)
 
-    winner = winner_result.unwrap() if winner_result.is_ok() else None
+    winner = (
+        winner_result.unwrap() if winner_result.is_ok() else None
+    )
 
     if match.next_match_id is not None and winner is not None:
-        next_match = tournament_repository.get_match(match.next_match_id)
-        if next_match is not None and next_match.confirmed_by is not None:
-            # Recursively unconfirm downstream match first.
-            cascade_result = unconfirm_match(match.next_match_id, initiator_id)
+        next_match = tournament_repository.get_match(
+            match.next_match_id
+        )
+        if (
+            next_match is not None
+            and next_match.confirmed_by is not None
+        ):
+            # Recursively unconfirm downstream match.
+            cascade_result = _unconfirm_match_impl(
+                match.next_match_id,
+                initiator_id,
+                _visited=_visited,
+            )
             if cascade_result.is_err():
                 return cascade_result
+            cascade_events, cascade_uncompleted = (
+                cascade_result.unwrap()
+            )
+            collected_events.extend(cascade_events)
+            tournament_was_uncompleted = (
+                tournament_was_uncompleted or cascade_uncompleted
+            )
 
         # Remove advanced contestant from next match.
         tournament_repository.delete_contestant_from_match(
@@ -737,11 +1282,102 @@ def unconfirm_match(
             participant_id=winner.participant_id,
         )
 
+    # Retract loser from losers bracket (DE only)
+    if (
+        match.loser_next_match_id is not None
+        and winner_result.is_ok()
+        and winner_result.unwrap() is not None
+    ):
+        winner = winner_result.unwrap()
+        loser_result = _determine_loser(contestants, winner)
+        if loser_result.is_err():
+            return Err(loser_result.unwrap_err())
+        loser = loser_result.unwrap()
+
+        loser_next_match = tournament_repository.get_match(
+            match.loser_next_match_id
+        )
+        if (
+            loser_next_match is not None
+            and loser_next_match.confirmed_by is not None
+        ):
+            # Recursively unconfirm downstream LB match.
+            cascade_result = _unconfirm_match_impl(
+                match.loser_next_match_id,
+                initiator_id,
+                _visited=_visited,
+            )
+            if cascade_result.is_err():
+                return cascade_result
+            cascade_events, cascade_uncompleted = (
+                cascade_result.unwrap()
+            )
+            collected_events.extend(cascade_events)
+            tournament_was_uncompleted = (
+                tournament_was_uncompleted or cascade_uncompleted
+            )
+
+        # Remove advanced loser from LB match.
+        tournament_repository.delete_contestant_from_match(
+            match.loser_next_match_id,
+            team_id=loser.team_id,
+            participant_id=loser.participant_id,
+        )
+
+        # Retract LB auto-advance (structural DEFWIN undo).
+        # Guard: only delete if the contestant actually exists
+        # in the downstream match (may not if no DEFWIN occurred).
+        if (
+            loser_next_match is not None
+            and loser_next_match.next_match_id is not None
+        ):
+            existing = (
+                tournament_repository.find_contestant_for_match(
+                    loser_next_match.next_match_id,
+                    team_id=loser.team_id,
+                    participant_id=loser.participant_id,
+                )
+            )
+            if existing is not None:
+                tournament_repository.delete_contestant_from_match(
+                    loser_next_match.next_match_id,
+                    team_id=loser.team_id,
+                    participant_id=loser.participant_id,
+                )
+
+    # Revert tournament state for terminal elimination
+    # matches.
+    if match.next_match_id is None:
+        tournament = tournament_repository.get_tournament(
+            match.tournament_id
+        )
+        if tournament.tournament_mode in (
+            TournamentMode.SINGLE_ELIMINATION,
+            TournamentMode.DOUBLE_ELIMINATION,
+        ):
+            winner_result2 = (
+                tournament_repository.set_tournament_winner(
+                    match.tournament_id,
+                    winner_team_id=None,
+                    winner_participant_id=None,
+                )
+            )
+            if winner_result2.is_err():
+                return Err(winner_result2.unwrap_err())
+            status_result = (
+                tournament_repository.set_tournament_status_flush(
+                    match.tournament_id,
+                    TournamentStatus.ONGOING,
+                )
+            )
+            if status_result.is_err():
+                return Err(status_result.unwrap_err())
+            tournament_was_uncompleted = True
+
     tournament_repository.unconfirm_match(match_id)
-    tournament_repository.commit_session()
 
     now = datetime.now(UTC)
-    match_unconfirmed.send(
+    collected_events.append(
         MatchUnconfirmedEvent(
             occurred_at=now,
             initiator=None,
@@ -750,6 +1386,52 @@ def unconfirm_match(
             unconfirmed_by=initiator_id,
         )
     )
+
+    return Ok((collected_events, tournament_was_uncompleted))
+
+
+def unconfirm_match(
+    match_id: TournamentMatchID,
+    initiator_id: UserID,
+) -> Result[None, str]:
+    """Unconfirm a match and cascade-retract advanced contestants.
+
+    Uses a single DB commit for the entire cascade and dispatches
+    all collected events afterwards.
+
+    Acquires a row lock (SELECT ... FOR UPDATE) on the initial
+    match to prevent concurrent unconfirmation races.
+    """
+    # Lock the match row to prevent TOCTOU races.
+    match = tournament_repository.get_match_for_update(match_id)
+
+    result = _unconfirm_match_impl(
+        match_id, initiator_id, _match=match,
+    )
+    if result.is_err():
+        return Err(result.unwrap_err())
+
+    events, tournament_was_uncompleted = result.unwrap()
+
+    # Single commit for the entire cascade.
+    tournament_repository.commit_session()
+
+    # Dispatch all collected events after commit.
+    for event in events:
+        match_unconfirmed.send(None, event=event)
+
+    # Dispatch TournamentUncompletedEvent only for elimination
+    # modes where tournament state was actually reverted.
+    if tournament_was_uncompleted:
+        now = datetime.now(UTC)
+        tournament_uncompleted.send(
+            None,
+            event=TournamentUncompletedEvent(
+                occurred_at=now,
+                initiator=None,
+                tournament_id=match.tournament_id,
+            ),
+        )
 
     return Ok(None)
 
