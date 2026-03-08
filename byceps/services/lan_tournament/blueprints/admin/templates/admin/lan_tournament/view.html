@@ -6,6 +6,16 @@
 {% set current_tab = 'tournaments' %}
 {% set page_title = [_('Tournament'), party.title] %}
 
+{% block head %}
+{{ super() }}
+<style>
+  .subnav .button--current {
+    border-color: #1199ff;
+    opacity: 1;
+  }
+</style>
+{%- endblock %}
+
 {% block before_body %}
 {{ render_backlink(url_for('.index', party_id=party.id), _('Tournaments')) }}
 {%- endblock %}
@@ -26,11 +36,22 @@
   </div>
 
   {# Sub-section navigation #}
-  <div class="button-row block">
+  <div class="button-row subnav block">
+    <a class="button{% if active_tab == 'overview' %} button--current{% endif %}" href="{{ url_for('.view', tournament_id=tournament.id) }}">{{ _('Overview') }}</a>
     <a class="button" href="{{ url_for('.participants_for_tournament', tournament_id=tournament.id) }}">{{ _('Participants') }}</a>
     <a class="button" href="{{ url_for('.teams_for_tournament', tournament_id=tournament.id) }}">{{ _('Teams') }}</a>
     <a class="button" href="{{ url_for('.matches_for_tournament', tournament_id=tournament.id) }}">{{ _('Matches') }}</a>
-    <a class="button" href="{{ url_for('.bracket', tournament_id=tournament.id) }}">{{ _('Bracket') }}</a>
+    {% if tournament.tournament_mode and tournament.tournament_mode.name == 'HIGHSCORE' %}
+    <a class="button{% if active_tab == 'highscore' %} button--current{% endif %}" href="{{ url_for('.highscore', tournament_id=tournament.id) }}">{{ _('Leaderboard') }}</a>
+    {% else %}
+    <a class="button{% if active_tab == 'bracket' %} button--current{% endif %}" href="{{ url_for('.bracket', tournament_id=tournament.id) }}">
+      {%- if tournament.tournament_mode and tournament.tournament_mode.name == 'ROUND_ROBIN' -%}
+        {{ _('Standings') }}
+      {%- else -%}
+        {{ _('Bracket') }}
+      {%- endif -%}
+    </a>
+    {% endif %}
   </div>
 
   {# Basic info #}
@@ -237,7 +258,8 @@
         <button type="submit" class="button color-info">{{ _('Reopen registration') }}</button>
       </form>
       {%- if has_bracket %}
-      <form action="{{ url_for('.generate_bracket', tournament_id=tournament.id) }}?force=true" method="post" id="regenerate-bracket-form">
+      <form action="{{ url_for('.generate_bracket', tournament_id=tournament.id) }}" method="post" id="regenerate-bracket-form">
+        <input type="hidden" name="force" value="true">
         <button type="submit" class="button color-warning">{{ render_icon('arrange') }} {{ _('Regenerate bracket') }}</button>
       </form>
       {%- else %}

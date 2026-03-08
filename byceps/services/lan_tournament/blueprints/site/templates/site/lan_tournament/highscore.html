@@ -1,0 +1,20 @@
+{% extends 'layout/base.html' %}
+{% from 'macros/lan_tournament.html' import render_highscore_leaderboard %}
+{% set page_title = [_('Highscore'), tournament.name] %}
+
+{% block body %}
+
+  <nav class='breadcrumbs'>
+    <ol>
+      <li><a href='{{ url_for('.index') }}'>{{ _('Tournaments') }}</a></li>
+      <li><a href='{{ url_for('.view', tournament_id=tournament.id) }}'>
+        {{ tournament.name }}
+      </a></li>
+    </ol>
+  </nav>
+
+  <h1 class='title'>{{ _('Highscore Leaderboard') }}</h1>
+
+  {{ render_highscore_leaderboard(leaderboard, tournament, teams_by_id=teams_by_id, participants_by_id=participants_by_id) }}
+
+{%- endblock %}

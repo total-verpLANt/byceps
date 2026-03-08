@@ -21,6 +21,7 @@ from byceps.util.views import permission_required, redirect_to
 from byceps.services.lan_tournament import (
     tournament_match_service,
     tournament_participant_service,
+    tournament_score_service,
     tournament_service,
     tournament_stats_service,
     tournament_team_service,
@@ -49,6 +50,7 @@ from byceps.services.lan_tournament.models.tournament_status import (
 from byceps.services.lan_tournament.lan_tournament_view_helpers import (
     build_contestant_name_lookups,
     build_hover_lookups,
+    build_round_robin_standings,
     build_seat_lookup,
     build_team_members_lookup,
 )
@@ -58,6 +60,7 @@ from byceps.services.more.blueprints.admin.item_service import MoreItem
 from .forms import (
     AddParticipantForm,
     AddTeamMemberForm,
+    HighscoreSubmitForm,
     TeamCreateForm,
     TeamUpdateForm,
     TransferCaptainForm,
@@ -173,6 +176,7 @@ def view(tournament_id):
         'team_count': team_count,
         'teams': teams,
         'teams_below_minimum': teams_below_minimum,
+        'active_tab': 'overview',
     }
 
 
@@ -492,7 +496,7 @@ def _change_status(tournament_id, new_status: TournamentStatus):
             flash_success(
                 gettext(
                     'Tournament status has been changed to "%(status)s".',
-                    status=new_status.name,
+                    status=new_status.name.replace('_', ' ').title(),
                 )
             )
         case Err(error_message):
@@ -538,13 +542,12 @@ def generate_bracket(tournament_id):
                 )
             )
         case TournamentMode.DOUBLE_ELIMINATION:
-            flash_error(
-                gettext(
-                    'Double elimination bracket generation'
-                    ' is not yet implemented.'
+            result = (
+                tournament_match_service.generate_double_elimination_bracket(
+                    tournament.id,
+                    force_regenerate=force_regenerate,
                 )
             )
-            return redirect_to('.view', tournament_id=tournament.id)
         case TournamentMode.ROUND_ROBIN:
             result = tournament_match_service.generate_round_robin_bracket(
                 tournament.id,
@@ -1365,7 +1368,7 @@ def bracket(tournament_id):
         tournament.id
     )
 
-    # Get contestants for each match
+    # Get contestants for each match.
     match_data = []
     all_contestants = []
     for match in matches:
@@ -1388,14 +1391,21 @@ def bracket(tournament_id):
         tournament, participants_by_id, teams_by_id, party.id
     )
 
+    # Round-robin: compute standings table.
+    standings = None
+    if tournament.tournament_mode == TournamentMode.ROUND_ROBIN:
+        standings = build_round_robin_standings(match_data)
+
     return {
         'party': party,
         'tournament': tournament,
         'match_data': match_data,
+        'standings': standings,
         'teams_by_id': teams_by_id,
         'participants_by_id': participants_by_id,
         'seats_by_user_id': seats_by_user_id,
         'team_members_by_team_id': team_members_by_team_id,
+        'active_tab': 'bracket',
     }
 
 
@@ -1413,3 +1423,174 @@ def delete_match_comment(match_id, comment_id):
             flash_error(gettext('Error deleting comment: %(error)s', error=e))
 
     return redirect_to('.view_match', match_id=match_id)
+
+
+# -------------------------------------------------------------------- #
+# highscore
+
+
+
+def _populate_highscore_form_choices(
+    form: HighscoreSubmitForm,
+    tournament: Tournament,
+) -> tuple[dict, dict]:
+    """Populate contestant choices on a highscore form.
+
+    Returns (teams_by_id, participants_by_id) for template rendering.
+    """
+    participants = (
+        tournament_participant_service.get_participants_for_tournament(
+            tournament.id
+        )
+    )
+    user_ids = {p.user_id for p in participants}
+    users_by_id = user_service.get_users_indexed_by_id(user_ids)
+
+    teams_by_id: dict = {}
+    participants_by_id: dict = {}
+
+    if tournament.contestant_type == ContestantType.TEAM:
+        teams = tournament_team_service.get_teams_for_tournament(
+            tournament.id
+        )
+        teams_by_id = {t.id: t for t in teams}
+        form.contestant.choices = [
+            ('', gettext('-- select --')),
+        ] + [(str(t.id), t.name) for t in teams]
+    else:
+        participants_by_id = {
+            p.id: users_by_id[p.user_id]
+            for p in participants
+            if p.user_id in users_by_id and p.removed_at is None
+        }
+        form.contestant.choices = [
+            ('', gettext('-- select --')),
+        ] + [
+            (
+                str(p.id),
+                users_by_id[p.user_id].screen_name,
+            )
+            for p in participants
+            if p.user_id in users_by_id and p.removed_at is None
+        ]
+
+    return teams_by_id, participants_by_id
+
+
+@blueprint.get('/tournaments/<tournament_id>/highscore')
+@permission_required('lan_tournament.view')
+@templated
+def highscore(tournament_id):
+    """Show highscore leaderboard for a tournament."""
+    tournament = _get_tournament_or_404(tournament_id)
+
+    # Only HIGHSCORE tournaments have a leaderboard.
+    if tournament.tournament_mode != TournamentMode.HIGHSCORE:
+        flash_error(gettext('This tournament does not use highscores.'))
+        return redirect_to('.view', tournament_id=tournament.id)
+
+    party = party_service.get_party(tournament.party_id)
+
+    leaderboard = []
+    result = tournament_score_service.get_leaderboard(tournament.id)
+    match result:
+        case Ok(entries):
+            leaderboard = entries
+        case Err(e):
+            flash_error(e)
+
+    form = HighscoreSubmitForm()
+    teams_by_id, participants_by_id = _populate_highscore_form_choices(
+        form, tournament
+    )
+
+    return {
+        'party': party,
+        'tournament': tournament,
+        'leaderboard': leaderboard,
+        'form': form,
+        'participants_by_id': participants_by_id,
+        'teams_by_id': teams_by_id,
+        'active_tab': 'highscore',
+    }
+
+
+@blueprint.post('/tournaments/<tournament_id>/highscore/submit')
+@permission_required('lan_tournament.administrate')
+def highscore_submit(tournament_id):
+    """Submit a score for a highscore tournament."""
+    tournament = _get_tournament_or_404(tournament_id)
+
+    if tournament.tournament_mode != TournamentMode.HIGHSCORE:
+        flash_error(gettext('This tournament does not use highscores.'))
+        return redirect_to('.view', tournament_id=tournament.id)
+
+    form = HighscoreSubmitForm(request.form)
+
+    # Populate choices so validation passes.
+    _populate_highscore_form_choices(form, tournament)
+
+    if not form.validate():
+        flash_error(gettext('Invalid input.'))
+        return redirect_to(
+            '.highscore',
+            tournament_id=tournament.id,
+        )
+
+    contestant_id = form.contestant.data
+    if not contestant_id:
+        flash_error(gettext('Please select a contestant.'))
+        return redirect_to(
+            '.highscore',
+            tournament_id=tournament.id,
+        )
+
+    score_value = form.score.data
+    note = form.note.data.strip() if form.note.data else None
+
+    from byceps.services.lan_tournament.models.tournament_participant import (
+        TournamentParticipantID,
+    )
+
+    participant_id = None
+    team_id = None
+    if tournament.contestant_type == ContestantType.TEAM:
+        team_id = TournamentTeamID(UUID(contestant_id))
+    else:
+        participant_id = TournamentParticipantID(UUID(contestant_id))
+
+    match tournament_score_service.submit_score(
+        tournament.id,
+        score_value,
+        participant_id=participant_id,
+        team_id=team_id,
+        submitted_by=g.user.id,
+        note=note,
+    ):
+        case Ok(_):
+            flash_success(gettext('Score has been submitted.'))
+        case Err(error_message):
+            flash_error(error_message)
+
+    return redirect_to('.highscore', tournament_id=tournament.id)
+
+
+@blueprint.post('/tournaments/<tournament_id>/highscore/delete-all')
+@permission_required('lan_tournament.administrate')
+def highscore_delete_all(tournament_id):
+    """Delete all scores for a highscore tournament."""
+    tournament = _get_tournament_or_404(tournament_id)
+
+    if tournament.tournament_mode != TournamentMode.HIGHSCORE:
+        flash_error(gettext('This tournament does not use highscores.'))
+        return redirect_to('.view', tournament_id=tournament.id)
+
+    match tournament_score_service.delete_scores_for_tournament(
+        tournament.id,
+    ):
+        case Ok(_):
+            flash_success(gettext('All scores have been deleted.'))
+        case Err(error_message):
+            flash_error(error_message)
+
+    return redirect_to('.highscore', tournament_id=tournament.id)

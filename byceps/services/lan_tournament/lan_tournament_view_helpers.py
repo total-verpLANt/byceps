@@ -2,7 +2,12 @@ from byceps.services.lan_tournament import (
     tournament_participant_service,
     tournament_team_service,
 )
-from byceps.services.lan_tournament.models.contestant_type import ContestantType
+from byceps.services.lan_tournament.models.contestant_type import (
+    ContestantType,
+)
+from byceps.services.lan_tournament.models.round_robin_standing import (
+    RoundRobinStanding,
+)
 from byceps.services.lan_tournament.models.tournament import (
     Tournament,
     TournamentID,
@@ -16,6 +21,9 @@ from byceps.services.lan_tournament.models.tournament_participant import (
 from byceps.services.lan_tournament.models.tournament_team import (
     TournamentTeam,
     TournamentTeamID,
+)
+from byceps.services.lan_tournament.tournament_domain_service import (
+    compute_round_robin_standings,
 )
 from byceps.services.party.models import PartyID
 from byceps.services.user import user_service
@@ -141,3 +149,20 @@ def build_hover_lookups(
         team_members_by_team_id = {}
 
     return seats_by_user_id, team_members_by_team_id
+
+
+def build_round_robin_standings(
+    match_data: list[dict],
+) -> list[RoundRobinStanding]:
+    """Compute round-robin standings from pre-loaded match data.
+
+    Filters to confirmed matches, extracts contestant pairs,
+    then delegates to the pure domain function.
+    """
+    confirmed_pairs: list[list[TournamentMatchToContestant]] = []
+    for data in match_data:
+        if data['match'].confirmed_by is None:
+            continue
+        confirmed_pairs.append(data['contestants'])
+
+    return compute_round_robin_standings(confirmed_pairs)

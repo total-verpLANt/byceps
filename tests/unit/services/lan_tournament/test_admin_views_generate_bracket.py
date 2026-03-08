@@ -113,20 +113,23 @@ def test_se_mode_calls_single_elimination_bracket(app):
     mocks['match_svc'].generate_round_robin_bracket.assert_not_called()
 
 
-def test_de_mode_flashes_error_not_yet_implemented(app):
-    """DOUBLE_ELIMINATION flashes an error and skips all bracket service calls."""
+def test_de_mode_calls_double_elimination_bracket(app):
+    """DOUBLE_ELIMINATION dispatches to generate_double_elimination_bracket."""
     with _patched_view() as mocks:
         tournament = _make_tournament(TournamentMode.DOUBLE_ELIMINATION)
         mocks['get_tournament'].return_value = tournament
+        mocks[
+            'match_svc'
+        ].generate_double_elimination_bracket.return_value = Ok(7)
 
         _call(app, tournament)
 
-    mocks['flash_error'].assert_called_once()
-    msg = mocks['flash_error'].call_args[0][0]
-    assert 'not yet implemented' in msg.lower()
-    mocks['flash_success'].assert_not_called()
+    mocks[
+        'match_svc'
+    ].generate_double_elimination_bracket.assert_called_once_with(
+        TOURNAMENT_ID, force_regenerate=False
+    )
     mocks['match_svc'].generate_single_elimination_bracket.assert_not_called()
-    mocks['match_svc'].generate_double_elimination_bracket.assert_not_called()
     mocks['match_svc'].generate_round_robin_bracket.assert_not_called()
 
 

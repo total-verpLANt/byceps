@@ -6,7 +6,13 @@ from wtforms import (
     StringField,
     TextAreaField,
 )
-from wtforms.validators import InputRequired, Length, Optional, ValidationError
+from wtforms.validators import (
+    InputRequired,
+    Length,
+    NumberRange,
+    Optional,
+    ValidationError,
+)
 
 from byceps.services.user import screen_name_validator, user_service
 from byceps.util.l10n import LocalizedForm
@@ -174,3 +180,12 @@ class AddTeamMemberForm(LocalizedForm):
 
         field.data = screen_name
         form.user = user
+
+
+class HighscoreSubmitForm(LocalizedForm):
+    contestant = SelectField(lazy_gettext('Contestant'))
+    score = IntegerField(
+        lazy_gettext('Score'),
+        validators=[InputRequired(), NumberRange(min=0)],
+    )
+    note = StringField(lazy_gettext('Note'))
