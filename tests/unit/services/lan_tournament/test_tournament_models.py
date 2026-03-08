@@ -30,6 +30,17 @@ from byceps.services.lan_tournament.models.tournament_match_to_contestant import
     TournamentMatchToContestant,
     TournamentMatchToContestantID,
 )
+from byceps.services.lan_tournament.models.bracket import Bracket
+from byceps.services.lan_tournament.models.round_robin_standing import (
+    RoundRobinStanding,
+)
+from byceps.services.lan_tournament.models.score_ordering import (
+    ScoreOrdering,
+)
+from byceps.services.lan_tournament.models.score_submission import (
+    ScoreSubmission,
+    ScoreSubmissionID,
+)
 from byceps.services.lan_tournament.models.tournament_mode import (
     TournamentMode,
 )
@@ -367,6 +378,224 @@ def test_tournament_seed_is_frozen():
 
     with pytest.raises(FrozenInstanceError):
         seed.match_order = 2
+
+
+# -------------------------------------------------------------------- #
+# Bracket enum
+
+
+def test_bracket_enum_values():
+    assert Bracket.WINNERS.value == 'WB'
+    assert Bracket.LOSERS.value == 'LB'
+    assert Bracket.GRAND_FINAL.value == 'GF'
+
+
+def test_bracket_enum_member_count():
+    assert len(Bracket) == 3
+
+
+def test_bracket_enum_by_value():
+    assert Bracket('WB') == Bracket.WINNERS
+    assert Bracket('LB') == Bracket.LOSERS
+    assert Bracket('GF') == Bracket.GRAND_FINAL
+
+
+# -------------------------------------------------------------------- #
+# ScoreOrdering enum
+
+
+def test_score_ordering_enum_members():
+    assert ScoreOrdering.HIGHER_IS_BETTER is not None
+    assert ScoreOrdering.LOWER_IS_BETTER is not None
+    assert len(ScoreOrdering) == 2
+
+
+def test_score_ordering_distinct_values():
+    assert (
+        ScoreOrdering.HIGHER_IS_BETTER
+        != ScoreOrdering.LOWER_IS_BETTER
+    )
+
+
+# -------------------------------------------------------------------- #
+# RoundRobinStanding dataclass
+
+
+def test_round_robin_standing_creation():
+    standing = RoundRobinStanding(
+        contestant_id='abc-123',
+        points=6,
+        wins=2,
+        draws=0,
+        losses=1,
+        score_for=25,
+        score_against=10,
+        score_diff=15,
+    )
+
+    assert standing.contestant_id == 'abc-123'
+    assert standing.points == 6
+    assert standing.wins == 2
+    assert standing.draws == 0
+    assert standing.losses == 1
+    assert standing.score_for == 25
+    assert standing.score_against == 10
+    assert standing.score_diff == 15
+
+
+def test_round_robin_standing_is_frozen():
+    standing = RoundRobinStanding(
+        contestant_id='x',
+        points=0,
+        wins=0,
+        draws=0,
+        losses=0,
+        score_for=0,
+        score_against=0,
+        score_diff=0,
+    )
+    with pytest.raises(FrozenInstanceError):
+        standing.points = 99
+
+
+# -------------------------------------------------------------------- #
+# ScoreSubmission dataclass
+
+
+def test_score_submission_creation_with_participant():
+    sub_id = ScoreSubmissionID(generate_uuid())
+    tid = TournamentID(generate_uuid())
+    pid = TournamentParticipantID(generate_uuid())
+    uid = UserID(generate_uuid())
+
+    sub = ScoreSubmission(
+        id=sub_id,
+        tournament_id=tid,
+        participant_id=pid,
+        team_id=None,
+        score=42,
+        submitted_at=NOW,
+        submitted_by=uid,
+        is_official=True,
+        note='Great run',
+    )
+
+    assert sub.id == sub_id
+    assert sub.tournament_id == tid
+    assert sub.participant_id == pid
+    assert sub.team_id is None
+    assert sub.score == 42
+    assert sub.submitted_at == NOW
+    assert sub.submitted_by == uid
+    assert sub.is_official is True
+    assert sub.note == 'Great run'
+
+
+def test_score_submission_creation_with_team():
+    team_id = TournamentTeamID(generate_uuid())
+
+    sub = ScoreSubmission(
+        id=ScoreSubmissionID(generate_uuid()),
+        tournament_id=TournamentID(generate_uuid()),
+        participant_id=None,
+        team_id=team_id,
+        score=999,
+        submitted_at=NOW,
+        submitted_by=None,
+        is_official=False,
+        note=None,
+    )
+
+    assert sub.participant_id is None
+    assert sub.team_id == team_id
+    assert sub.score == 999
+    assert sub.is_official is False
+    assert sub.note is None
+
+
+def test_score_submission_is_frozen():
+    sub = ScoreSubmission(
+        id=ScoreSubmissionID(generate_uuid()),
+        tournament_id=TournamentID(generate_uuid()),
+        participant_id=None,
+        team_id=None,
+        score=0,
+        submitted_at=NOW,
+        submitted_by=None,
+        is_official=True,
+        note=None,
+    )
+    with pytest.raises(FrozenInstanceError):
+        sub.score = 100
+
+
+# -------------------------------------------------------------------- #
+# TournamentMatch with new DE fields
+
+
+def test_tournament_match_with_bracket_and_loser_next():
+    next_id = TournamentMatchID(generate_uuid())
+    loser_id = TournamentMatchID(generate_uuid())
+
+    match = TournamentMatch(
+        id=TournamentMatchID(generate_uuid()),
+        tournament_id=TournamentID(generate_uuid()),
+        group_order=None,
+        match_order=0,
+        round=0,
+        next_match_id=next_id,
+        confirmed_by=None,
+        created_at=NOW,
+        bracket=Bracket.WINNERS,
+        loser_next_match_id=loser_id,
+    )
+
+    assert match.bracket == Bracket.WINNERS
+    assert match.loser_next_match_id == loser_id
+    assert match.next_match_id == next_id
+
+
+def test_tournament_match_bracket_defaults_to_none():
+    match = TournamentMatch(
+        id=TournamentMatchID(generate_uuid()),
+        tournament_id=TournamentID(generate_uuid()),
+        group_order=None,
+        match_order=0,
+        round=0,
+        next_match_id=None,
+        confirmed_by=None,
+        created_at=NOW,
+    )
+
+    assert match.bracket is None
+    assert match.loser_next_match_id is None
+
+
+# -------------------------------------------------------------------- #
+# Tournament with new winner/score_ordering fields
+
+
+def test_tournament_with_score_ordering_and_winners():
+    pid = TournamentParticipantID(generate_uuid())
+    tid_team = TournamentTeamID(generate_uuid())
+
+    tournament = _create_tournament(
+        score_ordering=ScoreOrdering.LOWER_IS_BETTER,
+        winner_participant_id=pid,
+        winner_team_id=tid_team,
+    )
+
+    assert tournament.score_ordering == ScoreOrdering.LOWER_IS_BETTER
+    assert tournament.winner_participant_id == pid
+    assert tournament.winner_team_id == tid_team
+
+
+def test_tournament_new_fields_default_to_none():
+    tournament = _create_tournament()
+
+    assert tournament.score_ordering is None
+    assert tournament.winner_participant_id is None
+    assert tournament.winner_team_id is None
 
 
 # -------------------------------------------------------------------- #
