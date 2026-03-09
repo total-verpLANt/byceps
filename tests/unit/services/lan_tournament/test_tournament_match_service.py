@@ -869,6 +869,57 @@ def test_generate_de_bracket_defwin_still_advances_to_wb1(
     assert len(seeded_calls) >= 8
 
 
+@patch(
+    'byceps.services.lan_tournament'
+    '.tournament_match_service.tournament_repository'
+)
+def test_generate_de_bracket_creation_order_lb_before_wb(
+    mock_repo,
+):
+    """GF is created first, then all LB matches, then all WB
+    matches.  This order satisfies IMMEDIATE FK constraints:
+    WB's loser_next_match_id targets LB rows that must already
+    exist at flush time.
+    """
+    tournament = _create_tournament(
+        contestant_type=ContestantType.SOLO,
+        tournament_mode=TournamentMode.DOUBLE_ELIMINATION,
+    )
+    participants = [
+        _create_mock_participant(TournamentParticipantID(generate_uuid()))
+        for _ in range(8)
+    ]
+
+    mock_repo.get_tournament.return_value = tournament
+    mock_repo.get_participants_for_tournament.return_value = participants
+    mock_repo.get_contestants_for_match.return_value = []
+
+    result = tournament_match_service.generate_double_elimination_bracket(
+        TOURNAMENT_ID
+    )
+
+    assert result.is_ok()
+
+    created_matches = [
+        call.args[0] for call in mock_repo.create_match.call_args_list
+    ]
+
+    # First match must be GF.
+    assert created_matches[0].bracket == Bracket.GRAND_FINAL
+
+    # After GF, all LB matches must appear before any WB match.
+    non_gf = created_matches[1:]
+    saw_wb = False
+    for m in non_gf:
+        if m.bracket == Bracket.WINNERS:
+            saw_wb = True
+        elif m.bracket == Bracket.LOSERS:
+            assert not saw_wb, (
+                f'LB match round={m.round} order={m.match_order}'
+                f' created after WB match — FK ordering violated'
+            )
+
+
 # -------------------------------------------------------------------- #
 # _determine_loser
 # -------------------------------------------------------------------- #

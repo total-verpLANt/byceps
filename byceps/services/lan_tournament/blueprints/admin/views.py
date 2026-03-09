@@ -41,6 +41,7 @@ from byceps.services.lan_tournament.models.tournament_match import (
 from byceps.services.lan_tournament.models.tournament_match_comment import (
     TournamentMatchCommentID,
 )
+from byceps.services.lan_tournament.models.score_ordering import ScoreOrdering
 from byceps.services.lan_tournament.models.tournament_mode import (
     TournamentMode,
 )
@@ -190,6 +191,7 @@ def create_form(party_id, erroneous_form=None):
     form = erroneous_form if erroneous_form else TournamentCreateForm()
     form.set_contestant_type_choices()
     form.set_tournament_mode_choices()
+    form.set_score_ordering_choices()
 
     return {
         'party': party,
@@ -206,6 +208,7 @@ def create(party_id):
     form = TournamentCreateForm(request.form)
     form.set_contestant_type_choices()
     form.set_tournament_mode_choices()
+    form.set_score_ordering_choices()
 
     if not form.validate():
         return create_form(party.id, form)
@@ -237,6 +240,16 @@ def create(party_id):
         )
     except KeyError:
         flash_error(gettext('Invalid tournament mode selected.'))
+        return create_form(party.id, form)
+
+    try:
+        score_ordering = (
+            ScoreOrdering[form.score_ordering.data]
+            if form.score_ordering.data
+            else None
+        )
+    except KeyError:
+        flash_error(gettext('Invalid score ordering selected.'))
         return create_form(party.id, form)
     min_players = form.min_players.data
     max_players = form.max_players.data
@@ -272,6 +285,7 @@ def create(party_id):
         contestant_type=contestant_type,
         tournament_status=TournamentStatus.DRAFT,
         tournament_mode=tournament_mode,
+        score_ordering=score_ordering,
     )
     if result.is_err():
         flash_error(result.unwrap_err())
@@ -317,10 +331,15 @@ def update_form(tournament_id, erroneous_form=None):
             data['tournament_mode'] = tournament.tournament_mode.name
         else:
             data['tournament_mode'] = ''
+        if tournament.score_ordering is not None:
+            data['score_ordering'] = tournament.score_ordering.name
+        else:
+            data['score_ordering'] = ''
         form = TournamentUpdateForm(data=data)
 
     form.set_contestant_type_choices()
     form.set_tournament_mode_choices()
+    form.set_score_ordering_choices()
 
     return {
         'party': party,
@@ -338,6 +357,7 @@ def update(tournament_id):
     form = TournamentUpdateForm(request.form)
     form.set_contestant_type_choices()
     form.set_tournament_mode_choices()
+    form.set_score_ordering_choices()
 
     if not form.validate():
         return update_form(tournament.id, form)
@@ -369,6 +389,16 @@ def update(tournament_id):
         )
     except KeyError:
         flash_error(gettext('Invalid tournament mode selected.'))
+        return update_form(tournament.id, form)
+
+    try:
+        score_ordering = (
+            ScoreOrdering[form.score_ordering.data]
+            if form.score_ordering.data
+            else None
+        )
+    except KeyError:
+        flash_error(gettext('Invalid score ordering selected.'))
         return update_form(tournament.id, form)
     min_players = form.min_players.data
     max_players = form.max_players.data
@@ -403,6 +433,7 @@ def update(tournament_id):
         max_players_in_team=max_players_in_team,
         contestant_type=contestant_type,
         tournament_mode=tournament_mode,
+        score_ordering=score_ordering,
     )
     if result.is_err():
         flash_error(result.unwrap_err())
@@ -658,7 +689,7 @@ def transfer_captain(team_id):
         flash_error(gettext('Transfer failed.'))
         return redirect_to('.view_team', team_id=team.id)
 
-    new_captain_user_id = UserID(form.new_captain.data)
+    new_captain_user_id = UserID(UUID(form.new_captain.data))
 
     result = tournament_team_service.transfer_captain(
         team.id, new_captain_user_id
@@ -768,7 +799,7 @@ def create_team(tournament_id):
     image_url = form.image_url.data.strip() if form.image_url.data else None
     join_code = form.join_code.data.strip() if form.join_code.data else None
 
-    captain_user_id = UserID(form.captain.data)
+    captain_user_id = UserID(UUID(form.captain.data))
 
     match tournament_team_service.create_team(
         tournament.id,
