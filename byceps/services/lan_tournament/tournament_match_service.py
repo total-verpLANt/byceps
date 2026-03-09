@@ -450,6 +450,63 @@ def generate_double_elimination_bracket(
             return None
         return targets[m_idx % len(targets)]
 
+    # ---- Grand Final (bracket='GF', round=0) ----
+    # Created FIRST so the FK target exists when WB/LB matches
+    # reference gf_id.  LB is created next so WB's
+    # loser_next_match_id FK targets also exist before WB flush.
+    gf_match = TournamentMatch(
+        id=gf_id,
+        tournament_id=tournament_id,
+        group_order=None,
+        match_order=0,
+        round=0,
+        next_match_id=None,
+        bracket=Bracket.GRAND_FINAL,
+        loser_next_match_id=None,
+        confirmed_by=None,
+        created_at=now,
+    )
+    tournament_repository.create_match(gf_match)
+    match_events.append(
+        MatchCreatedEvent(
+            occurred_at=now,
+            initiator=None,
+            tournament_id=tournament_id,
+            match_id=gf_id,
+        )
+    )
+
+    # ---- Create LB matches (last round first) ----
+    # LB before WB so that WB's loser_next_match_id FK targets
+    # (LB match rows) exist at flush time.
+    for lb_r in range(lb_rounds, 0, -1):
+        for m in range(len(lb_ids[lb_r])):
+            mid = lb_ids[lb_r][m]
+            next_mid = _lb_next(lb_r, m)
+
+            match = TournamentMatch(
+                id=mid,
+                tournament_id=tournament_id,
+                group_order=None,
+                match_order=m,
+                round=lb_r,
+                next_match_id=next_mid,
+                bracket=Bracket.LOSERS,
+                loser_next_match_id=None,
+                confirmed_by=None,
+                created_at=now,
+            )
+            tournament_repository.create_match(match)
+
+            match_events.append(
+                MatchCreatedEvent(
+                    occurred_at=now,
+                    initiator=None,
+                    tournament_id=tournament_id,
+                    match_id=mid,
+                )
+            )
+
     # ---- Create WB matches (final first) ----
     for r in range(wb_rounds - 1, -1, -1):
         for m in range(len(wb_ids[r])):
@@ -486,58 +543,6 @@ def generate_double_elimination_bracket(
                     match_id=mid,
                 )
             )
-
-    # ---- Create LB matches (last round first) ----
-    for lb_r in range(lb_rounds, 0, -1):
-        for m in range(len(lb_ids[lb_r])):
-            mid = lb_ids[lb_r][m]
-            next_mid = _lb_next(lb_r, m)
-
-            match = TournamentMatch(
-                id=mid,
-                tournament_id=tournament_id,
-                group_order=None,
-                match_order=m,
-                round=lb_r,
-                next_match_id=next_mid,
-                bracket=Bracket.LOSERS,
-                loser_next_match_id=None,
-                confirmed_by=None,
-                created_at=now,
-            )
-            tournament_repository.create_match(match)
-
-            match_events.append(
-                MatchCreatedEvent(
-                    occurred_at=now,
-                    initiator=None,
-                    tournament_id=tournament_id,
-                    match_id=mid,
-                )
-            )
-
-    # ---- Grand Final (bracket='GF', round=0) ----
-    gf_match = TournamentMatch(
-        id=gf_id,
-        tournament_id=tournament_id,
-        group_order=None,
-        match_order=0,
-        round=0,
-        next_match_id=None,
-        bracket=Bracket.GRAND_FINAL,
-        loser_next_match_id=None,
-        confirmed_by=None,
-        created_at=now,
-    )
-    tournament_repository.create_match(gf_match)
-    match_events.append(
-        MatchCreatedEvent(
-            occurred_at=now,
-            initiator=None,
-            tournament_id=tournament_id,
-            match_id=gf_id,
-        )
-    )
 
     # ---- Seed WBR0 ----
     seed_order = _standard_seed_order(bracket_size)

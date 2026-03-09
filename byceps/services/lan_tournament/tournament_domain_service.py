@@ -10,6 +10,7 @@ from .events import (
 )
 from .models.contestant_type import ContestantType
 from .models.tournament import Tournament, TournamentID
+from .models.score_ordering import ScoreOrdering
 from .models.tournament_mode import TournamentMode
 from .models.round_robin_standing import RoundRobinStanding
 from .models.tournament_match_to_contestant import (
@@ -64,6 +65,7 @@ def create_tournament(
     contestant_type: ContestantType | None = None,
     tournament_status: TournamentStatus | None = None,
     tournament_mode: TournamentMode | None = None,
+    score_ordering: ScoreOrdering | None = None,
 ) -> tuple[Tournament, TournamentCreatedEvent]:
     """Create a new tournament."""
     tournament_id = TournamentID(generate_uuid7())
@@ -88,6 +90,7 @@ def create_tournament(
         contestant_type=contestant_type,
         tournament_status=tournament_status,
         tournament_mode=tournament_mode,
+        score_ordering=score_ordering,
     )
 
     event = TournamentCreatedEvent(

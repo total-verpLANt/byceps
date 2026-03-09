@@ -20,6 +20,7 @@ from byceps.util.l10n import LocalizedForm
 from byceps.services.lan_tournament.models.contestant_type import (
     ContestantType,
 )
+from byceps.services.lan_tournament.models.score_ordering import ScoreOrdering
 from byceps.services.lan_tournament.models.tournament_mode import (
     TournamentMode,
 )
@@ -49,6 +50,14 @@ def _get_tournament_mode_choices() -> list[tuple[str, str]]:
     ]
 
 
+def _get_score_ordering_choices() -> list[tuple[str, str]]:
+    return [
+        ('', lazy_gettext('– select –')),
+        (ScoreOrdering.HIGHER_IS_BETTER.name, lazy_gettext('Higher is better')),
+        (ScoreOrdering.LOWER_IS_BETTER.name, lazy_gettext('Lower is better')),
+    ]
+
+
 class _BaseForm(LocalizedForm):
     name = StringField(lazy_gettext('Name'), [InputRequired(), Length(max=80)])
     game = StringField(lazy_gettext('Game'), [Optional(), Length(max=80)])
@@ -70,6 +79,9 @@ class _BaseForm(LocalizedForm):
     tournament_mode = SelectField(
         lazy_gettext('Tournament mode'), validators=[Optional()]
     )
+    score_ordering = SelectField(
+        lazy_gettext('Score ordering'), validators=[Optional()]
+    )
     min_players = IntegerField(lazy_gettext('Min. players'), [Optional()])
     max_players = IntegerField(lazy_gettext('Max. players'), [Optional()])
     min_teams = IntegerField(lazy_gettext('Min. teams'), [Optional()])
@@ -86,6 +98,9 @@ class _BaseForm(LocalizedForm):
 
     def set_tournament_mode_choices(self):
         self.tournament_mode.choices = _get_tournament_mode_choices()
+
+    def set_score_ordering_choices(self):
+        self.score_ordering.choices = _get_score_ordering_choices()
 
 
 class TournamentCreateForm(_BaseForm):

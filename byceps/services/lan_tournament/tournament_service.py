@@ -18,6 +18,7 @@ from .events import (
 )
 from .models.contestant_type import ContestantType
 from .models.tournament import Tournament, TournamentID
+from .models.score_ordering import ScoreOrdering
 from .models.tournament_mode import TournamentMode
 from .models.tournament_status import TournamentStatus
 
@@ -57,6 +58,7 @@ def create_tournament(
     contestant_type: ContestantType | None = None,
     tournament_status: TournamentStatus | None = None,
     tournament_mode: TournamentMode | None = None,
+    score_ordering: ScoreOrdering | None = None,
 ) -> Result[tuple[Tournament, TournamentCreatedEvent], str]:
     """Create a tournament.
 
@@ -89,6 +91,7 @@ def create_tournament(
         contestant_type=contestant_type,
         tournament_status=tournament_status,
         tournament_mode=tournament_mode,
+        score_ordering=score_ordering,
     )
 
     tournament_repository.create_tournament(tournament)
@@ -115,6 +118,7 @@ def update_tournament(
     max_players_in_team: int | None = None,
     contestant_type: ContestantType | None = None,
     tournament_mode: TournamentMode | None = None,
+    score_ordering: ScoreOrdering | None = None,
 ) -> Result[Tournament, str]:
     """Update a tournament.
 
@@ -153,6 +157,7 @@ def update_tournament(
         max_players_in_team=max_players_in_team,
         contestant_type=contestant_type,
         tournament_mode=tournament_mode,
+        score_ordering=score_ordering,
     )
 
     tournament_repository.update_tournament(updated)
