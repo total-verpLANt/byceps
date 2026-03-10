@@ -1636,14 +1636,10 @@ def test_unconfirm_match_success(mock_repo):
 
 @patch(
     'byceps.services.lan_tournament'
-    '.tournament_match_service.db'
-)
-@patch(
-    'byceps.services.lan_tournament'
     '.tournament_match_service.tournament_repository'
 )
 def test_unconfirm_match_not_confirmed_returns_err(
-    mock_repo, _mock_db
+    mock_repo,
 ):
     """Test that unconfirming an unconfirmed match returns Err."""
     match = _create_match(confirmed_by=None)
@@ -2184,14 +2180,10 @@ def test_unconfirm_match_single_commit_for_cascade(
 
 @patch(
     'byceps.services.lan_tournament.tournament_match_service'
-    '.db'
-)
-@patch(
-    'byceps.services.lan_tournament.tournament_match_service'
     '.tournament_repository'
 )
 def test_unconfirm_detects_circular_reference(
-    mock_repo, _mock_db
+    mock_repo,
 ):
     """Circular next_match_id linkage returns Err
     instead of recursing forever.
