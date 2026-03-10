@@ -47,7 +47,6 @@ from .tournament_domain_service import (
 
 MAX_MATCH_SCORE = 999_999_999
 
-
 class MatchUserRole(NamedTuple):
     contestant: TournamentMatchToContestant | None
     is_loser: bool
@@ -1412,7 +1411,7 @@ def _unconfirm_match_impl(
     """Flush-only, event-collecting helper for unconfirm_match.
 
     Performs all unconfirmation logic (including cascade) using
-    ``db.session.flush()`` for intermediate operations.  Collects
+    repository flush calls for intermediate operations.  Collects
     and returns domain events rather than dispatching them.  The
     caller is responsible for the single ``commit()`` and event
     dispatch.
