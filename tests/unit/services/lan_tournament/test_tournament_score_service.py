@@ -9,6 +9,9 @@ tests.unit.services.lan_tournament.test_tournament_score_service
 from datetime import datetime, UTC, timedelta
 from unittest.mock import patch
 
+from byceps.services.lan_tournament.models.contestant_type import (
+    ContestantType,
+)
 from byceps.services.lan_tournament.models.score_submission import (
     ScoreSubmission,
     ScoreSubmissionID,
@@ -24,6 +27,7 @@ from byceps.services.lan_tournament.models.tournament_mode import (
     TournamentMode,
 )
 from byceps.services.lan_tournament.models.tournament_participant import (
+    TournamentParticipant,
     TournamentParticipantID,
 )
 from byceps.services.lan_tournament.models.tournament_team import (
@@ -31,6 +35,7 @@ from byceps.services.lan_tournament.models.tournament_team import (
 )
 from byceps.services.lan_tournament import tournament_score_service
 from byceps.services.party.models import PartyID
+from byceps.services.user.models.user import UserID
 
 from tests.helpers import generate_uuid
 
@@ -38,6 +43,7 @@ from tests.helpers import generate_uuid
 NOW = datetime(2025, 6, 15, 14, 0, 0, tzinfo=UTC)
 TOURNAMENT_ID = TournamentID(generate_uuid())
 PARTY_ID = PartyID('lan-2025')
+INITIATOR_ID = UserID(generate_uuid())
 
 
 def _create_tournament(**kwargs) -> Tournament:
@@ -408,3 +414,102 @@ def test_get_leaderboard_empty_submissions(mock_repo):
 
     assert result.is_ok()
     assert result.unwrap() == []
+
+
+# -------------------------------------------------------------------- #
+# submit_score_by_participant
+
+
+def _create_participant(**kwargs) -> TournamentParticipant:
+    defaults = {
+        'id': TournamentParticipantID(generate_uuid()),
+        'user_id': INITIATOR_ID,
+        'tournament_id': TOURNAMENT_ID,
+        'substitute_player': False,
+        'team_id': None,
+        'created_at': NOW,
+    }
+    defaults.update(kwargs)
+    return TournamentParticipant(**defaults)
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_score_service'
+    '.tournament_repository'
+)
+def test_submit_score_by_participant_succeeds_solo(mock_repo):
+    """Solo tournament, user is participant -> Ok(ScoreSubmission)."""
+    tournament = _create_tournament(contestant_type=ContestantType.SOLO)
+    participant = _create_participant()
+    mock_repo.find_participant_by_user.return_value = participant
+    mock_repo.get_tournament.return_value = tournament
+
+    result = tournament_score_service.submit_score_by_participant(
+        TOURNAMENT_ID, INITIATOR_ID, 42,
+    )
+
+    assert result.is_ok()
+    submission = result.unwrap()
+    assert submission.score == 42
+    assert submission.participant_id == participant.id
+    assert submission.team_id is None
+    assert submission.submitted_by == INITIATOR_ID
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_score_service'
+    '.tournament_repository'
+)
+def test_submit_score_by_participant_succeeds_team(mock_repo):
+    """Team tournament, user has team -> Ok(ScoreSubmission)."""
+    team_id = TournamentTeamID(generate_uuid())
+    tournament = _create_tournament(contestant_type=ContestantType.TEAM)
+    participant = _create_participant(team_id=team_id)
+    mock_repo.find_participant_by_user.return_value = participant
+    mock_repo.get_tournament.return_value = tournament
+
+    result = tournament_score_service.submit_score_by_participant(
+        TOURNAMENT_ID, INITIATOR_ID, 99,
+    )
+
+    assert result.is_ok()
+    submission = result.unwrap()
+    assert submission.score == 99
+    assert submission.team_id == team_id
+    assert submission.participant_id is None
+    assert submission.submitted_by == INITIATOR_ID
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_score_service'
+    '.tournament_repository'
+)
+def test_submit_score_by_participant_fails_not_participant(mock_repo):
+    """User has no participant record -> Err('not registered')."""
+    mock_repo.find_participant_by_user.return_value = None
+
+    result = tournament_score_service.submit_score_by_participant(
+        TOURNAMENT_ID, INITIATOR_ID, 10,
+    )
+
+    assert result.is_err()
+    assert 'not registered' in result.unwrap_err().lower()
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_score_service'
+    '.tournament_repository'
+)
+def test_submit_score_by_participant_fails_team_mode_no_team(mock_repo):
+    """Team tournament, user not in a team (team_id is None) -> Err."""
+    tournament = _create_tournament(contestant_type=ContestantType.TEAM)
+    participant = _create_participant(team_id=None)
+    mock_repo.find_participant_by_user.return_value = participant
+    mock_repo.get_tournament.return_value = tournament
+
+    result = tournament_score_service.submit_score_by_participant(
+        TOURNAMENT_ID, INITIATOR_ID, 10,
+    )
+
+    assert result.is_err()
+    assert 'must be in a team' in result.unwrap_err().lower()

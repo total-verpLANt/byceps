@@ -49,7 +49,7 @@ from byceps.services.lan_tournament.models.tournament_status import (
 from byceps.services.lan_tournament import tournament_match_service
 from byceps.services.party.models import PartyID
 from byceps.services.user.models.user import UserID
-from byceps.util.result import Ok
+from byceps.util.result import Err, Ok
 
 from tests.helpers import generate_uuid
 
@@ -2983,7 +2983,978 @@ def test_propagate_dead_lb_all_dead(mock_repo):
 
 
 # -------------------------------------------------------------------- #
-# helpers
+# clear_bracket
+# -------------------------------------------------------------------- #
+
+
+@patch(
+    'byceps.services.lan_tournament'
+    '.tournament_match_service.delete_match'
+)
+@patch(
+    'byceps.services.lan_tournament'
+    '.tournament_match_service.tournament_repository'
+)
+def test_clear_bracket_deletes_all_matches(mock_repo, mock_delete):
+    """3 matches deleted, commit called."""
+    match_ids = [TournamentMatchID(generate_uuid()) for _ in range(3)]
+    matches = [_create_match(match_id=mid) for mid in match_ids]
+    mock_repo.get_matches_for_tournament.return_value = matches
+
+    tournament_match_service.clear_bracket(TOURNAMENT_ID)
+
+    assert mock_delete.call_count == 3
+    mock_delete.assert_any_call(match_ids[0])
+    mock_delete.assert_any_call(match_ids[1])
+    mock_delete.assert_any_call(match_ids[2])
+    mock_repo.commit_session.assert_called_once()
+
+
+@patch(
+    'byceps.services.lan_tournament'
+    '.tournament_match_service.delete_match'
+)
+@patch(
+    'byceps.services.lan_tournament'
+    '.tournament_match_service.tournament_repository'
+)
+def test_clear_bracket_empty_tournament(mock_repo, mock_delete):
+    """No matches, commit still called."""
+    mock_repo.get_matches_for_tournament.return_value = []
+
+    tournament_match_service.clear_bracket(TOURNAMENT_ID)
+
+    mock_delete.assert_not_called()
+    mock_repo.commit_session.assert_called_once()
+
+
+@patch(
+    'byceps.services.lan_tournament'
+    '.tournament_match_service.delete_match'
+)
+@patch(
+    'byceps.services.lan_tournament'
+    '.tournament_match_service.tournament_repository'
+)
+def test_clear_bracket_returns_ok(mock_repo, mock_delete):
+    """Result is Ok(None)."""
+    mock_repo.get_matches_for_tournament.return_value = []
+
+    result = tournament_match_service.clear_bracket(TOURNAMENT_ID)
+
+    assert result == Ok(None)
+
+
+# -------------------------------------------------------------------- #
+# find_contestant_for_user
+# -------------------------------------------------------------------- #
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_find_contestant_for_user_solo_mode(mock_repo):
+    """participant_id match resolves correctly in SOLO mode."""
+    match = _create_match()
+    participant_id = TournamentParticipantID(generate_uuid())
+    participant = Mock()
+    participant.id = participant_id
+    participant.team_id = None
+
+    contestant = _create_match_contestant(
+        participant_id=participant_id, score=None
+    )
+
+    mock_repo.get_match.return_value = match
+    mock_repo.find_participant_by_user.return_value = participant
+    mock_repo.get_contestants_for_match.return_value = [contestant]
+
+    result = tournament_match_service.find_contestant_for_user(
+        MATCH_ID, USER_ID
+    )
+
+    assert result is not None
+    assert result.id == contestant.id
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_find_contestant_for_user_team_mode(mock_repo):
+    """team_id match resolves correctly in TEAM mode."""
+    match = _create_match()
+    participant_id = TournamentParticipantID(generate_uuid())
+    team_id = TournamentTeamID(generate_uuid())
+    participant = Mock()
+    participant.id = participant_id
+    participant.team_id = team_id
+
+    contestant = _create_match_contestant(team_id=team_id, score=None)
+
+    mock_repo.get_match.return_value = match
+    mock_repo.find_participant_by_user.return_value = participant
+    mock_repo.get_contestants_for_match.return_value = [contestant]
+
+    result = tournament_match_service.find_contestant_for_user(
+        MATCH_ID, USER_ID
+    )
+
+    assert result is not None
+    assert result.id == contestant.id
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_find_contestant_for_user_returns_none_when_not_participant(
+    mock_repo,
+):
+    """User not in tournament returns None."""
+    match = _create_match()
+
+    mock_repo.get_match.return_value = match
+    mock_repo.find_participant_by_user.return_value = None
+
+    result = tournament_match_service.find_contestant_for_user(
+        MATCH_ID, USER_ID
+    )
+
+    assert result is None
+
+
+# -------------------------------------------------------------------- #
+# _resolve_initiator_contestant
+# -------------------------------------------------------------------- #
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_resolve_initiator_contestant_solo_match(mock_repo):
+    """participant_id match returns contestant in SOLO mode."""
+    participant_id = TournamentParticipantID(generate_uuid())
+    participant = Mock()
+    participant.id = participant_id
+    participant.team_id = None
+
+    contestant = _create_match_contestant(
+        participant_id=participant_id, score=None
+    )
+
+    mock_repo.find_participant_by_user.return_value = participant
+
+    result = tournament_match_service._resolve_initiator_contestant(
+        TOURNAMENT_ID, USER_ID, [contestant]
+    )
+
+    assert result is not None
+    assert result.id == contestant.id
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_resolve_initiator_contestant_team_match(mock_repo):
+    """team_id match returns contestant in TEAM mode."""
+    participant_id = TournamentParticipantID(generate_uuid())
+    team_id = TournamentTeamID(generate_uuid())
+    participant = Mock()
+    participant.id = participant_id
+    participant.team_id = team_id
+
+    contestant = _create_match_contestant(team_id=team_id, score=None)
+
+    mock_repo.find_participant_by_user.return_value = participant
+
+    result = tournament_match_service._resolve_initiator_contestant(
+        TOURNAMENT_ID, USER_ID, [contestant]
+    )
+
+    assert result is not None
+    assert result.id == contestant.id
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_resolve_initiator_contestant_not_found(mock_repo):
+    """Returns None when user is not a tournament participant."""
+    mock_repo.find_participant_by_user.return_value = None
+
+    contestant = _create_match_contestant(
+        participant_id=TournamentParticipantID(generate_uuid()),
+        score=None,
+    )
+
+    result = tournament_match_service._resolve_initiator_contestant(
+        TOURNAMENT_ID, USER_ID, [contestant]
+    )
+
+    assert result is None
+
+
+# -------------------------------------------------------------------- #
+# set_score_by_participant
+# -------------------------------------------------------------------- #
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_set_score_by_participant_succeeds_when_caller_is_in_match(
+    mock_repo,
+):
+    """Caller is participant, match unconfirmed -> Ok(None)."""
+    match = _create_match(confirmed_by=None)
+    participant_id = TournamentParticipantID(generate_uuid())
+    participant = Mock()
+    participant.id = participant_id
+    participant.team_id = None
+
+    contestant = _create_match_contestant(
+        participant_id=participant_id, score=None
+    )
+    target_contestant = _create_match_contestant(
+        participant_id=TournamentParticipantID(generate_uuid()),
+        score=None,
+    )
+
+    # get_match called twice: once in set_score_by_participant,
+    # once in find_contestant_for_user
+    mock_repo.get_match.return_value = match
+    mock_repo.find_participant_by_user.return_value = participant
+    mock_repo.get_contestants_for_match.return_value = [contestant]
+    mock_repo.find_contestant_for_match.return_value = target_contestant
+
+    result = tournament_match_service.set_score_by_participant(
+        MATCH_ID, USER_ID, target_contestant.participant_id, 10
+    )
+
+    assert result.is_ok()
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_set_score_by_participant_fails_when_caller_not_in_match(
+    mock_repo,
+):
+    """find returns None -> Err("not a participant")."""
+    match = _create_match(confirmed_by=None)
+
+    mock_repo.get_match.return_value = match
+    mock_repo.get_contestants_for_match.return_value = []
+    mock_repo.find_participant_by_user.return_value = None
+
+    contestant_id = TournamentParticipantID(generate_uuid())
+    result = tournament_match_service.set_score_by_participant(
+        MATCH_ID, USER_ID, contestant_id, 10
+    )
+
+    assert result.is_err()
+    assert 'not a participant' in result.unwrap_err().lower()
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_set_score_by_participant_fails_when_match_confirmed(
+    mock_repo,
+):
+    """confirmed_by is set -> Err("Cannot modify scores")."""
+    confirmed_by = UserID(generate_uuid())
+    match = _create_match(confirmed_by=confirmed_by)
+
+    mock_repo.get_match.return_value = match
+
+    contestant_id = TournamentParticipantID(generate_uuid())
+    result = tournament_match_service.set_score_by_participant(
+        MATCH_ID, USER_ID, contestant_id, 10
+    )
+
+    assert result.is_err()
+    assert 'cannot modify scores' in result.unwrap_err().lower()
+
+
+# -------------------------------------------------------------------- #
+# set_match_scores
+# -------------------------------------------------------------------- #
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.confirm_match'
+)
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_set_match_scores_succeeds_when_caller_is_loser(
+    mock_repo, mock_confirm_match,
+):
+    """Initiator maps to lower-score contestant -> Ok(None), auto-confirmed."""
+    match = _create_match(confirmed_by=None)
+    winner_pid = TournamentParticipantID(generate_uuid())
+    loser_pid = TournamentParticipantID(generate_uuid())
+
+    winner_contestant = _create_match_contestant(
+        participant_id=winner_pid, score=None
+    )
+    loser_contestant = _create_match_contestant(
+        participant_id=loser_pid, score=None
+    )
+    contestants = [winner_contestant, loser_contestant]
+
+    # The initiator is mapped to the loser contestant.
+    participant = Mock()
+    participant.id = loser_pid
+    participant.team_id = None
+
+    mock_repo.get_match_for_update.return_value = match
+    mock_repo.find_participant_by_user.return_value = participant
+    mock_repo.get_contestants_for_match.return_value = contestants
+    mock_confirm_match.return_value = Ok(None)
+
+    scores = {winner_pid: 10, loser_pid: 5}
+    result = tournament_match_service.set_match_scores(
+        MATCH_ID, USER_ID, scores
+    )
+
+    assert result.is_ok()
+    mock_repo.update_contestant_scores.assert_called_once()
+    mock_confirm_match.assert_called_once_with(MATCH_ID, USER_ID)
+    # commit_session is NOT called directly — confirm_match handles it.
+    mock_repo.commit_session.assert_not_called()
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_set_match_scores_rejects_when_caller_is_winner(mock_repo):
+    """Initiator maps to higher-score contestant -> Err."""
+    match = _create_match(confirmed_by=None)
+    winner_pid = TournamentParticipantID(generate_uuid())
+    loser_pid = TournamentParticipantID(generate_uuid())
+
+    winner_contestant = _create_match_contestant(
+        participant_id=winner_pid, score=None
+    )
+    loser_contestant = _create_match_contestant(
+        participant_id=loser_pid, score=None
+    )
+    contestants = [winner_contestant, loser_contestant]
+
+    # The initiator is mapped to the WINNER contestant.
+    participant = Mock()
+    participant.id = winner_pid
+    participant.team_id = None
+
+    mock_repo.get_match_for_update.return_value = match
+    mock_repo.find_participant_by_user.return_value = participant
+    mock_repo.get_contestants_for_match.return_value = contestants
+
+    scores = {winner_pid: 10, loser_pid: 5}
+    result = tournament_match_service.set_match_scores(
+        MATCH_ID, USER_ID, scores
+    )
+
+    assert result.is_err()
+    assert 'only the losing side' in result.unwrap_err().lower()
+    mock_repo.update_contestant_scores.assert_not_called()
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.confirm_match'
+)
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_set_match_scores_succeeds_draw_any_participant(
+    mock_repo, mock_confirm_match,
+):
+    """Equal scores (draw) -> Ok(None) from either participant, auto-confirmed."""
+    match = _create_match(confirmed_by=None)
+    pid_a = TournamentParticipantID(generate_uuid())
+    pid_b = TournamentParticipantID(generate_uuid())
+
+    contestant_a = _create_match_contestant(
+        participant_id=pid_a, score=None
+    )
+    contestant_b = _create_match_contestant(
+        participant_id=pid_b, score=None
+    )
+    contestants = [contestant_a, contestant_b]
+
+    participant = Mock()
+    participant.id = pid_a
+    participant.team_id = None
+
+    mock_repo.get_match_for_update.return_value = match
+    mock_repo.find_participant_by_user.return_value = participant
+    mock_repo.get_contestants_for_match.return_value = contestants
+    mock_confirm_match.return_value = Ok(None)
+
+    scores = {pid_a: 5, pid_b: 5}
+    result = tournament_match_service.set_match_scores(
+        MATCH_ID, USER_ID, scores
+    )
+
+    assert result.is_ok()
+    mock_repo.update_contestant_scores.assert_called_once()
+    mock_confirm_match.assert_called_once_with(MATCH_ID, USER_ID)
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_set_match_scores_fails_match_confirmed(mock_repo):
+    """confirmed_by is set -> Err."""
+    confirmed_by = UserID(generate_uuid())
+    match = _create_match(confirmed_by=confirmed_by)
+
+    mock_repo.get_match_for_update.return_value = match
+
+    scores = {TournamentParticipantID(generate_uuid()): 10}
+    result = tournament_match_service.set_match_scores(
+        MATCH_ID, USER_ID, scores
+    )
+
+    assert result.is_err()
+    assert 'cannot modify scores' in result.unwrap_err().lower()
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_set_match_scores_fails_caller_not_participant(mock_repo):
+    """User not in match -> Err."""
+    match = _create_match(confirmed_by=None)
+
+    mock_repo.get_match_for_update.return_value = match
+    mock_repo.get_contestants_for_match.return_value = []
+    mock_repo.find_participant_by_user.return_value = None
+
+    scores = {TournamentParticipantID(generate_uuid()): 10}
+    result = tournament_match_service.set_match_scores(
+        MATCH_ID, USER_ID, scores
+    )
+
+    assert result.is_err()
+    assert 'not a participant' in result.unwrap_err().lower()
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_set_match_scores_fails_negative_score(mock_repo):
+    """Negative score -> Err."""
+    match = _create_match(confirmed_by=None)
+    pid_a = TournamentParticipantID(generate_uuid())
+    pid_b = TournamentParticipantID(generate_uuid())
+
+    contestant_a = _create_match_contestant(
+        participant_id=pid_a, score=None
+    )
+    contestant_b = _create_match_contestant(
+        participant_id=pid_b, score=None
+    )
+    contestants = [contestant_a, contestant_b]
+
+    participant = Mock()
+    participant.id = pid_a
+    participant.team_id = None
+
+    mock_repo.get_match_for_update.return_value = match
+    mock_repo.find_participant_by_user.return_value = participant
+    mock_repo.get_contestants_for_match.return_value = contestants
+
+    scores = {pid_a: -1, pid_b: 5}
+    result = tournament_match_service.set_match_scores(
+        MATCH_ID, USER_ID, scores
+    )
+
+    assert result.is_err()
+    assert 'negative' in result.unwrap_err().lower()
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_set_match_scores_fails_missing_contestant(mock_repo):
+    """Score dict missing a contestant -> Err."""
+    match = _create_match(confirmed_by=None)
+    pid_a = TournamentParticipantID(generate_uuid())
+    pid_b = TournamentParticipantID(generate_uuid())
+
+    contestant_a = _create_match_contestant(
+        participant_id=pid_a, score=None
+    )
+    contestant_b = _create_match_contestant(
+        participant_id=pid_b, score=None
+    )
+    contestants = [contestant_a, contestant_b]
+
+    participant = Mock()
+    participant.id = pid_a
+    participant.team_id = None
+
+    mock_repo.get_match_for_update.return_value = match
+    mock_repo.find_participant_by_user.return_value = participant
+    mock_repo.get_contestants_for_match.return_value = contestants
+
+    # Only one score submitted for a 2-contestant match.
+    scores = {pid_a: 5}
+    result = tournament_match_service.set_match_scores(
+        MATCH_ID, USER_ID, scores
+    )
+
+    assert result.is_err()
+    assert 'all contestants' in result.unwrap_err().lower()
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_set_match_scores_fails_unknown_contestant_id(mock_repo):
+    """Score dict has ID not matching any contestant -> Err."""
+    match = _create_match(confirmed_by=None)
+    pid_a = TournamentParticipantID(generate_uuid())
+    pid_b = TournamentParticipantID(generate_uuid())
+    unknown_pid = TournamentParticipantID(generate_uuid())
+
+    contestant_a = _create_match_contestant(
+        participant_id=pid_a, score=None
+    )
+    contestant_b = _create_match_contestant(
+        participant_id=pid_b, score=None
+    )
+    contestants = [contestant_a, contestant_b]
+
+    participant = Mock()
+    participant.id = pid_a
+    participant.team_id = None
+
+    mock_repo.get_match_for_update.return_value = match
+    mock_repo.find_participant_by_user.return_value = participant
+    mock_repo.get_contestants_for_match.return_value = contestants
+
+    # Correct count but one ID is wrong.
+    scores = {pid_a: 5, unknown_pid: 10}
+    result = tournament_match_service.set_match_scores(
+        MATCH_ID, USER_ID, scores
+    )
+
+    assert result.is_err()
+    assert 'missing score' in result.unwrap_err().lower()
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.confirm_match'
+)
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_set_match_scores_atomic_commit(mock_repo, mock_confirm_match):
+    """Verify single batch update + auto-confirm (no direct commit)."""
+    match = _create_match(confirmed_by=None)
+    pid_a = TournamentParticipantID(generate_uuid())
+    pid_b = TournamentParticipantID(generate_uuid())
+
+    contestant_a = _create_match_contestant(
+        participant_id=pid_a, score=None
+    )
+    contestant_b = _create_match_contestant(
+        participant_id=pid_b, score=None
+    )
+    contestants = [contestant_a, contestant_b]
+
+    participant = Mock()
+    participant.id = pid_b  # loser
+    participant.team_id = None
+
+    mock_repo.get_match_for_update.return_value = match
+    mock_repo.find_participant_by_user.return_value = participant
+    mock_repo.get_contestants_for_match.return_value = contestants
+    mock_confirm_match.return_value = Ok(None)
+
+    scores = {pid_a: 10, pid_b: 3}
+    result = tournament_match_service.set_match_scores(
+        MATCH_ID, USER_ID, scores
+    )
+
+    assert result.is_ok()
+    # Batch update called exactly once (not N times).
+    mock_repo.update_contestant_scores.assert_called_once()
+    # confirm_match handles the commit — no direct commit_session call.
+    mock_repo.commit_session.assert_not_called()
+    mock_confirm_match.assert_called_once_with(MATCH_ID, USER_ID)
+    # Individual update_contestant_score should NOT be called.
+    mock_repo.update_contestant_score.assert_not_called()
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.confirm_match'
+)
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_set_match_scores_team_mode(mock_repo, mock_confirm_match):
+    """Team-based match, initiator on losing team -> Ok(None), auto-confirmed."""
+    match = _create_match(confirmed_by=None)
+    team_a = TournamentTeamID(generate_uuid())
+    team_b = TournamentTeamID(generate_uuid())
+
+    contestant_a = _create_match_contestant(team_id=team_a, score=None)
+    contestant_b = _create_match_contestant(team_id=team_b, score=None)
+    contestants = [contestant_a, contestant_b]
+
+    # Initiator is on losing team_b.
+    participant = Mock()
+    participant.id = TournamentParticipantID(generate_uuid())
+    participant.team_id = team_b
+
+    mock_repo.get_match_for_update.return_value = match
+    mock_repo.find_participant_by_user.return_value = participant
+    mock_repo.get_contestants_for_match.return_value = contestants
+    mock_confirm_match.return_value = Ok(None)
+
+    scores = {team_a: 10, team_b: 3}
+    result = tournament_match_service.set_match_scores(
+        MATCH_ID, USER_ID, scores
+    )
+
+    assert result.is_ok()
+    mock_repo.update_contestant_scores.assert_called_once()
+    mock_confirm_match.assert_called_once_with(MATCH_ID, USER_ID)
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.confirm_match'
+)
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_set_match_scores_auto_confirm_fails_saves_scores(
+    mock_repo, mock_confirm_match,
+):
+    """Auto-confirm fails (e.g. draw in SE) -> Err, but scores are committed."""
+    match = _create_match(confirmed_by=None)
+    pid_a = TournamentParticipantID(generate_uuid())
+    pid_b = TournamentParticipantID(generate_uuid())
+
+    contestant_a = _create_match_contestant(
+        participant_id=pid_a, score=None
+    )
+    contestant_b = _create_match_contestant(
+        participant_id=pid_b, score=None
+    )
+    contestants = [contestant_a, contestant_b]
+
+    participant = Mock()
+    participant.id = pid_a
+    participant.team_id = None
+
+    mock_repo.get_match_for_update.return_value = match
+    mock_repo.find_participant_by_user.return_value = participant
+    mock_repo.get_contestants_for_match.return_value = contestants
+    mock_confirm_match.return_value = Err(
+        'Match is a draw; a winner is required in this tournament mode.'
+    )
+
+    # Draw scores — any participant may submit.
+    scores = {pid_a: 5, pid_b: 5}
+    result = tournament_match_service.set_match_scores(
+        MATCH_ID, USER_ID, scores
+    )
+
+    assert result.is_err()
+    assert 'scores saved but match not confirmed' in result.unwrap_err().lower()
+    # Scores were flushed and committed so user can adjust them.
+    mock_repo.update_contestant_scores.assert_called_once()
+    mock_repo.commit_session.assert_called_once()
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_set_match_scores_fails_score_too_large(mock_repo):
+    """Score exceeding MAX_MATCH_SCORE -> Err."""
+    match = _create_match(confirmed_by=None)
+    pid_a = TournamentParticipantID(generate_uuid())
+    pid_b = TournamentParticipantID(generate_uuid())
+
+    contestant_a = _create_match_contestant(
+        participant_id=pid_a, score=None
+    )
+    contestant_b = _create_match_contestant(
+        participant_id=pid_b, score=None
+    )
+    contestants = [contestant_a, contestant_b]
+
+    participant = Mock()
+    participant.id = pid_b
+    participant.team_id = None
+
+    mock_repo.get_match_for_update.return_value = match
+    mock_repo.find_participant_by_user.return_value = participant
+    mock_repo.get_contestants_for_match.return_value = contestants
+
+    scores = {pid_a: 10_000_000_000, pid_b: 5}
+    result = tournament_match_service.set_match_scores(
+        MATCH_ID, USER_ID, scores
+    )
+
+    assert result.is_err()
+    assert 'exceed' in result.unwrap_err().lower()
+    mock_repo.update_contestant_scores.assert_not_called()
+
+
+# -------------------------------------------------------------------- #
+# set_match_scores — DEFWIN slot filtering
+# -------------------------------------------------------------------- #
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.confirm_match'
+)
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_set_match_scores_ignores_defwin_contestant(mock_repo, mock_confirm_match):
+    """DEFWIN slot (null participant_id and team_id) is excluded from count
+    check and key resolution — only real contestants require scores."""
+    match = _create_match(confirmed_by=None)
+    pid_a = TournamentParticipantID(generate_uuid())
+    pid_b = TournamentParticipantID(generate_uuid())
+
+    contestant_a = _create_match_contestant(participant_id=pid_a, score=None)
+    contestant_b = _create_match_contestant(participant_id=pid_b, score=None)
+    # DEFWIN slot: both IDs are None.
+    defwin_contestant = _create_match_contestant(
+        participant_id=None, team_id=None, score=None
+    )
+
+    participant = Mock()
+    participant.id = pid_a  # initiator is pid_a (lower score → loser)
+    participant.team_id = None
+
+    mock_repo.get_match_for_update.return_value = match
+    mock_repo.find_participant_by_user.return_value = participant
+    mock_repo.get_contestants_for_match.return_value = [
+        contestant_a, contestant_b, defwin_contestant
+    ]
+    mock_confirm_match.return_value = Ok(None)
+
+    # Only submit scores for the two real contestants (not the DEFWIN slot).
+    scores = {pid_a: 5, pid_b: 10}
+    result = tournament_match_service.set_match_scores(
+        MATCH_ID, USER_ID, scores
+    )
+
+    assert result.is_ok(), (
+        f'Expected Ok but got Err: {result.unwrap_err()!r}'
+    )
+    mock_repo.update_contestant_scores.assert_called_once()
+    mock_confirm_match.assert_called_once_with(MATCH_ID, USER_ID)
+
+
+# -------------------------------------------------------------------- #
+# get_user_match_role
+# -------------------------------------------------------------------- #
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_get_user_match_role_not_authenticated(mock_repo):
+    """When match is confirmed, returns empty role regardless of user."""
+    contestant_a = _create_match_contestant(
+        participant_id=TournamentParticipantID(generate_uuid()), score=10
+    )
+    contestant_b = _create_match_contestant(
+        participant_id=TournamentParticipantID(generate_uuid()), score=5
+    )
+    contestants = [contestant_a, contestant_b]
+
+    role = tournament_match_service.get_user_match_role(
+        TOURNAMENT_ID, USER_ID, contestants, match_confirmed=True,
+    )
+
+    assert role.contestant is None
+    assert role.is_loser is False
+    assert role.can_confirm is False
+    assert role.can_submit is False
+    # Should never call repository when match is confirmed.
+    mock_repo.find_participant_by_user.assert_not_called()
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_get_user_match_role_user_is_loser(mock_repo):
+    """Decisive match — user has the lower score, is_loser=True, can_confirm=True."""
+    participant_id_a = TournamentParticipantID(generate_uuid())
+    participant_id_b = TournamentParticipantID(generate_uuid())
+    contestant_a = _create_match_contestant(
+        participant_id=participant_id_a, score=10
+    )
+    contestant_b = _create_match_contestant(
+        participant_id=participant_id_b, score=5
+    )
+    contestants = [contestant_a, contestant_b]
+
+    participant = Mock()
+    participant.id = participant_id_b
+    participant.team_id = None
+    mock_repo.find_participant_by_user.return_value = participant
+
+    role = tournament_match_service.get_user_match_role(
+        TOURNAMENT_ID, USER_ID, contestants, match_confirmed=False,
+    )
+
+    assert role.contestant == contestant_b
+    assert role.is_loser is True
+    assert role.can_confirm is True
+    assert role.can_submit is True
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_get_user_match_role_user_is_winner(mock_repo):
+    """Decisive match — user has the higher score, is_loser=False, can_confirm=False."""
+    participant_id_a = TournamentParticipantID(generate_uuid())
+    participant_id_b = TournamentParticipantID(generate_uuid())
+    contestant_a = _create_match_contestant(
+        participant_id=participant_id_a, score=10
+    )
+    contestant_b = _create_match_contestant(
+        participant_id=participant_id_b, score=5
+    )
+    contestants = [contestant_a, contestant_b]
+
+    participant = Mock()
+    participant.id = participant_id_a
+    participant.team_id = None
+    mock_repo.find_participant_by_user.return_value = participant
+
+    role = tournament_match_service.get_user_match_role(
+        TOURNAMENT_ID, USER_ID, contestants, match_confirmed=False,
+    )
+
+    assert role.contestant == contestant_a
+    assert role.is_loser is False
+    assert role.can_confirm is False
+    assert role.can_submit is False
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_get_user_match_role_draw(mock_repo):
+    """Draw — both contestants same score, can_confirm=True for either."""
+    participant_id_a = TournamentParticipantID(generate_uuid())
+    participant_id_b = TournamentParticipantID(generate_uuid())
+    contestant_a = _create_match_contestant(
+        participant_id=participant_id_a, score=7
+    )
+    contestant_b = _create_match_contestant(
+        participant_id=participant_id_b, score=7
+    )
+    contestants = [contestant_a, contestant_b]
+
+    participant = Mock()
+    participant.id = participant_id_a
+    participant.team_id = None
+    mock_repo.find_participant_by_user.return_value = participant
+
+    role = tournament_match_service.get_user_match_role(
+        TOURNAMENT_ID, USER_ID, contestants, match_confirmed=False,
+    )
+
+    assert role.contestant == contestant_a
+    assert role.is_loser is False
+    assert role.can_confirm is True
+    assert role.can_submit is True
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_get_user_match_role_scores_missing(mock_repo):
+    """Not all scores set — can_confirm=False."""
+    participant_id_a = TournamentParticipantID(generate_uuid())
+    participant_id_b = TournamentParticipantID(generate_uuid())
+    contestant_a = _create_match_contestant(
+        participant_id=participant_id_a, score=10
+    )
+    contestant_b = _create_match_contestant(
+        participant_id=participant_id_b, score=None
+    )
+    contestants = [contestant_a, contestant_b]
+
+    participant = Mock()
+    participant.id = participant_id_a
+    participant.team_id = None
+    mock_repo.find_participant_by_user.return_value = participant
+
+    role = tournament_match_service.get_user_match_role(
+        TOURNAMENT_ID, USER_ID, contestants, match_confirmed=False,
+    )
+
+    assert role.contestant == contestant_a
+    assert role.is_loser is False
+    assert role.can_confirm is False
+    assert role.can_submit is True
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_get_user_match_role_defwin_single_contestant(mock_repo):
+    """DEFWIN: 1 real contestant. User IS that contestant. can_submit=False."""
+    participant_id_a = TournamentParticipantID(generate_uuid())
+    contestant_a = _create_match_contestant(
+        participant_id=participant_id_a, score=None
+    )
+    contestants = [contestant_a]
+
+    participant = Mock()
+    participant.id = participant_id_a
+    participant.team_id = None
+    mock_repo.find_participant_by_user.return_value = participant
+
+    role = tournament_match_service.get_user_match_role(
+        TOURNAMENT_ID, USER_ID, contestants, match_confirmed=False,
+    )
+
+    assert role.contestant is not None
+    assert role.can_submit is False
+    assert role.is_loser is False
+    assert role.can_confirm is False
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_get_user_match_role_defwin_user_not_in_match(mock_repo):
+    """DEFWIN: 1 real contestant. User is NOT that contestant. contestant=None."""
+    participant_id_a = TournamentParticipantID(generate_uuid())
+    contestant_a = _create_match_contestant(
+        participant_id=participant_id_a, score=None
+    )
+    contestants = [contestant_a]
+
+    mock_repo.find_participant_by_user.return_value = None
+
+    role = tournament_match_service.get_user_match_role(
+        TOURNAMENT_ID, USER_ID, contestants, match_confirmed=False,
+    )
+
+    assert role.contestant is None
+    assert role.can_submit is False
+
+
+# -------------------------------------------------------------------- #
+# Helpers
 # -------------------------------------------------------------------- #
 
 

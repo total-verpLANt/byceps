@@ -1152,6 +1152,23 @@ def update_contestant_score(
     db.session.commit()
 
 
+def update_contestant_scores(
+    scores: dict[TournamentMatchToContestantID, int],
+) -> None:
+    """Update multiple contestant scores in a single flush.
+
+    Caller is responsible for committing the session.
+    """
+    for contestant_id, score in scores.items():
+        db_contestant = db.session.get(
+            DbTournamentMatchToContestant, contestant_id
+        )
+        if db_contestant is None:
+            raise ValueError(f'Unknown contestant ID "{contestant_id}"')
+        db_contestant.score = score
+    db.session.flush()
+
+
 def get_contestants_for_match(
     match_id: TournamentMatchID,
 ) -> list[TournamentMatchToContestant]:
