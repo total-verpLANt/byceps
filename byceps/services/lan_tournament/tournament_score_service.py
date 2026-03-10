@@ -14,6 +14,9 @@ from byceps.services.lan_tournament.models.score_submission import (
 from byceps.services.lan_tournament.models.tournament import (
     TournamentID,
 )
+from byceps.services.lan_tournament.models.contestant_type import (
+    ContestantType,
+)
 from byceps.services.lan_tournament.models.tournament_mode import (
     TournamentMode,
 )
@@ -70,6 +73,46 @@ def submit_score(
     tournament_repository.create_score_submission(submission)
 
     return Ok(submission)
+
+
+def submit_score_by_participant(
+    tournament_id: TournamentID,
+    initiator_id: UserID,
+    score: int,
+    note: str | None = None,
+) -> Result[ScoreSubmission, str]:
+    """Submit a score for the calling user in a highscore tournament.
+
+    Resolves the user's participant/team identity automatically.
+    Only valid for HIGHSCORE mode tournaments.
+    """
+    participant = tournament_repository.find_participant_by_user(
+        tournament_id, initiator_id
+    )
+    if participant is None:
+        return Err(
+            'You are not registered as a participant in this tournament.'
+        )
+
+    tournament = tournament_repository.get_tournament(tournament_id)
+
+    participant_id = None
+    team_id = None
+    if tournament.contestant_type == ContestantType.TEAM:
+        if participant.team_id is None:
+            return Err('You must be in a team to submit a score.')
+        team_id = participant.team_id
+    else:
+        participant_id = participant.id
+
+    return submit_score(
+        tournament_id,
+        score,
+        participant_id=participant_id,
+        team_id=team_id,
+        submitted_by=initiator_id,
+        note=note,
+    )
 
 
 def get_leaderboard(

@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime
 from flask import abort, g, request
 from flask_babel import gettext
@@ -587,6 +588,19 @@ def view_match(match_id):
     comment_user_ids = {c.created_by for c in comments}
     comment_users_by_id = user_service.get_users_indexed_by_id(comment_user_ids)
 
+    # Participant / loser detection for score submission & confirmation.
+    if g.user.authenticated:
+        role = tournament_match_service.get_user_match_role(
+            match.tournament_id, g.user.id, contestants,
+            match_confirmed=match.confirmed_by is not None,
+        )
+    else:
+        role = tournament_match_service.MatchUserRole(None, False, False, False)
+    current_user_contestant = role.contestant
+    current_user_is_loser = role.is_loser
+    current_user_can_confirm = role.can_confirm
+    current_user_can_submit = role.can_submit
+
     return {
         'tournament': tournament,
         'match': match,
@@ -597,7 +611,59 @@ def view_match(match_id):
         'seats_by_user_id': seats_by_user_id,
         'team_members_by_team_id': team_members_by_team_id,
         'comment_users_by_id': comment_users_by_id,
+        'current_user_contestant': current_user_contestant,
+        'current_user_is_loser': current_user_is_loser,
+        'current_user_can_confirm': current_user_can_confirm,
+        'current_user_can_submit': current_user_can_submit,
     }
+
+
+@blueprint.post('/matches/<match_id>/set_score')
+@login_required
+def set_score(match_id):
+    """Set scores for a match (proposed loser only)."""
+    from byceps.services.lan_tournament.models.tournament_match import (
+        TournamentMatchID,
+    )
+
+    match_id_obj = TournamentMatchID(match_id)
+
+    # Enforce status guard — same pattern as join/create_team/join_team.
+    match = tournament_match_service.get_match(match_id_obj)
+    tournament = _get_tournament_or_404(match.tournament_id)
+    if tournament.tournament_status != TournamentStatus.IN_PROGRESS:
+        flash_error(gettext('Tournament is not in progress.'))
+        return redirect_to('.view_match', match_id=match_id)
+
+    contestant_ids = request.form.getlist('contestant_id')
+    scores_raw = request.form.getlist('score')
+    if not contestant_ids or len(contestant_ids) != len(scores_raw):
+        flash_error(gettext('Invalid form data.'))
+        return redirect_to('.view_match', match_id=match_id)
+
+    try:
+        scores = {
+            uuid.UUID(cid): int(s)
+            for cid, s in zip(contestant_ids, scores_raw)
+        }
+    except (ValueError, AttributeError):
+        flash_error(gettext('Invalid score or contestant ID.'))
+        return redirect_to('.view_match', match_id=match_id)
+
+    # Defense-in-depth: reject obviously invalid scores before hitting the service.
+    for s in scores.values():
+        if s < 0 or s > 999_999_999:
+            flash_error(gettext('Score must be between 0 and 999,999,999.'))
+            return redirect_to('.view_match', match_id=match_id)
+
+    result = tournament_match_service.set_match_scores(
+        match_id_obj, g.user.id, scores
+    )
+    if result.is_err():
+        flash_error(result.unwrap_err())
+    else:
+        flash_success(gettext('Match result submitted.'))
+    return redirect_to('.view_match', match_id=match_id)
 
 
 @blueprint.get('/<tournament_id>/bracket')
@@ -720,3 +786,37 @@ def highscore(tournament_id):
         'teams_by_id': teams_by_id,
         'active_tab': 'highscore',
     }
+
+
+@blueprint.post('/<tournament_id>/highscore/submit')
+@login_required
+def highscore_submit(tournament_id):
+    """Submit the current user's own score to the highscore leaderboard."""
+    tournament = _get_tournament_or_404(tournament_id)
+    if tournament.tournament_mode != TournamentMode.HIGHSCORE:
+        abort(404)
+    if tournament.tournament_status not in (
+        TournamentStatus.REGISTRATION_OPEN,
+        TournamentStatus.IN_PROGRESS,
+    ):
+        flash_error(gettext('Tournament is not accepting score submissions.'))
+        return redirect_to('.highscore', tournament_id=tournament_id)
+    score_raw = request.form.get('score', '')
+    note = request.form.get('note', '').strip() or None
+    try:
+        score = int(score_raw)
+    except ValueError:
+        flash_error(gettext('Invalid score value.'))
+        return redirect_to('.highscore', tournament_id=tournament_id)
+    if score < 0 or score > 999_999_999:
+        flash_error(gettext('Score must be between 0 and 999,999,999.'))
+        return redirect_to('.highscore', tournament_id=tournament_id)
+    result = tournament_score_service.submit_score_by_participant(
+        tournament.id, g.user.id, score, note=note
+    )
+    match result:
+        case Ok(_):
+            flash_success(gettext('Score submitted.'))
+        case Err(error_message):
+            flash_error(error_message)
+    return redirect_to('.highscore', tournament_id=tournament_id)

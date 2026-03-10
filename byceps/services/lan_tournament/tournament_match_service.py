@@ -1,4 +1,6 @@
+from dataclasses import replace
 from datetime import UTC, datetime
+from typing import NamedTuple
 
 from byceps.services.user.models.user import UserID
 from byceps.util.result import Err, Ok, Result
@@ -41,6 +43,16 @@ from .tournament_domain_service import (
     determine_match_winner,
     generate_round_robin_schedule,
 )
+
+
+MAX_MATCH_SCORE = 999_999_999
+
+
+class MatchUserRole(NamedTuple):
+    contestant: TournamentMatchToContestant | None
+    is_loser: bool
+    can_confirm: bool
+    can_submit: bool
 
 
 def set_seed(
@@ -894,6 +906,195 @@ def _determine_loser(
         if contestant.id != winner.id:
             return Ok(contestant)
     return Err('Could not determine loser.')
+
+
+def find_contestant_for_user(
+    match_id: TournamentMatchID,
+    user_id: UserID,
+) -> TournamentMatchToContestant | None:
+    """Return the contestant entry for a user in a match, or None.
+
+    Handles both SOLO (participant_id) and TEAM (team_id) modes.
+    """
+    match = tournament_repository.get_match(match_id)
+    contestants = tournament_repository.get_contestants_for_match(match_id)
+    return _resolve_initiator_contestant(
+        match.tournament_id, user_id, contestants
+    )
+
+
+def _resolve_initiator_contestant(
+    tournament_id: TournamentID,
+    user_id: UserID,
+    contestants: list[TournamentMatchToContestant],
+) -> TournamentMatchToContestant | None:
+    """Match a user to their contestant entry using pre-fetched data."""
+    participant = tournament_repository.find_participant_by_user(
+        tournament_id, user_id
+    )
+    if participant is None:
+        return None
+    for contestant in contestants:
+        if (
+            contestant.participant_id is not None
+            and contestant.participant_id == participant.id
+        ):
+            return contestant
+        if (
+            contestant.team_id is not None
+            and participant.team_id is not None
+            and contestant.team_id == participant.team_id
+        ):
+            return contestant
+    return None
+
+
+def get_user_match_role(
+    tournament_id: TournamentID,
+    user_id: UserID,
+    contestants: list[TournamentMatchToContestant],
+    match_confirmed: bool,
+) -> MatchUserRole:
+    """Determine a user's role in a match for UI display."""
+    if match_confirmed:
+        return MatchUserRole(None, False, False, False)
+
+    contestant = _resolve_initiator_contestant(
+        tournament_id, user_id, contestants
+    )
+    if contestant is None:
+        return MatchUserRole(None, False, False, False)
+
+    # DEFWIN: fewer than 2 real contestants — match needs no score
+    # submission; the bracket generator has already auto-advanced
+    # the sole player.
+    real_contestants = [
+        c for c in contestants
+        if c.participant_id is not None or c.team_id is not None
+    ]
+    if len(real_contestants) < 2:
+        return MatchUserRole(contestant, False, False, False)
+
+    all_have_scores = all(c.score is not None for c in real_contestants)
+    if not all_have_scores:
+        return MatchUserRole(contestant, False, False, True)
+
+    winner_result = determine_match_winner(contestants)
+    if winner_result.is_err():
+        return MatchUserRole(contestant, False, False, False)
+
+    winner = winner_result.unwrap()
+    if winner is None:
+        # Draw — any participant may confirm; both may submit revised
+        # scores until confirmation.
+        return MatchUserRole(contestant, False, True, True)
+    elif winner.id != contestant.id:
+        # This user is the loser.
+        return MatchUserRole(contestant, True, True, True)
+    else:
+        # This user is the winner — no action needed.
+        return MatchUserRole(contestant, False, False, False)
+
+
+def set_score_by_participant(
+    match_id: TournamentMatchID,
+    initiator_id: UserID,
+    contestant_id: TournamentParticipantID | TournamentTeamID,
+    score: int,
+) -> Result[None, str]:
+    """Set a score for a contestant in an unconfirmed match.
+
+    Caller must be a participant in the match.
+    """
+    match = tournament_repository.get_match(match_id)
+    if match.confirmed_by is not None:
+        return Err('Cannot modify scores of a confirmed match.')
+    contestants = tournament_repository.get_contestants_for_match(match_id)
+    if _resolve_initiator_contestant(match.tournament_id, initiator_id, contestants) is None:
+        return Err('You are not a participant in this match.')
+    return set_score(match_id, contestant_id, score)
+
+
+def set_match_scores(
+    match_id: TournamentMatchID,
+    initiator_id: UserID,
+    scores: dict[TournamentParticipantID | TournamentTeamID, int],
+) -> Result[None, str]:
+    """Set all contestant scores for a match atomically.
+
+    Only the proposed loser may submit scores.  If the proposed
+    scores would make the initiator the winner the request is
+    rejected.  Draws are accepted from any participant.
+    """
+    match = tournament_repository.get_match_for_update(match_id)
+    if match.confirmed_by is not None:
+        return Err('Cannot modify scores of a confirmed match.')
+
+    contestants = tournament_repository.get_contestants_for_match(
+        match_id
+    )
+
+    # Exclude DEFWIN slots (no participant or team assigned) — they carry
+    # no score and must not appear in the submitted scores dict.
+    real_contestants = [
+        c for c in contestants
+        if c.participant_id is not None or c.team_id is not None
+    ]
+
+    initiator_contestant = _resolve_initiator_contestant(
+        match.tournament_id, initiator_id, contestants
+    )
+    if initiator_contestant is None:
+        return Err('You are not a participant in this match.')
+
+    # Validate: every real contestant must have an entry in the scores dict.
+    if len(scores) != len(real_contestants):
+        return Err(
+            'All contestants in the match must have scores submitted.'
+        )
+
+    # Resolve each submitted key to a contestant and validate scores.
+    id_to_score: dict[TournamentMatchToContestantID, int] = {}
+    proposed_contestants: list[TournamentMatchToContestant] = []
+    for contestant in real_contestants:
+        # Match by participant_id or team_id.
+        key = contestant.participant_id or contestant.team_id
+        if key not in scores:
+            return Err(
+                f'Missing score for contestant "{key}".'
+            )
+        score = scores[key]
+        if score < 0:
+            return Err('Score cannot be negative.')
+        if score > MAX_MATCH_SCORE:
+            return Err(f'Score cannot exceed {MAX_MATCH_SCORE:,}.')
+        id_to_score[contestant.id] = score
+        proposed_contestants.append(replace(contestant, score=score))
+
+    # Determine proposed winner to enforce loser-only submission.
+    winner_result = determine_match_winner(proposed_contestants)
+    if winner_result.is_err():
+        return Err(winner_result.unwrap_err())
+    winner = winner_result.unwrap()
+
+    if winner is not None and winner.id == initiator_contestant.id:
+        return Err('Only the losing side may submit scores.')
+
+    # Atomic write — all scores flushed together.
+    tournament_repository.update_contestant_scores(id_to_score)
+    # Auto-confirm: loser submitted scores → match is resolved.
+    # confirm_match() will see the flushed scores and commit everything.
+    confirm_result = confirm_match(match_id, initiator_id)
+    if confirm_result.is_err():
+        # Scores were flushed but confirm failed (e.g. draw in SE mode).
+        # Commit scores anyway so the user can adjust, but surface the error.
+        tournament_repository.commit_session()
+        return Err(
+            f'Scores saved but match not confirmed: '
+            f'{confirm_result.unwrap_err()}'
+        )
+    return Ok(None)
+
 
 
 def _validate_match_confirmable(

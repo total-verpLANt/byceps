@@ -139,6 +139,31 @@
       {%- endfor %}
     </div>
 
+    {# Score entry — visible only when user may submit (participant, not confirmed, not winner, not DEFWIN) #}
+    {% if current_user_can_submit %}
+    <div class='score-submission' style='margin-bottom: 2rem;'>
+      <h2>{{ _('Submit Scores') }}</h2>
+      <form method='post' action='{{ url_for('.set_score', match_id=match.id) }}'>
+        {% for contestant in contestants if contestant.participant_id or contestant.team_id %}
+        <div style='margin-bottom: 0.5rem;'>
+          <label>
+            {%- if contestant.team_id -%}
+              {{ teams_by_id.get(contestant.team_id).name|default(contestant.team_id|string) }}
+            {%- elif contestant.participant_id -%}
+              {{ participants_by_id.get(contestant.participant_id).screen_name|default(contestant.participant_id|string) }}
+            {%- else -%}BYE{%- endif -%}
+          </label>
+          <input type='hidden' name='contestant_id'
+                 value='{{ contestant.participant_id or contestant.team_id }}'>
+          <input type='number' name='score' min='0'
+                 value='{{ contestant.score if contestant.score is not none else "" }}' required>
+        </div>
+        {% endfor %}
+        <button type='submit'>{{ _('Save Scores') }}</button>
+      </form>
+    </div>
+    {% endif %}
+
     {# Comments section #}
     <div class='comments-section'>
       <h2>{{ _('Comments') }}</h2>

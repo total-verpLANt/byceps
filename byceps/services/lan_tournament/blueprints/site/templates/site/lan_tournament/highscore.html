@@ -17,4 +17,17 @@
 
   {{ render_highscore_leaderboard(leaderboard, tournament, teams_by_id=teams_by_id, participants_by_id=participants_by_id) }}
 
+  {% if g.user.authenticated %}
+  <div class='score-submit' style='margin-top: 2rem;'>
+    <h2>{{ _('Submit Your Score') }}</h2>
+    <form method='post' action='{{ url_for('.highscore_submit', tournament_id=tournament.id) }}'>
+      <label>{{ _('Score') }}</label>
+      <input type='number' name='score' min='0' max='999999999' required>
+      <label>{{ _('Note (optional)') }}</label>
+      <input type='text' name='note' maxlength='200'>
+      <button type='submit'>{{ _('Submit Score') }}</button>
+    </form>
+  </div>
+  {% endif %}
+
 {%- endblock %}
