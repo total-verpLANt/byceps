@@ -9,6 +9,10 @@ from byceps.services.lan_tournament.models.tournament import (
     Tournament,
     TournamentID,
 )
+from byceps.services.lan_tournament.models.tournament_participant import (
+    TournamentParticipant,
+    TournamentParticipantID,
+)
 from byceps.services.lan_tournament.models.tournament_team import (
     TournamentTeam,
     TournamentTeamID,
@@ -61,6 +65,9 @@ def test_create_team_normalizes_tag(
     mock_domain.validate_team_count.return_value = Ok(None)
     mock_repo.find_active_team_by_name.return_value = None
     mock_repo.find_active_team_by_tag.return_value = None
+    mock_repo.find_participant_by_user.return_value = (
+        _create_participant(user_id=captain_id)
+    )
 
     result = tournament_team_service.create_team(
         TOURNAMENT_ID,
@@ -91,6 +98,9 @@ def test_create_team_empty_tag_skips_duplicate_check(
     mock_repo.get_teams_for_tournament.return_value = []
     mock_domain.validate_team_count.return_value = Ok(None)
     mock_repo.find_active_team_by_name.return_value = None
+    mock_repo.find_participant_by_user.return_value = (
+        _create_participant(user_id=captain_id)
+    )
 
     result = tournament_team_service.create_team(
         TOURNAMENT_ID,
@@ -626,3 +636,17 @@ def _create_team(**kwargs) -> TournamentTeam:
     }
     defaults.update(kwargs)
     return TournamentTeam(**defaults)
+
+
+def _create_participant(**kwargs) -> TournamentParticipant:
+    defaults = {
+        'id': TournamentParticipantID(generate_uuid()),
+        'user_id': UserID(generate_uuid()),
+        'tournament_id': TOURNAMENT_ID,
+        'substitute_player': False,
+        'team_id': None,
+        'created_at': NOW,
+        'removed_at': None,
+    }
+    defaults.update(kwargs)
+    return TournamentParticipant(**defaults)
