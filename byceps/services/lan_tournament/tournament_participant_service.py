@@ -238,6 +238,7 @@ def _remove_single_participant_bracket_aware(
             {participant.id}, now
         )
     else:
+        tournament_repository.clear_winner_participant_reference_flush(participant.id)
         tournament_repository.delete_participants_by_ids({participant.id})
 
     # Step 2: handle bracket consequences.

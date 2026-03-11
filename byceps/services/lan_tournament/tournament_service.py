@@ -187,15 +187,17 @@ def delete_tournament(
     2. Match comments
     3. Match contestants
     4. Matches
-    5. Participants
-    6. Teams
-    7. Tournament itself
+    5. Winner references (FK back to teams/participants)
+    6. Participants
+    7. Teams
+    8. Tournament itself
     """
     # Delete in dependency order (children first, then parent)
     tournament_repository.delete_submissions_for_tournament(tournament_id)
     tournament_repository.delete_comments_for_tournament(tournament_id)
     tournament_repository.delete_contestants_for_tournament(tournament_id)
     tournament_repository.delete_matches_for_tournament(tournament_id)
+    tournament_repository.clear_winner_for_tournament(tournament_id)
     tournament_repository.delete_participants_for_tournament(tournament_id)
     tournament_repository.delete_teams_for_tournament(tournament_id)
     tournament_repository.delete_tournament(tournament_id)
