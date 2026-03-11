@@ -2,7 +2,7 @@ import logging
 from datetime import datetime
 from typing import TypeVar
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 
 from byceps.database import db
 from byceps.services.party.models import PartyID
@@ -158,6 +158,42 @@ def delete_tournament(tournament_id: TournamentID) -> None:
     """Delete a tournament."""
     db.session.execute(delete(DbTournament).filter_by(id=tournament_id))
     db.session.commit()
+
+
+def clear_winner_for_tournament(tournament_id: TournamentID) -> None:
+    """NULL-out winner_team_id and winner_participant_id so the
+    tournament row can be deleted without FK violations."""
+    db.session.execute(
+        update(DbTournament)
+        .filter_by(id=tournament_id)
+        .values(winner_team_id=None, winner_participant_id=None)
+    )
+    db.session.commit()
+
+
+def clear_winner_team_reference(team_id: TournamentTeamID) -> None:
+    """NULL-out winner_team_id on any tournament referencing this team
+    so the team row can be deleted without FK violations."""
+    db.session.execute(
+        update(DbTournament)
+        .filter_by(winner_team_id=team_id)
+        .values(winner_team_id=None)
+    )
+    db.session.commit()
+
+
+def clear_winner_participant_reference_flush(
+    participant_id: TournamentParticipantID,
+) -> None:
+    """NULL-out winner_participant_id on any tournament referencing this
+    participant so the participant row can be deleted without FK violations.
+    Flush only — caller owns the transaction."""
+    db.session.execute(
+        update(DbTournament)
+        .filter_by(winner_participant_id=participant_id)
+        .values(winner_participant_id=None)
+    )
+    db.session.flush()
 
 
 def find_tournament(

@@ -250,6 +250,7 @@ def delete_team(
     CASCADE HANDLING:
     - Participants: Sets team_id to NULL (team members remain as individuals)
     - Match contestants: Deletes contestant records referencing this team
+    - Tournament winner: Clears winner_team_id if this team is the winner
     """
     team = tournament_repository.find_team(team_id)
     if team is None:
@@ -262,6 +263,7 @@ def delete_team(
     # Remove team references before deleting team
     tournament_repository.remove_team_from_participants(team_id)
     tournament_repository.remove_team_from_contestants(team_id)
+    tournament_repository.clear_winner_team_reference(team_id)
     tournament_repository.delete_team(team_id)
 
     now = datetime.now(UTC)
@@ -417,6 +419,7 @@ def leave_team(
     # Auto-delete empty team: If captain was the last member, delete team
     remaining_members = tournament_repository.get_participants_for_team(team_id)
     if len(remaining_members) == 0:
+        tournament_repository.clear_winner_team_reference(team_id)
         tournament_repository.delete_team(team_id)
 
     return Ok(event)
