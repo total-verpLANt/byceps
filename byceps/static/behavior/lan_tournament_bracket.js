@@ -83,6 +83,7 @@ function _ltGenerateMatchRef(bracket, round, matchOrder) {
   var r = (round || 0) + 1;
   var m = (matchOrder || 0) + 1;
   if (bracket === 'GF') return 'GF M' + m;
+  if (bracket === 'P3') return 'P3 M' + m;
   if (bracket === 'WB') return 'WB R' + r + ' M' + m;
   if (bracket === 'LB') return 'LB R' + r + ' M' + m;
   // SE or null bracket
@@ -176,7 +177,9 @@ function _ltBuildEntrant(contestant, placeholder) {
     label: display,
     key: _ltNormalizePlayer(display),
     score: (contestant.score != null) ? contestant.score : null,
-    id: contestant.team_id || contestant.participant_id
+    id: contestant.team_id || contestant.participant_id,
+    teamId: contestant.team_id ? String(contestant.team_id) : null,
+    participantId: contestant.participant_id ? String(contestant.participant_id) : null
   };
 }
 
@@ -292,11 +295,13 @@ function parseBracketData(json) {
   var tournament = json.tournament || {};
   var rawMatches = json.matches || [];
   var rawMatchUrls = json.match_urls || {};
+  var hoverData = json.hover_data || { seats: {}, team_members: {} };
   var matchMap = {};
   var matchById = {};
   var winnerBuckets = {};  // roundNo -> [match, ...]
   var loserBuckets = {};
   var finalMatches = [];
+  var thirdPlaceMatches = [];
   var matchUrls = {};
   var i, m, matchRef, parsed, bucket, roundKey;
   var topContestant, botContestant, entrantTop, entrantBot;
@@ -386,6 +391,8 @@ function parseBracketData(json) {
       loserBuckets[roundKey].push(internalMatch);
     } else if (parsed.bracket === 'GF') {
       finalMatches.push(internalMatch);
+    } else if (parsed.bracket === 'P3') {
+      thirdPlaceMatches.push(internalMatch);
     } else {
       // SE (null bracket) — treat as winner bracket
       roundKey = parsed.round;
@@ -449,8 +456,10 @@ function parseBracketData(json) {
     winnerRounds: winnerRounds,
     loserRounds: loserRounds,
     finalMatches: extraFinals,
+    thirdPlaceMatches: thirdPlaceMatches,
     matchMap: matchMap,
-    matchUrls: matchUrls
+    matchUrls: matchUrls,
+    hoverData: hoverData
   };
 }
 
@@ -875,7 +884,7 @@ function createRoundTitle(round, dims) {
 /**
  * Build a single team row (top or bottom contestant) inside a match card.
  */
-function buildTeamRow(entrant, isWinner, score, dims, matchRef) {
+function buildTeamRow(entrant, isWinner, score, dims, matchRef, hoverData) {
   var team = _ltFormatEntrantForView(entrant);
   var classes = ['lt-team'];
   if (team.className) classes.push(team.className);
@@ -888,10 +897,41 @@ function buildTeamRow(entrant, isWinner, score, dims, matchRef) {
       ? ' data-match-ref="' + _ltEscapeHtml(matchRef) + '" data-hoverable="true" tabindex="0"'
       : '';
 
+  // Build hover card tooltip if hover_data provides info for this entrant
+  var hoverHtml = '';
+  if (hoverData && entrant && entrant.type === 'player') {
+    var teamId = entrant.teamId || null;
+    var participantId = entrant.participantId || null;
+    var hoverMembers = teamId ? (hoverData.team_members || {})[teamId] : null;
+    var hoverSeat = participantId ? (hoverData.seats || {})[participantId] : null;
+
+    if (hoverMembers && hoverMembers.length > 0) {
+      hoverHtml = '<span class="lt-hover-card">';
+      for (var h = 0; h < hoverMembers.length; h++) {
+        var memberName = _ltEscapeHtml(hoverMembers[h][0]);
+        var memberSeat = hoverMembers[h][1] ? ' [' + _ltEscapeHtml(hoverMembers[h][1]) + ']' : '';
+        hoverHtml += '<span class="lt-hover-member">' + memberName + memberSeat + '</span>';
+      }
+      hoverHtml += '</span>';
+    } else if (hoverSeat) {
+      hoverHtml = '<span class="lt-hover-card"><span class="lt-hover-seat">' +
+        _ltEscapeHtml(hoverSeat) + '</span></span>';
+    }
+  }
+
+  var teamTextHtml;
+  if (hoverHtml) {
+    teamTextHtml = '<span class="lt-hover-wrap lt-team-text" tabindex="0" title="' +
+      _ltEscapeHtml(team.text) + '">' + _ltEscapeHtml(team.text) + hoverHtml + '</span>';
+  } else {
+    teamTextHtml = '<span class="lt-team-text" title="' + _ltEscapeHtml(team.text) + '">' +
+      _ltEscapeHtml(team.text) + '</span>';
+  }
+
   return '<div class="' + classes.join(' ') + '"' + playerAttr +
     ' style="height:' + dims.teamHeight + 'px; min-height:' + dims.teamHeight + 'px; font-size:' + (0.93 * dims.fontScale) + 'rem">' +
     '<div class="lt-team-content">' +
-    '<span class="lt-team-text" title="' + _ltEscapeHtml(team.text) + '">' + _ltEscapeHtml(team.text) + '</span>' +
+    teamTextHtml +
     '<span class="lt-score-pill"' + scoreAttrs + '>' + _ltEscapeHtml(scoreText) + '</span>' +
     '</div></div>';
 }
@@ -946,8 +986,8 @@ function createMatchEl(match, dims, options, matchUrls) {
     '</span>' +
     '<span class="lt-match-meta">' + stageText + statusTag + '</span>' +
     '</div>' +
-    buildTeamRow(match.topResolved.entrant, match.winnerIndex === 1, match.scores[0], dims, match.ref) +
-    buildTeamRow(match.bottomResolved.entrant, match.winnerIndex === 2, match.scores[1], dims, match.ref);
+    buildTeamRow(match.topResolved.entrant, match.winnerIndex === 1, match.scores[0], dims, match.ref, options.hoverData) +
+    buildTeamRow(match.bottomResolved.entrant, match.winnerIndex === 2, match.scores[1], dims, match.ref, options.hoverData);
 
   return el;
 }
@@ -1071,7 +1111,7 @@ function appendExternalSources(container, svg, match, dims, currentBracket, matc
 /**
  * Enable pointer-based horizontal panning on the bracket scroll container.
  */
-function enableBracketPan(scrollEl) {
+function _ltEnableBracketPan(scrollEl) {
   var canvas = scrollEl.querySelector('.lt-bracket-canvas');
   if (!canvas) return;
 
@@ -1132,8 +1172,123 @@ function enableBracketPan(scrollEl) {
 
 
 /* ===================================================================
+ *  Section stats
+ * =================================================================== */
+
+/**
+ * Compute aggregate statistics for a bracket section.
+ *
+ * Iterates all matches across the supplied rounds and tallies:
+ *   - matchCount:       total number of matches
+ *   - completedCount:   matches that are done or auto-advanced
+ *   - completionPct:    integer 0-100 (0 when no matches)
+ *   - contestantCount:  unique real contestants (by player key)
+ *
+ * @param {Array} rounds  Array of round objects, each with a `matches` array.
+ * @returns {Object}  { matchCount, completedCount, completionPct, contestantCount }
+ */
+function computeSectionStats(rounds) {
+  var matchCount = 0;
+  var completedCount = 0;
+  var seen = {};
+  var contestantCount = 0;
+  var i, j, round, match, k;
+
+  for (i = 0; i < rounds.length; i++) {
+    round = rounds[i];
+    for (j = 0; j < round.matches.length; j++) {
+      match = round.matches[j];
+      matchCount++;
+      if (match.isComplete || match.isAutoAdvanced) {
+        completedCount++;
+      }
+      for (k = 0; k < match.playerKeys.length; k++) {
+        if (match.playerKeys[k] && !seen[match.playerKeys[k]]) {
+          seen[match.playerKeys[k]] = true;
+          contestantCount++;
+        }
+      }
+    }
+  }
+
+  return {
+    matchCount: matchCount,
+    completedCount: completedCount,
+    completionPct: matchCount > 0 ? Math.round((completedCount / matchCount) * 100) : 0,
+    contestantCount: contestantCount
+  };
+}
+
+/**
+ * Build the HTML for a stats bar from computed section stats.
+ *
+ * @param {Object} stats  Output of computeSectionStats().
+ * @returns {string}  HTML string for the stats bar.
+ */
+function _ltBuildStatsBarHtml(stats) {
+  return '<div class="lt-stats-bar" role="status" aria-label="Section statistics">' +
+    '<span class="lt-stats-chip" title="Total matches">' +
+      _ltEscapeHtml(stats.matchCount) + (stats.matchCount === 1 ? ' match' : ' matches') +
+    '</span>' +
+    '<span class="lt-stats-chip" title="Completion percentage">' +
+      _ltEscapeHtml(stats.completionPct) + '% complete' +
+    '</span>' +
+    '<span class="lt-stats-chip" title="Unique contestants">' +
+      _ltEscapeHtml(stats.contestantCount) + (stats.contestantCount === 1 ? ' contestant' : ' contestants') +
+    '</span>' +
+  '</div>';
+}
+
+
+/* ===================================================================
  *  Section-level rendering
  * =================================================================== */
+
+/**
+ * Create a view-select dropdown for filtering DE bracket sections.
+ *
+ * Options: All (default), Winners only, Losers only.
+ * Fires a 'change' event consumed by applyMode() in lan_tournament.js.
+ *
+ * @param {HTMLElement} rootEl  The bracket root container.
+ * @returns {HTMLElement}  The dropdown wrapper element.
+ */
+function _ltCreateViewSelect(rootEl) {
+  var wrapper = document.createElement('div');
+  wrapper.className = 'lt-view-select';
+
+  var label = document.createElement('label');
+  label.className = 'lt-view-select-label';
+  label.textContent = 'View';
+
+  var select = document.createElement('select');
+  select.className = 'view-select';
+  select.setAttribute('aria-label', 'Filter bracket view');
+
+  var options = [
+    { value: 'full', text: 'All brackets' },
+    { value: 'winners', text: 'Winners only' },
+    { value: 'losers', text: 'Losers only' }
+  ];
+
+  var i, opt;
+  for (i = 0; i < options.length; i++) {
+    opt = document.createElement('option');
+    opt.value = options[i].value;
+    opt.textContent = options[i].text;
+    select.appendChild(opt);
+  }
+
+  wrapper.appendChild(label);
+  wrapper.appendChild(select);
+
+  // Mark the root as a bracket-shell so initBracketViewSwitcher can find it
+  if (!rootEl.classList.contains('bracket-shell')) {
+    rootEl.classList.add('bracket-shell');
+  }
+
+  return wrapper;
+}
 
 /**
  * Render a complete bracket section (WB or LB) with round titles,
@@ -1144,14 +1299,21 @@ function renderBracketSection(options) {
   var layout = layoutRounds(options.rounds, options.fieldSize, dims);
   var i, round, j, match, stageText;
 
+  var stats = computeSectionStats(options.rounds);
+  var statsBarHtml = _ltBuildStatsBarHtml(stats);
+
   var section = document.createElement('section');
-  section.className = 'lt-section-card';
+  section.className = 'lt-bracket-section';
+  if (options.bracketView) {
+    section.setAttribute('data-bracket-view', options.bracketView);
+  }
   section.innerHTML =
-    '<div class="lt-section-head">' +
+    '<div class="lt-bracket-section-head">' +
     '<h2>' + _ltEscapeHtml(options.title) + '</h2>' +
+    statsBarHtml +
     '<span>' + _ltEscapeHtml(options.subtitle) + '</span>' +
     '</div>' +
-    '<div class="lt-section-body">' +
+    '<div class="lt-bracket-section-body">' +
     '<div class="lt-bracket-scroll">' +
     '<div class="lt-bracket-canvas"></div>' +
     '</div></div>';
@@ -1172,11 +1334,11 @@ function renderBracketSection(options) {
       match = round.matches[j];
       stageText = round.title;
       appendExternalSources(canvas, svg, match, dims, round.displayBracket || match.bracket, options.matchMap, options.settings);
-      canvas.appendChild(createMatchEl(match, dims, { stageText: stageText }, options.matchUrls));
+      canvas.appendChild(createMatchEl(match, dims, { stageText: stageText, hoverData: options.hoverData }, options.matchUrls));
     }
   }
 
-  requestAnimationFrame(function() { enableBracketPan(scroll); });
+  requestAnimationFrame(function() { _ltEnableBracketPan(scroll); });
   return section;
 }
 
@@ -1184,19 +1346,24 @@ function renderBracketSection(options) {
  * Render the finals/extra matches section (reset game, 3rd place, etc.)
  * in a non-bracket grid layout.
  */
-function renderFinalsSection(finalMatches, matchMap, settings, matchUrls, appEl) {
+function renderFinalsSection(finalMatches, matchMap, settings, matchUrls, appEl, hoverData) {
   var dims = getFittedDims(1, [], matchMap, settings, appEl);
   var matchHeight = getMatchHeight(dims);
   var i, match, card, wrap, matchEl;
 
+  var finalsRounds = [{ matches: finalMatches }];
+  var finalsStats = computeSectionStats(finalsRounds);
+  var finalsStatsBarHtml = _ltBuildStatsBarHtml(finalsStats);
+
   var section = document.createElement('section');
-  section.className = 'lt-section-card';
+  section.className = 'lt-bracket-section';
   section.innerHTML =
-    '<div class="lt-section-head">' +
+    '<div class="lt-bracket-section-head">' +
     '<h2>Additional Matches</h2>' +
+    finalsStatsBarHtml +
     '<span>Optional reset game and additional matches</span>' +
     '</div>' +
-    '<div class="lt-section-body">' +
+    '<div class="lt-bracket-section-body">' +
     '<div class="lt-finals-grid"></div>' +
     '</div>';
 
@@ -1217,7 +1384,68 @@ function renderFinalsSection(finalMatches, matchMap, settings, matchUrls, appEl)
 
     wrap = card.querySelector('.lt-final-match-wrap');
 
-    matchEl = createMatchEl(match, dims, { stageText: titleText }, matchUrls);
+    matchEl = createMatchEl(match, dims, { stageText: titleText, hoverData: hoverData }, matchUrls);
+    matchEl.className += ' static';
+    matchEl.style.height = matchHeight + 'px';
+    wrap.appendChild(matchEl);
+    grid.appendChild(card);
+  }
+
+  return section;
+}
+
+/**
+ * Render the third-place match section as a standalone card.
+ * Gated by settings.showThirdPlaceMatch in the render() caller.
+ *
+ * @param {Array}  thirdPlaceMatches - parsed P3 matches from parseBracketData
+ * @param {Object} matchMap          - ref -> match lookup
+ * @param {Object} settings          - renderer settings
+ * @param {Object} matchUrls         - ref -> URL lookup
+ * @param {Element} appEl            - bracket root element
+ * @param {Object} hoverData         - hover/tooltip data
+ * @returns {Element} section DOM node
+ */
+function renderThirdPlaceSection(thirdPlaceMatches, matchMap, settings, matchUrls, appEl, hoverData) {
+  var dims = getFittedDims(1, [], matchMap, settings, appEl);
+  var matchHeight = getMatchHeight(dims);
+  var i, match, card, wrap, matchEl;
+
+  var p3Rounds = [{ matches: thirdPlaceMatches }];
+  var p3Stats = computeSectionStats(p3Rounds);
+  var p3StatsBarHtml = _ltBuildStatsBarHtml(p3Stats);
+
+  var section = document.createElement('section');
+  section.className = 'lt-bracket-section lt-p3-section';
+  section.setAttribute('data-bracket-view', 'third-place');
+  section.innerHTML =
+    '<div class="lt-bracket-section-head">' +
+    '<h2>3rd Place Match</h2>' +
+    p3StatsBarHtml +
+    '<span>Semifinal losers compete for third place</span>' +
+    '</div>' +
+    '<div class="lt-bracket-section-body">' +
+    '<div class="lt-finals-grid"></div>' +
+    '</div>';
+
+  var grid = section.querySelector('.lt-finals-grid');
+
+  for (i = 0; i < thirdPlaceMatches.length; i++) {
+    match = thirdPlaceMatches[i];
+    card = document.createElement('div');
+    card.className = 'lt-final-card lt-p3-card';
+
+    var titleText = match.title || _ltFormatMatchRefDisplay(match.ref);
+    var subtitleText = match.subtitle || 'Loser SF 1 vs Loser SF 2';
+
+    card.innerHTML =
+      '<h3>' + _ltEscapeHtml(titleText) + '</h3>' +
+      '<p>' + _ltEscapeHtml(subtitleText) + '</p>' +
+      '<div class="lt-final-match-wrap"></div>';
+
+    wrap = card.querySelector('.lt-final-match-wrap');
+
+    matchEl = createMatchEl(match, dims, { stageText: titleText, hoverData: hoverData }, matchUrls);
     matchEl.className += ' static';
     matchEl.style.height = matchHeight + 'px';
     wrap.appendChild(matchEl);
@@ -1370,8 +1598,8 @@ function _ltActivateAndScrollToMatchRef(rootEl, ref) {
   void target.offsetWidth;  // force reflow
   target.className += ' flash-target';
   target.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'center', inline: 'center' });
-  clearTimeout(window.__ltFlashTimer);
-  window.__ltFlashTimer = setTimeout(function() {
+  clearTimeout(rootEl._ltFlashTimer);
+  rootEl._ltFlashTimer = setTimeout(function() {
     target.className = target.className.replace(/\bflash-target\b/g, '').trim();
   }, 1400);
   return true;
@@ -1466,6 +1694,87 @@ function bindHoverHighlight(rootEl, appEl, scrollToMatchRefFn) {
 
 
 /* ===================================================================
+ *  GF M2 / bracket reset helpers
+ * =================================================================== */
+
+/**
+ * Determine whether a match is a Grand Finals bracket-reset game (GF M2+).
+ * In double-elimination, GF M1 is the initial grand final; GF M2 (the
+ * "bracket reset") only occurs if the losers-bracket winner takes GF M1.
+ *
+ * @param {Object} match  Internal match object produced by parseBracketData.
+ * @returns {boolean}
+ */
+function _ltIsGFResetMatch(match) {
+  if (!match || match.bracket !== 'GF') return false;
+  var parsed = _ltParseMatchRef(match.ref);
+  return !!(parsed && parsed.match >= 2);
+}
+
+/**
+ * Render a bracket-reset card for a GF M2 match.  Wraps the standard
+ * match element in a final-card with a prominent "Bracket Reset" label
+ * and applies the `bracket-reset` CSS modifier to the match element.
+ *
+ * @param {Object} match       The internal match object.
+ * @param {Object} matchMap    The global match-ref -> match index.
+ * @param {Object} settings    Bracket renderer settings.
+ * @param {Object} matchUrls   Match URL map.
+ * @param {Element} appEl      Root bracket element.
+ * @param {Object} hoverData   Hover / highlight data.
+ * @returns {Element}          A section element ready for DOM insertion.
+ */
+function _ltRenderBracketResetSection(match, matchMap, settings, matchUrls, appEl, hoverData) {
+  var dims = getFittedDims(1, [], matchMap, settings, appEl);
+  var matchHeight = getMatchHeight(dims);
+
+  var resetRounds = [{ matches: [match] }];
+  var resetStats = computeSectionStats(resetRounds);
+  var resetStatsBarHtml = _ltBuildStatsBarHtml(resetStats);
+
+  var section = document.createElement('section');
+  section.className = 'lt-bracket-section';
+
+  var gfM1Ref = 'GF M1';
+  var gfM1 = matchMap[gfM1Ref] || null;
+  var conditionNote = gfM1 && gfM1.isComplete && gfM1.winnerIndex
+    ? ''
+    : 'Played only if the losers-bracket winner takes Grand Final Game 1.';
+
+  section.innerHTML =
+    '<div class="lt-bracket-section-head">' +
+    '<h2>Bracket Reset</h2>' +
+    resetStatsBarHtml +
+    '<span>' + _ltEscapeHtml(conditionNote || 'Grand Final \u2013 Decisive Game') + '</span>' +
+    '</div>' +
+    '<div class="lt-bracket-section-body">' +
+    '<div class="lt-finals-grid"></div>' +
+    '</div>';
+
+  var grid = section.querySelector('.lt-finals-grid');
+  var card = document.createElement('div');
+  card.className = 'lt-final-card lt-final-card--reset';
+
+  var titleText = 'Grand Final \u2013 Bracket Reset';
+  var subtitleText = 'True final: both players enter 1\u20131 in the series';
+
+  card.innerHTML =
+    '<h3>' + _ltEscapeHtml(titleText) + '</h3>' +
+    '<p>' + _ltEscapeHtml(subtitleText) + '</p>' +
+    '<div class="lt-final-match-wrap"></div>';
+
+  var wrap = card.querySelector('.lt-final-match-wrap');
+  var matchEl = createMatchEl(match, dims, { stageText: titleText, hoverData: hoverData }, matchUrls);
+  matchEl.className += ' static bracket-reset';
+  matchEl.style.height = matchHeight + 'px';
+  wrap.appendChild(matchEl);
+  grid.appendChild(card);
+
+  return section;
+}
+
+
+/* ===================================================================
  *  Public API
  * =================================================================== */
 
@@ -1485,8 +1794,8 @@ function createBracketInstance(config) {
 
   var settings = {
     showSourceStatusInBadge: true,
-    showThirdPlaceMatch: false,
-    useBracketReset: false
+    showThirdPlaceMatch: true,
+    useBracketReset: true
   };
   var key;
   if (config.settings) {
@@ -1520,6 +1829,7 @@ function createBracketInstance(config) {
   function render() {
     var p = ensureParsed();
     var urls = p.matchUrls || {};
+    var hoverData = p.hoverData || { seats: {}, team_members: {} };
     var i;
 
     // Merge in any URLs provided at instance level
@@ -1534,7 +1844,7 @@ function createBracketInstance(config) {
     _ltClearHighlights(rootEl);
     rootEl.innerHTML = '';
 
-    if (!p.winnerRounds.length && !p.loserRounds.length && !p.finalMatches.length) {
+    if (!p.winnerRounds.length && !p.loserRounds.length && !p.finalMatches.length && !p.thirdPlaceMatches.length) {
       rootEl.innerHTML = '<div class="lt-empty-state">No bracket data available.</div>';
       return;
     }
@@ -1547,6 +1857,12 @@ function createBracketInstance(config) {
       if (fieldSize < 2) fieldSize = 2;
     }
 
+    // Insert view-select dropdown for DE brackets
+    var isDE = p.loserRounds.length > 0;
+    if (isDE) {
+      rootEl.appendChild(_ltCreateViewSelect(rootEl));
+    }
+
     // Render winners bracket
     if (p.winnerRounds.length > 0) {
       rootEl.appendChild(renderBracketSection({
@@ -1557,7 +1873,9 @@ function createBracketInstance(config) {
         matchMap: p.matchMap,
         settings: settings,
         appEl: rootEl,
-        matchUrls: urls
+        matchUrls: urls,
+        hoverData: hoverData,
+        bracketView: p.loserRounds.length > 0 ? 'winners' : null
       }));
     }
 
@@ -1571,13 +1889,46 @@ function createBracketInstance(config) {
         matchMap: p.matchMap,
         settings: settings,
         appEl: rootEl,
-        matchUrls: urls
+        matchUrls: urls,
+        hoverData: hoverData,
+        bracketView: 'losers'
       }));
     }
 
-    // Render extra finals
+    // Render extra finals — separate bracket-reset matches when enabled
     if (p.finalMatches.length > 0) {
-      rootEl.appendChild(renderFinalsSection(p.finalMatches, p.matchMap, settings, urls, rootEl));
+      var resetMatches = [];
+      var otherFinals = [];
+      for (i = 0; i < p.finalMatches.length; i++) {
+        if (settings.useBracketReset && _ltIsGFResetMatch(p.finalMatches[i])) {
+          resetMatches.push(p.finalMatches[i]);
+        } else {
+          otherFinals.push(p.finalMatches[i]);
+        }
+      }
+
+      // Render each bracket-reset match in its own dedicated section
+      for (i = 0; i < resetMatches.length; i++) {
+        var resetSection = _ltRenderBracketResetSection(
+          resetMatches[i], p.matchMap, settings, urls, rootEl, hoverData
+        );
+        resetSection.setAttribute('data-bracket-view', 'finals');
+        rootEl.appendChild(resetSection);
+      }
+
+      // Render any remaining non-reset finals in the generic section
+      if (otherFinals.length > 0) {
+        var finalsSection = renderFinalsSection(otherFinals, p.matchMap, settings, urls, rootEl, hoverData);
+        finalsSection.setAttribute('data-bracket-view', 'finals');
+        rootEl.appendChild(finalsSection);
+      }
+    }
+
+    // Render third-place matches
+    if (settings.showThirdPlaceMatch && p.thirdPlaceMatches.length > 0) {
+      rootEl.appendChild(renderThirdPlaceSection(
+        p.thirdPlaceMatches, p.matchMap, settings, urls, rootEl, hoverData
+      ));
     }
 
     bindHoverHighlight(rootEl, rootEl, scrollToMatchRef);
@@ -1644,6 +1995,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
   if (instance) {
     instance.render();
+    // Re-init view switcher for dynamically created view-select dropdowns
+    if (typeof initBracketViewSwitcher === 'function') {
+      initBracketViewSwitcher();
+    }
   }
 
   // Re-render on window resize (debounced)
