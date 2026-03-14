@@ -486,6 +486,11 @@ def _get_tournament_or_404(tournament_id) -> Tournament:
     if tournament is None:
         abort(404)
 
+    # Cross-party isolation: tournament must belong to the current site's party.
+    # Fail-closed — if g.party is missing the site is misconfigured; deny access.
+    if not g.party or not g.party.id or tournament.party_id != g.party.id:
+        abort(404)
+
     return tournament
 
 
@@ -519,13 +524,15 @@ def matches(tournament_id):
         tournament.id
     )
 
-    # Get contestants for each match
+    # Bulk-fetch all contestants for the tournament in one query (not N).
+    contestants_by_match = (
+        tournament_match_service.get_contestants_for_tournament(tournament.id)
+    )
+
     match_data = []
     all_contestants = []
     for match in matches:
-        contestants = tournament_match_service.get_contestants_for_match(
-            match.id
-        )
+        contestants = contestants_by_match.get(match.id, [])
         match_data.append(
             {
                 'match': match,
@@ -534,12 +541,20 @@ def matches(tournament_id):
         )
         all_contestants.append(contestants)
 
+    # Fetch participants once, share across both helpers.
+    participants = (
+        tournament_participant_service.get_participants_for_tournament(
+            tournament.id
+        )
+    )
+
     teams_by_id, participants_by_id = build_contestant_name_lookups(
-        tournament.id, all_contestants
+        tournament.id, all_contestants, participants=participants
     )
 
     seats_by_user_id, team_members_by_team_id = build_hover_lookups(
-        tournament, participants_by_id, teams_by_id, tournament.party_id
+        tournament, participants_by_id, teams_by_id, tournament.party_id,
+        participants=participants,
     )
 
     return {
@@ -560,8 +575,11 @@ def view_match(match_id):
         TournamentMatchID,
     )
 
-    match_id_obj = TournamentMatchID(match_id)
-    match = tournament_match_service.get_match(match_id_obj)
+    try:
+        match_id_obj = TournamentMatchID(match_id)
+        match = tournament_match_service.get_match(match_id_obj)
+    except ValueError:
+        abort(404)
     tournament = _get_tournament_or_404(match.tournament_id)
 
     # Hide drafts from site visitors.
@@ -626,12 +644,15 @@ def set_score(match_id):
         TournamentMatchID,
     )
 
-    match_id_obj = TournamentMatchID(match_id)
+    try:
+        match_id_obj = TournamentMatchID(match_id)
+        match = tournament_match_service.get_match(match_id_obj)
+    except ValueError:
+        abort(404)
 
     # Enforce status guard — same pattern as join/create_team/join_team.
-    match = tournament_match_service.get_match(match_id_obj)
     tournament = _get_tournament_or_404(match.tournament_id)
-    if tournament.tournament_status != TournamentStatus.IN_PROGRESS:
+    if tournament.tournament_status != TournamentStatus.ONGOING:
         flash_error(gettext('Tournament is not in progress.'))
         return redirect_to('.view_match', match_id=match_id)
 
@@ -660,6 +681,10 @@ def set_score(match_id):
         match_id_obj, g.user.id, scores
     )
     if result.is_err():
+        # CAUTION: `match` and `tournament` are expired/detached after
+        # set_match_scores rolls back the session on Err.  Only use
+        # `match_id` (the URL string) for the redirect — do NOT access
+        # attributes on the ORM objects fetched above.
         flash_error(result.unwrap_err())
     else:
         flash_success(gettext('Match result submitted.'))
@@ -683,13 +708,15 @@ def bracket(tournament_id):
         tournament.id
     )
 
-    # Get contestants for each match.
+    # Bulk-fetch all contestants for the tournament in one query (not N).
+    contestants_by_match = (
+        tournament_match_service.get_contestants_for_tournament(tournament.id)
+    )
+
     match_data = []
     all_contestants = []
     for match in matches:
-        contestants = tournament_match_service.get_contestants_for_match(
-            match.id
-        )
+        contestants = contestants_by_match.get(match.id, [])
         match_data.append(
             {
                 'match': match,
@@ -698,8 +725,15 @@ def bracket(tournament_id):
         )
         all_contestants.append(contestants)
 
+    # Fetch participants once, share across both helpers.
+    participants = (
+        tournament_participant_service.get_participants_for_tournament(
+            tournament.id
+        )
+    )
+
     teams_by_id, participants_by_id = build_contestant_name_lookups(
-        tournament.id, all_contestants
+        tournament.id, all_contestants, participants=participants
     )
 
     seats_by_user_id, team_members_by_team_id = build_hover_lookups(
@@ -707,6 +741,7 @@ def bracket(tournament_id):
         participants_by_id,
         teams_by_id,
         tournament.party_id,
+        participants=participants,
     )
 
     # Round-robin: compute standings table.
@@ -797,12 +832,20 @@ def highscore_submit(tournament_id):
         abort(404)
     if tournament.tournament_status not in (
         TournamentStatus.REGISTRATION_OPEN,
-        TournamentStatus.IN_PROGRESS,
+        TournamentStatus.ONGOING,
     ):
         flash_error(gettext('Tournament is not accepting score submissions.'))
         return redirect_to('.highscore', tournament_id=tournament_id)
     score_raw = request.form.get('score', '')
     note = request.form.get('note', '').strip() or None
+    NOTE_MAX_LENGTH = 200
+    if note is not None and len(note) > NOTE_MAX_LENGTH:
+        flash_error(
+            gettext(
+                'Note must be %(max)d characters or fewer.', max=NOTE_MAX_LENGTH
+            )
+        )
+        return redirect_to('.highscore', tournament_id=tournament_id)
     try:
         score = int(score_raw)
     except ValueError:
