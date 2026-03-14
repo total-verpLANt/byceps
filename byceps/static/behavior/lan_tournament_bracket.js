@@ -961,6 +961,14 @@ function createMatchEl(match, dims, options, matchUrls) {
   el.setAttribute('data-match-id', match.id);
   el.setAttribute('data-players', _ltPackPlayerData(match.playerKeys));
   el.title = matchRefDisplay + ' - ' + statusMeta.label;
+  el.setAttribute('role', 'listitem');
+
+  // Build descriptive ARIA label with contestant names
+  var topName = (match.topResolved && match.topResolved.entrant && match.topResolved.entrant.type === 'player')
+    ? match.topResolved.entrant.label : 'TBD';
+  var botName = (match.bottomResolved && match.bottomResolved.entrant && match.bottomResolved.entrant.type === 'player')
+    ? match.bottomResolved.entrant.label : 'TBD';
+  el.setAttribute('aria-label', matchRefDisplay + ': ' + topName + ' vs ' + botName + ' (' + statusMeta.label + ')');
 
   if (url) {
     el.href = url;
@@ -1315,7 +1323,7 @@ function renderBracketSection(options) {
     '</div>' +
     '<div class="lt-bracket-section-body">' +
     '<div class="lt-bracket-scroll">' +
-    '<div class="lt-bracket-canvas"></div>' +
+    '<div class="lt-bracket-canvas" role="list" aria-label="' + _ltEscapeHtml(options.title) + ' matches"></div>' +
     '</div></div>';
 
   var scroll = section.querySelector('.lt-bracket-scroll');
@@ -1694,6 +1702,58 @@ function bindHoverHighlight(rootEl, appEl, scrollToMatchRefFn) {
 
 
 /* ===================================================================
+ *  Keyboard navigation
+ * =================================================================== */
+
+/**
+ * Enable arrow-key navigation between match cards within bracket sections.
+ *
+ * Arrow Up / Arrow Left:  move focus to previous match (wraps).
+ * Arrow Down / Arrow Right: move focus to next match (wraps).
+ * Escape: clear focus and dismiss any active highlight.
+ *
+ * Navigation is scoped to the nearest `.lt-bracket-section` so arrow
+ * keys traverse within one bracket side at a time.
+ *
+ * @param {HTMLElement} rootEl  The bracket root container.
+ */
+function _ltBindKeyboardNav(rootEl) {
+  rootEl.addEventListener('keydown', function(event) {
+    var active = document.activeElement;
+    if (!active || !active.classList.contains('lt-match')) return;
+
+    var section = active.closest('.lt-bracket-section');
+    if (!section) section = rootEl;
+
+    var matches = [];
+    var all = section.querySelectorAll('.lt-match[tabindex]');
+    for (var i = 0; i < all.length; i++) matches.push(all[i]);
+    var idx = matches.indexOf(active);
+    if (idx === -1) return;
+
+    var target = null;
+    if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
+      target = matches[idx + 1] || matches[0];
+    } else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
+      target = matches[idx - 1] || matches[matches.length - 1];
+    } else if (event.key === 'Escape') {
+      active.blur();
+      _ltClearHighlights(rootEl);
+      return;
+    } else {
+      return;
+    }
+
+    event.preventDefault();
+    if (target) {
+      target.focus();
+      target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+  });
+}
+
+
+/* ===================================================================
  *  GF M2 / bracket reset helpers
  * =================================================================== */
 
@@ -1932,6 +1992,7 @@ function createBracketInstance(config) {
     }
 
     bindHoverHighlight(rootEl, rootEl, scrollToMatchRef);
+    _ltBindKeyboardNav(rootEl);
 
     if (pendingScrollRef) {
       var refToScroll = pendingScrollRef;

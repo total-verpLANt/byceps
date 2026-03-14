@@ -70,7 +70,7 @@ USER_ID = UserID(generate_uuid())
     'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
 )
 def test_generate_bracket_4_players_total_matches(mock_repo):
-    """4 players => bracket_size 4 => 3 total matches."""
+    """4 players => bracket_size 4 => 3 bracket + 1 P3 = 4 total matches."""
     tournament = _create_tournament(contestant_type=ContestantType.SOLO)
     participants = [
         _create_mock_participant(TournamentParticipantID(generate_uuid()))
@@ -86,14 +86,14 @@ def test_generate_bracket_4_players_total_matches(mock_repo):
     )
 
     assert result.is_ok()
-    assert result.unwrap() == 3  # 4-1 = 3 matches
+    assert result.unwrap() == 4  # 4-1 = 3 bracket matches + 1 P3
 
 
 @patch(
     'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
 )
 def test_generate_bracket_8_teams_total_matches(mock_repo):
-    """8 teams => bracket_size 8 => 7 total matches."""
+    """8 teams => bracket_size 8 => 7 bracket + 1 P3 = 8 total matches."""
     tournament = _create_tournament(contestant_type=ContestantType.TEAM)
     teams = [
         _create_mock_team(TournamentTeamID(generate_uuid())) for _ in range(8)
@@ -108,7 +108,7 @@ def test_generate_bracket_8_teams_total_matches(mock_repo):
     )
 
     assert result.is_ok()
-    assert result.unwrap() == 7  # 8-1 = 7 matches
+    assert result.unwrap() == 8  # 8-1 = 7 bracket matches + 1 P3
 
 
 @patch(
@@ -132,16 +132,16 @@ def test_generate_bracket_all_rounds_created(mock_repo):
 
     assert result.is_ok()
 
-    # Check that create_match was called 3 times (3 matches)
-    assert mock_repo.create_match.call_count == 3
+    # Check that create_match was called 4 times (3 bracket + 1 P3)
+    assert mock_repo.create_match.call_count == 4
 
     # Verify round assignments in created matches
     created_matches = [
         call.args[0] for call in mock_repo.create_match.call_args_list
     ]
     rounds = sorted(m.round for m in created_matches)
-    # 2 round-0 matches + 1 final (round 1)
-    assert rounds == [0, 0, 1]
+    # 2 round-0 matches + 1 final (round 1) + 1 P3 (round 1)
+    assert rounds == [0, 0, 1, 1]
 
 
 @patch(
@@ -169,17 +169,24 @@ def test_generate_bracket_linkage_correct(mock_repo):
         call.args[0] for call in mock_repo.create_match.call_args_list
     ]
 
-    # Final match (created first due to reverse order) has
-    # no next_match_id
-    final_matches = [m for m in created_matches if m.round == 1]
+    # Final match (no bracket) has no next_match_id
+    final_matches = [m for m in created_matches if m.round == 1 and m.bracket is None]
     assert len(final_matches) == 1
     assert final_matches[0].next_match_id is None
 
-    # Round 0 matches should point to the final
+    # P3 match (bracket=THIRD_PLACE) has no next_match_id
+    p3_matches = [m for m in created_matches if m.bracket == Bracket.THIRD_PLACE]
+    assert len(p3_matches) == 1
+    assert p3_matches[0].next_match_id is None
+    assert p3_matches[0].round == 1
+
+    # Round 0 (semifinal) matches should point to the final
+    # and have loser_next_match_id pointing to P3
     round0_matches = [m for m in created_matches if m.round == 0]
     assert len(round0_matches) == 2
     for m in round0_matches:
         assert m.next_match_id == final_matches[0].id
+        assert m.loser_next_match_id == p3_matches[0].id
 
 
 @patch(
@@ -220,7 +227,7 @@ def test_generate_bracket_bye_handling(mock_repo):
     )
 
     assert result.is_ok()
-    assert result.unwrap() == 7  # 8-1 = 7 matches total
+    assert result.unwrap() == 8  # 8-1 = 7 bracket matches + 1 P3
 
 
 @patch(

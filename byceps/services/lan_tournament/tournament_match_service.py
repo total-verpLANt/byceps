@@ -244,6 +244,7 @@ def generate_single_elimination_bracket(
 
     from . import signals
     from .events import MatchCreatedEvent
+    from .models.bracket import Bracket
     from .models.contestant_type import ContestantType
     from .tournament_domain_service import _standard_seed_order
 
@@ -261,14 +262,45 @@ def generate_single_elimination_bracket(
     is_team = tournament.contestant_type == ContestantType.TEAM
     now = datetime.now(UTC)
 
+    # ---- Third-place match (P3) ----
+    # Only for brackets with semifinals (>=4 contestants = >=2 rounds).
+    # Created before the main bracket so the FK target exists when
+    # semifinal matches reference p3_id via loser_next_match_id.
+    p3_id: TournamentMatchID | None = None
+    match_events: list[MatchCreatedEvent] = []
+
+    if num_rounds >= 2:
+        p3_id = TournamentMatchID(generate_uuid7())
+        p3_match = TournamentMatch(
+            id=p3_id,
+            tournament_id=tournament_id,
+            group_order=None,
+            match_order=0,
+            round=num_rounds - 1,  # same round as the final
+            next_match_id=None,
+            bracket=Bracket.THIRD_PLACE,
+            loser_next_match_id=None,
+            confirmed_by=None,
+            created_at=now,
+        )
+        tournament_repository.create_match(p3_match)
+        match_events.append(
+            MatchCreatedEvent(
+                occurred_at=now,
+                initiator=None,
+                tournament_id=tournament_id,
+                match_id=p3_id,
+            )
+        )
+
     # Build rounds from final backwards so we can set next_match_id
     # rounds_matches[r] holds match IDs for round r
     rounds_matches: list[list[TournamentMatchID]] = [
         [] for _ in range(num_rounds)
     ]
-    match_events: list[MatchCreatedEvent] = []
 
     # Create matches round by round, final first
+    semifinal_round = num_rounds - 2  # round with 2 matches feeding the final
     for r in range(num_rounds - 1, -1, -1):
         num_matches_in_round = 2 ** (num_rounds - 1 - r)
         for m in range(num_matches_in_round):
@@ -280,6 +312,9 @@ def generate_single_elimination_bracket(
             else:
                 next_match_id = None
 
+            # Wire semifinal losers to the P3 match
+            loser_target = p3_id if (p3_id and r == semifinal_round) else None
+
             match = TournamentMatch(
                 id=match_id,
                 tournament_id=tournament_id,
@@ -287,6 +322,7 @@ def generate_single_elimination_bracket(
                 match_order=m,
                 round=r,
                 next_match_id=next_match_id,
+                loser_next_match_id=loser_target,
                 confirmed_by=None,
                 created_at=now,
             )
@@ -367,6 +403,8 @@ def generate_single_elimination_bracket(
         signals.match_created.send(None, event=event)
 
     total_matches = bracket_size - 1
+    if p3_id is not None:
+        total_matches += 1
     return Ok(total_matches)
 
 
