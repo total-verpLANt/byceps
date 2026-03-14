@@ -9,10 +9,12 @@
 {% block head %}
   {{ super() }}
   <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_bracket.css') }}">
 {%- endblock %}
 
 {% block scripts %}
   {{ super() }}
   {% block lt_theme %}<script>document.body.classList.add('lt-dark');</script>{% endblock %}
   <script src="{{ url_for('static', filename='behavior/lan_tournament.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='behavior/lan_tournament_bracket.js') }}" defer></script>
 {%- endblock %}

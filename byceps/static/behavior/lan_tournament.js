@@ -117,12 +117,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
   document.querySelectorAll('.bracket-desktop').forEach(enableBracketPan);
 
+  // Enable pan on new-style brackets (client-side renderer)
+  document.querySelectorAll('.lt-bracket-scroll').forEach(enableBracketPan);
+
   var resizeTimer;
   window.addEventListener('resize', function() {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(function() {
-      document.querySelectorAll('.bracket-desktop').forEach(function(el) {
-        var canvas = el.querySelector('.bracket');
+      var selectors = '.bracket-desktop, .lt-bracket-scroll';
+      document.querySelectorAll(selectors).forEach(function(el) {
+        var canvas = el.querySelector('.bracket, .lt-bracket-canvas');
         if (canvas) {
           el.classList.toggle('is-pannable', canvas.scrollWidth > el.clientWidth + 8);
         }

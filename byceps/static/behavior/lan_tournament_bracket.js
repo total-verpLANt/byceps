@@ -1,0 +1,1657 @@
+/**
+ * LAN Tournament – Client-side bracket renderer.
+ *
+ * Adapted from Turniercss/turnier-shared.js rendering engine to consume
+ * BYCEPS pre-computed match data.  Handles layout, DOM rendering, SVG
+ * connectors, source badges, hover highlight and pan.
+ *
+ * Plain ES5 vanilla JS – no modules, no build step.
+ * Structural CSS classes use the `lt-` prefix; modifier/state classes
+ * are unprefixed (contract with the stylesheet).
+ */
+
+/* ===================================================================
+ *  Utility helpers
+ * =================================================================== */
+
+function _ltEscapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function _ltNormalizePlayer(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/gi, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function _ltClamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function _ltPackPlayerData(keys) {
+  var seen = {};
+  var list = [];
+  var i, k;
+  if (!keys) return '||';
+  for (i = 0; i < keys.length; i++) {
+    k = keys[i];
+    if (k && !seen[k]) {
+      seen[k] = true;
+      list.push(k);
+    }
+  }
+  return '|' + list.join('|') + '|';
+}
+
+function _ltOverlapPlayers(a, b) {
+  var bSet = {};
+  var result = [];
+  var i;
+  if (!a || !b) return [];
+  for (i = 0; i < b.length; i++) { bSet[b[i]] = true; }
+  for (i = 0; i < a.length; i++) {
+    if (a[i] && bSet[a[i]]) result.push(a[i]);
+  }
+  return result;
+}
+
+/* ===================================================================
+ *  Match-ref generation & display formatting
+ * =================================================================== */
+
+/**
+ * Generate a match_ref string from bracket, round, and match_order.
+ *
+ * Python schema: round is 0-based, match_order is 0-based.
+ * match_ref convention: "WB R1 M1" (1-based round and match numbers).
+ * For SE (bracket=null): "R1 M1".
+ * For GF: "GF M1".
+ *
+ * @param {string|null} bracket  "WB", "LB", "GF", or null
+ * @param {number}      round    0-based round number from Python
+ * @param {number}      matchOrder  0-based match_order from Python
+ * @returns {string}
+ */
+function _ltGenerateMatchRef(bracket, round, matchOrder) {
+  var r = (round || 0) + 1;
+  var m = (matchOrder || 0) + 1;
+  if (bracket === 'GF') return 'GF M' + m;
+  if (bracket === 'WB') return 'WB R' + r + ' M' + m;
+  if (bracket === 'LB') return 'LB R' + r + ' M' + m;
+  // SE or null bracket
+  return 'R' + r + ' M' + m;
+}
+
+function _ltParseMatchRef(ref) {
+  var value = String(ref || '').trim();
+  var wbLb = value.match(/^(WB|LB)\s+R(\d+)\s+M(\d+)$/i);
+  if (wbLb) {
+    return { bracket: wbLb[1].toUpperCase(), round: Number(wbLb[2]), match: Number(wbLb[3]) };
+  }
+  var gf = value.match(/^GF\s+M(\d+)$/i);
+  if (gf) {
+    return { bracket: 'GF', round: 1, match: Number(gf[1]) };
+  }
+  var p3 = value.match(/^P3\s+M(\d+)$/i);
+  if (p3) {
+    return { bracket: 'P3', round: 1, match: Number(p3[1]) };
+  }
+  var se = value.match(/^R(\d+)\s+M(\d+)$/i);
+  if (se) {
+    return { bracket: null, round: Number(se[1]), match: Number(se[2]) };
+  }
+  return null;
+}
+
+function _ltFormatMatchRefDisplay(ref) {
+  var parsed = _ltParseMatchRef(ref);
+  if (!parsed) return String(ref || '').trim();
+  if (parsed.bracket === 'GF') return 'Grand Final – Game ' + parsed.match;
+  if (parsed.bracket === 'P3') return '3rd Place – Game ' + parsed.match;
+  if (parsed.bracket === 'WB' || parsed.bracket === 'LB') {
+    return parsed.bracket + ' R' + parsed.round + ' – Game ' + parsed.match;
+  }
+  return 'R' + parsed.round + ' – Game ' + parsed.match;
+}
+
+function _ltFormatSourceRefDisplay(ref) {
+  var parsed = _ltParseMatchRef(ref);
+  if (!parsed) return String(ref || '').trim();
+  if (parsed.bracket === 'GF') return 'GF G' + parsed.match;
+  if (parsed.bracket === 'P3') return '3rd M' + parsed.match;
+  if (parsed.bracket === 'WB' || parsed.bracket === 'LB') {
+    return parsed.bracket + ' R' + parsed.round + ' M' + parsed.match;
+  }
+  return 'R' + parsed.round + ' M' + parsed.match;
+}
+
+function _ltGetSourceLabel(ref, sourceOutcome, currentBracket) {
+  var compact = _ltFormatSourceRefDisplay(ref);
+  var sourceBracket = ref ? String(ref).split(' ')[0] : '';
+  var outcomeLabel = sourceOutcome === 'loser' ? 'Loser' : 'Winner';
+
+  if (currentBracket === 'WB' && sourceBracket === 'LB' && sourceOutcome === 'winner') {
+    return 'LB Winner ' + compact;
+  }
+  return outcomeLabel + ' of ' + compact;
+}
+
+/* ===================================================================
+ *  Data parsing layer  (server JSON -> internal model)
+ * =================================================================== */
+
+/**
+ * Build an entrant view-model from a Python contestant object.
+ *
+ * Python contestant: { name, score, team_id, participant_id }
+ * A contestant with name "TBD" or missing real IDs is a placeholder.
+ *
+ * @param {Object|null} contestant  Python contestant (or null/undefined).
+ * @param {string}      placeholder Label when not yet determined.
+ * @returns {Object}  { type, name, label, key, score, id }
+ */
+function _ltBuildEntrant(contestant, placeholder) {
+  if (!contestant) {
+    return { type: 'placeholder', name: placeholder || 'TBD', label: placeholder || 'TBD', key: '', score: null, id: null };
+  }
+  var hasRealId = !!(contestant.team_id || contestant.participant_id);
+  var name = contestant.name || 'TBD';
+  var isTBD = name === 'TBD';
+
+  if (!hasRealId || isTBD) {
+    return { type: 'placeholder', name: placeholder || 'TBD', label: placeholder || 'TBD', key: '', score: null, id: null };
+  }
+
+  var display = name;
+  return {
+    type: 'player',
+    name: display,
+    label: display,
+    key: _ltNormalizePlayer(display),
+    score: (contestant.score != null) ? contestant.score : null,
+    id: contestant.team_id || contestant.participant_id
+  };
+}
+
+/**
+ * Format an entrant for rendering (view model).
+ */
+function _ltFormatEntrantForView(entrant) {
+  if (!entrant) return { text: 'TBD', className: 'placeholder', key: '' };
+  if (entrant.type === 'placeholder') return { text: entrant.label, className: 'placeholder', key: '' };
+  if (entrant.type === 'defwin') return { text: 'BYE', className: 'defwin', key: '' };
+  return {
+    text: entrant.label || entrant.name || 'TBD',
+    className: '',
+    key: _ltNormalizePlayer(entrant.name)
+  };
+}
+
+/**
+ * Determine match status from the Python match data.
+ *
+ * @param {boolean} confirmed  Whether match is confirmed
+ * @param {Object|null} topEntrant  Built top entrant
+ * @param {Object|null} botEntrant  Built bottom entrant
+ * @returns {Object}  { key: string, label: string }
+ */
+function _ltComputeStatus(confirmed, topEntrant, botEntrant) {
+  var topReal = topEntrant && topEntrant.type === 'player';
+  var botReal = botEntrant && botEntrant.type === 'player';
+  var topDefwin = topEntrant && topEntrant.type === 'defwin';
+  var botDefwin = botEntrant && botEntrant.type === 'defwin';
+
+  if (confirmed) {
+    return { key: 'done', label: 'Done' };
+  }
+  // One real contestant, other is placeholder or defwin -> auto-advance
+  if ((topReal && !botReal) || (botReal && !topReal)) {
+    // Only if exactly one side is a real player and the other is not
+    if (topReal && (botDefwin || (botEntrant && botEntrant.type === 'placeholder' && botEntrant.name === 'BYE'))) {
+      return { key: 'auto', label: 'BYE' };
+    }
+    if (botReal && (topDefwin || (topEntrant && topEntrant.type === 'placeholder' && topEntrant.name === 'BYE'))) {
+      return { key: 'auto', label: 'BYE' };
+    }
+    // One real player, other is TBD placeholder -> single contestant auto-advance
+    if (topReal && !botReal) return { key: 'auto', label: 'BYE' };
+    if (botReal && !topReal) return { key: 'auto', label: 'BYE' };
+  }
+  if (topReal && botReal) {
+    return { key: 'open', label: 'Open' };
+  }
+  return { key: 'pending', label: 'Pending' };
+}
+
+/**
+ * Detect the winner of a match.
+ *
+ * @param {boolean} confirmed
+ * @param {Object} topEntrant  Built entrant
+ * @param {Object} botEntrant  Built entrant
+ * @param {number|null} topScore
+ * @param {number|null} botScore
+ * @returns {number|null}  1 = top wins, 2 = bottom wins, null = not decided
+ */
+function _ltDetectWinner(confirmed, topEntrant, botEntrant, topScore, botScore) {
+  var topReal = topEntrant && topEntrant.type === 'player';
+  var botReal = botEntrant && botEntrant.type === 'player';
+  var topDefwin = topEntrant && topEntrant.type === 'defwin';
+  var botDefwin = botEntrant && botEntrant.type === 'defwin';
+
+  // Both defwin or both missing — no winner
+  if (topDefwin && botDefwin) return null;
+
+  // One side is defwin, other is real — real side auto-wins
+  if (topDefwin && botReal) return 2;
+  if (botDefwin && topReal) return 1;
+
+  // Only one real contestant present — auto-advance
+  if (topReal && !botReal && !botDefwin) return 1;
+  if (botReal && !topReal && !topDefwin) return 2;
+
+  // Both real, confirmed with scores
+  if (confirmed && topReal && botReal) {
+    var ts = (topScore != null) ? Number(topScore) : null;
+    var bs = (botScore != null) ? Number(botScore) : null;
+    if (ts !== null && bs !== null) {
+      if (ts > bs) return 1;
+      if (bs > ts) return 2;
+    }
+    // Equal scores or missing: no clear winner
+    return null;
+  }
+
+  return null;
+}
+
+/**
+ * Parse the server JSON into the renderer's internal data model.
+ *
+ * Consumes the Python `serialize_bracket_json()` output which has:
+ *   { tournament, matches[], match_urls{uuid->url}, hover_data }
+ *
+ * Each match: { id, round, match_order, bracket, next_match_id,
+ *               loser_next_match_id, confirmed, contestants[] }
+ *
+ * Groups matches by bracket side (WB/LB/GF) and round number,
+ * computes statuses, builds the matchMap, and returns structured
+ * round arrays ready for layout.
+ *
+ * @param {Object} json  The server-provided bracket data.
+ * @returns {Object}  { tournament, winnerRounds, loserRounds, finalMatches, matchMap, matchUrls }
+ */
+function parseBracketData(json) {
+  var tournament = json.tournament || {};
+  var rawMatches = json.matches || [];
+  var rawMatchUrls = json.match_urls || {};
+  var matchMap = {};
+  var matchById = {};
+  var winnerBuckets = {};  // roundNo -> [match, ...]
+  var loserBuckets = {};
+  var finalMatches = [];
+  var matchUrls = {};
+  var i, m, matchRef, parsed, bucket, roundKey;
+  var topContestant, botContestant, entrantTop, entrantBot;
+  var topScore, botScore, winnerIndex, status;
+  var topPlayers, botPlayers, playerKeys;
+
+  // First pass: build all matches and index by ID and ref
+  for (i = 0; i < rawMatches.length; i++) {
+    m = rawMatches[i];
+
+    // Generate match_ref from Python fields
+    matchRef = _ltGenerateMatchRef(m.bracket, m.round, m.match_order);
+    parsed = _ltParseMatchRef(matchRef);
+    if (!parsed) continue;
+
+    // Map contestants: index 0 = top, index 1 = bottom
+    topContestant = (m.contestants && m.contestants.length > 0) ? m.contestants[0] : null;
+    botContestant = (m.contestants && m.contestants.length > 1) ? m.contestants[1] : null;
+
+    entrantTop = _ltBuildEntrant(topContestant, 'TBD');
+    entrantBot = _ltBuildEntrant(botContestant, 'TBD');
+
+    topScore = (topContestant && topContestant.score != null) ? topContestant.score : null;
+    botScore = (botContestant && botContestant.score != null) ? botContestant.score : null;
+
+    // If only one real contestant, mark the other side as auto-advance
+    if (entrantTop.type === 'player' && entrantBot.type === 'placeholder' &&
+        m.contestants && m.contestants.length === 1) {
+      entrantBot = { type: 'defwin', name: 'BYE', label: 'BYE', key: '', score: null, id: null };
+    }
+
+    winnerIndex = _ltDetectWinner(!!m.confirmed, entrantTop, entrantBot, topScore, botScore);
+    status = _ltComputeStatus(!!m.confirmed, entrantTop, entrantBot);
+
+    topPlayers = (entrantTop.type === 'player') ? [entrantTop.key] : [];
+    botPlayers = (entrantBot.type === 'player') ? [entrantBot.key] : [];
+    playerKeys = topPlayers.concat(botPlayers);
+
+    var internalMatch = {
+      id: m.id,
+      ref: matchRef,
+      bracket: parsed.bracket || (m.bracket || null),
+      roundNo: parsed.round || ((m.round || 0) + 1),
+      matchNo: parsed.match || ((m.match_order || 0) + 1),
+      confirmed: !!m.confirmed,
+      topResolved: {
+        entrant: entrantTop,
+        sourceRef: null,
+        sourceOutcome: null
+      },
+      bottomResolved: {
+        entrant: entrantBot,
+        sourceRef: null,
+        sourceOutcome: null
+      },
+      scores: [topScore, botScore],
+      winnerIndex: winnerIndex,
+      winnerEntrant: winnerIndex === 1 ? entrantTop : (winnerIndex === 2 ? entrantBot : null),
+      loserEntrant: winnerIndex === 1 ? entrantBot : (winnerIndex === 2 ? entrantTop : null),
+      isComplete: status.key === 'done' || status.key === 'auto',
+      isAutoAdvanced: status.key === 'auto',
+      isReadyToPlay: status.key === 'open',
+      isWaitingForPlayers: status.key === 'pending',
+      playerKeys: playerKeys,
+      nextMatchId: m.next_match_id || null,
+      loserNextMatchId: m.loser_next_match_id || null
+    };
+
+    // Index by both ref and UUID for cross-referencing
+    matchMap[matchRef] = internalMatch;
+    matchById[m.id] = internalMatch;
+
+    // Map match_urls from UUID-keyed to ref-keyed
+    if (rawMatchUrls[m.id] != null) {
+      matchUrls[matchRef] = rawMatchUrls[m.id];
+    }
+    // Also keep UUID-keyed URLs for fallback
+    matchUrls[m.id] = rawMatchUrls[m.id] || null;
+
+    if (parsed.bracket === 'WB') {
+      roundKey = parsed.round;
+      if (!winnerBuckets[roundKey]) winnerBuckets[roundKey] = [];
+      winnerBuckets[roundKey].push(internalMatch);
+    } else if (parsed.bracket === 'LB') {
+      roundKey = parsed.round;
+      if (!loserBuckets[roundKey]) loserBuckets[roundKey] = [];
+      loserBuckets[roundKey].push(internalMatch);
+    } else if (parsed.bracket === 'GF') {
+      finalMatches.push(internalMatch);
+    } else {
+      // SE (null bracket) — treat as winner bracket
+      roundKey = parsed.round;
+      if (!winnerBuckets[roundKey]) winnerBuckets[roundKey] = [];
+      winnerBuckets[roundKey].push(internalMatch);
+    }
+  }
+
+  // Second pass: compute source refs from next_match_id / loser_next_match_id
+  // For each match that has next_match_id, the target match gets a source ref
+  for (i = 0; i < rawMatches.length; i++) {
+    m = rawMatches[i];
+    var sourceMatch = matchById[m.id];
+    if (!sourceMatch) continue;
+
+    // Winner goes to next_match_id
+    if (m.next_match_id && matchById[m.next_match_id]) {
+      var targetMatch = matchById[m.next_match_id];
+      _ltAssignSourceRef(targetMatch, sourceMatch.ref, 'winner');
+    }
+
+    // Loser goes to loser_next_match_id
+    if (m.loser_next_match_id && matchById[m.loser_next_match_id]) {
+      var loserTarget = matchById[m.loser_next_match_id];
+      _ltAssignSourceRef(loserTarget, sourceMatch.ref, 'loser');
+    }
+  }
+
+  var winnerRounds = _ltBucketsToRounds(winnerBuckets, 'WB');
+  var loserRounds = _ltBucketsToRounds(loserBuckets, 'LB');
+
+  // If there is a grand final and we have winner rounds, integrate it as the
+  // last column of the winners bracket for layout purposes.
+  var integratedGF = null;
+  var extraFinals = [];
+  for (i = 0; i < finalMatches.length; i++) {
+    if (finalMatches[i].bracket === 'GF' && !integratedGF) {
+      integratedGF = finalMatches[i];
+    } else {
+      extraFinals.push(finalMatches[i]);
+    }
+  }
+
+  if (integratedGF && winnerRounds.length > 0) {
+    winnerRounds.push({
+      bracket: 'GF',
+      displayBracket: 'WB',
+      roundNo: winnerRounds.length + 1,
+      matches: [integratedGF],
+      title: 'Grand Final',
+      subtitle: 'WB Winner vs LB Winner'
+    });
+  }
+
+  // Decorate round titles
+  winnerRounds = _ltDecorateRounds(winnerRounds);
+  loserRounds = _ltDecorateRounds(loserRounds);
+
+  return {
+    tournament: tournament,
+    winnerRounds: winnerRounds,
+    loserRounds: loserRounds,
+    finalMatches: extraFinals,
+    matchMap: matchMap,
+    matchUrls: matchUrls
+  };
+}
+
+/**
+ * Assign a source ref to the first empty slot (top or bottom) of a target match.
+ */
+function _ltAssignSourceRef(targetMatch, sourceRef, outcome) {
+  if (!targetMatch.topResolved.sourceRef) {
+    targetMatch.topResolved.sourceRef = sourceRef;
+    targetMatch.topResolved.sourceOutcome = outcome;
+  } else if (!targetMatch.bottomResolved.sourceRef) {
+    targetMatch.bottomResolved.sourceRef = sourceRef;
+    targetMatch.bottomResolved.sourceOutcome = outcome;
+  }
+  // If both slots already assigned, drop it (shouldn't happen in valid brackets)
+}
+
+/**
+ * Convert a bucket map { roundNo: [match,...] } into a sorted array of round
+ * objects, each with a `matches` array sorted by matchNo.
+ */
+function _ltBucketsToRounds(buckets, bracket) {
+  var keys = [];
+  var k;
+  for (k in buckets) {
+    if (buckets.hasOwnProperty(k)) keys.push(Number(k));
+  }
+  keys.sort(function(a, b) { return a - b; });
+
+  var rounds = [];
+  var i;
+  for (i = 0; i < keys.length; i++) {
+    var matches = buckets[keys[i]].slice();
+    matches.sort(function(a, b) { return a.matchNo - b.matchNo; });
+    rounds.push({
+      bracket: bracket,
+      roundNo: keys[i],
+      matches: matches
+    });
+  }
+  return rounds;
+}
+
+/**
+ * Add title/subtitle to each round.
+ */
+function _ltDecorateRounds(rounds) {
+  var i, round, matchCount, title, subtitle;
+  for (i = 0; i < rounds.length; i++) {
+    round = rounds[i];
+    if (round.title) continue;  // already decorated (e.g. GF)
+    matchCount = round.matches.length;
+    title = 'Round ' + (i + 1);
+    subtitle = matchCount + (matchCount === 1 ? ' Match' : ' Matches');
+    round.title = title;
+    round.subtitle = subtitle;
+  }
+  return rounds;
+}
+
+
+/* ===================================================================
+ *  Layout engine
+ * =================================================================== */
+
+/**
+ * Base dimension constants, responsive to viewport width.
+ */
+function getBaseDims() {
+  var mobile = window.innerWidth <= 700;
+  return {
+    mobile: mobile,
+    titleHeight: mobile ? 44 : 46,
+    titleGap: mobile ? 8 : 5,
+    slotHeight: mobile ? 74 : 68,
+    matchWidth: mobile ? 246 : 300,
+    connectorGap: mobile ? 64 : 76,
+    leftInset: mobile ? 12 : 102,
+    padding: mobile ? 7 : 7,
+    labelHeight: mobile ? 26 : 30,
+    teamHeight: mobile ? 30 : 36,
+    rowGap: mobile ? 5 : 5,
+    sourceBadgeMinWidth: mobile ? 108 : 130,
+    sourceBadgeHeight: 24,
+    fontScale: 1
+  };
+}
+
+/**
+ * Estimate the pixel width a source badge label will occupy.
+ */
+function _ltEstimateSourceLabelWidth(text, statusText, dims) {
+  var labelWidth = (text || '').length * (dims.mobile ? 6.2 : 6.6);
+  var statusWidth = statusText ? 14 : 0;
+  var base = Math.max(dims.sourceBadgeMinWidth, labelWidth + statusWidth + 24);
+  var upper = dims.mobile ? 220 : 270;
+  return Math.max(94, Math.min(upper, base));
+}
+
+/**
+ * Decide whether to show an external source badge for this reference.
+ */
+function shouldShowExternalSource(sourceRef, currentBracket) {
+  var sourceBracket = sourceRef ? String(sourceRef).split(' ')[0] : '';
+  return !!(sourceRef && (currentBracket === 'P3' || sourceBracket !== currentBracket));
+}
+
+/**
+ * Get match status metadata (key + label) for a given match ref.
+ */
+function _ltGetMatchStatusFromMap(ref, matchMap) {
+  var m = matchMap[ref];
+  if (!m) return { key: 'pending', label: 'Pending' };
+  if (m.isAutoAdvanced) return { key: 'auto', label: 'BYE' };
+  if (m.isComplete) return { key: 'done', label: 'Done' };
+  if (m.isReadyToPlay) return { key: 'open', label: 'Open' };
+  return { key: 'pending', label: 'Pending' };
+}
+
+/**
+ * Get the status label text for a match ref.
+ */
+function _ltGetMatchStatusText(ref, matchMap) {
+  return _ltGetMatchStatusFromMap(ref, matchMap).label;
+}
+
+/**
+ * Get the status metadata directly from a match object.
+ */
+function _ltGetMatchStatusMetaFromMatch(match) {
+  if (!match) return { key: 'pending', label: 'Pending' };
+  if (match.isAutoAdvanced) return { key: 'auto', label: 'BYE' };
+  if (match.isComplete) return { key: 'done', label: 'Done' };
+  if (match.isReadyToPlay) return { key: 'open', label: 'Open' };
+  return { key: 'pending', label: 'Pending' };
+}
+
+/**
+ * Scan rounds for the maximum width a source badge will need.
+ */
+function _ltGetMaxSourceBadgeWidth(rounds, dims, matchMap, settings) {
+  if (!rounds || !rounds.length || !matchMap) return 0;
+
+  var maxWidth = 0;
+  var i, j, round, match, slots, s, ref, outcome, currentBracket, labelText, statusText, w;
+
+  for (i = 0; i < rounds.length; i++) {
+    round = rounds[i];
+    currentBracket = round.displayBracket || round.bracket;
+
+    for (j = 0; j < round.matches.length; j++) {
+      match = round.matches[j];
+      slots = [
+        { ref: match.topResolved ? match.topResolved.sourceRef : null, outcome: match.topResolved ? match.topResolved.sourceOutcome : null },
+        { ref: match.bottomResolved ? match.bottomResolved.sourceRef : null, outcome: match.bottomResolved ? match.bottomResolved.sourceOutcome : null }
+      ];
+      for (s = 0; s < slots.length; s++) {
+        ref = slots[s].ref;
+        outcome = slots[s].outcome;
+        if (!shouldShowExternalSource(ref, currentBracket)) continue;
+        labelText = _ltGetSourceLabel(ref, outcome, currentBracket);
+        statusText = settings.showSourceStatusInBadge ? _ltGetMatchStatusText(ref, matchMap) : '';
+        w = _ltEstimateSourceLabelWidth(labelText, statusText, dims);
+        if (w > maxWidth) maxWidth = w;
+      }
+    }
+  }
+
+  return maxWidth;
+}
+
+/**
+ * Compute fitted dimensions that scale columns to the available width.
+ */
+function getFittedDims(columnCount, rounds, matchMap, settings, appEl) {
+  var base = getBaseDims();
+  var availableWidth = Math.max(320, Math.min(window.innerWidth - (base.mobile ? 22 : 44), appEl.clientWidth || window.innerWidth));
+  var baseSourceBadgeWidth = _ltGetMaxSourceBadgeWidth(rounds, base, matchMap, settings);
+  var hasExternalSources = baseSourceBadgeWidth > 0;
+  var gapBase = hasExternalSources ? Math.max(base.connectorGap, baseSourceBadgeWidth + 12) : base.connectorGap;
+  var leftInsetBase = hasExternalSources ? Math.max(base.leftInset, gapBase - 6) : base.leftInset;
+  var baseWidth = (leftInsetBase * 2) + (columnCount * base.matchWidth) + (Math.max(0, columnCount - 1) * gapBase);
+  var fit = Math.min(1, availableWidth / baseWidth);
+  var compactFit = Math.max(base.mobile ? 0.9 : 0.78, fit);
+
+  var matchWidth = _ltClamp(Math.round(base.matchWidth * compactFit), base.mobile ? 220 : 210, base.matchWidth);
+  var slotHeight = _ltClamp(Math.round(base.slotHeight * Math.max(0.84, compactFit)), base.mobile ? 68 : 58, base.slotHeight);
+  var titleHeight = _ltClamp(Math.round(base.titleHeight * Math.max(0.88, compactFit)), base.mobile ? 40 : 40, base.titleHeight);
+  var labelHeight = _ltClamp(Math.round(base.labelHeight * Math.max(0.9, compactFit)), base.mobile ? 24 : 26, base.labelHeight);
+  var teamHeight = _ltClamp(Math.round(base.teamHeight * Math.max(0.9, compactFit)), base.mobile ? 28 : 32, base.teamHeight);
+  var padding = _ltClamp(Math.round(base.padding * Math.max(0.8, compactFit)), 6, base.padding);
+  var rowGap = _ltClamp(Math.round(base.rowGap * Math.max(0.84, compactFit)), 4, base.rowGap);
+  var sourceBadgeMinWidth = _ltClamp(Math.round(base.sourceBadgeMinWidth * compactFit), 100, base.sourceBadgeMinWidth);
+  var fontScale = _ltClamp(compactFit, base.mobile ? 0.94 : 0.86, 1);
+
+  var provisionalDims = {
+    mobile: base.mobile,
+    matchWidth: matchWidth,
+    slotHeight: slotHeight,
+    titleHeight: titleHeight,
+    titleGap: base.titleGap,
+    labelHeight: labelHeight,
+    teamHeight: teamHeight,
+    padding: padding,
+    rowGap: rowGap,
+    sourceBadgeMinWidth: sourceBadgeMinWidth,
+    sourceBadgeHeight: base.sourceBadgeHeight,
+    fontScale: fontScale,
+    connectorGap: base.connectorGap,
+    leftInset: base.leftInset
+  };
+
+  var minGapNeeded = hasExternalSources ? Math.round(_ltGetMaxSourceBadgeWidth(rounds, provisionalDims, matchMap, settings) + 12) : 0;
+  var connectorGap = hasExternalSources
+    ? Math.max(Math.round(gapBase * compactFit), minGapNeeded)
+    : _ltClamp(Math.round(base.connectorGap * compactFit), base.mobile ? 46 : 30, base.connectorGap);
+  var leftInset = hasExternalSources
+    ? Math.max(_ltClamp(Math.round(base.leftInset * compactFit), base.mobile ? 10 : 20, leftInsetBase), connectorGap - 6)
+    : _ltClamp(Math.round(base.leftInset * compactFit), base.mobile ? 10 : 20, base.leftInset);
+
+  return {
+    mobile: base.mobile,
+    titleHeight: titleHeight,
+    titleGap: base.titleGap,
+    slotHeight: slotHeight,
+    matchWidth: matchWidth,
+    connectorGap: connectorGap,
+    leftInset: leftInset,
+    padding: padding,
+    labelHeight: labelHeight,
+    teamHeight: teamHeight,
+    rowGap: rowGap,
+    sourceBadgeMinWidth: sourceBadgeMinWidth,
+    sourceBadgeHeight: base.sourceBadgeHeight,
+    fontScale: fontScale
+  };
+}
+
+/**
+ * Total height of a single match card.
+ */
+function getMatchHeight(dims) {
+  return (dims.padding * 2) + dims.labelHeight + dims.rowGap + dims.teamHeight + dims.rowGap + dims.teamHeight;
+}
+
+/**
+ * Vertical centre offsets for top/bottom team rows.
+ */
+function getTeamOffsets(dims) {
+  var top = dims.padding + dims.labelHeight + dims.rowGap + (dims.teamHeight / 2);
+  var bottom = top + dims.teamHeight + dims.rowGap;
+  return { top: top, bottom: bottom };
+}
+
+/**
+ * Assign absolute (x, y) geometry to every match in every round.
+ *
+ * @param {Array}  rounds    Array of round objects, each with a `matches` array.
+ * @param {number} fieldSize Number of first-round slots (power of 2).
+ * @param {Object} dims      Fitted dimensions from getFittedDims().
+ * @returns {Object}  { width, height, bracketHeight, headerOffset, matchHeight }
+ */
+function layoutRounds(rounds, fieldSize, dims) {
+  var matchHeight = getMatchHeight(dims);
+  var teamOffsets = getTeamOffsets(dims);
+  var bracketHeight = fieldSize * dims.slotHeight;
+  var headerOffset = dims.titleHeight + dims.titleGap;
+  var x = dims.leftInset;
+  var i, j, round, step, centerY, boxTop;
+
+  for (i = 0; i < rounds.length; i++) {
+    round = rounds[i];
+    round.columnX = x;
+    round.columnWidth = dims.matchWidth;
+    round.boxLeft = x;
+    round.boxRight = x + dims.matchWidth;
+
+    step = bracketHeight / round.matches.length;
+
+    for (j = 0; j < round.matches.length; j++) {
+      centerY = headerOffset + (step * (j + 0.5));
+      boxTop = centerY - (matchHeight / 2);
+
+      round.matches[j].geom = {
+        centerY: centerY,
+        boxLeft: round.boxLeft,
+        boxRight: round.boxRight,
+        boxTop: boxTop,
+        boxBottom: boxTop + matchHeight,
+        teamTopY: boxTop + teamOffsets.top,
+        teamBottomY: boxTop + teamOffsets.bottom
+      };
+    }
+
+    x += round.columnWidth;
+    if (i < rounds.length - 1) x += dims.connectorGap;
+  }
+
+  var rightSafety = Math.max(26, dims.padding + 18);
+
+  return {
+    width: x + dims.leftInset + rightSafety,
+    height: headerOffset + bracketHeight,
+    bracketHeight: bracketHeight,
+    headerOffset: headerOffset,
+    matchHeight: matchHeight
+  };
+}
+
+
+/* ===================================================================
+ *  SVG connector lines
+ * =================================================================== */
+
+/**
+ * Create an SVG <path> with stroke styling for bracket connectors.
+ */
+function _ltSvgPath(d, strong, className, players) {
+  var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', d);
+  path.setAttribute('fill', 'none');
+  path.setAttribute('stroke', strong ? 'var(--lt-line-strong)' : 'var(--lt-line)');
+  path.setAttribute('stroke-width', strong ? '2.25' : '2');
+  path.setAttribute('stroke-linecap', 'round');
+  path.setAttribute('stroke-linejoin', 'round');
+  path.setAttribute('class', className || 'lt-connector');
+  path.setAttribute('data-players', _ltPackPlayerData(players));
+  return path;
+}
+
+/**
+ * Create the root SVG element for bracket lines.
+ */
+function _ltCreateSvg(width, height) {
+  var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('class', 'lt-lines-layer');
+  svg.setAttribute('width', width);
+  svg.setAttribute('height', height);
+  svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
+  return svg;
+}
+
+/**
+ * Build a unique route ID for a source->target connection.
+ */
+function _ltBuildRouteId(sourceRef, targetRef, slotName) {
+  return (sourceRef || '?') + '->' + (targetRef || '?') + ':' + slotName;
+}
+
+/**
+ * Add a horizontal source connector line to the SVG.
+ */
+function _ltAddSourceConnector(svg, options) {
+  var safeStart = Math.min(options.startX, options.endX - 8);
+  var path = _ltSvgPath('M ' + safeStart + ' ' + options.y + ' H ' + options.endX, false, 'lt-source-connector', options.players || []);
+  path.setAttribute('data-route', options.routeId);
+  path.setAttribute('data-source-ref', options.sourceRef);
+  path.setAttribute('data-target-ref', options.targetRef);
+  svg.appendChild(path);
+}
+
+/**
+ * Add a bracket connector between two match boxes.
+ */
+function addConnector(svg, fromMatch, toMatch, dims, strong) {
+  var players = _ltOverlapPlayers(fromMatch.playerKeys, toMatch.playerKeys);
+  var joinX = fromMatch.geom.boxRight + (dims.connectorGap / 2);
+  var d = 'M ' + fromMatch.geom.boxRight + ' ' + fromMatch.geom.centerY
+    + ' H ' + joinX
+    + ' V ' + toMatch.geom.centerY
+    + ' H ' + toMatch.geom.boxLeft;
+  svg.appendChild(_ltSvgPath(d, strong, 'lt-connector', players));
+}
+
+/**
+ * Draw all connector lines between successive rounds.
+ *
+ * Standard elimination pattern: if round N has 2x the matches of round N+1,
+ * connect pairs. If equal match counts, connect 1:1 (LB same-size rounds).
+ */
+function drawConnectorLines(svg, rounds, dims) {
+  var i, current, next, j;
+  for (i = 0; i < rounds.length - 1; i++) {
+    current = rounds[i];
+    next = rounds[i + 1];
+
+    if (current.matches.length === next.matches.length * 2) {
+      for (j = 0; j < next.matches.length; j++) {
+        addConnector(svg, current.matches[j * 2], next.matches[j], dims, true);
+        addConnector(svg, current.matches[(j * 2) + 1], next.matches[j], dims, true);
+      }
+    } else if (current.matches.length === next.matches.length) {
+      for (j = 0; j < next.matches.length; j++) {
+        addConnector(svg, current.matches[j], next.matches[j], dims, false);
+      }
+    }
+  }
+}
+
+
+/* ===================================================================
+ *  DOM rendering
+ * =================================================================== */
+
+/**
+ * Create a round title header element.
+ */
+function createRoundTitle(round, dims) {
+  var el = document.createElement('div');
+  el.className = 'lt-round-title';
+  el.style.left = round.columnX + 'px';
+  el.style.top = '0px';
+  el.style.width = round.columnWidth + 'px';
+  el.style.height = dims.titleHeight + 'px';
+  el.style.fontSize = (0.93 * dims.fontScale) + 'rem';
+  el.innerHTML =
+    '<span>' + _ltEscapeHtml(round.title) + '</span>' +
+    '<small>' + _ltEscapeHtml(round.subtitle) + '</small>';
+  return el;
+}
+
+/**
+ * Build a single team row (top or bottom contestant) inside a match card.
+ */
+function buildTeamRow(entrant, isWinner, score, dims, matchRef) {
+  var team = _ltFormatEntrantForView(entrant);
+  var classes = ['lt-team'];
+  if (team.className) classes.push(team.className);
+  if (isWinner && team.className !== 'defwin') classes.push('winner');
+  var scoreText = (score === 0 || score) ? String(score) : '-';
+  var playerAttr = team.key ? ' data-player="' + _ltEscapeHtml(team.key) + '"' : '';
+  var scoreAttrs = team.key
+    ? ' data-player="' + _ltEscapeHtml(team.key) + '" data-hoverable="true" tabindex="0"'
+    : matchRef
+      ? ' data-match-ref="' + _ltEscapeHtml(matchRef) + '" data-hoverable="true" tabindex="0"'
+      : '';
+
+  return '<div class="' + classes.join(' ') + '"' + playerAttr +
+    ' style="height:' + dims.teamHeight + 'px; min-height:' + dims.teamHeight + 'px; font-size:' + (0.93 * dims.fontScale) + 'rem">' +
+    '<div class="lt-team-content">' +
+    '<span class="lt-team-text" title="' + _ltEscapeHtml(team.text) + '">' + _ltEscapeHtml(team.text) + '</span>' +
+    '<span class="lt-score-pill"' + scoreAttrs + '>' + _ltEscapeHtml(scoreText) + '</span>' +
+    '</div></div>';
+}
+
+/**
+ * Create a complete match card element.
+ *
+ * If a URL is available for this match in matchUrls, it becomes
+ * a clickable <a> tag. Otherwise it's a <div>.
+ */
+function createMatchEl(match, dims, options, matchUrls) {
+  // Look up URL by ref first, then by UUID
+  var url = matchUrls[match.ref] || matchUrls[match.id] || null;
+  var tagName = url ? 'a' : 'div';
+  var el = document.createElement(tagName);
+  var statusMeta = _ltGetMatchStatusMetaFromMatch(match);
+  var matchRefDisplay = _ltFormatMatchRefDisplay(match.ref);
+  el.className = 'lt-match' + (url ? ' clickable' : '');
+  el.style.left = match.geom.boxLeft + 'px';
+  el.style.top = match.geom.boxTop + 'px';
+  el.style.width = dims.matchWidth + 'px';
+  el.style.height = getMatchHeight(dims) + 'px';
+  el.style.padding = dims.padding + 'px';
+  el.style.gap = dims.rowGap + 'px';
+  el.style.gridTemplateRows = dims.labelHeight + 'px ' + dims.teamHeight + 'px ' + dims.teamHeight + 'px';
+  el.setAttribute('data-match-ref', match.ref);
+  el.setAttribute('data-match-id', match.id);
+  el.setAttribute('data-players', _ltPackPlayerData(match.playerKeys));
+  el.title = matchRefDisplay + ' - ' + statusMeta.label;
+
+  if (url) {
+    el.href = url;
+    el.setAttribute('aria-label', 'Open ' + matchRefDisplay);
+  }
+
+  if (statusMeta.key === 'open') el.className += ' match-open';
+  if (statusMeta.key === 'pending') el.className += ' match-pending';
+  if (statusMeta.key === 'auto') el.className += ' match-auto';
+  if (statusMeta.key === 'done') el.className += ' match-done';
+  el.setAttribute('data-match-status', statusMeta.key);
+
+  var stageText = options.stageText
+    ? '<span class="lt-match-stage" title="' + _ltEscapeHtml(options.stageText) + '">' + _ltEscapeHtml(options.stageText) + '</span>'
+    : '';
+  var statusTag = '<span class="lt-match-status lt-match-status--' + _ltEscapeHtml(statusMeta.key) + '" title="Status: ' + _ltEscapeHtml(statusMeta.label) + '">' + _ltEscapeHtml(statusMeta.label) + '</span>';
+
+  el.innerHTML =
+    '<div class="lt-match-label" style="font-size:' + (0.72 * dims.fontScale) + 'rem">' +
+    '<span class="lt-match-ref-wrap" title="' + _ltEscapeHtml(matchRefDisplay) + ' - ' + _ltEscapeHtml(statusMeta.label) + '">' +
+    '<span class="lt-match-state-dot lt-match-state-dot--' + _ltEscapeHtml(statusMeta.key) + '" aria-hidden="true"></span>' +
+    '<span class="lt-match-ref-text">' + _ltEscapeHtml(matchRefDisplay) + '</span>' +
+    '</span>' +
+    '<span class="lt-match-meta">' + stageText + statusTag + '</span>' +
+    '</div>' +
+    buildTeamRow(match.topResolved.entrant, match.winnerIndex === 1, match.scores[0], dims, match.ref) +
+    buildTeamRow(match.bottomResolved.entrant, match.winnerIndex === 2, match.scores[1], dims, match.ref);
+
+  return el;
+}
+
+
+/* ===================================================================
+ *  Source badges (DE bracket cross-bracket indicators)
+ * =================================================================== */
+
+/**
+ * Create a source badge element indicating where a contestant comes from
+ * (e.g. "Loser of WB R2 M1" appearing in the losers bracket).
+ */
+function createExternalSourceBadge(options) {
+  if (!shouldShowExternalSource(options.sourceRef, options.currentBracket)) return null;
+
+  var labelText = _ltGetSourceLabel(options.sourceRef, options.sourceOutcome, options.currentBracket);
+  var statusMeta = options.settings.showSourceStatusInBadge ? _ltGetMatchStatusFromMap(options.sourceRef, options.matchMap) : null;
+  var statusText = statusMeta ? statusMeta.label : '';
+
+  var badge = document.createElement('div');
+  var entrant = options.targetEntrant;
+  var playerKey = (entrant && entrant.type === 'player') ? _ltNormalizePlayer(entrant.name) : '';
+  var startX = Math.max(8, options.x - options.dims.connectorGap + 4);
+  var maxWidth = Math.max(100, options.x - startX - 10);
+  var pillWidth = Math.min(_ltEstimateSourceLabelWidth(labelText, statusText, options.dims), maxWidth);
+  var routeId = _ltBuildRouteId(options.sourceRef, options.targetRef, options.slotName);
+
+  badge.className = 'lt-incoming-source' + (options.sourceOutcome === 'loser' ? ' is-loser' : '');
+  badge.style.left = startX + 'px';
+  badge.style.top = (options.y - (options.dims.sourceBadgeHeight / 2)) + 'px';
+  badge.style.width = pillWidth + 'px';
+  badge.style.height = options.dims.sourceBadgeHeight + 'px';
+  badge.setAttribute('data-players', _ltPackPlayerData(playerKey ? [playerKey] : []));
+  badge.setAttribute('data-route', routeId);
+  badge.setAttribute('data-source-ref', options.sourceRef);
+  badge.setAttribute('data-target-ref', options.targetRef);
+  badge.setAttribute('role', 'button');
+  badge.tabIndex = 0;
+  badge.title = (options.sourceOutcome === 'loser' ? 'Loser of ' : 'Winner of ') +
+    _ltFormatMatchRefDisplay(options.sourceRef) +
+    (statusText ? ' - ' + statusText : '') +
+    ' – click to jump to source match';
+  badge.setAttribute('aria-label', labelText + (statusText ? ' ' + statusText : '') + ' – jump to ' + _ltFormatMatchRefDisplay(options.sourceRef));
+
+  var dotHtml = statusMeta
+    ? '<span class="lt-incoming-pill-state-dot lt-incoming-pill-dot--' + _ltEscapeHtml(statusMeta.key) + '" aria-hidden="true"></span>'
+    : '';
+
+  badge.innerHTML =
+    '<span class="lt-incoming-pill">' +
+    dotHtml +
+    '<span class="lt-incoming-pill-label" title="' + _ltEscapeHtml(labelText) + '">' + _ltEscapeHtml(labelText) + '</span>' +
+    '</span>';
+
+  return {
+    badge: badge,
+    lineStartX: startX + pillWidth + 6,
+    routeId: routeId,
+    playerKey: playerKey,
+    sourceRef: options.sourceRef,
+    targetRef: options.targetRef
+  };
+}
+
+/**
+ * Attach external source badges and their connector lines to a match.
+ */
+function appendExternalSources(container, svg, match, dims, currentBracket, matchMap, settings) {
+  var topBadge = createExternalSourceBadge({
+    sourceRef: match.topResolved.sourceRef,
+    sourceOutcome: match.topResolved.sourceOutcome,
+    targetEntrant: match.topResolved.entrant,
+    currentBracket: currentBracket,
+    x: match.geom.boxLeft,
+    y: match.geom.teamTopY,
+    dims: dims,
+    targetRef: match.ref,
+    slotName: 'top',
+    matchMap: matchMap,
+    settings: settings
+  });
+
+  var bottomBadge = createExternalSourceBadge({
+    sourceRef: match.bottomResolved.sourceRef,
+    sourceOutcome: match.bottomResolved.sourceOutcome,
+    targetEntrant: match.bottomResolved.entrant,
+    currentBracket: currentBracket,
+    x: match.geom.boxLeft,
+    y: match.geom.teamBottomY,
+    dims: dims,
+    targetRef: match.ref,
+    slotName: 'bottom',
+    matchMap: matchMap,
+    settings: settings
+  });
+
+  var entries = [topBadge, bottomBadge];
+  var yPositions = [match.geom.teamTopY, match.geom.teamBottomY];
+  var idx;
+  for (idx = 0; idx < entries.length; idx++) {
+    if (!entries[idx]) continue;
+    container.appendChild(entries[idx].badge);
+    _ltAddSourceConnector(svg, {
+      startX: entries[idx].lineStartX,
+      endX: match.geom.boxLeft,
+      y: yPositions[idx],
+      players: entries[idx].playerKey ? [entries[idx].playerKey] : [],
+      routeId: entries[idx].routeId,
+      sourceRef: entries[idx].sourceRef,
+      targetRef: entries[idx].targetRef
+    });
+  }
+}
+
+
+/* ===================================================================
+ *  Bracket panning (drag-to-scroll)
+ * =================================================================== */
+
+/**
+ * Enable pointer-based horizontal panning on the bracket scroll container.
+ */
+function enableBracketPan(scrollEl) {
+  var canvas = scrollEl.querySelector('.lt-bracket-canvas');
+  if (!canvas) return;
+
+  var interactiveSelector = '.lt-match, .lt-incoming-source, .lt-team, a, button, select, input, label';
+  var needsPan = canvas.scrollWidth > (scrollEl.clientWidth + 8);
+  var useNativeTouchPan = window.matchMedia && window.matchMedia('(hover: none), (pointer: coarse)').matches;
+
+  if (needsPan) {
+    scrollEl.className += ' is-pannable';
+  }
+
+  if (!needsPan) return;
+  if (useNativeTouchPan) return;
+
+  var pointerId = null;
+  var startX = 0;
+  var startScrollLeft = 0;
+  var moved = false;
+
+  scrollEl.addEventListener('pointerdown', function(event) {
+    if (event.button !== 0) return;
+    if (event.target.closest && event.target.closest(interactiveSelector)) return;
+
+    pointerId = event.pointerId;
+    moved = false;
+    startX = event.clientX;
+    startScrollLeft = scrollEl.scrollLeft;
+    scrollEl.className += ' is-panning';
+    if (scrollEl.setPointerCapture) scrollEl.setPointerCapture(pointerId);
+  });
+
+  scrollEl.addEventListener('pointermove', function(event) {
+    if (pointerId !== event.pointerId) return;
+    var delta = event.clientX - startX;
+    if (Math.abs(delta) > 3) moved = true;
+    scrollEl.scrollLeft = startScrollLeft - delta;
+  });
+
+  var stopPan = function(event) {
+    if (pointerId !== event.pointerId) return;
+    scrollEl.className = scrollEl.className.replace(/\bis-panning\b/g, '').trim();
+    if (scrollEl.hasPointerCapture && scrollEl.hasPointerCapture(pointerId)) {
+      scrollEl.releasePointerCapture(pointerId);
+    }
+    if (moved) {
+      event.preventDefault();
+    }
+    pointerId = null;
+  };
+
+  scrollEl.addEventListener('pointerup', stopPan);
+  scrollEl.addEventListener('pointercancel', stopPan);
+  scrollEl.addEventListener('lostpointercapture', function() {
+    pointerId = null;
+    scrollEl.className = scrollEl.className.replace(/\bis-panning\b/g, '').trim();
+  });
+}
+
+
+/* ===================================================================
+ *  Section-level rendering
+ * =================================================================== */
+
+/**
+ * Render a complete bracket section (WB or LB) with round titles,
+ * match cards, connectors, and source badges.
+ */
+function renderBracketSection(options) {
+  var dims = getFittedDims(options.rounds.length, options.rounds, options.matchMap, options.settings, options.appEl);
+  var layout = layoutRounds(options.rounds, options.fieldSize, dims);
+  var i, round, j, match, stageText;
+
+  var section = document.createElement('section');
+  section.className = 'lt-section-card';
+  section.innerHTML =
+    '<div class="lt-section-head">' +
+    '<h2>' + _ltEscapeHtml(options.title) + '</h2>' +
+    '<span>' + _ltEscapeHtml(options.subtitle) + '</span>' +
+    '</div>' +
+    '<div class="lt-section-body">' +
+    '<div class="lt-bracket-scroll">' +
+    '<div class="lt-bracket-canvas"></div>' +
+    '</div></div>';
+
+  var scroll = section.querySelector('.lt-bracket-scroll');
+  var canvas = section.querySelector('.lt-bracket-canvas');
+  canvas.style.width = layout.width + 'px';
+  canvas.style.height = layout.height + 'px';
+
+  var svg = _ltCreateSvg(layout.width, layout.height);
+  drawConnectorLines(svg, options.rounds, dims);
+  canvas.appendChild(svg);
+
+  for (i = 0; i < options.rounds.length; i++) {
+    round = options.rounds[i];
+    canvas.appendChild(createRoundTitle(round, dims));
+    for (j = 0; j < round.matches.length; j++) {
+      match = round.matches[j];
+      stageText = round.title;
+      appendExternalSources(canvas, svg, match, dims, round.displayBracket || match.bracket, options.matchMap, options.settings);
+      canvas.appendChild(createMatchEl(match, dims, { stageText: stageText }, options.matchUrls));
+    }
+  }
+
+  requestAnimationFrame(function() { enableBracketPan(scroll); });
+  return section;
+}
+
+/**
+ * Render the finals/extra matches section (reset game, 3rd place, etc.)
+ * in a non-bracket grid layout.
+ */
+function renderFinalsSection(finalMatches, matchMap, settings, matchUrls, appEl) {
+  var dims = getFittedDims(1, [], matchMap, settings, appEl);
+  var matchHeight = getMatchHeight(dims);
+  var i, match, card, wrap, matchEl;
+
+  var section = document.createElement('section');
+  section.className = 'lt-section-card';
+  section.innerHTML =
+    '<div class="lt-section-head">' +
+    '<h2>Additional Matches</h2>' +
+    '<span>Optional reset game and additional matches</span>' +
+    '</div>' +
+    '<div class="lt-section-body">' +
+    '<div class="lt-finals-grid"></div>' +
+    '</div>';
+
+  var grid = section.querySelector('.lt-finals-grid');
+
+  for (i = 0; i < finalMatches.length; i++) {
+    match = finalMatches[i];
+    card = document.createElement('div');
+    card.className = 'lt-final-card';
+
+    var titleText = match.title || _ltFormatMatchRefDisplay(match.ref);
+    var subtitleText = match.subtitle || '';
+
+    card.innerHTML =
+      '<h3>' + _ltEscapeHtml(titleText) + '</h3>' +
+      '<p>' + _ltEscapeHtml(subtitleText) + '</p>' +
+      '<div class="lt-final-match-wrap"></div>';
+
+    wrap = card.querySelector('.lt-final-match-wrap');
+
+    matchEl = createMatchEl(match, dims, { stageText: titleText }, matchUrls);
+    matchEl.className += ' static';
+    matchEl.style.height = matchHeight + 'px';
+    wrap.appendChild(matchEl);
+    grid.appendChild(card);
+  }
+
+  return section;
+}
+
+
+/* ===================================================================
+ *  Hover highlight system
+ * =================================================================== */
+
+/**
+ * Clear all active highlight classes from the bracket root.
+ */
+function _ltClearHighlights(rootEl) {
+  rootEl.className = rootEl.className.replace(/\blt-bracket-focus-mode\b/g, '').trim();
+  var highlighted = rootEl.querySelectorAll('.has-active-player, .has-active-route');
+  var i;
+  for (i = 0; i < highlighted.length; i++) {
+    highlighted[i].className = highlighted[i].className
+      .replace(/\bhas-active-player\b/g, '')
+      .replace(/\bhas-active-route\b/g, '')
+      .trim();
+  }
+}
+
+/**
+ * Mark elements whose data-players attribute contains the given player key.
+ */
+function _ltMarkByPlayers(rootEl, selector, className, playerKey) {
+  var needle = '|' + playerKey + '|';
+  var els = rootEl.querySelectorAll(selector);
+  var i;
+  for (i = 0; i < els.length; i++) {
+    if ((els[i].getAttribute('data-players') || '').indexOf(needle) !== -1) {
+      els[i].className += ' ' + className;
+    }
+  }
+}
+
+/**
+ * Mark match elements by data-match-ref.
+ */
+function _ltMarkMatchByRef(rootEl, ref, className) {
+  var els = rootEl.querySelectorAll('.lt-match[data-match-ref]');
+  var i;
+  for (i = 0; i < els.length; i++) {
+    if (els[i].getAttribute('data-match-ref') === ref) {
+      els[i].className += ' ' + className;
+    }
+  }
+}
+
+/**
+ * Highlight all elements associated with a given player.
+ */
+function _ltSetActivePlayer(rootEl, playerKey) {
+  _ltClearHighlights(rootEl);
+  if (!playerKey) return;
+
+  rootEl.className += ' lt-bracket-focus-mode';
+
+  _ltMarkByPlayers(rootEl, '.lt-match[data-players]', 'has-active-player', playerKey);
+
+  var teams = rootEl.querySelectorAll('.lt-team[data-player]');
+  var i;
+  for (i = 0; i < teams.length; i++) {
+    if (teams[i].getAttribute('data-player') === playerKey) {
+      teams[i].className += ' has-active-player';
+    }
+  }
+
+  _ltMarkByPlayers(rootEl, '.lt-connector[data-players]', 'has-active-player', playerKey);
+  _ltMarkByPlayers(rootEl, '.lt-source-connector[data-players], .lt-incoming-source[data-players]', 'has-active-player', playerKey);
+}
+
+/**
+ * Highlight a specific source route (badge -> match connection).
+ */
+function _ltSetActiveRoute(rootEl, routeId, sourceRef, targetRef) {
+  _ltClearHighlights(rootEl);
+  if (!routeId) return;
+
+  rootEl.className += ' lt-bracket-focus-mode';
+
+  var els = rootEl.querySelectorAll('.lt-incoming-source[data-route], .lt-source-connector[data-route]');
+  var i;
+  for (i = 0; i < els.length; i++) {
+    if (els[i].getAttribute('data-route') === routeId) {
+      els[i].className += ' has-active-route';
+    }
+  }
+
+  var refs = [sourceRef, targetRef];
+  for (i = 0; i < refs.length; i++) {
+    if (refs[i]) _ltMarkMatchByRef(rootEl, refs[i], 'has-active-route');
+  }
+}
+
+/**
+ * Highlight a match and all routes touching it.
+ */
+function _ltSetActiveMatchRef(rootEl, ref) {
+  _ltClearHighlights(rootEl);
+  if (!ref) return;
+
+  rootEl.className += ' lt-bracket-focus-mode';
+  _ltMarkMatchByRef(rootEl, ref, 'has-active-route');
+
+  var els = rootEl.querySelectorAll('.lt-incoming-source[data-source-ref], .lt-incoming-source[data-target-ref], .lt-source-connector[data-source-ref], .lt-source-connector[data-target-ref]');
+  var i, sourceRef, targetRef, matchRefs, k;
+  for (i = 0; i < els.length; i++) {
+    sourceRef = els[i].getAttribute('data-source-ref');
+    targetRef = els[i].getAttribute('data-target-ref');
+    if (sourceRef === ref || targetRef === ref) {
+      els[i].className += ' has-active-route';
+      matchRefs = [sourceRef, targetRef];
+      for (k = 0; k < matchRefs.length; k++) {
+        if (matchRefs[k]) _ltMarkMatchByRef(rootEl, matchRefs[k], 'has-active-route');
+      }
+    }
+  }
+}
+
+/**
+ * Find a match element by its ref within the root.
+ */
+function _ltFindMatchByRef(rootEl, ref) {
+  var els = rootEl.querySelectorAll('.lt-match[data-match-ref]');
+  var i;
+  for (i = 0; i < els.length; i++) {
+    if (els[i].getAttribute('data-match-ref') === ref) return els[i];
+  }
+  return null;
+}
+
+/**
+ * Scroll to and flash a match element.
+ */
+function _ltActivateAndScrollToMatchRef(rootEl, ref) {
+  var target = _ltFindMatchByRef(rootEl, ref);
+  if (!target) return false;
+  var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  _ltSetActiveMatchRef(rootEl, ref);
+  target.className = target.className.replace(/\bflash-target\b/g, '').trim();
+  void target.offsetWidth;  // force reflow
+  target.className += ' flash-target';
+  target.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'center', inline: 'center' });
+  clearTimeout(window.__ltFlashTimer);
+  window.__ltFlashTimer = setTimeout(function() {
+    target.className = target.className.replace(/\bflash-target\b/g, '').trim();
+  }, 1400);
+  return true;
+}
+
+/**
+ * Bind hover/focus/click highlight handlers to the bracket root.
+ */
+function bindHoverHighlight(rootEl, appEl, scrollToMatchRefFn) {
+  var activeKey = '';
+
+  var resolveTarget = function(node) {
+    if (!node || !appEl.contains(node)) return null;
+
+    var team = node.closest ? node.closest('.lt-team[data-player]') : null;
+    if (team) return { type: 'player', key: team.getAttribute('data-player') };
+
+    var scorePill = node.closest ? node.closest('.lt-score-pill[data-player], .lt-score-pill[data-match-ref]') : null;
+    if (scorePill) {
+      if (scorePill.getAttribute('data-player')) {
+        return { type: 'player', key: scorePill.getAttribute('data-player') };
+      }
+      if (scorePill.getAttribute('data-match-ref')) {
+        return { type: 'score-match', key: scorePill.getAttribute('data-match-ref') };
+      }
+    }
+
+    var source = node.closest ? node.closest('.lt-incoming-source[data-route]') : null;
+    if (source) {
+      return {
+        type: 'route',
+        key: source.getAttribute('data-route'),
+        sourceRef: source.getAttribute('data-source-ref'),
+        targetRef: source.getAttribute('data-target-ref')
+      };
+    }
+
+    return null;
+  };
+
+  var applyTarget = function(target) {
+    var nextKey = target ? (target.type + ':' + target.key) : '';
+    if (nextKey === activeKey) return;
+    activeKey = nextKey;
+
+    if (!target) {
+      _ltClearHighlights(rootEl);
+      return;
+    }
+
+    if (target.type === 'player') {
+      _ltSetActivePlayer(rootEl, target.key);
+      return;
+    }
+
+    if (target.type === 'route') {
+      _ltSetActiveRoute(rootEl, target.key, target.sourceRef, target.targetRef);
+      return;
+    }
+
+    if (target.type === 'score-match') {
+      _ltSetActiveMatchRef(rootEl, target.key);
+    }
+  };
+
+  appEl.onmousemove = function(event) { applyTarget(resolveTarget(event.target)); };
+  appEl.onfocusin = function(event) { applyTarget(resolveTarget(event.target)); };
+  appEl.onmouseleave = function() {
+    activeKey = '';
+    _ltClearHighlights(rootEl);
+  };
+  appEl.onfocusout = function(event) {
+    if (event.relatedTarget && appEl.contains(event.relatedTarget)) return;
+    activeKey = '';
+    _ltClearHighlights(rootEl);
+  };
+  appEl.onclick = function(event) {
+    var source = event.target.closest ? event.target.closest('.lt-incoming-source[data-source-ref]') : null;
+    if (!source) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (scrollToMatchRefFn) scrollToMatchRefFn(source.getAttribute('data-source-ref'));
+  };
+  appEl.onkeydown = function(event) {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    var source = event.target.closest ? event.target.closest('.lt-incoming-source[data-source-ref]') : null;
+    if (!source) return;
+    event.preventDefault();
+    if (scrollToMatchRefFn) scrollToMatchRefFn(source.getAttribute('data-source-ref'));
+  };
+}
+
+
+/* ===================================================================
+ *  Public API
+ * =================================================================== */
+
+/**
+ * Create a bracket renderer instance.
+ *
+ * @param {Object} config
+ *   config.rootId    - ID of the root container element
+ *   config.data      - Parsed server JSON (or raw JSON to be parsed)
+ *   config.matchUrls - Optional map of match_ref -> admin URL
+ *   config.settings  - Optional settings overrides
+ * @returns {Object}  { render(), destroy(), getMatchMap() }
+ */
+function createBracketInstance(config) {
+  var rootEl = document.getElementById(config.rootId);
+  if (!rootEl) return null;
+
+  var settings = {
+    showSourceStatusInBadge: true,
+    showThirdPlaceMatch: false,
+    useBracketReset: false
+  };
+  var key;
+  if (config.settings) {
+    for (key in config.settings) {
+      if (config.settings.hasOwnProperty(key)) {
+        settings[key] = config.settings[key];
+      }
+    }
+  }
+
+  var data = config.data || {};
+  var matchUrls = config.matchUrls || data.match_urls || {};
+  var parsed = null;
+  var pendingScrollRef = '';
+
+  function ensureParsed() {
+    if (!parsed) {
+      parsed = parseBracketData(data);
+    }
+    return parsed;
+  }
+
+  function scrollToMatchRef(ref) {
+    if (!ref) return;
+    if (_ltActivateAndScrollToMatchRef(rootEl, ref)) return;
+    // If match not visible, could switch view — for now just try
+    pendingScrollRef = ref;
+    render();
+  }
+
+  function render() {
+    var p = ensureParsed();
+    var urls = p.matchUrls || {};
+    var i;
+
+    // Merge in any URLs provided at instance level
+    if (matchUrls) {
+      for (i in matchUrls) {
+        if (matchUrls.hasOwnProperty(i) && !urls[i]) {
+          urls[i] = matchUrls[i];
+        }
+      }
+    }
+
+    _ltClearHighlights(rootEl);
+    rootEl.innerHTML = '';
+
+    if (!p.winnerRounds.length && !p.loserRounds.length && !p.finalMatches.length) {
+      rootEl.innerHTML = '<div class="lt-empty-state">No bracket data available.</div>';
+      return;
+    }
+
+    // Compute field size from the first WB round's match count
+    var fieldSize = 2;
+    if (p.winnerRounds.length > 0) {
+      fieldSize = p.winnerRounds[0].matches.length * 2;
+      // Ensure it's a power of two
+      if (fieldSize < 2) fieldSize = 2;
+    }
+
+    // Render winners bracket
+    if (p.winnerRounds.length > 0) {
+      rootEl.appendChild(renderBracketSection({
+        title: p.loserRounds.length > 0 ? 'Winners Bracket (WB)' : 'Bracket',
+        subtitle: fieldSize + '-slot field',
+        rounds: p.winnerRounds,
+        fieldSize: fieldSize,
+        matchMap: p.matchMap,
+        settings: settings,
+        appEl: rootEl,
+        matchUrls: urls
+      }));
+    }
+
+    // Render losers bracket
+    if (p.loserRounds.length > 0) {
+      rootEl.appendChild(renderBracketSection({
+        title: 'Losers Bracket (LB)',
+        subtitle: 'Source labels on cross-bracket entries with jump navigation',
+        rounds: p.loserRounds,
+        fieldSize: fieldSize,
+        matchMap: p.matchMap,
+        settings: settings,
+        appEl: rootEl,
+        matchUrls: urls
+      }));
+    }
+
+    // Render extra finals
+    if (p.finalMatches.length > 0) {
+      rootEl.appendChild(renderFinalsSection(p.finalMatches, p.matchMap, settings, urls, rootEl));
+    }
+
+    bindHoverHighlight(rootEl, rootEl, scrollToMatchRef);
+
+    if (pendingScrollRef) {
+      var refToScroll = pendingScrollRef;
+      pendingScrollRef = '';
+      requestAnimationFrame(function() {
+        _ltActivateAndScrollToMatchRef(rootEl, refToScroll);
+      });
+    }
+  }
+
+  function destroy() {
+    _ltClearHighlights(rootEl);
+    rootEl.innerHTML = '';
+    rootEl.onmousemove = null;
+    rootEl.onfocusin = null;
+    rootEl.onmouseleave = null;
+    rootEl.onfocusout = null;
+    rootEl.onclick = null;
+    rootEl.onkeydown = null;
+    parsed = null;
+  }
+
+  function getMatchMap() {
+    return ensureParsed().matchMap;
+  }
+
+  return {
+    render: render,
+    destroy: destroy,
+    getMatchMap: getMatchMap
+  };
+}
+
+
+/* ===================================================================
+ *  Auto-init from data island
+ * =================================================================== */
+
+document.addEventListener('DOMContentLoaded', function() {
+  var dataEl = document.getElementById('bracket-data');
+  if (!dataEl) return;
+
+  var data;
+  try {
+    data = JSON.parse(dataEl.textContent);
+  } catch (e) {
+    if (typeof console !== 'undefined' && console.error) {
+      console.error('[lan_tournament_bracket] Failed to parse bracket data:', e);
+    }
+    return;
+  }
+
+  var rootEl = document.getElementById('bracket-app');
+  if (!rootEl) return;
+
+  var instance = createBracketInstance({
+    rootId: 'bracket-app',
+    data: data,
+    matchUrls: data.match_urls || {}
+  });
+
+  if (instance) {
+    instance.render();
+  }
+
+  // Re-render on window resize (debounced)
+  var resizeTimer;
+  window.addEventListener('resize', function() {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function() {
+      if (instance) instance.render();
+    }, 110);
+  });
+});

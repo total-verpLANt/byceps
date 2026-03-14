@@ -20,6 +20,7 @@ from byceps.services.lan_tournament.lan_tournament_view_helpers import (
     build_hover_lookups,
     build_round_robin_standings,
     build_seat_lookup,
+    serialize_bracket_json,
 )
 from byceps.services.lan_tournament.models.contestant_type import (
     ContestantType,
@@ -744,6 +745,28 @@ def bracket(tournament_id):
         participants=participants,
     )
 
+    # Bracket serialization for client-side rendering (SE/DE only).
+    bracket_json = None
+    if tournament.tournament_mode in (
+        TournamentMode.SINGLE_ELIMINATION,
+        TournamentMode.DOUBLE_ELIMINATION,
+    ):
+        from flask import url_for as flask_url_for
+
+        bracket_json = serialize_bracket_json(
+            tournament,
+            match_data,
+            teams_by_id,
+            participants_by_id,
+            seats_by_user_id,
+            team_members_by_team_id,
+            url_builder=lambda m: flask_url_for(
+                '.view_match',
+                tournament_id=tournament.id,
+                match_id=m.id,
+            ),
+        )
+
     # Round-robin: compute standings table.
     standings = None
     if tournament.tournament_mode == TournamentMode.ROUND_ROBIN:
@@ -753,6 +776,7 @@ def bracket(tournament_id):
         'tournament': tournament,
         'match_data': match_data,
         'standings': standings,
+        'bracket_json': bracket_json,
         'teams_by_id': teams_by_id,
         'participants_by_id': participants_by_id,
         'seats_by_user_id': seats_by_user_id,
