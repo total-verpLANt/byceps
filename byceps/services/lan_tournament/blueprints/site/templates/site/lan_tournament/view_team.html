@@ -1,10 +1,8 @@
-{% extends 'layout/base.html' %}
+{% extends 'layout/site/lan_tournament.html' %}
 {% from 'macros/icons.html' import render_icon %}
 {% from 'macros/misc.html' import render_tag %}
-{% from 'macros/lan_tournament.html' import render_hover_name, hover_card_styles %}
+{% from 'macros/lan_tournament.html' import render_hover_name %}
 {% set page_title = [_('Tournament'), tournament.name, _('Team'), team.name] %}
-
-{% block head %}{{ hover_card_styles() }}{% endblock %}
 
 {% block body %}
 
@@ -18,67 +16,77 @@
 
   <h1 class="title">{{ team.name }}</h1>
 
-  {%- if team.tag %}
-  <div class="block">
-    <span class="tag">{{ team.tag }}</span>
-  </div>
-  {%- endif %}
+  {%- if team.tag or team.description %}
+  <div class="overview-grid">
+    {%- if team.tag %}
+    <div class="box block">
+      <div class="data-label">{{ _('Tag') }}</div>
+      <div class="data-value">{{ team.tag }}</div>
+    </div>
+    {%- endif %}
 
-  {%- if team.description %}
-  <div class="box block">
-    <div class="data-label">{{ _('Description') }}</div>
-    <div class="data-value" style="white-space: pre-wrap;">{{ team.description }}</div>
+    {%- if team.description %}
+    <div class="box block">
+      <div class="data-label">{{ _('Description') }}</div>
+      <div class="data-value text-pre-wrap">{{ team.description }}</div>
+    </div>
+    {%- endif %}
   </div>
   {%- endif %}
 
   <h2>{{ _('Members') }}</h2>
 
-  {# Join/Leave buttons #}
-  {%- if can_join_team %}
-  <div class="block">
-    <form action="{{ url_for('.join_team', team_id=team.id) }}" method="post">
-      {%- if team.join_code %}
-      <div class="row" style="margin-bottom: 0.5rem;">
-        <div class="column-auto">
-          <input type="password" name="join_code" placeholder="{{ _('Join code required') }}" size="20" required>
-        </div>
+  <div class="team-detail-shell">
+    {# Column 1: Join/Leave actions #}
+    <div>
+      {%- if can_join_team %}
+      <div class="block">
+        <form action="{{ url_for('.join_team', team_id=team.id) }}" method="post">
+          {%- if team.join_code %}
+          <div class="row match-score-field">
+            <div class="column-auto">
+              <input type="password" name="join_code" placeholder="{{ _('Join code required') }}" size="20" required>
+            </div>
+          </div>
+          {%- endif %}
+          <button type="submit" class="button color-info">{{ _('Join team') }}</button>
+        </form>
+      </div>
+      {%- elif can_leave_team %}
+      <div class="block">
+        <form action="{{ url_for('.leave_team', team_id=team.id) }}" method="post">
+          <button type="submit" class="button color-warning">{{ _('Leave team') }}</button>
+        </form>
+      </div>
+      {%- elif is_team_member %}
+      <div class="block">
+        <p class="dimmed">{{ _('You are a member of this team.') }}</p>
       </div>
       {%- endif %}
-      <button type="submit" class="button color-info">{{ _('Join team') }}</button>
-    </form>
-  </div>
-  {%- elif can_leave_team %}
-  <div class="block">
-    <form action="{{ url_for('.leave_team', team_id=team.id) }}" method="post">
-      <button type="submit" class="button color-warning">{{ _('Leave team') }}</button>
-    </form>
-  </div>
-  {%- elif is_team_member %}
-  <div class="block">
-    <p class="dimmed">{{ _('You are a member of this team.') }}</p>
-  </div>
-  {%- endif %}
+    </div>
 
-  <div class="main-body-box">
-  {%- if team_members %}
-    <ul>
-      {%- for member in team_members %}
-      <li>
-        {%- set _user = users_by_id.get(member.user_id) -%}
-        {%- if _user -%}
-          {{ render_hover_name(_user.screen_name, user_id=_user.id, seats_by_user_id=seats_by_user_id) }}
-        {%- else -%}
-          {{ member.user_id|string }}
-        {%- endif -%}
-        {%- if member.user_id == team.captain_user_id %}
-          {{ render_tag(_('Captain'), class='color-success') }}
-        {%- endif %}
-      </li>
-      {%- endfor %}
-    </ul>
-  {%- else %}
-    <p class="dimmed">{{ _('No members in this team yet.') }}</p>
-  {%- endif %}
+    {# Column 2: Team members #}
+    <div class="main-body-box">
+      {%- if team_members %}
+      <ul>
+        {%- for member in team_members %}
+        <li>
+          {%- set _user = users_by_id.get(member.user_id) -%}
+          {%- if _user -%}
+            {{ render_hover_name(_user.screen_name, user_id=_user.id, seats_by_user_id=seats_by_user_id) }}
+          {%- else -%}
+            {{ member.user_id|string }}
+          {%- endif -%}
+          {%- if member.user_id == team.captain_user_id %}
+            {{ render_tag(_('Captain'), class='color-success') }}
+          {%- endif %}
+        </li>
+        {%- endfor %}
+      </ul>
+      {%- else %}
+      <p class="dimmed">{{ _('No members in this team yet.') }}</p>
+      {%- endif %}
+    </div>
   </div>
 
 {%- endblock %}

@@ -1,4 +1,4 @@
-{% extends 'layout/base.html' %}
+{% extends 'layout/site/lan_tournament.html' %}
 {% from 'macros/icons.html' import render_icon %}
 {% set page_title = [_('Tournament'), tournament.name, _('Teams')] %}
 
@@ -21,6 +21,7 @@
 
   <div class="main-body-box">
   {%- if teams %}
+    <div class="table-scroll-wrap table-scroll-wrap--teams">
     <table class="itemlist is-vcentered is-wide">
       <thead>
         <tr>
@@ -47,6 +48,7 @@
         {%- endfor %}
       </tbody>
     </table>
+    </div>
   {%- else %}
     <p class="dimmed">{{ _('No teams have been created yet.') }}</p>
   {%- endif %}
