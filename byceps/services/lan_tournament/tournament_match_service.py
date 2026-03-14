@@ -1024,6 +1024,13 @@ def set_match_scores(
     Only the proposed loser may submit scores.  If the proposed
     scores would make the initiator the winner the request is
     rejected.  Draws are accepted from any participant.
+
+    Post-rollback note: when this function returns ``Err``, the
+    database session has been rolled back.  Any ORM-managed objects
+    fetched before this call (match, contestants, etc.) may be
+    expired or detached.  Callers must NOT access attributes on
+    those objects after receiving an ``Err`` result — fetch fresh
+    instances if needed.
     """
     match = tournament_repository.get_match_for_update(match_id)
     if match.confirmed_by is not None:
@@ -1086,12 +1093,10 @@ def set_match_scores(
     confirm_result = confirm_match(match_id, initiator_id)
     if confirm_result.is_err():
         # Scores were flushed but confirm failed (e.g. draw in SE mode).
-        # Commit scores anyway so the user can adjust, but surface the error.
-        tournament_repository.commit_session()
-        return Err(
-            f'Scores saved but match not confirmed: '
-            f'{confirm_result.unwrap_err()}'
-        )
+        # Roll back so we don't persist partial state (scores without
+        # a confirmed match).  The caller can retry with corrected scores.
+        tournament_repository.rollback_session()
+        return Err(confirm_result.unwrap_err())
     return Ok(None)
 
 
@@ -1770,3 +1775,13 @@ def get_contestants_for_match(
 ) -> list[TournamentMatchToContestant]:
     """Return all contestants for that match."""
     return tournament_repository.get_contestants_for_match(match_id)
+
+
+def get_contestants_for_tournament(
+    tournament_id: TournamentID,
+) -> dict[TournamentMatchID, list[TournamentMatchToContestant]]:
+    """Return all contestants for a tournament, grouped by match ID.
+
+    Single query -- use this in match-list / bracket views to avoid N+1.
+    """
+    return tournament_repository.get_contestants_for_tournament(tournament_id)

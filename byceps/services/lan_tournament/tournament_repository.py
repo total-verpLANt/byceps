@@ -154,13 +154,18 @@ def update_tournament(tournament: Tournament) -> None:
     db.session.commit()
 
 
-def delete_tournament(tournament_id: TournamentID) -> None:
+def delete_tournament(
+    tournament_id: TournamentID, *, commit: bool = True
+) -> None:
     """Delete a tournament."""
     db.session.execute(delete(DbTournament).filter_by(id=tournament_id))
-    db.session.commit()
+    if commit:
+        db.session.commit()
 
 
-def clear_winner_for_tournament(tournament_id: TournamentID) -> None:
+def clear_winner_for_tournament(
+    tournament_id: TournamentID, *, commit: bool = True
+) -> None:
     """NULL-out winner_team_id and winner_participant_id so the
     tournament row can be deleted without FK violations."""
     db.session.execute(
@@ -168,7 +173,8 @@ def clear_winner_for_tournament(tournament_id: TournamentID) -> None:
         .filter_by(id=tournament_id)
         .values(winner_team_id=None, winner_participant_id=None)
     )
-    db.session.commit()
+    if commit:
+        db.session.commit()
 
 
 def clear_winner_team_reference(team_id: TournamentTeamID) -> None:
@@ -400,12 +406,15 @@ def delete_team_flush(team_id: TournamentTeamID) -> None:
     db.session.flush()
 
 
-def delete_teams_for_tournament(tournament_id: TournamentID) -> None:
+def delete_teams_for_tournament(
+    tournament_id: TournamentID, *, commit: bool = True
+) -> None:
     """Delete all teams for a tournament."""
     db.session.execute(
         delete(DbTournamentTeam).filter_by(tournament_id=tournament_id)
     )
-    db.session.commit()
+    if commit:
+        db.session.commit()
 
 
 def find_team(
@@ -581,12 +590,15 @@ def delete_participants_by_ids(
     db.session.flush()
 
 
-def delete_participants_for_tournament(tournament_id: TournamentID) -> None:
+def delete_participants_for_tournament(
+    tournament_id: TournamentID, *, commit: bool = True
+) -> None:
     """Delete all participants for a tournament."""
     db.session.execute(
         delete(DbTournamentParticipant).filter_by(tournament_id=tournament_id)
     )
-    db.session.commit()
+    if commit:
+        db.session.commit()
 
 
 def remove_team_from_participants(team_id: TournamentTeamID) -> None:
@@ -837,6 +849,11 @@ def commit_session() -> None:
     db.session.commit()
 
 
+def rollback_session() -> None:
+    """Roll back the current database session."""
+    db.session.rollback()
+
+
 def create_match(match: TournamentMatch) -> None:
     """Persist a match."""
     db_match = DbTournamentMatch(
@@ -862,7 +879,9 @@ def delete_match(match_id: TournamentMatchID) -> None:
     db.session.commit()
 
 
-def delete_matches_for_tournament(tournament_id: TournamentID) -> None:
+def delete_matches_for_tournament(
+    tournament_id: TournamentID, *, commit: bool = True
+) -> None:
     """Delete all matches for a tournament."""
     # NULL out self-referential FKs first
     db.session.execute(
@@ -873,7 +892,8 @@ def delete_matches_for_tournament(tournament_id: TournamentID) -> None:
     db.session.execute(
         delete(DbTournamentMatch).filter_by(tournament_id=tournament_id)
     )
-    db.session.commit()
+    if commit:
+        db.session.commit()
 
 
 def find_match(
@@ -1113,7 +1133,9 @@ def delete_comments_for_match(match_id: TournamentMatchID) -> None:
     db.session.commit()
 
 
-def delete_comments_for_tournament(tournament_id: TournamentID) -> None:
+def delete_comments_for_tournament(
+    tournament_id: TournamentID, *, commit: bool = True
+) -> None:
     """Delete all comments for all matches in a tournament."""
     db.session.execute(
         delete(DbTournamentMatchComment).where(
@@ -1124,7 +1146,8 @@ def delete_comments_for_tournament(tournament_id: TournamentID) -> None:
             )
         )
     )
-    db.session.commit()
+    if commit:
+        db.session.commit()
 
 
 def get_comments_for_match(
@@ -1211,14 +1234,43 @@ def get_contestants_for_match(
     """Return all contestants for that match."""
     db_contestants = (
         db.session.execute(
-            select(DbTournamentMatchToContestant).filter_by(
-                tournament_match_id=match_id
-            )
+            select(DbTournamentMatchToContestant)
+            .filter_by(tournament_match_id=match_id)
+            .order_by(DbTournamentMatchToContestant.created_at)
         )
         .scalars()
         .all()
     )
     return [_db_contestant_to_contestant(c) for c in db_contestants]
+
+
+def get_contestants_for_tournament(
+    tournament_id: TournamentID,
+) -> dict[TournamentMatchID, list[TournamentMatchToContestant]]:
+    """Return all contestants for a tournament, grouped by match ID.
+
+    Performs a single query joining contestants with matches instead of
+    one query per match (eliminates N+1).
+    """
+    db_contestants = (
+        db.session.execute(
+            select(DbTournamentMatchToContestant)
+            .join(
+                DbTournamentMatch,
+                DbTournamentMatchToContestant.tournament_match_id
+                == DbTournamentMatch.id,
+            )
+            .filter(DbTournamentMatch.tournament_id == tournament_id)
+            .order_by(DbTournamentMatchToContestant.created_at)
+        )
+        .scalars()
+        .all()
+    )
+    result: dict[TournamentMatchID, list[TournamentMatchToContestant]] = {}
+    for db_c in db_contestants:
+        contestant = _db_contestant_to_contestant(db_c)
+        result.setdefault(contestant.tournament_match_id, []).append(contestant)
+    return result
 
 
 def find_contestant_for_match(
@@ -1352,7 +1404,9 @@ def delete_contestants_for_match(match_id: TournamentMatchID) -> None:
     db.session.commit()
 
 
-def delete_contestants_for_tournament(tournament_id: TournamentID) -> None:
+def delete_contestants_for_tournament(
+    tournament_id: TournamentID, *, commit: bool = True
+) -> None:
     """Delete all contestants for all matches in a tournament."""
     db.session.execute(
         delete(DbTournamentMatchToContestant).where(
@@ -1363,7 +1417,8 @@ def delete_contestants_for_tournament(tournament_id: TournamentID) -> None:
             )
         )
     )
-    db.session.commit()
+    if commit:
+        db.session.commit()
 
 
 def remove_team_from_contestants(team_id: TournamentTeamID) -> None:
@@ -1416,13 +1471,14 @@ def get_official_submissions_for_tournament(
 
 
 def delete_submissions_for_tournament(
-    tournament_id: TournamentID,
+    tournament_id: TournamentID, *, commit: bool = True
 ) -> None:
     """Delete all score submissions for a tournament."""
     db.session.execute(
         delete(DbScoreSubmission).filter_by(tournament_id=tournament_id)
     )
-    db.session.commit()
+    if commit:
+        db.session.commit()
 
 
 def _db_score_submission_to_score_submission(

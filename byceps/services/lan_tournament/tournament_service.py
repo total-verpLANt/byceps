@@ -192,15 +192,39 @@ def delete_tournament(
     7. Teams
     8. Tournament itself
     """
-    # Delete in dependency order (children first, then parent)
-    tournament_repository.delete_submissions_for_tournament(tournament_id)
-    tournament_repository.delete_comments_for_tournament(tournament_id)
-    tournament_repository.delete_contestants_for_tournament(tournament_id)
-    tournament_repository.delete_matches_for_tournament(tournament_id)
-    tournament_repository.clear_winner_for_tournament(tournament_id)
-    tournament_repository.delete_participants_for_tournament(tournament_id)
-    tournament_repository.delete_teams_for_tournament(tournament_id)
-    tournament_repository.delete_tournament(tournament_id)
+    # Delete in dependency order (children first, then parent).
+    # All repo calls use commit=False so the entire cascade is a
+    # single atomic transaction committed once at the end.
+    # Wrapped in try/except to rollback on partial flush failure,
+    # preventing session poisoning if a caller catches the exception.
+    try:
+        tournament_repository.delete_submissions_for_tournament(
+            tournament_id, commit=False
+        )
+        tournament_repository.delete_comments_for_tournament(
+            tournament_id, commit=False
+        )
+        tournament_repository.delete_contestants_for_tournament(
+            tournament_id, commit=False
+        )
+        tournament_repository.delete_matches_for_tournament(
+            tournament_id, commit=False
+        )
+        tournament_repository.clear_winner_for_tournament(
+            tournament_id, commit=False
+        )
+        tournament_repository.delete_participants_for_tournament(
+            tournament_id, commit=False
+        )
+        tournament_repository.delete_teams_for_tournament(
+            tournament_id, commit=False
+        )
+        tournament_repository.delete_tournament(tournament_id, commit=False)
+
+        tournament_repository.commit_session()
+    except Exception:
+        tournament_repository.rollback_session()
+        raise
 
     event = TournamentDeletedEvent(
         occurred_at=datetime.now(UTC),

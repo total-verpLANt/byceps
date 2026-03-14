@@ -3624,10 +3624,10 @@ def test_set_match_scores_team_mode(mock_repo, mock_confirm_match):
 @patch(
     'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
 )
-def test_set_match_scores_auto_confirm_fails_saves_scores(
+def test_set_match_scores_auto_confirm_fails_rolls_back(
     mock_repo, mock_confirm_match,
 ):
-    """Auto-confirm fails (e.g. draw in SE) -> Err, but scores are committed."""
+    """Auto-confirm fails (e.g. draw in SE) -> Err, scores are rolled back."""
     match = _create_match(confirmed_by=None)
     pid_a = TournamentParticipantID(generate_uuid())
     pid_b = TournamentParticipantID(generate_uuid())
@@ -3658,10 +3658,10 @@ def test_set_match_scores_auto_confirm_fails_saves_scores(
     )
 
     assert result.is_err()
-    assert 'scores saved but match not confirmed' in result.unwrap_err().lower()
-    # Scores were flushed and committed so user can adjust them.
+    assert 'a winner is required' in result.unwrap_err().lower()
+    # Scores were flushed but rolled back due to confirm failure.
     mock_repo.update_contestant_scores.assert_called_once()
-    mock_repo.commit_session.assert_called_once()
+    mock_repo.rollback_session.assert_called_once()
 
 
 @patch(

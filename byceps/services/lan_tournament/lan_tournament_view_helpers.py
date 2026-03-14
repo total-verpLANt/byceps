@@ -16,6 +16,7 @@ from byceps.services.lan_tournament.models.tournament_match_to_contestant import
     TournamentMatchToContestant,
 )
 from byceps.services.lan_tournament.models.tournament_participant import (
+    TournamentParticipant,
     TournamentParticipantID,
 )
 from byceps.services.lan_tournament.models.tournament_team import (
@@ -33,6 +34,8 @@ from byceps.services.user.models.user import User, UserID
 def build_contestant_name_lookups(
     tournament_id: TournamentID,
     contestants_list: list[list[TournamentMatchToContestant]],
+    *,
+    participants: list[TournamentParticipant] | None = None,
 ) -> tuple[
     dict[TournamentTeamID, TournamentTeam],
     dict[TournamentParticipantID, User],
@@ -41,6 +44,9 @@ def build_contestant_name_lookups(
 
     Returns (teams_by_id, participants_by_id) where
     participants_by_id maps participant_id to User.
+
+    Pass *participants* to reuse an already-fetched list and avoid an
+    extra DB round-trip.
     """
     team_ids: set[TournamentTeamID] = set()
     participant_ids: set[TournamentParticipantID] = set()
@@ -58,11 +64,12 @@ def build_contestant_name_lookups(
 
     participants_by_id: dict[TournamentParticipantID, User] = {}
     if participant_ids:
-        participants = (
-            tournament_participant_service.get_participants_for_tournament(
-                tournament_id
+        if participants is None:
+            participants = (
+                tournament_participant_service.get_participants_for_tournament(
+                    tournament_id
+                )
             )
-        )
         user_ids = {p.user_id for p in participants if p.id in participant_ids}
         users_by_id = user_service.get_users_indexed_by_id(user_ids)
         participants_by_id = {
@@ -113,6 +120,8 @@ def build_hover_lookups(
     participants_by_id: dict[TournamentParticipantID, User],
     teams_by_id: dict[TournamentTeamID, TournamentTeam],
     party_id: PartyID,
+    *,
+    participants: list[TournamentParticipant] | None = None,
 ) -> tuple[
     dict[UserID, str], dict[TournamentTeamID, list[tuple[str, str | None]]]
 ]:
@@ -123,13 +132,20 @@ def build_hover_lookups(
     For team tournaments, fetches all team members and their seats.
     For individual tournaments, builds seat lookup from existing
     participants_by_id and returns an empty team_members dict.
+
+    Pass *participants* to reuse an already-fetched list and avoid an
+    extra DB round-trip (deduplicates the fetch shared with
+    ``build_contestant_name_lookups``).
     """
     if tournament.contestant_type == ContestantType.TEAM:
-        all_participants = (
-            tournament_participant_service.get_participants_for_tournament(
-                tournament.id
+        if participants is None:
+            all_participants = (
+                tournament_participant_service.get_participants_for_tournament(
+                    tournament.id
+                )
             )
-        )
+        else:
+            all_participants = participants
         all_member_user_ids = {
             p.user_id for p in all_participants if p.removed_at is None
         }

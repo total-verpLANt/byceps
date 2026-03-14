@@ -10,6 +10,8 @@ Unit tests for CASCADE deletion behavior in tournament service layer.
 
 from unittest.mock import call, patch
 
+import pytest
+
 
 from byceps.services.lan_tournament.models.tournament import TournamentID
 from byceps.services.lan_tournament.models.tournament_match import (
@@ -44,14 +46,15 @@ def test_delete_tournament_cascades_all_dependencies(
 
     # Verify deletion calls in correct order (children first, then parent)
     expected_calls = [
-        call.delete_submissions_for_tournament(tournament_id),
-        call.delete_comments_for_tournament(tournament_id),
-        call.delete_contestants_for_tournament(tournament_id),
-        call.delete_matches_for_tournament(tournament_id),
-        call.clear_winner_for_tournament(tournament_id),
-        call.delete_participants_for_tournament(tournament_id),
-        call.delete_teams_for_tournament(tournament_id),
-        call.delete_tournament(tournament_id),
+        call.delete_submissions_for_tournament(tournament_id, commit=False),
+        call.delete_comments_for_tournament(tournament_id, commit=False),
+        call.delete_contestants_for_tournament(tournament_id, commit=False),
+        call.delete_matches_for_tournament(tournament_id, commit=False),
+        call.clear_winner_for_tournament(tournament_id, commit=False),
+        call.delete_participants_for_tournament(tournament_id, commit=False),
+        call.delete_teams_for_tournament(tournament_id, commit=False),
+        call.delete_tournament(tournament_id, commit=False),
+        call.commit_session(),
     ]
 
     assert mock_repository.method_calls == expected_calls
@@ -88,6 +91,30 @@ def test_delete_tournament_with_winner_clears_winner_before_children(
     assert clear_idx < teams_idx, (
         'clear_winner must precede team deletion'
     )
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_service.tournament_repository'
+)
+@patch('byceps.services.lan_tournament.tournament_service.signals')
+def test_delete_tournament_rolls_back_on_failure(
+    mock_signals, mock_repository
+):
+    """DB error mid-cascade -> rollback called, event NOT emitted."""
+    from byceps.services.lan_tournament import tournament_service
+
+    tournament_id = TournamentID(generate_uuid())
+
+    mock_repository.delete_matches_for_tournament.side_effect = Exception(
+        'simulated'
+    )
+
+    with pytest.raises(Exception, match='simulated'):
+        tournament_service.delete_tournament(tournament_id)
+
+    mock_repository.rollback_session.assert_called_once()
+    mock_repository.commit_session.assert_not_called()
+    mock_signals.tournament_deleted.send.assert_not_called()
 
 
 @patch(
