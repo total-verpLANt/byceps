@@ -1,3 +1,5 @@
+from collections.abc import Callable
+
 from byceps.services.lan_tournament import (
     tournament_participant_service,
     tournament_team_service,
@@ -11,6 +13,9 @@ from byceps.services.lan_tournament.models.round_robin_standing import (
 from byceps.services.lan_tournament.models.tournament import (
     Tournament,
     TournamentID,
+)
+from byceps.services.lan_tournament.models.tournament_match import (
+    TournamentMatch,
 )
 from byceps.services.lan_tournament.models.tournament_match_to_contestant import (
     TournamentMatchToContestant,
@@ -182,3 +187,72 @@ def build_round_robin_standings(
         confirmed_pairs.append(data['contestants'])
 
     return compute_round_robin_standings(confirmed_pairs)
+
+
+def _resolve_contestant_name(
+    contestant: TournamentMatchToContestant,
+    teams_by_id: dict[TournamentTeamID, TournamentTeam],
+    participants_by_id: dict[TournamentParticipantID, User],
+) -> str:
+    """Resolve a contestant to a display name."""
+    if contestant.team_id and contestant.team_id in teams_by_id:
+        return teams_by_id[contestant.team_id].name
+    if contestant.participant_id and contestant.participant_id in participants_by_id:
+        user = participants_by_id[contestant.participant_id]
+        return user.screen_name or str(user.id)
+    return 'TBD'
+
+
+def serialize_bracket_json(
+    tournament: Tournament,
+    match_data: list[dict],
+    teams_by_id: dict[TournamentTeamID, TournamentTeam],
+    participants_by_id: dict[TournamentParticipantID, User],
+    seats_by_user_id: dict[UserID, str],
+    team_members_by_team_id: dict[TournamentTeamID, list[tuple[str, str | None]]],
+    *,
+    url_builder: Callable[[TournamentMatch], str] | None = None,
+) -> dict:
+    """Serialize bracket data to a JSON-safe dict for client-side rendering."""
+    return {
+        'tournament': {
+            'id': str(tournament.id),
+            'name': tournament.name,
+            'mode': tournament.tournament_mode.name if tournament.tournament_mode else None,
+            'contestant_type': tournament.contestant_type.name if tournament.contestant_type else 'SOLO',
+            'status': tournament.tournament_status.name if tournament.tournament_status else None,
+        },
+        'matches': [
+            {
+                'id': str(match.id),
+                'round': match.round,
+                'match_order': match.match_order,
+                'bracket': match.bracket.value if match.bracket else None,
+                'next_match_id': str(match.next_match_id) if match.next_match_id else None,
+                'loser_next_match_id': str(match.loser_next_match_id) if match.loser_next_match_id else None,
+                'confirmed': match.confirmed_by is not None,
+                'contestants': [
+                    {
+                        'name': _resolve_contestant_name(c, teams_by_id, participants_by_id),
+                        'score': c.score,
+                        'team_id': str(c.team_id) if c.team_id else None,
+                        'participant_id': str(c.participant_id) if c.participant_id else None,
+                    }
+                    for c in contestants
+                ],
+            }
+            for data in match_data
+            for match, contestants in [(data['match'], data['contestants'])]
+        ],
+        'match_urls': {
+            str(data['match'].id): url_builder(data['match']) if url_builder else None
+            for data in match_data
+        },
+        'hover_data': {
+            'seats': {str(uid): label for uid, label in seats_by_user_id.items()},
+            'team_members': {
+                str(tid): members
+                for tid, members in team_members_by_team_id.items()
+            },
+        },
+    }

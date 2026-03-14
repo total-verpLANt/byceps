@@ -17,21 +17,32 @@
 
   {% if tournament.tournament_mode and tournament.tournament_mode.name == 'ROUND_ROBIN' %}
     {{ render_round_robin_standings(standings, tournament, teams_by_id=teams_by_id, participants_by_id=participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id) }}
-  {% elif tournament.tournament_mode and tournament.tournament_mode.name == 'DOUBLE_ELIMINATION' %}
-    <div class='bracket-desktop'>
-      {{ render_de_bracket(match_data, tournament, teams_by_id, participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id, bracket_id='de-' ~ tournament.id) }}
-    </div>
-    <div class='bracket-mobile'>
-      {{ render_simple_de_bracket_list(match_data, teams_by_id, participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id) }}
-    </div>
   {% else %}
-    <div class='bracket-desktop'>
-      {{ render_bracket(match_data, tournament, teams_by_id, participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id) }}
+    {# Desktop: client-side rendered bracket #}
+    <div class='bracket-desktop' id='bracket-app'>
+      <noscript>
+        {# Fallback: server-rendered bracket if JS disabled #}
+        {% if tournament.tournament_mode and tournament.tournament_mode.name == 'DOUBLE_ELIMINATION' %}
+          {{ render_de_bracket(match_data, tournament, teams_by_id, participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id, bracket_id='de-' ~ tournament.id) }}
+        {% else %}
+          {{ render_bracket(match_data, tournament, teams_by_id, participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id) }}
+        {% endif %}
+      </noscript>
     </div>
 
+    {# Mobile: server-rendered list view (always) #}
     <div class='bracket-mobile'>
-      {{ render_simple_bracket_list(match_data, teams_by_id, participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id) }}
+      {% if tournament.tournament_mode and tournament.tournament_mode.name == 'DOUBLE_ELIMINATION' %}
+        {{ render_simple_de_bracket_list(match_data, teams_by_id, participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id) }}
+      {% else %}
+        {{ render_simple_bracket_list(match_data, teams_by_id, participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id) }}
+      {% endif %}
     </div>
+
+    {# Bracket data for client-side renderer #}
+    {% if bracket_json %}
+      <script type='application/json' id='bracket-data'>{{ bracket_json|tojson }}</script>
+    {% endif %}
   {% endif %}
 
   <div class='bracket-cta'>

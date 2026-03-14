@@ -1,0 +1,771 @@
+/* ============================================================
+   LAN Tournament – Bracket renderer CSS
+   Ported from Turniercss/turnier-shared.css (lines 860-1727).
+   All classes use the lt- prefix; all colours reference --lt-*
+   custom properties defined in lan_tournament.css.
+   ============================================================ */
+
+
+/* ------------------------------------------------------------
+   2a. Section card (bracket wrapper)
+   Source: turnier-shared.css:862-990
+   ------------------------------------------------------------ */
+
+.lt-bracket-section {
+  background: var(--lt-panel);
+  border: 1px solid var(--lt-border);
+  box-shadow: var(--lt-shadow);
+  backdrop-filter: blur(14px);
+  border-radius: var(--lt-radius);
+  overflow: hidden;
+  min-width: 0;
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .lt-bracket-section {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: rgba(7, 18, 47, 0.96);
+  }
+}
+
+.lt-bracket-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.82rem 0.82rem 0;
+}
+
+.lt-bracket-section-head h2 {
+  margin: 0;
+  font-size: 0.98rem;
+  letter-spacing: -0.01em;
+}
+
+.lt-bracket-section-head span {
+  color: var(--lt-muted);
+  font-size: 0.8rem;
+  text-align: right;
+}
+
+.lt-bracket-section-body {
+  padding: 0.52rem 0.52rem 0.8rem;
+}
+
+
+/* ------------------------------------------------------------
+   2b. Bracket scroll container
+   Source: turnier-shared.css:992-1032
+   ------------------------------------------------------------ */
+
+.lt-bracket-scroll {
+  position: relative;
+  overflow-x: hidden;
+  overflow-y: hidden;
+  padding: 0.32rem 0.12rem 0.6rem;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  touch-action: pan-y;
+}
+
+.lt-bracket-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.lt-bracket-scroll.is-pannable {
+  overflow-x: auto;
+  cursor: grab;
+  touch-action: pan-x pan-y;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--lt-line) 100%, transparent) rgba(255, 255, 255, 0.06);
+}
+
+.lt-bracket-scroll.is-pannable::-webkit-scrollbar {
+  display: block;
+  height: 10px;
+}
+
+.lt-bracket-scroll.is-pannable::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 999px;
+}
+
+.lt-bracket-scroll.is-pannable::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--lt-line) 100%, transparent);
+  border-radius: 999px;
+}
+
+.lt-bracket-scroll.is-panning {
+  cursor: grabbing;
+  user-select: none;
+}
+
+
+/* ------------------------------------------------------------
+   2c. Bracket canvas + SVG layer
+   Source: turnier-shared.css:1034-1047
+   ------------------------------------------------------------ */
+
+.lt-bracket-canvas {
+  position: relative;
+  min-width: max-content;
+  max-width: none;
+  overflow: visible;
+}
+
+.lt-lines-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  overflow: visible;
+}
+
+
+/* ------------------------------------------------------------
+   2d. Round title cards
+   Source: turnier-shared.css:1049-1091
+   ------------------------------------------------------------ */
+
+.lt-round-title {
+  position: absolute;
+  border-radius: 16px;
+  padding: 0.56rem 0.75rem 0.56rem 0.94rem;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--lt-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.62rem;
+  font-size: 0.92rem;
+  font-weight: 800;
+  z-index: 3;
+  transition: opacity 140ms ease;
+  min-width: 0;
+  overflow: hidden;
+  isolation: isolate;
+  line-height: 1.05;
+}
+
+.lt-round-title::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  border-radius: 16px 0 0 16px;
+  background: color-mix(in srgb, var(--lt-line) 100%, transparent);
+  opacity: 0.9;
+}
+
+.lt-round-title > span,
+.lt-round-title small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lt-round-title small {
+  color: var(--lt-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+
+/* ------------------------------------------------------------
+   2e. Match cards
+   Source: turnier-shared.css:1093-1159
+   ------------------------------------------------------------ */
+
+.lt-match {
+  position: absolute;
+  border-radius: var(--lt-radius);
+  padding: 0.45rem;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--lt-border);
+  --match-accent: color-mix(in srgb, var(--lt-brand-blue) 72%, white);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+  display: grid;
+  grid-template-rows: minmax(26px, auto) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 6px;
+  z-index: 3;
+  overflow: hidden;
+  transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease, background 140ms ease, opacity 140ms ease;
+  text-decoration: none;
+  color: inherit;
+  min-width: 0;
+}
+
+.lt-match::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--match-accent) 88%, white), var(--match-accent));
+  opacity: 0.96;
+}
+
+.lt-match.clickable {
+  cursor: pointer;
+}
+
+.lt-match.clickable:hover,
+.lt-match.clickable:focus-visible,
+.lt-match.has-active-player,
+.lt-match.has-active-route,
+.lt-match.flash-target {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--lt-brand-blue) 32%, white);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--lt-brand-blue) 22%, transparent),
+    0 12px 28px rgba(0, 0, 0, 0.28);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.04));
+}
+
+.lt-match.match-open {
+  --match-accent: color-mix(in srgb, var(--lt-brand-orange) 88%, white);
+  border-color: color-mix(in srgb, var(--lt-brand-orange) 30%, white);
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.22), 0 0 0 1px color-mix(in srgb, var(--lt-brand-orange) 16%, transparent);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--lt-brand-orange) 7%, rgba(255, 255, 255, 0.08)), rgba(255, 255, 255, 0.03));
+}
+
+.lt-match.match-pending {
+  --match-accent: color-mix(in srgb, var(--lt-brand-blue) 70%, white);
+  border-color: color-mix(in srgb, var(--lt-brand-blue) 24%, white);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--lt-brand-blue) 8%, rgba(255, 255, 255, 0.08)), rgba(255, 255, 255, 0.03));
+}
+
+.lt-match.match-done,
+.lt-match.match-auto {
+  --match-accent: color-mix(in srgb, var(--lt-brand-success) 88%, white);
+  border-color: color-mix(in srgb, var(--lt-brand-success) 24%, white);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--lt-brand-success) 6%, rgba(255, 255, 255, 0.08)), rgba(255, 255, 255, 0.03));
+}
+
+.lt-match.static {
+  position: relative;
+  left: auto !important;
+  top: auto !important;
+  transform: none !important;
+  width: 100% !important;
+}
+
+
+/* ------------------------------------------------------------
+   2f. Match label / meta
+   Source: turnier-shared.css:1179-1291
+   ------------------------------------------------------------ */
+
+.lt-match-label {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  align-content: center;
+  column-gap: 8px;
+  row-gap: 2px;
+  font-size: 0.75rem;
+  line-height: 1.12;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--lt-muted);
+  font-weight: 800;
+  padding-left: 2px;
+}
+
+.lt-match-meta {
+  display: contents;
+}
+
+.lt-match-ref-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.lt-match-ref-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lt-match-state-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.03);
+}
+
+.lt-match-state-dot--open {
+  background: color-mix(in srgb, var(--lt-brand-orange) 88%, white);
+}
+
+.lt-match-state-dot--pending {
+  background: color-mix(in srgb, var(--lt-brand-blue) 68%, white);
+}
+
+.lt-match-state-dot--done,
+.lt-match-state-dot--auto {
+  background: color-mix(in srgb, var(--lt-brand-success) 90%, white);
+}
+
+.lt-match-stage {
+  color: color-mix(in srgb, white 84%, var(--lt-muted));
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  grid-column: 1 / -1;
+  grid-row: 2;
+  justify-self: start;
+}
+
+.lt-match-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 16px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 900;
+  line-height: 1.12;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  white-space: nowrap;
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+}
+
+.lt-match-status--open {
+  color: color-mix(in srgb, var(--lt-brand-orange) 84%, white);
+  background: color-mix(in srgb, var(--lt-brand-orange) 14%, rgba(255, 255, 255, 0.04));
+  border-color: color-mix(in srgb, var(--lt-brand-orange) 34%, white);
+}
+
+.lt-match-status--pending {
+  color: color-mix(in srgb, var(--lt-brand-blue) 84%, white);
+  background: color-mix(in srgb, var(--lt-brand-blue) 16%, rgba(255, 255, 255, 0.04));
+  border-color: color-mix(in srgb, var(--lt-brand-blue) 34%, white);
+}
+
+.lt-match-status--done,
+.lt-match-status--auto {
+  color: color-mix(in srgb, var(--lt-brand-success) 90%, white);
+  background: color-mix(in srgb, var(--lt-brand-success) 14%, rgba(255, 255, 255, 0.04));
+  border-color: color-mix(in srgb, var(--lt-brand-success) 34%, white);
+}
+
+
+/* ------------------------------------------------------------
+   2g. Team / contestant rows
+   Source: turnier-shared.css:1293-1391
+   ------------------------------------------------------------ */
+
+.lt-team {
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 11px 0 10px;
+  border-radius: var(--lt-radius-sm);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  font-size: 0.93rem;
+  line-height: 1.15;
+  min-width: 0;
+  position: relative;
+  transition: border-color 140ms ease, background 140ms ease, transform 140ms ease, opacity 140ms ease;
+}
+
+.lt-team.placeholder {
+  color: var(--lt-muted);
+  font-style: italic;
+}
+
+.lt-team.defwin {
+  color: color-mix(in srgb, var(--lt-brand-success) 88%, white);
+  background: color-mix(in srgb, var(--lt-brand-success) 10%, rgba(255, 255, 255, 0.04));
+  border-color: color-mix(in srgb, var(--lt-brand-success) 18%, white);
+}
+
+.lt-team.winner:not(.defwin) {
+  border-color: color-mix(in srgb, var(--lt-brand-success) 66%, white);
+  background: color-mix(in srgb, var(--lt-brand-success) 12%, rgba(255, 255, 255, 0.04));
+}
+
+.lt-team.has-active-player {
+  transform: translateX(1px);
+  border-color: color-mix(in srgb, var(--lt-brand-orange) 55%, white);
+  background: color-mix(in srgb, var(--lt-brand-orange) 10%, rgba(255, 255, 255, 0.04));
+  opacity: 1 !important;
+}
+
+.lt-team-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+}
+
+.lt-team-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.15;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  max-height: 2.3em;
+}
+
+.lt-score-pill {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  min-height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  line-height: 1;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  color: white;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  opacity: 0.58;
+  transition: opacity 140ms ease, background 140ms ease, border-color 140ms ease;
+}
+
+.lt-team.winner:not(.defwin) .lt-score-pill {
+  background: color-mix(in srgb, var(--lt-brand-success) 24%, rgba(255, 255, 255, 0.1));
+  border-color: color-mix(in srgb, var(--lt-brand-success) 38%, white);
+  opacity: 0.96;
+}
+
+.lt-match.has-active-player .lt-score-pill,
+.lt-match.clickable:hover .lt-score-pill,
+.lt-match.clickable:focus-visible .lt-score-pill,
+.lt-team.has-active-player .lt-score-pill,
+.lt-score-pill[data-hoverable="true"]:hover,
+.lt-score-pill[data-hoverable="true"]:focus-visible {
+  opacity: 1;
+}
+
+
+/* ------------------------------------------------------------
+   2h. Source badges (DE incoming-source pills)
+   Source: turnier-shared.css:1392-1440
+   ------------------------------------------------------------ */
+
+.lt-incoming-source {
+  position: absolute;
+  z-index: 2;
+  pointer-events: auto;
+  transition: opacity 140ms ease, transform 140ms ease, filter 140ms ease;
+  cursor: pointer;
+}
+
+.lt-incoming-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--lt-bg) 94%, transparent);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: color-mix(in srgb, white 86%, var(--lt-muted));
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  line-height: 1.12;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+  position: relative;
+  z-index: 2;
+}
+
+.lt-incoming-source:focus-visible {
+  outline: none;
+}
+
+.lt-incoming-source:focus-visible .lt-incoming-pill {
+  border-color: color-mix(in srgb, var(--lt-brand-blue) 48%, white);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--lt-brand-blue) 20%, transparent), 0 6px 18px rgba(0, 0, 0, 0.18);
+}
+
+.lt-incoming-pill-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1 1 auto;
+}
+
+.lt-incoming-pill-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.03);
+}
+
+.lt-incoming-pill-dot--open {
+  background: color-mix(in srgb, var(--lt-brand-orange) 88%, white);
+}
+
+.lt-incoming-pill-dot--pending {
+  background: color-mix(in srgb, var(--lt-brand-blue) 68%, white);
+}
+
+.lt-incoming-pill-dot--done,
+.lt-incoming-pill-dot--auto {
+  background: color-mix(in srgb, var(--lt-brand-success) 90%, white);
+}
+
+.lt-incoming-source.is-loser .lt-incoming-pill {
+  border-color: color-mix(in srgb, var(--lt-brand-danger) 44%, transparent);
+}
+
+.lt-incoming-source.has-active-player,
+.lt-incoming-source.has-active-route {
+  transform: translateX(2px);
+  opacity: 1 !important;
+  filter: none !important;
+}
+
+
+/* ------------------------------------------------------------
+   2i. Focus / highlight mode
+   Source: turnier-shared.css:1456-1538
+   ------------------------------------------------------------ */
+
+.lt-connector,
+.lt-source-connector {
+  opacity: 1;
+  transition: opacity 140ms ease, filter 140ms ease;
+}
+
+.lt-connector.has-active-player,
+.lt-connector.has-active-route,
+.lt-source-connector.has-active-player,
+.lt-source-connector.has-active-route {
+  opacity: 1 !important;
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--lt-brand-blue) 38%, transparent));
+}
+
+.lt-bracket-focus-mode .lt-match,
+.lt-bracket-focus-mode .lt-incoming-source,
+.lt-bracket-focus-mode .lt-connector,
+.lt-bracket-focus-mode .lt-source-connector,
+.lt-bracket-focus-mode .lt-round-title {
+  opacity: var(--lt-focus-dim, 0.22);
+  filter: saturate(0.7);
+}
+
+.lt-bracket-focus-mode .lt-match.has-active-player,
+.lt-bracket-focus-mode .lt-match.has-active-route,
+.lt-bracket-focus-mode .lt-incoming-source.has-active-player,
+.lt-bracket-focus-mode .lt-incoming-source.has-active-route,
+.lt-bracket-focus-mode .lt-connector.has-active-player,
+.lt-bracket-focus-mode .lt-connector.has-active-route,
+.lt-bracket-focus-mode .lt-source-connector.has-active-player,
+.lt-bracket-focus-mode .lt-source-connector.has-active-route {
+  opacity: 1;
+  filter: none;
+}
+
+.lt-connector.has-active-player,
+.lt-connector.has-active-route {
+  stroke: color-mix(in srgb, var(--lt-brand-orange) 88%, white) !important;
+  stroke-width: 2.8 !important;
+}
+
+
+/* ------------------------------------------------------------
+   2j. Finals grid
+   Source: turnier-shared.css:1470-1508
+   ------------------------------------------------------------ */
+
+.lt-finals-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 420px));
+  gap: 0.9rem;
+  align-items: start;
+}
+
+.lt-final-card {
+  border-radius: var(--lt-radius);
+  padding: 0.75rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--lt-border);
+  overflow: visible;
+}
+
+.lt-final-card h3 {
+  margin: 0 0 0.52rem;
+  font-size: 0.95rem;
+}
+
+.lt-final-card p {
+  margin: 0 0 0.7rem;
+  color: var(--lt-muted);
+  font-size: 0.78rem;
+}
+
+.lt-final-match-wrap {
+  position: relative;
+  padding-left: 142px;
+  overflow: visible;
+}
+
+.lt-empty-state {
+  padding: 1.4rem 1rem;
+  border: 1px dashed rgba(255, 255, 255, 0.22);
+  border-radius: 14px;
+  text-align: center;
+  color: var(--lt-muted);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+
+/* ------------------------------------------------------------
+   2k. Flash animation
+   ------------------------------------------------------------ */
+
+@keyframes lt-flashTarget {
+  0% {
+    transform: translateY(-1px) scale(1);
+  }
+
+  20% {
+    transform: translateY(-2px) scale(1.012);
+  }
+
+  55% {
+    transform: translateY(-1px) scale(1.005);
+  }
+
+  100% {
+    transform: translateY(-1px) scale(1);
+  }
+}
+
+.lt-match.flash-target {
+  animation: lt-flashTarget 1.3s ease;
+}
+
+
+/* ------------------------------------------------------------
+   2l. Section reveal animation
+   ------------------------------------------------------------ */
+
+@keyframes lt-sectionReveal {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+
+/* ------------------------------------------------------------
+   2m. Responsive / accessibility overrides
+   ------------------------------------------------------------ */
+
+@media (hover: none), (pointer: coarse) {
+  .lt-bracket-focus-mode .lt-match,
+  .lt-bracket-focus-mode .lt-incoming-source,
+  .lt-bracket-focus-mode .lt-connector,
+  .lt-bracket-focus-mode .lt-source-connector,
+  .lt-bracket-focus-mode .lt-round-title {
+    opacity: 1;
+    filter: none;
+  }
+
+  .lt-bracket-scroll.is-pannable {
+    cursor: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lt-match.flash-target {
+    animation: none !important;
+  }
+
+  .lt-match,
+  .lt-team,
+  .lt-incoming-source,
+  .lt-connector,
+  .lt-source-connector,
+  .lt-round-title,
+  .lt-score-pill {
+    transition: none !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .lt-bracket-section-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .lt-bracket-section-head span {
+    text-align: left;
+  }
+
+  .lt-team {
+    padding-inline: 8px;
+  }
+
+  .lt-team-text {
+    white-space: nowrap;
+    overflow-wrap: normal;
+    word-break: normal;
+    display: block;
+    -webkit-line-clamp: 1;
+    line-clamp: 1;
+    max-height: 1.2em;
+  }
+
+  .lt-final-match-wrap {
+    padding-left: 0;
+  }
+
+  .lt-final-match-wrap .lt-incoming-source {
+    display: none;
+  }
+
+  .lt-finals-grid {
+    grid-template-columns: 1fr;
+  }
+}
