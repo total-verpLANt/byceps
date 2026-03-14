@@ -1,10 +1,6 @@
-{% extends 'layout/base.html' %}
-{% from 'macros/lan_tournament.html' import bracket_all_styles, render_bracket, render_de_bracket, render_round_robin_standings, render_simple_bracket_list, render_simple_de_bracket_list %}
+{% extends 'layout/site/lan_tournament.html' %}
+{% from 'macros/lan_tournament.html' import render_bracket, render_de_bracket, render_round_robin_standings, render_simple_bracket_list, render_simple_de_bracket_list %}
 {% set page_title = [_('Bracket'), tournament.name] %}
-
-{% block head %}
-{{ bracket_all_styles(bracket_id='de-' ~ tournament.id) }}
-{% endblock %}
 
 {% block body %}
 
@@ -38,7 +34,7 @@
     </div>
   {% endif %}
 
-  <div style='text-align: center; margin-top: 2rem;'>
+  <div class='bracket-cta'>
     <a href='{{ url_for('.matches', tournament_id=tournament.id) }}'
        class='button'>
       {{ _('View Matches List') }}

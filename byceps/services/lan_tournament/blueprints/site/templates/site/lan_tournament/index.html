@@ -1,62 +1,7 @@
-{% extends 'layout/base.html' %}
+{% extends 'layout/site/lan_tournament.html' %}
 {% from 'macros/icons.html' import render_icon %}
 {% from 'macros/misc.html' import render_tag %}
 {% set page_title = _('Tournaments') %}
-
-{% block head %}
-<style>
-  .tournament-card {
-    display: flex;
-    gap: 1rem;
-    padding: 1rem;
-    align-items: center;
-  }
-
-  .tournament-card + .tournament-card {
-    border-top: 1px solid var(--color-border, #ddd);
-  }
-
-  .tournament-icon img {
-    height: 48px;
-    width: 48px;
-    display: block;
-    border-radius: 4px;
-  }
-
-  .tournament-icon .icon {
-    font-size: 2.5rem;
-  }
-
-  .tournament-info {
-    flex: 1;
-  }
-
-  .tournament-name {
-    font-weight: bold;
-    font-size: 1.1em;
-  }
-
-  .tournament-game {
-    color: var(--color-dimmed, #888);
-    font-size: 0.9em;
-  }
-
-  .tournament-meta {
-    text-align: right;
-    white-space: nowrap;
-  }
-
-  .tournament-participants {
-    font-size: 1.2em;
-    font-weight: bold;
-  }
-
-  .tournament-start {
-    font-size: 0.85em;
-    color: var(--color-dimmed, #888);
-  }
-</style>
-{%- endblock %}
 
 {% block body %}
 
@@ -68,7 +13,9 @@
     <div class="tournament-card">
       <div class="tournament-icon">
         {%- if tournament.image_url %}
-          <img src="{{ tournament.image_url }}" alt="">
+          <div class="tournament-media">
+            <img src="{{ tournament.image_url }}" alt="">
+          </div>
         {%- else %}
           {{ render_icon('trophy') }}
         {%- endif %}

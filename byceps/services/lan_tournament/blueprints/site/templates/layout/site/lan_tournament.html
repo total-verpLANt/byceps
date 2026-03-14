@@ -1,0 +1,18 @@
+{# LAN Tournament site layout
+   Sites may override this file via:
+     sites/<site_id>/template_overrides/layout/site/lan_tournament.html
+   to change the CSS/JS references, remove the dark theme, or extend
+   with site-specific resources.
+#}
+{% extends 'layout/base.html' %}
+
+{% block head %}
+  {{ super() }}
+  <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament.css') }}">
+{%- endblock %}
+
+{% block scripts %}
+  {{ super() }}
+  {% block lt_theme %}<script>document.body.classList.add('lt-dark');</script>{% endblock %}
+  <script src="{{ url_for('static', filename='behavior/lan_tournament.js') }}" defer></script>
+{%- endblock %}
