@@ -411,7 +411,7 @@ def test_serialize_bracket_json_empty_contestants():
 
 
 def test_serialize_bracket_json_hover_data():
-    """Hover data correctly serializes seats and team members."""
+    """Hover data serializes seats keyed by participant_id (not user_id)."""
     tournament = _make_tournament(contestant_type=ContestantType.TEAM)
 
     team = _make_team(name='Aces')
@@ -429,18 +429,26 @@ def test_serialize_bracket_json_hover_data():
 
     uid1 = UserID(generate_uuid())
     uid2 = UserID(generate_uuid())
+    pid1 = TournamentParticipantID(generate_uuid())
+    pid2 = TournamentParticipantID(generate_uuid())
+
+    user1 = _make_user(user_id=uid1)
+    user2 = _make_user(user_id=uid2)
+    participants_by_id = {pid1: user1, pid2: user2}
+
     seats = {uid1: 'A1', uid2: 'B3'}
     team_members = {
         team.id: [('Player1', 'A1'), ('Player2', 'B3')],
     }
 
     result = serialize_bracket_json(
-        tournament, match_data, teams_by_id, {}, seats, team_members
+        tournament, match_data, teams_by_id, participants_by_id, seats, team_members
     )
 
+    # Seats are now keyed by participant_id (for JS hover card lookup)
     assert result['hover_data']['seats'] == {
-        str(uid1): 'A1',
-        str(uid2): 'B3',
+        str(pid1): 'A1',
+        str(pid2): 'B3',
     }
     assert result['hover_data']['team_members'] == {
         str(team.id): [('Player1', 'A1'), ('Player2', 'B3')],

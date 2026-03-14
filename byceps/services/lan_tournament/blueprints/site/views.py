@@ -369,7 +369,7 @@ def view_team(team_id):
 @login_required
 def join_team(team_id):
     """Join a team."""
-    team = tournament_team_service.get_team(team_id)
+    team = _get_team_or_404(team_id)
     tournament = _get_tournament_or_404(team.tournament_id)
 
     if tournament.tournament_status != TournamentStatus.REGISTRATION_OPEN:
@@ -424,7 +424,7 @@ def join_team(team_id):
 @login_required
 def leave_team(team_id):
     """Leave a team."""
-    team = tournament_team_service.get_team(team_id)
+    team = _get_team_or_404(team_id)
     tournament = _get_tournament_or_404(team.tournament_id)
 
     if tournament.tournament_status != TournamentStatus.REGISTRATION_OPEN:
@@ -482,6 +482,11 @@ def _get_current_party_or_404():
 
 
 def _get_tournament_or_404(tournament_id) -> Tournament:
+    try:
+        uuid.UUID(str(tournament_id))
+    except ValueError:
+        abort(404)
+
     tournament = tournament_service.find_tournament(tournament_id)
 
     if tournament is None:
@@ -496,6 +501,11 @@ def _get_tournament_or_404(tournament_id) -> Tournament:
 
 
 def _get_team_or_404(team_id) -> TournamentTeam:
+    try:
+        uuid.UUID(str(team_id))
+    except ValueError:
+        abort(404)
+
     team = tournament_team_service.find_team(team_id)
 
     if team is None:
@@ -577,7 +587,7 @@ def view_match(match_id):
     )
 
     try:
-        match_id_obj = TournamentMatchID(match_id)
+        match_id_obj = TournamentMatchID(uuid.UUID(match_id))
         match = tournament_match_service.get_match(match_id_obj)
     except ValueError:
         abort(404)
@@ -646,7 +656,7 @@ def set_score(match_id):
     )
 
     try:
-        match_id_obj = TournamentMatchID(match_id)
+        match_id_obj = TournamentMatchID(uuid.UUID(match_id))
         match = tournament_match_service.get_match(match_id_obj)
     except ValueError:
         abort(404)

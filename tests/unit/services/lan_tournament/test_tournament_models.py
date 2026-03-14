@@ -391,7 +391,7 @@ def test_bracket_enum_values():
 
 
 def test_bracket_enum_member_count():
-    assert len(Bracket) == 3
+    assert len(Bracket) == 4
 
 
 def test_bracket_enum_by_value():
