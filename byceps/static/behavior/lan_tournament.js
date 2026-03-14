@@ -9,11 +9,17 @@
 
 
 /**
- * View-mode switcher for bracket rounds.
+ * View-mode switcher for bracket rounds and DE section filtering.
  *
  * Operates on `.view-select` elements within a `.bracket-shell`.
- * "top8" hides all rounds except the last 3 (QF, SF, F).
- * "full" shows every round.
+ *
+ * Modes:
+ *   "full"     – show every round and every bracket section (default).
+ *   "top8"     – hide all rounds except the last 3 (QF, SF, F).
+ *   "winners"  – show only sections with data-bracket-view="winners"
+ *                or "finals"; hide "losers".
+ *   "losers"   – show only sections with data-bracket-view="losers"
+ *                or "finals"; hide "winners".
  */
 function initBracketViewSwitcher() {
   var selects = document.querySelectorAll('.view-select');
@@ -21,7 +27,12 @@ function initBracketViewSwitcher() {
     var shell = select.closest('.bracket-shell');
     if (!shell) return;
 
+    // Guard against double-binding on re-init after client-side render
+    if (select.getAttribute('data-view-bound')) return;
+    select.setAttribute('data-view-bound', '1');
+
     function applyMode(mode) {
+      // --- Round-level filtering (server-rendered brackets) ---
       var rounds = shell.querySelectorAll('.bracket-round');
       var total = rounds.length;
       rounds.forEach(function(round, i) {
@@ -29,6 +40,24 @@ function initBracketViewSwitcher() {
           round.style.display = (i >= total - 3) ? '' : 'none';
         } else {
           round.style.display = '';
+        }
+      });
+
+      // --- Section-level filtering (client-rendered DE brackets) ---
+      var sections = shell.querySelectorAll('.lt-bracket-section[data-bracket-view]');
+      if (sections.length === 0) return;
+
+      sections.forEach(function(section) {
+        var view = section.getAttribute('data-bracket-view');
+        if (mode === 'winners') {
+          // Show winners and finals, hide losers
+          section.style.display = (view === 'losers') ? 'none' : '';
+        } else if (mode === 'losers') {
+          // Show losers and finals, hide winners
+          section.style.display = (view === 'winners') ? 'none' : '';
+        } else {
+          // 'full' or any other mode: show all
+          section.style.display = '';
         }
       });
     }

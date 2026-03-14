@@ -249,7 +249,11 @@ def serialize_bracket_json(
             for data in match_data
         },
         'hover_data': {
-            'seats': {str(uid): label for uid, label in seats_by_user_id.items()},
+            'seats': {
+                str(pid): seats_by_user_id[user.id]
+                for pid, user in participants_by_id.items()
+                if user.id in seats_by_user_id
+            },
             'team_members': {
                 str(tid): members
                 for tid, members in team_members_by_team_id.items()

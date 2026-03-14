@@ -769,3 +769,382 @@
     grid-template-columns: 1fr;
   }
 }
+
+
+/* ------------------------------------------------------------
+   2q. Stats bar
+   ------------------------------------------------------------ */
+
+.lt-stats-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.38rem;
+}
+
+.lt-stats-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.18rem 0.58rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
+  white-space: nowrap;
+  color: color-mix(in srgb, white 82%, var(--lt-muted));
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+
+/* ------------------------------------------------------------
+   2r. View-select dropdown
+   ------------------------------------------------------------ */
+
+.lt-view-select {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.52rem 0.82rem;
+}
+
+.lt-view-select-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--lt-muted);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.lt-view-select select {
+  appearance: none;
+  -webkit-appearance: none;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: var(--lt-radius-sm, 6px);
+  color: inherit;
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 0.32rem 2rem 0.32rem 0.6rem;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 140ms ease, background 140ms ease;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='rgba(255,255,255,0.5)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.5l3 3 3-3'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+  background-size: 12px;
+}
+
+.lt-view-select select:hover {
+  border-color: rgba(255, 255, 255, 0.28);
+  background-color: rgba(255, 255, 255, 0.09);
+}
+
+.lt-view-select select:focus-visible {
+  border-color: color-mix(in srgb, var(--lt-brand-blue) 48%, white);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--lt-brand-blue) 20%, transparent);
+}
+
+.lt-view-select select option {
+  background: var(--lt-bg, #0a1230);
+  color: inherit;
+}
+
+@media (max-width: 760px) {
+  .lt-view-select {
+    padding: 0.4rem 0.6rem;
+  }
+}
+
+@media print {
+  .lt-view-select {
+    display: none;
+  }
+}
+
+
+/* ------------------------------------------------------------
+   2o. P3 (third-place match) card
+   ------------------------------------------------------------ */
+
+.lt-p3-section {
+  border-color: color-mix(in srgb, var(--lt-brand-orange) 22%, var(--lt-border));
+}
+
+.lt-p3-section .lt-bracket-section-head h2 {
+  color: color-mix(in srgb, var(--lt-brand-orange) 82%, white);
+}
+
+.lt-p3-card {
+  border-color: color-mix(in srgb, var(--lt-brand-orange) 18%, var(--lt-border));
+  background: color-mix(in srgb, var(--lt-brand-orange) 4%, rgba(255, 255, 255, 0.04));
+}
+
+.lt-p3-card h3 {
+  color: color-mix(in srgb, var(--lt-brand-orange) 78%, white);
+}
+
+.lt-p3-card .lt-match {
+  --match-accent: color-mix(in srgb, var(--lt-brand-orange) 72%, white);
+}
+
+
+/* ------------------------------------------------------------
+   2p. GF M2 / bracket reset card
+   ------------------------------------------------------------ */
+
+.lt-final-card--reset {
+  border-color: color-mix(in srgb, var(--lt-brand-orange) 36%, var(--lt-border));
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--lt-brand-orange) 6%, rgba(255, 255, 255, 0.04)),
+    rgba(255, 255, 255, 0.02)
+  );
+}
+
+.lt-final-card--reset h3 {
+  color: color-mix(in srgb, var(--lt-brand-orange) 88%, white);
+}
+
+.lt-match.bracket-reset {
+  --match-accent: color-mix(in srgb, var(--lt-brand-orange) 82%, white);
+  border-color: color-mix(in srgb, var(--lt-brand-orange) 32%, var(--lt-border));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--lt-brand-orange) 8%, rgba(255, 255, 255, 0.08)),
+    rgba(255, 255, 255, 0.03)
+  );
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.22),
+    0 0 0 1px color-mix(in srgb, var(--lt-brand-orange) 12%, transparent);
+}
+
+.lt-match.bracket-reset::before {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--lt-brand-orange) 92%, white),
+    color-mix(in srgb, var(--lt-brand-orange) 68%, white)
+  );
+}
+
+
+/* ------------------------------------------------------------
+   2n. Print stylesheet
+   ------------------------------------------------------------ */
+
+@media print {
+  /* Light background, high-contrast text */
+  .lt-bracket-section {
+    background: #fff;
+    border-color: #ccc;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    break-inside: avoid;
+  }
+
+  .lt-bracket-section-body {
+    padding: 0.3rem;
+  }
+
+  /* Ensure all bracket sections are visible and expanded */
+  .lt-bracket-scroll {
+    overflow: visible !important;
+    cursor: auto;
+    scrollbar-width: none;
+  }
+
+  .lt-bracket-scroll.is-pannable {
+    overflow: visible !important;
+    cursor: auto;
+  }
+
+  .lt-bracket-canvas {
+    overflow: visible;
+  }
+
+  /* Round titles: readable on white */
+  .lt-round-title {
+    background: #f5f5f5;
+    border-color: #ccc;
+    color: #000;
+  }
+
+  .lt-round-title::before {
+    background: #000;
+  }
+
+  .lt-round-title small {
+    color: #555;
+  }
+
+  /* Match cards: light cards with dark text */
+  .lt-match {
+    background: #fafafa;
+    border-color: #bbb;
+    box-shadow: none;
+    color: #000;
+    transition: none;
+  }
+
+  .lt-match::before {
+    background: #333;
+  }
+
+  .lt-match.match-open,
+  .lt-match.match-pending,
+  .lt-match.match-done,
+  .lt-match.match-auto {
+    background: #fafafa;
+    border-color: #bbb;
+    box-shadow: none;
+  }
+
+  /* Match label / meta */
+  .lt-match-label {
+    color: #333;
+  }
+
+  .lt-match-stage {
+    color: #222;
+  }
+
+  .lt-match-status {
+    border-color: #999;
+    color: #333;
+    background: #eee;
+  }
+
+  .lt-match-status--open,
+  .lt-match-status--pending,
+  .lt-match-status--done,
+  .lt-match-status--auto {
+    color: #333;
+    background: #eee;
+    border-color: #999;
+  }
+
+  /* State dots: uniform dark fill for print legibility */
+  .lt-match-state-dot,
+  .lt-match-state-dot--open,
+  .lt-match-state-dot--pending,
+  .lt-match-state-dot--done,
+  .lt-match-state-dot--auto {
+    background: #333;
+    border-color: #666;
+    box-shadow: none;
+  }
+
+  /* Team rows */
+  .lt-team {
+    background: #f8f8f8;
+    border-color: #ccc;
+    color: #000;
+    transition: none;
+  }
+
+  .lt-team.placeholder {
+    color: #888;
+  }
+
+  .lt-team.winner:not(.defwin),
+  .lt-team.defwin {
+    background: #eef6ee;
+    border-color: #5a5;
+    color: #000;
+  }
+
+  .lt-score-pill {
+    background: #eee;
+    border-color: #aaa;
+    color: #000;
+    opacity: 1;
+  }
+
+  .lt-team.winner:not(.defwin) .lt-score-pill {
+    background: #d4edd4;
+    border-color: #5a5;
+  }
+
+  /* SVG connectors: black lines */
+  .lt-connector,
+  .lt-source-connector {
+    stroke: #000 !important;
+    opacity: 1;
+    filter: none;
+  }
+
+  /* Source badges */
+  .lt-incoming-pill {
+    background: #f0f0f0;
+    border-color: #aaa;
+    color: #222;
+    box-shadow: none;
+  }
+
+  .lt-incoming-pill-dot,
+  .lt-incoming-pill-dot--open,
+  .lt-incoming-pill-dot--pending,
+  .lt-incoming-pill-dot--done,
+  .lt-incoming-pill-dot--auto {
+    background: #333;
+    border-color: #666;
+    box-shadow: none;
+  }
+
+  /* Disable focus/highlight mode dimming */
+  .lt-bracket-focus-mode .lt-match,
+  .lt-bracket-focus-mode .lt-incoming-source,
+  .lt-bracket-focus-mode .lt-connector,
+  .lt-bracket-focus-mode .lt-source-connector,
+  .lt-bracket-focus-mode .lt-round-title {
+    opacity: 1;
+    filter: none;
+  }
+
+  /* Hide interactive-only elements */
+  .lt-bracket-scroll::-webkit-scrollbar,
+  .lt-match.clickable:hover,
+  .lt-match.clickable:focus-visible {
+    transform: none;
+    box-shadow: none;
+  }
+
+  /* Kill all transitions and animations */
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+
+  /* Finals grid: full width */
+  .lt-finals-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .lt-final-card {
+    background: #fff;
+    border-color: #ccc;
+  }
+
+  .lt-final-card p {
+    color: #555;
+  }
+
+  .lt-empty-state {
+    background: #fafafa;
+    border-color: #ccc;
+    color: #555;
+  }
+
+  /* Stats bar: legible on white */
+  .lt-stats-chip {
+    color: #333;
+    background: #f0f0f0;
+    border-color: #bbb;
+  }
+}
