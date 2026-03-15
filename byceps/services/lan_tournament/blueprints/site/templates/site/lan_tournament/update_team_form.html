@@ -16,25 +16,10 @@
   <h1 class="title">{{ _('Edit team') }}</h1>
 
   <form action="{{ url_for('.update_team', tournament_id=tournament.id, team_id=team.id) }}" method="post">
-    <fieldset>
-      <div class="row">
-        <div class="column-auto">
-          <label for="name">{{ _('Team name') }} <span class="required">*</span></label>
-        </div>
-        <div class="column-auto">
-          <input type="text" name="name" id="name" size="40" maxlength="100" value="{{ team.name }}" required autofocus>
-        </div>
-      </div>
-
-      <div class="row">
-        <div class="column-auto">
-          <label for="description">{{ _('Description') }}</label>
-        </div>
-        <div class="column-auto">
-          <textarea name="description" id="description" cols="40" rows="3">{{ team.description or '' }}</textarea>
-        </div>
-      </div>
-    </fieldset>
+    <div class="main-body-box">
+      {{ form_field(form.name, maxlength=80, autofocus='autofocus') }}
+      {{ form_field(form.description) }}
+    </div>
 
     {{ form_buttons(_('Save'), cancel_url=url_for('.view_team', team_id=team.id)) }}
   </form>

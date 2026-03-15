@@ -37,6 +37,8 @@ from byceps.util.framework.templating import templated
 from byceps.util.result import Err, Ok
 from byceps.util.views import login_required, redirect_to
 
+from .forms import HighscoreSubmitForm, SiteTeamCreateForm, SiteTeamUpdateForm
+
 
 blueprint = create_blueprint('lan_tournament', __name__)
 
@@ -244,7 +246,7 @@ def teams(tournament_id):
 @blueprint.get('/<tournament_id>/teams/create')
 @login_required
 @templated
-def create_team_form(tournament_id):
+def create_team_form(tournament_id, erroneous_form=None):
     """Show form to create a team."""
     tournament = _get_tournament_or_404(tournament_id)
 
@@ -252,8 +254,11 @@ def create_team_form(tournament_id):
         flash_error(gettext('Registration is not open.'))
         return redirect_to('.view', tournament_id=tournament.id)
 
+    form = erroneous_form if erroneous_form else SiteTeamCreateForm()
+
     return {
         'tournament': tournament,
+        'form': form,
     }
 
 
@@ -267,14 +272,14 @@ def create_team(tournament_id):
         flash_error(gettext('Registration is not open.'))
         return redirect_to('.view', tournament_id=tournament.id)
 
-    name = request.form.get('name', '').strip()
-    tag = request.form.get('tag', '').strip() or None
-    description = request.form.get('description', '').strip() or None
-    join_code = request.form.get('join_code', '').strip() or None
+    form = SiteTeamCreateForm(request.form)
+    if not form.validate():
+        return create_team_form(tournament_id, form)
 
-    if not name:
-        flash_error(gettext('Team name is required.'))
-        return redirect_to('.create_team_form', tournament_id=tournament.id)
+    name = form.name.data.strip()
+    tag = form.tag.data.strip() if form.tag.data else None
+    description = form.description.data.strip() if form.description.data else None
+    join_code = form.join_code.data.strip() if form.join_code.data else None
 
     match tournament_team_service.create_team(
         tournament.id,
@@ -538,7 +543,7 @@ def _get_team_member_user_ids(
 @blueprint.get('/<tournament_id>/teams/<team_id>/update')
 @login_required
 @templated
-def update_team_form(tournament_id, team_id):
+def update_team_form(tournament_id, team_id, erroneous_form=None):
     """Show form to update team name/description (captain only)."""
     tournament = _get_tournament_or_404(tournament_id)
     team = _get_team_or_404(team_id)
@@ -548,9 +553,12 @@ def update_team_form(tournament_id, team_id):
 
     _require_team_captain(tournament, team)
 
+    form = erroneous_form if erroneous_form else SiteTeamUpdateForm(obj=team)
+
     return {
         'tournament': tournament,
         'team': team,
+        'form': form,
     }
 
 
@@ -566,24 +574,12 @@ def update_team(tournament_id, team_id):
 
     _require_team_captain(tournament, team)
 
-    name = request.form.get('name', '').strip()
-    description = request.form.get('description', '').strip() or None
+    form = SiteTeamUpdateForm(request.form)
+    if not form.validate():
+        return update_team_form(tournament_id, team_id, form)
 
-    if not name:
-        flash_error(gettext('Team name is required.'))
-        return redirect_to(
-            '.update_team_form',
-            tournament_id=tournament.id,
-            team_id=team.id,
-        )
-
-    if len(name) > 100:
-        flash_error(gettext('Team name is too long.'))
-        return redirect_to(
-            '.update_team_form',
-            tournament_id=tournament.id,
-            team_id=team.id,
-        )
+    name = form.name.data.strip()
+    description = form.description.data.strip() if form.description.data else None
 
     match tournament_team_service.update_team(
         team.id,
@@ -1049,7 +1045,7 @@ def bracket(tournament_id):
 
 @blueprint.get('/<tournament_id>/highscore')
 @templated
-def highscore(tournament_id):
+def highscore(tournament_id, erroneous_form=None):
     """Show highscore leaderboard for the tournament."""
     tournament = _get_tournament_or_404(tournament_id)
 
@@ -1095,6 +1091,8 @@ def highscore(tournament_id):
             if p.user_id in users_by_id and p.removed_at is None
         }
 
+    form = erroneous_form if erroneous_form else HighscoreSubmitForm()
+
     return {
         'party': party,
         'tournament': tournament,
@@ -1102,6 +1100,7 @@ def highscore(tournament_id):
         'participants_by_id': participants_by_id,
         'teams_by_id': teams_by_id,
         'active_tab': 'highscore',
+        'form': form,
     }
 
 
@@ -1118,24 +1117,14 @@ def highscore_submit(tournament_id):
     ):
         flash_error(gettext('Tournament is not accepting score submissions.'))
         return redirect_to('.highscore', tournament_id=tournament_id)
-    score_raw = request.form.get('score', '')
-    note = request.form.get('note', '').strip() or None
-    NOTE_MAX_LENGTH = 200
-    if note is not None and len(note) > NOTE_MAX_LENGTH:
-        flash_error(
-            gettext(
-                'Note must be %(max)d characters or fewer.', max=NOTE_MAX_LENGTH
-            )
-        )
-        return redirect_to('.highscore', tournament_id=tournament_id)
-    try:
-        score = int(score_raw)
-    except ValueError:
-        flash_error(gettext('Invalid score value.'))
-        return redirect_to('.highscore', tournament_id=tournament_id)
-    if score < 0 or score > 999_999_999:
-        flash_error(gettext('Score must be between 0 and 999,999,999.'))
-        return redirect_to('.highscore', tournament_id=tournament_id)
+
+    form = HighscoreSubmitForm(request.form)
+    if not form.validate():
+        return highscore(tournament_id, form)
+
+    score = form.score.data
+    note = form.note.data.strip() if form.note.data else None
+
     result = tournament_score_service.submit_score_by_participant(
         tournament.id, g.user.id, score, note=note
     )
