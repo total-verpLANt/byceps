@@ -7,6 +7,23 @@
 
 
 /* ------------------------------------------------------------
+   2a-0. Full-width breakout (desktop only)
+   Let #bracket-app span the full viewport so the bracket
+   renderer can use the extra horizontal space.  Text content
+   (breadcrumbs, title, CTA) stays inside .container at 1360px.
+   ------------------------------------------------------------ */
+
+@media (min-width: 761px) {
+  .lt-dark #bracket-app {
+    width: 100vw;
+    margin-left: calc(-50vw + 50%);
+    padding-inline: 1rem;
+    box-sizing: border-box;
+  }
+}
+
+
+/* ------------------------------------------------------------
    2a. Section card (bracket wrapper)
    Source: turnier-shared.css:862-990
    ------------------------------------------------------------ */

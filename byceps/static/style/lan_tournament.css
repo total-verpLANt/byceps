@@ -49,6 +49,7 @@
     radial-gradient(circle at top right, color-mix(in srgb, var(--lt-brand-blue)   22%, transparent), transparent 34%),
     linear-gradient(180deg, var(--lt-bg), color-mix(in srgb, var(--lt-bg-2) 72%, black));
   color: var(--lt-text);
+  overflow-x: clip;                     /* prevent 100vw breakout overflow */
 }
 
 /* Widen the page container on tournament pages to match the
@@ -623,12 +624,12 @@
    1m. Responsive bracket wrapper
    ------------------------------------------------------------ */
 
-@media (max-width: 768px) {
+@media (max-width: 760px) {
   .bracket-desktop { display: none; }
   .bracket-mobile  { display: block; }
 }
 
-@media (min-width: 769px) {
+@media (min-width: 761px) {
   .bracket-desktop { display: block; }
   .bracket-mobile  { display: none; }
 }
