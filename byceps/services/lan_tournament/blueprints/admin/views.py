@@ -751,7 +751,7 @@ def admin_remove_team_member(team_id, user_id):
     except ValueError:
         abort(404)
 
-    result = tournament_team_service.admin_remove_member(
+    result = tournament_team_service.remove_team_member(
         team.id, member_user_id
     )
     match result:

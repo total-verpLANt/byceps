@@ -1,0 +1,42 @@
+{% extends 'layout/site/lan_tournament.html' %}
+{% from 'macros/forms.html' import form_buttons, form_field %}
+{% set page_title = [_('Tournament'), tournament.name, _('Team'), team.name, _('Edit')] %}
+
+{% block body %}
+
+  <nav class="breadcrumbs">
+    <ol>
+      <li><a href="{{ url_for('.index') }}">{{ _('Tournaments') }}</a></li>
+      <li><a href="{{ url_for('.view', tournament_id=tournament.id) }}">{{ tournament.name }}</a></li>
+      <li><a href="{{ url_for('.teams', tournament_id=tournament.id) }}">{{ _('Teams') }}</a></li>
+      <li><a href="{{ url_for('.view_team', team_id=team.id) }}">{{ team.name }}</a></li>
+    </ol>
+  </nav>
+
+  <h1 class="title">{{ _('Edit team') }}</h1>
+
+  <form action="{{ url_for('.update_team', tournament_id=tournament.id, team_id=team.id) }}" method="post">
+    <fieldset>
+      <div class="row">
+        <div class="column-auto">
+          <label for="name">{{ _('Team name') }} <span class="required">*</span></label>
+        </div>
+        <div class="column-auto">
+          <input type="text" name="name" id="name" size="40" maxlength="100" value="{{ team.name }}" required autofocus>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="column-auto">
+          <label for="description">{{ _('Description') }}</label>
+        </div>
+        <div class="column-auto">
+          <textarea name="description" id="description" cols="40" rows="3">{{ team.description or '' }}</textarea>
+        </div>
+      </div>
+    </fieldset>
+
+    {{ form_buttons(_('Save'), cancel_url=url_for('.view_team', team_id=team.id)) }}
+  </form>
+
+{%- endblock %}
