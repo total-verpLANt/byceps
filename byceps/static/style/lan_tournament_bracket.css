@@ -267,6 +267,11 @@
   background: linear-gradient(180deg, color-mix(in srgb, var(--lt-brand-success) 6%, rgba(255, 255, 255, 0.08)), rgba(255, 255, 255, 0.03));
 }
 
+/* DEFWIN participant slot: grey out the non-existent opponent row */
+.lt-match .lt-team.defwin {
+  opacity: 0.35;
+}
+
 .lt-match.static {
   position: relative;
   left: auto !important;
