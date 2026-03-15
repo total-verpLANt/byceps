@@ -18,6 +18,7 @@ from byceps.services.lan_tournament.models.tournament_team import (
     TournamentTeamID,
 )
 from byceps.services.party.models import PartyID
+from byceps.services.user.models.user import UserID
 
 from tests.helpers import generate_uuid
 
@@ -25,6 +26,7 @@ from tests.helpers import generate_uuid
 NOW = datetime(2025, 6, 15, 14, 0, 0, tzinfo=UTC)
 TOURNAMENT_ID = TournamentID(generate_uuid())
 PARTY_ID = PartyID('lan-2025')
+INITIATOR_ID = UserID(generate_uuid())
 
 
 # -------------------------------------------------------------------- #
@@ -96,6 +98,8 @@ def test_defwin_participant_sole_opponent_advances(mock_repo):
     )
     # Opponent was advanced to next match
     mock_repo.create_match_contestant.assert_called_once()
+    # No initiator_id => confirm_match NOT called
+    mock_repo.confirm_match.assert_not_called()
 
 
 @patch(
@@ -303,6 +307,167 @@ def test_defwin_team_sole_opponent_advances(mock_repo):
     assert events[0].advanced_team_id == opponent_team_id
     assert events[0].match_id == next_match_id
     mock_repo.create_match_contestant.assert_called_once()
+    # No initiator_id => confirm_match NOT called
+    mock_repo.confirm_match.assert_not_called()
+
+
+# -------------------------------------------------------------------- #
+# DEFWIN auto-confirmation with initiator_id
+# -------------------------------------------------------------------- #
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_defwin_participant_with_initiator_calls_confirm_match(mock_repo):
+    """When initiator_id is provided, confirm_match() is called on the
+    DEFWIN match after auto-advancing the sole opponent."""
+    participant_id = TournamentParticipantID(generate_uuid())
+    opponent_participant_id = TournamentParticipantID(generate_uuid())
+    match_id = TournamentMatchID(generate_uuid())
+    next_match_id = TournamentMatchID(generate_uuid())
+
+    match = _create_match(match_id=match_id, next_match_id=next_match_id)
+    contestant = _create_contestant(
+        match_id=match_id, participant_id=participant_id
+    )
+    opponent = _create_contestant(
+        match_id=match_id, participant_id=opponent_participant_id
+    )
+
+    mock_repo.find_contestant_entries_for_participant_in_tournament.return_value = [
+        (contestant, match)
+    ]
+    mock_repo.get_contestants_for_match.side_effect = lambda mid: (
+        [opponent] if mid == match_id else []
+    )
+
+    events = tournament_match_service.handle_defwin_for_removed_participant(
+        TOURNAMENT_ID, participant_id, initiator_id=INITIATOR_ID
+    )
+
+    assert len(events) == 1
+    assert events[0].advanced_participant_id == opponent_participant_id
+
+    # confirm_match called with original match_id and initiator
+    mock_repo.confirm_match.assert_called_once_with(match_id, INITIATOR_ID)
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_defwin_participant_no_advance_no_confirm(mock_repo):
+    """When no advancement occurs (no next_match_id), confirm_match()
+    is NOT called even with an initiator_id."""
+    participant_id = TournamentParticipantID(generate_uuid())
+    opponent_participant_id = TournamentParticipantID(generate_uuid())
+    match_id = TournamentMatchID(generate_uuid())
+
+    match = _create_match(match_id=match_id, next_match_id=None)
+    contestant = _create_contestant(
+        match_id=match_id, participant_id=participant_id
+    )
+    opponent = _create_contestant(
+        match_id=match_id, participant_id=opponent_participant_id
+    )
+
+    mock_repo.find_contestant_entries_for_participant_in_tournament.return_value = [
+        (contestant, match)
+    ]
+    mock_repo.get_contestants_for_match.return_value = [opponent]
+
+    events = tournament_match_service.handle_defwin_for_removed_participant(
+        TOURNAMENT_ID, participant_id, initiator_id=INITIATOR_ID
+    )
+
+    assert events == []
+    mock_repo.confirm_match.assert_not_called()
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_defwin_participant_multiple_matches_with_initiator(mock_repo):
+    """When a participant is in multiple matches and initiator_id is set,
+    confirm_match() is called once per DEFWIN auto-advance."""
+    participant_id = TournamentParticipantID(generate_uuid())
+    opponent1_id = TournamentParticipantID(generate_uuid())
+    opponent2_id = TournamentParticipantID(generate_uuid())
+
+    match1_id = TournamentMatchID(generate_uuid())
+    match2_id = TournamentMatchID(generate_uuid())
+    next1_id = TournamentMatchID(generate_uuid())
+    next2_id = TournamentMatchID(generate_uuid())
+
+    match1 = _create_match(match_id=match1_id, next_match_id=next1_id)
+    match2 = _create_match(match_id=match2_id, next_match_id=next2_id)
+
+    contestant1 = _create_contestant(
+        match_id=match1_id, participant_id=participant_id
+    )
+    contestant2 = _create_contestant(
+        match_id=match2_id, participant_id=participant_id
+    )
+    opponent1 = _create_contestant(
+        match_id=match1_id, participant_id=opponent1_id
+    )
+    opponent2 = _create_contestant(
+        match_id=match2_id, participant_id=opponent2_id
+    )
+
+    mock_repo.find_contestant_entries_for_participant_in_tournament.return_value = [
+        (contestant1, match1),
+        (contestant2, match2),
+    ]
+
+    def get_contestants(mid):
+        if mid == match1_id:
+            return [opponent1]
+        if mid == match2_id:
+            return [opponent2]
+        return []
+
+    mock_repo.get_contestants_for_match.side_effect = get_contestants
+
+    events = tournament_match_service.handle_defwin_for_removed_participant(
+        TOURNAMENT_ID, participant_id, initiator_id=INITIATOR_ID
+    )
+
+    assert len(events) == 2
+    assert mock_repo.confirm_match.call_count == 2
+    mock_repo.confirm_match.assert_any_call(match1_id, INITIATOR_ID)
+    mock_repo.confirm_match.assert_any_call(match2_id, INITIATOR_ID)
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_defwin_team_with_initiator_calls_confirm_match(mock_repo):
+    """When initiator_id is provided for a team removal, confirm_match()
+    is called on the DEFWIN match."""
+    team_id = TournamentTeamID(generate_uuid())
+    opponent_team_id = TournamentTeamID(generate_uuid())
+    match_id = TournamentMatchID(generate_uuid())
+    next_match_id = TournamentMatchID(generate_uuid())
+
+    match = _create_match(match_id=match_id, next_match_id=next_match_id)
+    contestant = _create_contestant(match_id=match_id, team_id=team_id)
+    opponent = _create_contestant(match_id=match_id, team_id=opponent_team_id)
+
+    mock_repo.find_contestant_entries_for_team_in_tournament.return_value = [
+        (contestant, match)
+    ]
+    mock_repo.get_contestants_for_match.side_effect = lambda mid: (
+        [opponent] if mid == match_id else []
+    )
+
+    events = tournament_match_service.handle_defwin_for_removed_team(
+        TOURNAMENT_ID, team_id, initiator_id=INITIATOR_ID
+    )
+
+    assert len(events) == 1
+    assert events[0].advanced_team_id == opponent_team_id
+    mock_repo.confirm_match.assert_called_once_with(match_id, INITIATOR_ID)
 
 
 # -------------------------------------------------------------------- #

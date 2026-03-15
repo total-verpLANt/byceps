@@ -235,6 +235,8 @@ def _prepare_bracket_generation(
 def generate_single_elimination_bracket(
     tournament_id: TournamentID,
     force_regenerate: bool = False,
+    *,
+    initiator_id: UserID | None = None,
 ) -> Result[int, str]:
     """Generate single elimination bracket with all rounds."""
     import math
@@ -394,6 +396,11 @@ def generate_single_elimination_bracket(
                 created_at=now,
             )
             tournament_repository.create_match_contestant(advanced)
+            # Auto-confirm the DEFWIN match
+            if initiator_id is not None:
+                tournament_repository.confirm_match(
+                    match_id, initiator_id
+                )
 
     # Single transaction commit
     tournament_repository.commit_session()
@@ -411,6 +418,8 @@ def generate_single_elimination_bracket(
 def generate_double_elimination_bracket(
     tournament_id: TournamentID,
     force_regenerate: bool = False,
+    *,
+    initiator_id: UserID | None = None,
 ) -> Result[int, str]:
     """Generate double elimination bracket with WB, LB, and
     GF.  The Grand Final is the terminal match.
@@ -644,6 +653,11 @@ def generate_double_elimination_bracket(
                 created_at=now,
             )
             tournament_repository.create_match_contestant(advanced)
+            # Auto-confirm the DEFWIN match
+            if initiator_id is not None:
+                tournament_repository.confirm_match(
+                    match_id, initiator_id
+                )
 
     # ---- Null loser_next_match_id for WBR0 DEFWIN matches ----
     # A DEFWIN match produces no loser, so the loser link
@@ -821,6 +835,8 @@ def get_matches_for_tournament_ordered(
 def handle_defwin_for_removed_participant(
     tournament_id: TournamentID,
     participant_id: TournamentParticipantID,
+    *,
+    initiator_id: UserID | None = None,
 ) -> list[ContestantAdvancedEvent]:
     """Handle defwin logic when removing a participant from an
     active tournament. Removes their contestant entries from
@@ -838,12 +854,16 @@ def handle_defwin_for_removed_participant(
             match.id, participant_id=participant_id
         )
 
-    return _process_defwin_entries(tournament_id, entries)
+    return _process_defwin_entries(
+        tournament_id, entries, initiator_id=initiator_id
+    )
 
 
 def handle_defwin_for_removed_team(
     tournament_id: TournamentID,
     team_id: TournamentTeamID,
+    *,
+    initiator_id: UserID | None = None,
 ) -> list[ContestantAdvancedEvent]:
     """Handle defwin logic when removing a team from an active
     tournament.
@@ -863,12 +883,16 @@ def handle_defwin_for_removed_team(
             match.id, team_id=team_id
         )
 
-    return _process_defwin_entries(tournament_id, entries)
+    return _process_defwin_entries(
+        tournament_id, entries, initiator_id=initiator_id
+    )
 
 
 def _process_defwin_entries(
     tournament_id: TournamentID,
     entries: list[tuple[TournamentMatchToContestant, TournamentMatch]],
+    *,
+    initiator_id: UserID | None = None,
 ) -> list[ContestantAdvancedEvent]:
     """Shared defwin advancement logic for removed contestants.
 
@@ -916,6 +940,12 @@ def _process_defwin_entries(
             created_at=now,
         )
         tournament_repository.create_match_contestant(advanced)
+
+        # Auto-confirm the DEFWIN match
+        if initiator_id is not None:
+            tournament_repository.confirm_match(
+                match.id, initiator_id
+            )
 
         events.append(
             ContestantAdvancedEvent(
@@ -1245,6 +1275,8 @@ def _advance_loser_to_lb(
     contestants: list[TournamentMatchToContestant],
     winner: TournamentMatchToContestant,
     now: datetime,
+    *,
+    initiator_id: UserID | None = None,
 ) -> Result[list[ContestantAdvancedEvent], str]:
     """Route loser to losers bracket (flush only).
 
@@ -1287,6 +1319,7 @@ def _advance_loser_to_lb(
         match.loser_next_match_id,
         match.tournament_id,
         now,
+        initiator_id=initiator_id,
     )
 
     return Ok(events)
@@ -1296,6 +1329,8 @@ def _try_lb_defwin_advance(
     lb_match_id: TournamentMatchID,
     tournament_id: TournamentID,
     now: datetime,
+    *,
+    initiator_id: UserID | None = None,
 ) -> list[ContestantAdvancedEvent]:
     """Auto-advance if LB match is a structural DEFWIN (flush only).
 
@@ -1331,6 +1366,12 @@ def _try_lb_defwin_advance(
         created_at=now,
     )
     tournament_repository.create_match_contestant(advanced)
+
+    # Auto-confirm the structural DEFWIN match
+    if initiator_id is not None:
+        tournament_repository.confirm_match(
+            lb_match_id, initiator_id
+        )
 
     return [
         ContestantAdvancedEvent(
@@ -1415,6 +1456,7 @@ def confirm_match(
     if match.loser_next_match_id is not None:
         lb = _advance_loser_to_lb(
             match, contestants, winner, now,
+            initiator_id=initiator_id,
         )
         if lb.is_err():
             return Err(lb.unwrap_err())

@@ -21,7 +21,9 @@
   <div class='match-detail'>
     <div class='match-header'>
       <h1>{{ _('Match #') }}{{ match.match_order }}</h1>
-      {%- if match.confirmed_by %}
+      {%- if match.confirmed_by and contestants|selectattr('team_id')|list|length + contestants|selectattr('participant_id')|list|length < 2 %}
+        {{ render_tag(_('DEFWIN'), class='color-info') }}
+      {%- elif match.confirmed_by %}
         {{ render_tag(_('Confirmed'), class='color-success') }}
       {%- else %}
         {{ render_tag(_('Pending'), class='color-warning') }}

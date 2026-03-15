@@ -257,7 +257,7 @@ def test_remove_ticketless_ongoing_triggers_defwins(
     assert result.is_ok()
     assert result.unwrap() == 1
     mock_match_svc.handle_defwin_for_removed_participant.assert_called_once_with(
-        TOURNAMENT_ID, p1.id
+        TOURNAMENT_ID, p1.id, initiator_id=None
     )
     # Soft-delete, not hard-delete
     mock_repo.soft_delete_participants_by_ids.assert_called_once()

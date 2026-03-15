@@ -228,6 +228,53 @@ def test_generate_bracket_defwin_handling(mock_repo):
 
     assert result.is_ok()
     assert result.unwrap() == 8  # 8-1 = 7 bracket matches + 1 P3
+    # No initiator_id => DEFWIN matches are NOT auto-confirmed
+    mock_repo.confirm_match.assert_not_called()
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_generate_bracket_defwin_auto_confirms_with_initiator(mock_repo):
+    """5 players => 3 defwins; with initiator_id, confirm_match()
+    is called for each DEFWIN auto-advance."""
+    initiator_id = UserID(generate_uuid())
+    tournament = _create_tournament(contestant_type=ContestantType.SOLO)
+    participants = [
+        _create_mock_participant(TournamentParticipantID(generate_uuid()))
+        for _ in range(5)
+    ]
+
+    mock_repo.get_tournament.return_value = tournament
+    mock_repo.get_participants_for_tournament.return_value = participants
+
+    contestant_by_match: dict[
+        TournamentMatchID, list[TournamentMatchToContestant]
+    ] = {}
+
+    def track_contestant(contestant):
+        mid = contestant.tournament_match_id
+        if mid not in contestant_by_match:
+            contestant_by_match[mid] = []
+        contestant_by_match[mid].append(contestant)
+
+    mock_repo.create_match_contestant.side_effect = track_contestant
+
+    def get_contestants(match_id):
+        return contestant_by_match.get(match_id, [])
+
+    mock_repo.get_contestants_for_match.side_effect = get_contestants
+
+    result = tournament_match_service.generate_single_elimination_bracket(
+        TOURNAMENT_ID, initiator_id=initiator_id
+    )
+
+    assert result.is_ok()
+    # 5 players in 8-slot bracket => 3 DEFWIN matches auto-confirmed
+    assert mock_repo.confirm_match.call_count == 3
+    # Each call receives the correct initiator_id
+    for confirm_call in mock_repo.confirm_match.call_args_list:
+        assert confirm_call.args[1] == initiator_id
 
 
 @patch(
@@ -811,6 +858,8 @@ def test_generate_de_bracket_defwin_nullifies_loser_link(
     # clear_loser_next_match_id called for each DEFWIN
     # match (3 out of 4 WBR0 matches).
     assert mock_repo.clear_loser_next_match_id.call_count == 3
+    # No initiator_id => DEFWIN matches are NOT auto-confirmed
+    mock_repo.confirm_match.assert_not_called()
 
 
 @patch(
@@ -874,6 +923,68 @@ def test_generate_de_bracket_defwin_still_advances_to_wb1(
     ]
     # At least 5 seeding + 3 auto-advance = 8 calls.
     assert len(seeded_calls) >= 8
+    # No initiator_id => DEFWIN matches are NOT auto-confirmed
+    mock_repo.confirm_match.assert_not_called()
+
+
+@patch(
+    'byceps.services.lan_tournament'
+    '.tournament_match_service.tournament_repository'
+)
+def test_generate_de_bracket_defwin_auto_confirms_with_initiator(
+    mock_repo,
+):
+    """5 players: with initiator_id, confirm_match() is called for
+    each DEFWIN auto-advance in double elimination."""
+    initiator_id = UserID(generate_uuid())
+    tournament = _create_tournament(
+        contestant_type=ContestantType.SOLO,
+        tournament_mode=TournamentMode.DOUBLE_ELIMINATION,
+    )
+    participants = [
+        _create_mock_participant(
+            TournamentParticipantID(generate_uuid()),
+        )
+        for _ in range(5)
+    ]
+
+    mock_repo.get_tournament.return_value = tournament
+    mock_repo.get_participants_for_tournament.return_value = participants
+
+    sole_pid = TournamentParticipantID(generate_uuid())
+    single = [
+        _create_match_contestant(participant_id=sole_pid),
+    ]
+    pair = [
+        _create_match_contestant(
+            participant_id=TournamentParticipantID(generate_uuid()),
+        ),
+        _create_match_contestant(
+            participant_id=TournamentParticipantID(generate_uuid()),
+        ),
+    ]
+    # auto-advance loop + nullification loop
+    mock_repo.get_contestants_for_match.side_effect = [
+        single,
+        pair,
+        single,
+        single,
+        single,
+        pair,
+        single,
+        single,
+    ]
+
+    result = tournament_match_service.generate_double_elimination_bracket(
+        TOURNAMENT_ID, initiator_id=initiator_id
+    )
+
+    assert result.is_ok()
+    # 5 players in 8-slot bracket => 3 DEFWIN auto-advances auto-confirmed
+    assert mock_repo.confirm_match.call_count == 3
+    # Each call receives the correct initiator_id
+    for confirm_call in mock_repo.confirm_match.call_args_list:
+        assert confirm_call.args[1] == initiator_id
 
 
 @patch(
@@ -1915,6 +2026,12 @@ def test_confirm_match_de_auto_advances_lb_defwin(mock_repo):
     # Third call: auto-advanced to lb_next_match_id.
     assert calls[2].tournament_match_id == lb_next_match_id
     assert calls[2].participant_id == loser_pid
+
+    # confirm_match called for main match + LB structural DEFWIN match
+    assert mock_repo.confirm_match.call_count == 2
+    confirm_calls = mock_repo.confirm_match.call_args_list
+    assert confirm_calls[0].args == (MATCH_ID, USER_ID)
+    assert confirm_calls[1].args == (loser_next_match_id, USER_ID)
 
 
 @patch(
