@@ -330,7 +330,7 @@ def test_generate_round_robin_schedule_5_players():
     ids = ['A', 'B', 'C', 'D', 'E']
     schedule = generate_round_robin_schedule(ids)
 
-    # Padded to 6 → 5 rounds; byes are skipped so 10 real matches.
+    # Padded to 6 → 5 rounds; defwins are skipped so 10 real matches.
     assert len(schedule) == 5
     total_matches = sum(len(r) for r in schedule)
     assert total_matches == 10  # C(5,2) = 10
@@ -358,7 +358,7 @@ def test_generate_round_robin_schedule_3_players():
     ids = ['A', 'B', 'C']
     schedule = generate_round_robin_schedule(ids)
 
-    # Padded to 4 -> 3 rounds; byes skipped so 3 real matches.
+    # Padded to 4 -> 3 rounds; defwins skipped so 3 real matches.
     assert len(schedule) == 3  # n-1 rounds (padded to 4)
     total_matches = sum(len(r) for r in schedule)
     assert total_matches == 3  # C(3,2) = 3

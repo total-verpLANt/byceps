@@ -8479,7 +8479,7 @@ msgid "\"%(participant1_label)s\" vs. \"%(participant2_label)s\""
 msgstr "\"%(participant1_label)s\" vs. \"%(participant2_label)s\""
 
 #: byceps/services/tourney/announcing.py:295
-msgid "bye"
+msgid "defwin"
 msgstr "Freilos"
 
 #: byceps/services/tourney/permissions.py:17

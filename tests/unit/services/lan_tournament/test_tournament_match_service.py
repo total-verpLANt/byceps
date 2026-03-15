@@ -192,8 +192,8 @@ def test_generate_bracket_linkage_correct(mock_repo):
 @patch(
     'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
 )
-def test_generate_bracket_bye_handling(mock_repo):
-    """5 players => 3 BYEs; auto-advance solo contestants."""
+def test_generate_bracket_defwin_handling(mock_repo):
+    """5 players => 3 defwins; auto-advance solo contestants."""
     tournament = _create_tournament(contestant_type=ContestantType.SOLO)
     participants = [
         _create_mock_participant(TournamentParticipantID(generate_uuid()))
@@ -203,8 +203,8 @@ def test_generate_bracket_bye_handling(mock_repo):
     mock_repo.get_tournament.return_value = tournament
     mock_repo.get_participants_for_tournament.return_value = participants
 
-    # Track contestants created per match to simulate BYE
-    # detection. For BYE matches, return only 1 contestant.
+    # Track contestants created per match to simulate defwin
+    # detection. For defwin matches, return only 1 contestant.
     contestant_by_match: dict[
         TournamentMatchID, list[TournamentMatchToContestant]
     ] = {}
@@ -337,7 +337,7 @@ def test_generate_de_bracket_5_players_total_matches(
     mock_repo,
 ):
     """5 players => bracket_size 8 => 14 matches (2*8 - 2).
-    Non-power-of-2 verifies BYE handling in DE.
+    Non-power-of-2 verifies defwin handling in DE.
     """
     tournament = _create_tournament(
         contestant_type=ContestantType.SOLO,

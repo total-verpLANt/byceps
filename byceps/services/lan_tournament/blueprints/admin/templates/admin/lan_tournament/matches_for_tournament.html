@@ -56,7 +56,7 @@
                 {{ contestant.participant_id|string }}
               {%- endif -%}
             {%- else %}
-              BYE
+              {{ _('defwin') }}
             {%- endif %}
             {{ render_tag(_('defwin - Advanced'), class='color-info', icon='arrow-right') }}
           {%- else %}
@@ -79,7 +79,7 @@
                   {{ contestant.participant_id|string }}
                 {%- endif -%}
               {%- else %}
-                BYE
+                {{ _('defwin') }}
               {%- endif %}
               {%- if not loop.last %} vs {% endif %}
             {%- endfor %}

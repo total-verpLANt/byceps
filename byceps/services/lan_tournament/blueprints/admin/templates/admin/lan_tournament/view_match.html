@@ -52,7 +52,7 @@
               {{ contestant.participant_id|string }}
             {%- endif -%}
           {%- else %}
-            BYE
+            {{ _('defwin') }}
           {%- endif %}
         </strong>
       </div>

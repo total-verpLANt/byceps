@@ -204,7 +204,7 @@ def generate_round_robin_schedule(
     """Generate round-robin schedule using circle method."""
     players: list[str | None] = list(contestant_ids)
     if len(players) % 2 == 1:
-        players.append(None)  # bye
+        players.append(None)  # defwin
 
     n = len(players)
     num_rounds = n - 1
