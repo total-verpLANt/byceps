@@ -570,6 +570,7 @@ def generate_bracket(tournament_id):
                 tournament_match_service.generate_single_elimination_bracket(
                     tournament.id,
                     force_regenerate=force_regenerate,
+                    initiator_id=g.user.id,
                 )
             )
         case TournamentMode.DOUBLE_ELIMINATION:
@@ -577,6 +578,7 @@ def generate_bracket(tournament_id):
                 tournament_match_service.generate_double_elimination_bracket(
                     tournament.id,
                     force_regenerate=force_regenerate,
+                    initiator_id=g.user.id,
                 )
             )
         case TournamentMode.ROUND_ROBIN:
@@ -1086,7 +1088,8 @@ def remove_participants_without_tickets(tournament_id):
     party = party_service.get_party(tournament.party_id)
 
     result = tournament_participant_service.remove_participants_without_tickets(
-        tournament.id, party.id
+        tournament.id, party.id,
+        initiator_id=g.user.id,
     )
 
     match result:

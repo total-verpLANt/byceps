@@ -215,6 +215,8 @@ def _remove_single_participant_bracket_aware(
     tournament: Tournament,
     participant: TournamentParticipant,
     now: datetime,
+    *,
+    initiator_id: UserID | None = None,
 ) -> tuple[list[ContestantAdvancedEvent], TournamentTeamID | None]:
     """Remove one participant, handling bracket defwins if needed.
 
@@ -245,7 +247,8 @@ def _remove_single_participant_bracket_aware(
     if bracket_is_active and not is_team_tournament:
         defwin_events.extend(
             tournament_match_service.handle_defwin_for_removed_participant(
-                tournament.id, participant.id
+                tournament.id, participant.id,
+                initiator_id=initiator_id,
             )
         )
     elif (
@@ -260,7 +263,8 @@ def _remove_single_participant_bracket_aware(
         if not remaining:
             defwin_events.extend(
                 tournament_match_service.handle_defwin_for_removed_team(
-                    tournament.id, participant.team_id
+                    tournament.id, participant.team_id,
+                    initiator_id=initiator_id,
                 )
             )
             tournament_repository.remove_team_from_participants_flush(
@@ -298,7 +302,8 @@ def admin_remove_participant(
 
     now = datetime.now(UTC)
     defwin_events, deleted_team_id = _remove_single_participant_bracket_aware(
-        tournament, participant, now
+        tournament, participant, now,
+        initiator_id=initiator.id if initiator is not None else None,
     )
     tournament_repository.commit_session()
 
@@ -342,6 +347,8 @@ def admin_remove_participant(
 def remove_participants_without_tickets(
     tournament_id: TournamentID,
     party_id: PartyID,
+    *,
+    initiator_id: UserID | None = None,
 ) -> Result[int, str]:
     """Remove all participants who don't have valid tickets.
 
@@ -393,7 +400,8 @@ def remove_participants_without_tickets(
         # Solo: delegate per-participant bracket logic to helper
         for p in ticketless:
             p_defwin_events, _ = _remove_single_participant_bracket_aware(
-                tournament, p, now
+                tournament, p, now,
+                initiator_id=initiator_id,
             )
             defwin_events.extend(p_defwin_events)
     else:
@@ -417,7 +425,8 @@ def remove_participants_without_tickets(
             if bracket_is_active:
                 defwin_events.extend(
                     tournament_match_service.handle_defwin_for_removed_team(
-                        tournament_id, team_id
+                        tournament_id, team_id,
+                        initiator_id=initiator_id,
                     )
                 )
             tournament_repository.remove_team_from_participants_flush(team_id)

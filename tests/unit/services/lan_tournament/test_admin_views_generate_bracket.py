@@ -25,6 +25,7 @@ from byceps.services.lan_tournament.models.tournament_mode import (
 from byceps.services.lan_tournament.models.tournament_status import (
     TournamentStatus,
 )
+from byceps.services.user.models.user import UserID
 from byceps.util.result import Err, Ok
 
 from tests.helpers import generate_uuid
@@ -32,6 +33,7 @@ from tests.helpers import generate_uuid
 
 TOURNAMENT_ID = TournamentID(generate_uuid())
 TOURNAMENT_ID_STR = str(TOURNAMENT_ID)
+ADMIN_USER_ID = UserID(generate_uuid())
 
 _V = 'byceps.services.lan_tournament.blueprints.admin.views'
 
@@ -78,6 +80,8 @@ def _patched_view():
 
 
 def _call(app, tournament, *, force: str = 'false'):
+    from flask import g
+
     from byceps.services.lan_tournament.blueprints.admin import views
 
     with app.test_request_context(
@@ -85,6 +89,9 @@ def _call(app, tournament, *, force: str = 'false'):
         method='POST',
         data={'force': force},
     ):
+        mock_user = MagicMock()
+        mock_user.id = ADMIN_USER_ID
+        g.user = mock_user
         views.generate_bracket.__wrapped__(TOURNAMENT_ID_STR)
 
 
@@ -107,7 +114,7 @@ def test_se_mode_calls_single_elimination_bracket(app):
     mocks[
         'match_svc'
     ].generate_single_elimination_bracket.assert_called_once_with(
-        TOURNAMENT_ID, force_regenerate=False
+        TOURNAMENT_ID, force_regenerate=False, initiator_id=ADMIN_USER_ID
     )
     mocks['match_svc'].generate_double_elimination_bracket.assert_not_called()
     mocks['match_svc'].generate_round_robin_bracket.assert_not_called()
@@ -127,7 +134,7 @@ def test_de_mode_calls_double_elimination_bracket(app):
     mocks[
         'match_svc'
     ].generate_double_elimination_bracket.assert_called_once_with(
-        TOURNAMENT_ID, force_regenerate=False
+        TOURNAMENT_ID, force_regenerate=False, initiator_id=ADMIN_USER_ID
     )
     mocks['match_svc'].generate_single_elimination_bracket.assert_not_called()
     mocks['match_svc'].generate_round_robin_bracket.assert_not_called()
@@ -168,7 +175,7 @@ def test_force_regenerate_true_passed_to_service(app):
     mocks[
         'match_svc'
     ].generate_single_elimination_bracket.assert_called_once_with(
-        TOURNAMENT_ID, force_regenerate=True
+        TOURNAMENT_ID, force_regenerate=True, initiator_id=ADMIN_USER_ID
     )
 
 
