@@ -45,7 +45,7 @@
                 {{ contestant.participant_id|string }}
               {%- endif -%}
             {%- else %}
-              BYE
+              {{ _('defwin') }}
             {%- endif %}
             {%- if not loop.last %} <strong>vs</strong> {% endif %}
           {%- endfor %}

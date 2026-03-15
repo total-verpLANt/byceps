@@ -189,7 +189,7 @@ function _ltBuildEntrant(contestant, placeholder) {
 function _ltFormatEntrantForView(entrant) {
   if (!entrant) return { text: 'TBD', className: 'placeholder', key: '' };
   if (entrant.type === 'placeholder') return { text: entrant.label, className: 'placeholder', key: '' };
-  if (entrant.type === 'defwin') return { text: 'BYE', className: 'defwin', key: '' };
+  if (entrant.type === 'defwin') return { text: 'defwin', className: 'defwin', key: '' };
   return {
     text: entrant.label || entrant.name || 'TBD',
     className: '',
@@ -217,15 +217,15 @@ function _ltComputeStatus(confirmed, topEntrant, botEntrant) {
   // One real contestant, other is placeholder or defwin -> auto-advance
   if ((topReal && !botReal) || (botReal && !topReal)) {
     // Only if exactly one side is a real player and the other is not
-    if (topReal && (botDefwin || (botEntrant && botEntrant.type === 'placeholder' && botEntrant.name === 'BYE'))) {
-      return { key: 'auto', label: 'BYE' };
+    if (topReal && (botDefwin || (botEntrant && botEntrant.type === 'placeholder' && botEntrant.name === 'defwin'))) {
+      return { key: 'auto', label: 'defwin' };
     }
-    if (botReal && (topDefwin || (topEntrant && topEntrant.type === 'placeholder' && topEntrant.name === 'BYE'))) {
-      return { key: 'auto', label: 'BYE' };
+    if (botReal && (topDefwin || (topEntrant && topEntrant.type === 'placeholder' && topEntrant.name === 'defwin'))) {
+      return { key: 'auto', label: 'defwin' };
     }
     // One real player, other is TBD placeholder -> single contestant auto-advance
-    if (topReal && !botReal) return { key: 'auto', label: 'BYE' };
-    if (botReal && !topReal) return { key: 'auto', label: 'BYE' };
+    if (topReal && !botReal) return { key: 'auto', label: 'defwin' };
+    if (botReal && !topReal) return { key: 'auto', label: 'defwin' };
   }
   if (topReal && botReal) {
     return { key: 'open', label: 'Open' };
@@ -330,7 +330,7 @@ function parseBracketData(json) {
     // If only one real contestant, mark the other side as auto-advance
     if (entrantTop.type === 'player' && entrantBot.type === 'placeholder' &&
         m.contestants && m.contestants.length === 1) {
-      entrantBot = { type: 'defwin', name: 'BYE', label: 'BYE', key: '', score: null, id: null };
+      entrantBot = { type: 'defwin', name: 'defwin', label: 'defwin', key: '', score: null, id: null };
     }
 
     winnerIndex = _ltDetectWinner(!!m.confirmed, entrantTop, entrantBot, topScore, botScore);
@@ -573,7 +573,7 @@ function shouldShowExternalSource(sourceRef, currentBracket) {
 function _ltGetMatchStatusFromMap(ref, matchMap) {
   var m = matchMap[ref];
   if (!m) return { key: 'pending', label: 'Pending' };
-  if (m.isAutoAdvanced) return { key: 'auto', label: 'BYE' };
+  if (m.isAutoAdvanced) return { key: 'auto', label: 'defwin' };
   if (m.isComplete) return { key: 'done', label: 'Done' };
   if (m.isReadyToPlay) return { key: 'open', label: 'Open' };
   return { key: 'pending', label: 'Pending' };
@@ -591,7 +591,7 @@ function _ltGetMatchStatusText(ref, matchMap) {
  */
 function _ltGetMatchStatusMetaFromMatch(match) {
   if (!match) return { key: 'pending', label: 'Pending' };
-  if (match.isAutoAdvanced) return { key: 'auto', label: 'BYE' };
+  if (match.isAutoAdvanced) return { key: 'auto', label: 'defwin' };
   if (match.isComplete) return { key: 'done', label: 'Done' };
   if (match.isReadyToPlay) return { key: 'open', label: 'Open' };
   return { key: 'pending', label: 'Pending' };

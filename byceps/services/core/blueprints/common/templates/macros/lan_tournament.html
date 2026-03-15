@@ -433,7 +433,7 @@
                   {{ contestant.participant_id|string }}
                 {%- endif -%}
               {%- else %}
-                {{ _('BYE') }}
+                {{ _('defwin') }}
               {%- endif %}
             </div>
             <div class='bracket-contestant-score'>
@@ -511,7 +511,7 @@
               {{ contestant.participant_id|string }}
             {%- endif -%}
           {%- else %}
-            {{ _('BYE') }}
+            {{ _('defwin') }}
           {%- endif %}
           <strong>{{ contestant.score|default('–', true) }}</strong>
           <span class='badge-defwin' title='{{ _("Free Win") }}'>{{ _('defwin') }}</span>
@@ -535,7 +535,7 @@
                 {{ contestant.participant_id|string }}
               {%- endif -%}
             {%- else %}
-              {{ _('BYE') }}
+              {{ _('defwin') }}
             {%- endif %}
             <strong>{{ contestant.score|default('–', true) }}</strong>
           </div>
@@ -754,7 +754,7 @@
               {{ contestant.participant_id|string }}
             {%- endif -%}
           {%- else %}
-            {{ _('BYE') }}
+            {{ _('defwin') }}
           {%- endif %}
         </div>
         <div class='bracket-contestant-score'>
@@ -884,7 +884,7 @@
               {{ contestant.participant_id|string }}
             {%- endif -%}
           {%- else %}
-            {{ _('BYE') }}
+            {{ _('defwin') }}
           {%- endif %}
           <strong>
             {{ contestant.score|default('–', true) }}
@@ -920,7 +920,7 @@
                 {{ contestant.participant_id|string }}
               {%- endif -%}
             {%- else %}
-              {{ _('BYE') }}
+              {{ _('defwin') }}
             {%- endif %}
             <strong>
               {{ contestant.score|default('–', true) }}

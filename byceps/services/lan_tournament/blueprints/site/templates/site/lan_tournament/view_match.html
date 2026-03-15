@@ -48,7 +48,7 @@
               {{ contestant.participant_id|string }}
             {%- endif -%}
           {%- else %}
-            BYE
+            {{ _('defwin') }}
           {%- endif %}
         </div>
         <div class='contestant-score'>
@@ -73,7 +73,7 @@
               {{ teams_by_id.get(contestant.team_id).name|default(contestant.team_id|string) }}
             {%- elif contestant.participant_id -%}
               {{ participants_by_id.get(contestant.participant_id).screen_name|default(contestant.participant_id|string) }}
-            {%- else -%}BYE{%- endif -%}
+            {%- else -%}{{ _('defwin') }}{%- endif -%}
           </label>
           <input type='hidden' name='contestant_id'
                  value='{{ contestant.participant_id or contestant.team_id }}'>
