@@ -15,7 +15,7 @@
 
   {%- if g.user.authenticated and tournament.tournament_status.name == 'REGISTRATION_OPEN' %}
   <div class="block">
-    <a href="{{ url_for('.create_team_form', tournament_id=tournament.id) }}" class="button color-info">{{ _('Create team') }}</a>
+    <a href="{{ url_for('.create_team_form', tournament_id=tournament.id) }}" class="button color-info">{{ render_icon('add') }} {{ _('Create team') }}</a>
   </div>
   {%- endif %}
 
@@ -44,7 +44,7 @@
           </td>
           <td>{{ member_counts.get(team.id, 0) }}</td>
           <td class="bared">
-            <a href="{{ url_for('.view_team', team_id=team.id) }}" class="button is-compact">{{ _('View') }}</a>
+            <a href="{{ url_for('.view_team', team_id=team.id) }}" class="button is-compact secondary">{{ render_icon('view') }} {{ _('View') }}</a>
           </td>
         </tr>
         {%- endfor %}
