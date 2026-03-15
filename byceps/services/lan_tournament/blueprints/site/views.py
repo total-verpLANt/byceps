@@ -30,6 +30,7 @@ from byceps.services.lan_tournament.models.tournament_mode import (
 )
 from byceps.services.party import party_service
 from byceps.services.user import user_service
+from byceps.services.user.models.user import UserID
 from byceps.util.framework.blueprint import create_blueprint
 from byceps.util.framework.flash import flash_error, flash_success
 from byceps.util.framework.templating import templated
@@ -229,10 +230,14 @@ def teams(tournament_id):
         abort(404)
 
     teams = tournament_team_service.get_teams_for_tournament(tournament.id)
+    member_counts = tournament_team_service.get_team_member_counts(
+        tournament.id
+    )
 
     return {
         'tournament': tournament,
         'teams': teams,
+        'member_counts': member_counts,
     }
 
 
@@ -352,12 +357,24 @@ def view_team(team_id):
     # Build seat lookup
     seats_by_user_id = build_seat_lookup(user_ids, tournament.party_id)
 
+    # Captain management context for the template.
+    is_captain = (
+        g.user.authenticated
+        and g.user.id == team.captain_user_id
+    )
+    can_manage_team = (
+        is_captain
+        and _is_captain_management_allowed(tournament)
+    )
+
     return {
         'tournament': tournament,
         'team': team,
         'team_members': team_members,
         'current_user_participant': current_user_participant,
         'is_team_member': is_team_member,
+        'is_captain': is_captain,
+        'can_manage_team': can_manage_team,
         'can_join_team': can_join_team,
         'can_leave_team': can_leave_team,
         'users_by_id': users_by_id,
@@ -470,6 +487,234 @@ def leave_team(team_id):
     return redirect_to('.view_team', team_id=team_id)
 
 
+# -------------------------------------------------------------------- #
+# captain management helpers
+# -------------------------------------------------------------------- #
+
+
+def _is_captain_management_allowed(tournament) -> bool:
+    """Return True if the tournament status allows captain management.
+
+    Captain management (update team, transfer captain, remove member) is
+    permitted during REGISTRATION_OPEN and ONGOING, but blocked during
+    DRAFT, COMPLETED, and other states.
+    """
+    return tournament.tournament_status in (
+        TournamentStatus.REGISTRATION_OPEN,
+        TournamentStatus.ONGOING,
+    )
+
+
+def _require_team_captain(tournament, team):
+    """Abort with 403 if the current user is not the team captain.
+
+    Also aborts if captain management is not allowed for the current
+    tournament status (flashes an error in that case).
+    """
+    if not g.user.authenticated:
+        abort(403)
+
+    if g.user.id != team.captain_user_id:
+        abort(403)
+
+    if not _is_captain_management_allowed(tournament):
+        flash_error(gettext('Team management is not available at this time.'))
+        abort(403)
+
+
+def _get_team_member_user_ids(
+    team_id,
+) -> set:
+    """Return active member user IDs for view-layer IDOR validation."""
+    members = tournament_team_service.get_team_members(team_id)
+    return {m.user_id for m in members}
+
+
+# -------------------------------------------------------------------- #
+# captain management routes
+# -------------------------------------------------------------------- #
+
+
+@blueprint.get('/<tournament_id>/teams/<team_id>/update')
+@login_required
+@templated
+def update_team_form(tournament_id, team_id):
+    """Show form to update team name/description (captain only)."""
+    tournament = _get_tournament_or_404(tournament_id)
+    team = _get_team_or_404(team_id)
+
+    if team.tournament_id != tournament.id:
+        abort(404)
+
+    _require_team_captain(tournament, team)
+
+    return {
+        'tournament': tournament,
+        'team': team,
+    }
+
+
+@blueprint.post('/<tournament_id>/teams/<team_id>/update')
+@login_required
+def update_team(tournament_id, team_id):
+    """Process team update form (captain only)."""
+    tournament = _get_tournament_or_404(tournament_id)
+    team = _get_team_or_404(team_id)
+
+    if team.tournament_id != tournament.id:
+        abort(404)
+
+    _require_team_captain(tournament, team)
+
+    name = request.form.get('name', '').strip()
+    description = request.form.get('description', '').strip() or None
+
+    if not name:
+        flash_error(gettext('Team name is required.'))
+        return redirect_to(
+            '.update_team_form',
+            tournament_id=tournament.id,
+            team_id=team.id,
+        )
+
+    if len(name) > 100:
+        flash_error(gettext('Team name is too long.'))
+        return redirect_to(
+            '.update_team_form',
+            tournament_id=tournament.id,
+            team_id=team.id,
+        )
+
+    match tournament_team_service.update_team(
+        team.id,
+        name=name,
+        tag=team.tag,
+        description=description,
+        image_url=team.image_url,
+        join_code=team.join_code,
+        current_user_id=g.user.id,
+    ):
+        case Ok(updated_team):
+            flash_success(
+                gettext(
+                    'Team "%(name)s" has been updated.',
+                    name=updated_team.name,
+                )
+            )
+            return redirect_to('.view_team', team_id=team.id)
+        case Err(error_message):
+            flash_error(
+                gettext(
+                    'Could not update team: %(error)s',
+                    error=error_message,
+                )
+            )
+            return redirect_to(
+                '.update_team_form',
+                tournament_id=tournament.id,
+                team_id=team.id,
+            )
+
+
+@blueprint.post('/<tournament_id>/teams/<team_id>/transfer_captain')
+@login_required
+def site_transfer_captain(tournament_id, team_id):
+    """Transfer captain role to another team member (captain only)."""
+    tournament = _get_tournament_or_404(tournament_id)
+    team = _get_team_or_404(team_id)
+
+    if team.tournament_id != tournament.id:
+        abort(404)
+
+    _require_team_captain(tournament, team)
+
+    new_captain_user_id = request.form.get('new_captain_id', '').strip()
+
+    if not new_captain_user_id:
+        flash_error(gettext('No user selected.'))
+        return redirect_to('.view_team', team_id=team.id)
+
+    try:
+        new_captain_user_id = UserID(uuid.UUID(new_captain_user_id))
+    except ValueError:
+        flash_error(gettext('Invalid user selected.'))
+        return redirect_to('.view_team', team_id=team.id)
+
+    # View-layer IDOR guard: verify the target is a real team member.
+    member_user_ids = _get_team_member_user_ids(team.id)
+    if new_captain_user_id not in member_user_ids:
+        flash_error(gettext('Selected user is not a team member.'))
+        return redirect_to('.view_team', team_id=team.id)
+    if new_captain_user_id == team.captain_user_id:
+        flash_error(gettext('User is already the captain.'))
+        return redirect_to('.view_team', team_id=team.id)
+
+    match tournament_team_service.transfer_captain(
+        team.id, new_captain_user_id
+    ):
+        case Ok(_updated_team):
+            flash_success(
+                gettext('Captain role has been transferred.')
+            )
+        case Err(error_message):
+            flash_error(
+                gettext(
+                    'Could not transfer captain: %(error)s',
+                    error=error_message,
+                )
+            )
+
+    return redirect_to('.view_team', team_id=team.id)
+
+
+@blueprint.post('/<tournament_id>/teams/<team_id>/remove_member')
+@login_required
+def site_remove_member(tournament_id, team_id):
+    """Remove a non-captain member from the team (captain only)."""
+    tournament = _get_tournament_or_404(tournament_id)
+    team = _get_team_or_404(team_id)
+
+    if team.tournament_id != tournament.id:
+        abort(404)
+
+    _require_team_captain(tournament, team)
+
+    user_id = request.form.get('user_id', '').strip()
+    if not user_id:
+        flash_error(gettext('No user selected.'))
+        return redirect_to('.view_team', team_id=team.id)
+
+    try:
+        user_id = UserID(uuid.UUID(user_id))
+    except ValueError:
+        flash_error(gettext('Invalid user selected.'))
+        return redirect_to('.view_team', team_id=team.id)
+
+    # View-layer IDOR guard: verify the target is a real team member.
+    member_user_ids = _get_team_member_user_ids(team.id)
+    if user_id not in member_user_ids:
+        flash_error(gettext('Selected user is not a team member.'))
+        return redirect_to('.view_team', team_id=team.id)
+    if user_id == team.captain_user_id:
+        flash_error(gettext('Cannot remove the team captain.'))
+        return redirect_to('.view_team', team_id=team.id)
+
+    match tournament_team_service.remove_team_member(team.id, user_id):
+        case Ok(_event):
+            flash_success(
+                gettext('Member has been removed from the team.')
+            )
+        case Err(error_message):
+            flash_error(
+                gettext(
+                    'Could not remove member: %(error)s',
+                    error=error_message,
+                )
+            )
+
+    return redirect_to('.view_team', team_id=team.id)
+
+
 def _get_current_party_or_404():
     if not g.party:
         abort(404)
@@ -509,6 +754,9 @@ def _get_team_or_404(team_id) -> TournamentTeam:
     team = tournament_team_service.find_team(team_id)
 
     if team is None:
+        abort(404)
+
+    if team.removed_at is not None:
         abort(404)
 
     return team

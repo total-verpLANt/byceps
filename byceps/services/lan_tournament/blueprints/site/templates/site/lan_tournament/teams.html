@@ -27,6 +27,7 @@
         <tr>
           <th>{{ _('Name') }}</th>
           <th>{{ _('Tag') }}</th>
+          <th>{{ _('Members') }}</th>
           <th></th>
         </tr>
       </thead>
@@ -41,6 +42,7 @@
               <span class="dimmed">[{{ team.tag }}]</span>
             {%- endif %}
           </td>
+          <td>{{ member_counts.get(team.id, 0) }}</td>
           <td class="bared">
             <a href="{{ url_for('.view_team', team_id=team.id) }}" class="button is-compact">{{ _('View') }}</a>
           </td>

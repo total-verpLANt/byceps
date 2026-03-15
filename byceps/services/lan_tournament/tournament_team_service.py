@@ -505,13 +505,15 @@ def admin_add_member(
     return Ok(event)
 
 
-def admin_remove_member(
+def remove_team_member(
     team_id: TournamentTeamID,
     user_id: UserID,
 ) -> Result[TeamMemberLeftEvent, str]:
-    """Admin: remove a member from a team."""
-    # Note: Unlike self-service `leave_team`, admin removal
-    # intentionally skips tournament status checks.
+    """Remove a non-captain member from a team."""
+    # Note: Unlike self-service `leave_team`, this function
+    # intentionally skips tournament status checks — callers are
+    # responsible for enforcing status constraints where appropriate
+    # (e.g. site views do, admin views don't).
     team = tournament_repository.find_team(team_id)
     if team is None:
         return Err('Unknown team.')
