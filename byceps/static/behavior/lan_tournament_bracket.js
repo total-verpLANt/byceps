@@ -189,7 +189,7 @@ function _ltBuildEntrant(contestant, placeholder) {
 function _ltFormatEntrantForView(entrant) {
   if (!entrant) return { text: 'TBD', className: 'placeholder', key: '' };
   if (entrant.type === 'placeholder') return { text: entrant.label, className: 'placeholder', key: '' };
-  if (entrant.type === 'defwin') return { text: 'defwin', className: 'defwin', key: '' };
+  if (entrant.type === 'defwin') return { text: '\u2014', className: 'defwin', key: '' };
   return {
     text: entrant.label || entrant.name || 'TBD',
     className: '',
@@ -208,24 +208,13 @@ function _ltFormatEntrantForView(entrant) {
 function _ltComputeStatus(confirmed, topEntrant, botEntrant) {
   var topReal = topEntrant && topEntrant.type === 'player';
   var botReal = botEntrant && botEntrant.type === 'player';
-  var topDefwin = topEntrant && topEntrant.type === 'defwin';
-  var botDefwin = botEntrant && botEntrant.type === 'defwin';
 
   if (confirmed) {
     return { key: 'done', label: 'Done' };
   }
-  // One real contestant, other is placeholder or defwin -> auto-advance
+  // One real contestant, other is defwin or absent -> auto-advance (DEFWIN)
   if ((topReal && !botReal) || (botReal && !topReal)) {
-    // Only if exactly one side is a real player and the other is not
-    if (topReal && (botDefwin || (botEntrant && botEntrant.type === 'placeholder' && botEntrant.name === 'defwin'))) {
-      return { key: 'auto', label: 'defwin' };
-    }
-    if (botReal && (topDefwin || (topEntrant && topEntrant.type === 'placeholder' && topEntrant.name === 'defwin'))) {
-      return { key: 'auto', label: 'defwin' };
-    }
-    // One real player, other is TBD placeholder -> single contestant auto-advance
-    if (topReal && !botReal) return { key: 'auto', label: 'defwin' };
-    if (botReal && !topReal) return { key: 'auto', label: 'defwin' };
+    return { key: 'auto', label: 'DEFWIN' };
   }
   if (topReal && botReal) {
     return { key: 'open', label: 'Open' };
@@ -330,7 +319,7 @@ function parseBracketData(json) {
     // If only one real contestant, mark the other side as auto-advance
     if (entrantTop.type === 'player' && entrantBot.type === 'placeholder' &&
         m.contestants && m.contestants.length === 1) {
-      entrantBot = { type: 'defwin', name: 'defwin', label: 'defwin', key: '', score: null, id: null };
+      entrantBot = { type: 'defwin', name: '', label: '', key: '', score: null, id: null };
     }
 
     winnerIndex = _ltDetectWinner(!!m.confirmed, entrantTop, entrantBot, topScore, botScore);
@@ -367,8 +356,19 @@ function parseBracketData(json) {
       isWaitingForPlayers: status.key === 'pending',
       playerKeys: playerKeys,
       nextMatchId: m.next_match_id || null,
-      loserNextMatchId: m.loser_next_match_id || null
+      loserNextMatchId: m.loser_next_match_id || null,
+      isDead: (m.incoming_feed_count === 0) &&
+              ((m.contestants || []).length === 0) &&
+              !m.next_match_id
     };
+
+    // Dead matches are structural DEFWINs — classify them accordingly
+    // so they render with DEFWIN styling, not "Pending".
+    if (internalMatch.isDead) {
+      internalMatch.isComplete = true;
+      internalMatch.isAutoAdvanced = true;
+      internalMatch.isWaitingForPlayers = false;
+    }
 
     // Index by both ref and UUID for cross-referencing
     matchMap[matchRef] = internalMatch;
@@ -418,6 +418,33 @@ function parseBracketData(json) {
     if (m.loser_next_match_id && matchById[m.loser_next_match_id]) {
       var loserTarget = matchById[m.loser_next_match_id];
       _ltAssignSourceRef(loserTarget, sourceMatch.ref, 'loser');
+    }
+  }
+
+  // Third pass: reclassify auto-advanced matches that have a pending
+  // feeder.  A match with one auto-advanced contestant and an incoming
+  // source ref from a non-completed match is not a true DEFWIN — it is
+  // waiting for a real opponent.  Show it as "Pending" instead.
+  for (i = 0; i < rawMatches.length; i++) {
+    m = rawMatches[i];
+    var recheck = matchById[m.id];
+    if (!recheck || !recheck.isAutoAdvanced) continue;
+
+    var topSrc = recheck.topResolved.sourceRef;
+    var botSrc = recheck.bottomResolved.sourceRef;
+    var hasPendingFeeder = false;
+
+    if (topSrc && matchMap[topSrc] && !matchMap[topSrc].isComplete) {
+      hasPendingFeeder = true;
+    }
+    if (botSrc && matchMap[botSrc] && !matchMap[botSrc].isComplete) {
+      hasPendingFeeder = true;
+    }
+
+    if (hasPendingFeeder) {
+      recheck.isAutoAdvanced = false;
+      recheck.isComplete = false;
+      recheck.isWaitingForPlayers = true;
     }
   }
 
@@ -573,7 +600,7 @@ function shouldShowExternalSource(sourceRef, currentBracket) {
 function _ltGetMatchStatusFromMap(ref, matchMap) {
   var m = matchMap[ref];
   if (!m) return { key: 'pending', label: 'Pending' };
-  if (m.isAutoAdvanced) return { key: 'auto', label: 'defwin' };
+  if (m.isAutoAdvanced) return { key: 'auto', label: 'DEFWIN' };
   if (m.isComplete) return { key: 'done', label: 'Done' };
   if (m.isReadyToPlay) return { key: 'open', label: 'Open' };
   return { key: 'pending', label: 'Pending' };
@@ -591,7 +618,7 @@ function _ltGetMatchStatusText(ref, matchMap) {
  */
 function _ltGetMatchStatusMetaFromMatch(match) {
   if (!match) return { key: 'pending', label: 'Pending' };
-  if (match.isAutoAdvanced) return { key: 'auto', label: 'defwin' };
+  if (match.isAutoAdvanced) return { key: 'auto', label: 'DEFWIN' };
   if (match.isComplete) return { key: 'done', label: 'Done' };
   if (match.isReadyToPlay) return { key: 'open', label: 'Open' };
   return { key: 'pending', label: 'Pending' };
@@ -1206,6 +1233,7 @@ function computeSectionStats(rounds) {
     round = rounds[i];
     for (j = 0; j < round.matches.length; j++) {
       match = round.matches[j];
+      if (match.isDead) continue;
       matchCount++;
       if (match.isComplete || match.isAutoAdvanced) {
         completedCount++;

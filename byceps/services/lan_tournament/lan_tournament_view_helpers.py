@@ -214,6 +214,19 @@ def serialize_bracket_json(
     url_builder: Callable[[TournamentMatch], str] | None = None,
 ) -> dict:
     """Serialize bracket data to a JSON-safe dict for client-side rendering."""
+    # Compute incoming feed counts from the match graph so the
+    # client can identify dead matches (0 feeds) without
+    # recomputing the routing topology from next/loser links.
+    feed_counts: dict[str, int] = {}
+    for data in match_data:
+        m = data['match']
+        if m.next_match_id:
+            key = str(m.next_match_id)
+            feed_counts[key] = feed_counts.get(key, 0) + 1
+        if m.loser_next_match_id:
+            key = str(m.loser_next_match_id)
+            feed_counts[key] = feed_counts.get(key, 0) + 1
+
     return {
         'tournament': {
             'id': str(tournament.id),
@@ -231,6 +244,7 @@ def serialize_bracket_json(
                 'next_match_id': str(match.next_match_id) if match.next_match_id else None,
                 'loser_next_match_id': str(match.loser_next_match_id) if match.loser_next_match_id else None,
                 'confirmed': match.confirmed_by is not None,
+                'incoming_feed_count': feed_counts.get(str(match.id), 0),
                 'contestants': [
                     {
                         'name': _resolve_contestant_name(c, teams_by_id, participants_by_id),
