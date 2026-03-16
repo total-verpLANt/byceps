@@ -294,8 +294,8 @@
       </form>
     {%- endif %}
 
-    {# Delete button (always available except for completed/cancelled) #}
-    {%- if tournament.tournament_status.name not in ('COMPLETED', 'CANCELLED', 'ONGOING') %}
+    {# Delete button (always available except for completed/ongoing) #}
+    {%- if tournament.tournament_status.name not in ('COMPLETED', 'ONGOING') %}
       <form action="{{ url_for('.delete', tournament_id=tournament.id) }}" method="post" style="margin-left: auto;">
         <button type="submit" class="button color-danger" data-action="delete-tournament">{{ render_icon('delete') }} {{ _('Delete') }}</button>
       </form>
