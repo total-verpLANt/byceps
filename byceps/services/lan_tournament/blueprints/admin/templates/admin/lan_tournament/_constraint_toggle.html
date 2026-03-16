@@ -21,4 +21,17 @@
     contestantTypeSelect.addEventListener('change', updateConstraintVisibility);
     updateConstraintVisibility();
   }
+
+  const tournamentModeSelect = document.getElementById('tournament_mode');
+  if (tournamentModeSelect) {
+    const highscoreConstraints = document.getElementById('highscore-constraints');
+
+    function updateHighscoreVisibility() {
+      const value = tournamentModeSelect.value;
+      highscoreConstraints.style.display = (value === 'HIGHSCORE') ? '' : 'none';
+    }
+
+    tournamentModeSelect.addEventListener('change', updateHighscoreVisibility);
+    updateHighscoreVisibility();
+  }
 </script>
