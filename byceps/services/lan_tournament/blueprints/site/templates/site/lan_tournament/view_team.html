@@ -51,132 +51,142 @@
     </div>
   </div>
 
-  {%- if team.description %}
-  <div class="box block">
-    <div class="data-label">{{ _('Description') }}</div>
-    <div class="data-value text-pre-wrap">{{ team.description }}</div>
+  {%- if team.tag or team.description %}
+  <div class="overview-grid block">
+    {%- if team.tag %}
+    <div class="box">
+      <div class="data-label">{{ _('Tag') }}</div>
+      <div class="data-value">{{ team.tag }}</div>
+    </div>
+    {%- endif %}
+    {%- if team.description %}
+    <div class="box">
+      <div class="data-label">{{ _('Description') }}</div>
+      <div class="data-value text-pre-wrap">{{ team.description }}</div>
+    </div>
+    {%- endif %}
   </div>
   {%- endif %}
 
-  {# --- Team membership shell (join/leave + captain management) --- #}
+  {# --- Team membership shell (join/leave + captain management + members) --- #}
   <div class="team-detail-shell block">
-    <div class="box">
-      <div class="data-label">{{ _('Team membership') }}</div>
-      {%- if can_join_team %}
-      <form action="{{ url_for('.join_team', team_id=team.id) }}" method="post" class="block">
-        <div class="row row--wrap row--v-centered">
-          {%- if team.join_code %}
-          <div class="column-auto">
-            <label class="form-label" for="team_join_code">{{ _('Join code') }}</label>
-            <input class="form-control" type="password" name="join_code" id="team_join_code" size="20" maxlength="50" placeholder="{{ _('Join code required') }}" required>
+    <div>
+      <div class="box">
+        <div class="data-label">{{ _('Team membership') }}</div>
+        {%- if can_join_team %}
+        <form action="{{ url_for('.join_team', team_id=team.id) }}" method="post" class="block">
+          <div class="row row--wrap row--v-centered">
+            {%- if team.join_code %}
+            <div class="column-auto">
+              <label class="form-label" for="team_join_code">{{ _('Join code') }}</label>
+              <input class="form-control" type="password" name="join_code" id="team_join_code" size="20" maxlength="50" placeholder="{{ _('Join code required') }}" required>
+            </div>
+            {%- endif %}
+            <div class="column-auto">
+              <button type="submit" class="button color-info">{{ _('Join team') }}</button>
+            </div>
           </div>
-          {%- endif %}
-          <div class="column-auto">
-            <button type="submit" class="button color-info">{{ _('Join team') }}</button>
-          </div>
-        </div>
-      </form>
-      {%- elif can_leave_team %}
-      <div class="button-row is-compact row--wrap block">
-        <form action="{{ url_for('.leave_team', team_id=team.id) }}" method="post">
-          <button type="submit" class="button is-compact color-warning">{{ _('Leave team') }}</button>
         </form>
-        <span class="dimmed">{{ _('You are a member of this team.') }}</span>
+        {%- elif can_leave_team %}
+        <div class="button-row is-compact row--wrap block">
+          <form action="{{ url_for('.leave_team', team_id=team.id) }}" method="post">
+            <button type="submit" class="button is-compact color-warning">{{ _('Leave team') }}</button>
+          </form>
+          <span class="dimmed">{{ _('You are a member of this team.') }}</span>
+        </div>
+        {%- elif is_team_member %}
+        <div class="button-row is-compact row--wrap">
+          <span class="dimmed">{{ _('You are a member of this team.') }}</span>
+        </div>
+        {%- endif %}
       </div>
-      {%- elif is_team_member %}
-      <div class="button-row is-compact row--wrap">
-        <span class="dimmed">{{ _('You are a member of this team.') }}</span>
+
+      {%- if can_manage_team %}
+      <div class="team-management-ui column">
+        {# --- Transfer captain --- #}
+        <div class="box">
+          <div class="data-label">{{ _('Transfer captain') }}</div>
+          <form action="{{ url_for('.site_transfer_captain', tournament_id=tournament.id, team_id=team.id) }}" method="post" class="row row--wrap row--v-centered">
+            <div class="column-auto">
+              <label class="form-label" for="new_captain">{{ _('New captain') }}</label>
+              <select class="form-control is-wide" id="new_captain" name="new_captain_id">
+                {%- for member in team_members %}
+                {%- if member.user_id != team.captain_user_id %}
+                {%- set _user = users_by_id.get(member.user_id) %}
+                <option value="{{ member.user_id }}">
+                  {%- if _user %}{{ _user.screen_name }}{% else %}{{ member.user_id|string }}{% endif -%}
+                </option>
+                {%- endif %}
+                {%- endfor %}
+              </select>
+            </div>
+            <div class="column-auto">
+              <button type="submit" class="button color-warning">{{ _('Transfer') }}</button>
+            </div>
+          </form>
+        </div>
       </div>
       {%- endif %}
     </div>
 
-    {%- if can_manage_team %}
-    <div class="team-management-ui column">
-      {# --- Transfer captain --- #}
-      <div class="box">
-        <div class="data-label">{{ _('Transfer captain') }}</div>
-        <form action="{{ url_for('.site_transfer_captain', tournament_id=tournament.id, team_id=team.id) }}" method="post" class="row row--wrap row--v-centered">
-          <div class="column-auto">
-            <label class="form-label" for="new_captain">{{ _('New captain') }}</label>
-            <select class="form-control is-wide" id="new_captain" name="new_captain_id">
-              {%- for member in team_members %}
-              {%- if member.user_id != team.captain_user_id %}
-              {%- set _user = users_by_id.get(member.user_id) %}
-              <option value="{{ member.user_id }}">
-                {%- if _user %}{{ _user.screen_name }}{% else %}{{ member.user_id|string }}{% endif -%}
-              </option>
+    <div class="main-body-box">
+      <h2 class="title">{{ _('Members') }}</h2>
+      {%- if team_members %}
+      <div class="table-scroll-wrap">
+        <table class="itemlist is-vcentered is-wide">
+          <thead>
+            <tr>
+              <th>{{ _('User') }}</th>
+              <th>{{ _('Seat') }}</th>
+              <th>{{ _('Joined') }}</th>
+              <th>{{ _('Role') }}</th>
+              {%- if can_manage_team %}
+              <th></th>
               {%- endif %}
-              {%- endfor %}
-            </select>
-          </div>
-          <div class="column-auto">
-            <button type="submit" class="button color-warning">{{ _('Transfer') }}</button>
-          </div>
-        </form>
+            </tr>
+          </thead>
+          <tbody>
+            {%- for member in team_members %}
+            {%- set _user = users_by_id.get(member.user_id) %}
+            <tr>
+              <td>
+                {%- if _user -%}
+                  {{ render_hover_name(_user.screen_name, user_id=_user.id, seats_by_user_id=seats_by_user_id) }}
+                {%- else -%}
+                  {{ member.user_id|string }}
+                {%- endif -%}
+              </td>
+              <td>
+                {%- set seat_label = seats_by_user_id.get(member.user_id) -%}
+                {%- if seat_label %}{{ seat_label }}{% else %}<span class="dimmed">-</span>{% endif -%}
+              </td>
+              <td>{{ member.created_at|dateformat }}</td>
+              <td>
+                {%- if member.user_id == team.captain_user_id -%}
+                  {{ render_tag(_('Captain'), class='color-info') }}
+                {%- else -%}
+                  <span class="dimmed">{{ _('Member') }}</span>
+                {%- endif -%}
+              </td>
+              {%- if can_manage_team %}
+              <td class="bared">
+                {%- if member.user_id != team.captain_user_id %}
+                <form action="{{ url_for('.site_remove_member', tournament_id=tournament.id, team_id=team.id) }}" method="post" class="inline">
+                  <input type="hidden" name="user_id" value="{{ member.user_id }}">
+                  <button type="submit" class="button is-compact secondary">{{ _('Remove') }}</button>
+                </form>
+                {%- endif %}
+              </td>
+              {%- endif %}
+            </tr>
+            {%- endfor %}
+          </tbody>
+        </table>
       </div>
+      {%- else %}
+      <p class="dimmed">{{ _('No members in this team yet.') }}</p>
+      {%- endif %}
     </div>
-    {%- endif %}
-  </div>
-
-  {# --- Members table --- #}
-  <h2 class="title">{{ _('Members') }}</h2>
-
-  <div class="main-body-box">
-    {%- if team_members %}
-    <div class="table-scroll-wrap">
-      <table class="itemlist is-vcentered is-wide">
-        <thead>
-          <tr>
-            <th>{{ _('User') }}</th>
-            <th>{{ _('Seat') }}</th>
-            <th>{{ _('Joined') }}</th>
-            <th>{{ _('Role') }}</th>
-            {%- if can_manage_team %}
-            <th></th>
-            {%- endif %}
-          </tr>
-        </thead>
-        <tbody>
-          {%- for member in team_members %}
-          {%- set _user = users_by_id.get(member.user_id) %}
-          <tr>
-            <td>
-              {%- if _user -%}
-                {{ render_hover_name(_user.screen_name, user_id=_user.id, seats_by_user_id=seats_by_user_id) }}
-              {%- else -%}
-                {{ member.user_id|string }}
-              {%- endif -%}
-            </td>
-            <td>
-              {%- set seat_label = seats_by_user_id.get(member.user_id) -%}
-              {%- if seat_label %}{{ seat_label }}{% else %}<span class="dimmed">-</span>{% endif -%}
-            </td>
-            <td>{{ member.created_at|dateformat }}</td>
-            <td>
-              {%- if member.user_id == team.captain_user_id -%}
-                {{ render_tag(_('Captain'), class='color-info') }}
-              {%- else -%}
-                <span class="dimmed">{{ _('Member') }}</span>
-              {%- endif -%}
-            </td>
-            {%- if can_manage_team %}
-            <td class="bared">
-              {%- if member.user_id != team.captain_user_id %}
-              <form action="{{ url_for('.site_remove_member', tournament_id=tournament.id, team_id=team.id) }}" method="post" class="inline">
-                <input type="hidden" name="user_id" value="{{ member.user_id }}">
-                <button type="submit" class="button is-compact secondary">{{ _('Remove') }}</button>
-              </form>
-              {%- endif %}
-            </td>
-            {%- endif %}
-          </tr>
-          {%- endfor %}
-        </tbody>
-      </table>
-    </div>
-    {%- else %}
-    <p class="dimmed">{{ _('No members in this team yet.') }}</p>
-    {%- endif %}
   </div>
 
 {%- endblock %}
