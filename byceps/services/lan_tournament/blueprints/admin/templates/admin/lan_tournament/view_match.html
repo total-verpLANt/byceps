@@ -60,7 +60,7 @@
       </div>
       <div>
         <strong>{{ _('Score') }}:</strong>
-        {{ contestant.score|default('–', true) }}
+        {{ contestant.score if contestant.score is not none else '–' }}
       </div>
       <div>
         {%- if not match.confirmed_by and
