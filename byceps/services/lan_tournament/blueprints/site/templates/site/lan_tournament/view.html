@@ -73,7 +73,6 @@
   </div>
 
   {# Tournament details #}
-  {%- if tournament.start_time or tournament.tournament_mode or tournament.contestant_type %}
   <div class="overview-grid block">
     {%- if tournament.start_time %}
     <div class="box">
@@ -96,9 +95,9 @@
     </div>
     {%- endif %}
 
-    {%- if tournament.max_players %}
     <div class="box">
       <div class="data-label">{{ _('Participants') }}</div>
+      {%- if tournament.max_players %}
       <div class="row is-vcentered">
         {%- set percentage = (100 * participant_count / tournament.max_players) if tournament.max_players else 0 %}
         <span class="progress">
@@ -106,10 +105,11 @@
         </span>
         <small class="dimmed nowrap">{{ participant_count }} / {{ tournament.max_players }}</small>
       </div>
+      {%- else %}
+      <div class="data-value">{{ participant_count }}</div>
+      {%- endif %}
     </div>
-    {%- endif %}
   </div>
-  {%- endif %}
 
   {%- if tournament.description %}
   <div class="box block">
@@ -123,13 +123,6 @@
     <div class="data-label">{{ _('Ruleset') }}</div>
     <div class="data-value text-pre-wrap">{{ tournament.ruleset }}</div>
   </div>
-  {%- endif %}
-
-  {# Participants section #}
-  {%- if not tournament.max_players %}
-  <h2>{{ _('Participants') }} <small class="dimmed">({{ participant_count }})</small></h2>
-  {%- else %}
-  <h2>{{ _('Participants') }}</h2>
   {%- endif %}
 
   {# Join/Leave buttons #}
