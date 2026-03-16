@@ -112,7 +112,16 @@ class TournamentUpdateForm(_BaseForm):
 
 
 class TeamCreateForm(LocalizedForm):
-    captain = SelectField(lazy_gettext('Captain'), [InputRequired()])
+    captain = StringField(
+        lazy_gettext('Captain'),
+        [
+            InputRequired(),
+            Length(
+                min=screen_name_validator.MIN_LENGTH,
+                max=screen_name_validator.MAX_LENGTH,
+            ),
+        ],
+    )
     name = StringField(lazy_gettext('Name'), [InputRequired(), Length(max=80)])
     tag = StringField(lazy_gettext('Tag'), [Optional(), Length(max=20)])
     description = TextAreaField(
@@ -124,6 +133,20 @@ class TeamCreateForm(LocalizedForm):
     join_code = StringField(
         lazy_gettext('Join code'), [Optional(), Length(max=80)]
     )
+
+    @staticmethod
+    def validate_captain(form, field):
+        screen_name = field.data.strip()
+
+        if not screen_name_validator.contains_only_valid_chars(screen_name):
+            raise ValidationError(lazy_gettext('Contains invalid characters.'))
+
+        user = user_service.find_user_by_screen_name(screen_name)
+        if user is None:
+            raise ValidationError(lazy_gettext('Unknown username'))
+
+        field.data = screen_name  # keep string for re-render
+        form.captain_user = user  # stash resolved User on the form
 
 
 class AddParticipantForm(LocalizedForm):

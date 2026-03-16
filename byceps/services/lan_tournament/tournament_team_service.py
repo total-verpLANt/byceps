@@ -106,6 +106,12 @@ def create_team(
             ' in this tournament.'
         )
 
+    # Captain must not already be on a team
+    if captain_participant.team_id is not None:
+        return Err(
+            'The team captain is already assigned to a team.'
+        )
+
     now = datetime.now(UTC)
     team_id = TournamentTeamID(generate_uuid7())
 

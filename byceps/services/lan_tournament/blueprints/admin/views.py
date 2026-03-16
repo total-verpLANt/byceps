@@ -784,7 +784,6 @@ def create_team_form(tournament_id, erroneous_form=None):
     party = party_service.get_party(tournament.party_id)
 
     form = erroneous_form if erroneous_form else TeamCreateForm()
-    form.captain.choices = _build_captain_choices(tournament.id)
 
     return {
         'party': party,
@@ -800,7 +799,6 @@ def create_team(tournament_id):
     tournament = _get_tournament_or_404(tournament_id)
 
     form = TeamCreateForm(request.form)
-    form.captain.choices = _build_captain_choices(tournament.id)
 
     if not form.validate():
         return create_team_form(tournament.id, form)
@@ -813,7 +811,7 @@ def create_team(tournament_id):
     image_url = form.image_url.data.strip() if form.image_url.data else None
     join_code = form.join_code.data.strip() if form.join_code.data else None
 
-    captain_user_id = UserID(UUID(form.captain.data))
+    captain_user_id = form.captain_user.id
 
     match tournament_team_service.create_team(
         tournament.id,
@@ -1147,26 +1145,6 @@ def _get_team_members(team_id):
     users_by_id = user_service.get_users_indexed_by_id(user_ids)
     return members, users_by_id
 
-
-def _build_captain_choices(tournament_id):
-    """Build SelectField choices for captain selection from participants."""
-    participants = (
-        tournament_participant_service.get_participants_for_tournament(
-            tournament_id
-        )
-    )
-    user_ids = {p.user_id for p in participants}
-    users_by_id = user_service.get_users_indexed_by_id(user_ids)
-    return sorted(
-        [
-            (str(u.id), u.screen_name)
-            for p in participants
-            if p.team_id is None
-            and (u := users_by_id.get(p.user_id))
-            and u.screen_name
-        ],
-        key=lambda c: c[1].lower(),
-    )
 
 
 def _build_transfer_captain_choices(team, members, users_by_id):
