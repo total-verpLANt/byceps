@@ -645,6 +645,50 @@
 
 
 /* ------------------------------------------------------------
+   1l-b. Player list – always-visible seat display (overview)
+   ------------------------------------------------------------ */
+
+.lt-player-list {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+}
+
+.lt-player-row {
+  display: flex;
+  align-items: baseline;
+  padding: 0.22rem 0;
+  gap: 0;
+}
+
+.lt-player-name {
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lt-player-sep {
+  flex: 1 1 1rem;
+  min-width: 1rem;
+  border-bottom: 1px dotted var(--lt-border);
+  align-self: center;
+  margin: 0 0.5rem;
+  height: 0;
+}
+
+.lt-player-seat {
+  flex-shrink: 0;
+  white-space: nowrap;
+  color: var(--lt-muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+
+/* ------------------------------------------------------------
    1m. Score submission form
    ------------------------------------------------------------ */
 
