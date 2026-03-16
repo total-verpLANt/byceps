@@ -729,7 +729,8 @@ function getFittedDims(columnCount, rounds, matchMap, settings, appEl) {
  * Total height of a single match card.
  */
 function getMatchHeight(dims) {
-  return (dims.padding * 2) + dims.labelHeight + dims.rowGap + dims.teamHeight + dims.rowGap + dims.teamHeight;
+  var h = (dims.padding * 2) + dims.labelHeight + dims.rowGap + dims.teamHeight + dims.rowGap + dims.teamHeight;
+  return h + (h % 2);  // ensure even so /2 always yields integer pixel coords
 }
 
 /**
@@ -841,7 +842,8 @@ function _ltBuildRouteId(sourceRef, targetRef, slotName) {
  */
 function _ltAddSourceConnector(svg, options) {
   var safeStart = Math.min(options.startX, options.endX - 8);
-  var path = _ltSvgPath('M ' + safeStart + ' ' + options.y + ' H ' + options.endX, false, 'lt-source-connector', options.players || []);
+  var y = Math.round(options.y);
+  var path = _ltSvgPath('M ' + safeStart + ' ' + y + ' H ' + options.endX, false, 'lt-source-connector', options.players || []);
   path.setAttribute('data-route', options.routeId);
   path.setAttribute('data-source-ref', options.sourceRef);
   path.setAttribute('data-target-ref', options.targetRef);
@@ -853,11 +855,40 @@ function _ltAddSourceConnector(svg, options) {
  */
 function addConnector(svg, fromMatch, toMatch, dims, strong) {
   var players = _ltOverlapPlayers(fromMatch.playerKeys, toMatch.playerKeys);
-  var joinX = fromMatch.geom.boxRight + (dims.connectorGap / 2);
-  var d = 'M ' + fromMatch.geom.boxRight + ' ' + fromMatch.geom.centerY
-    + ' H ' + joinX
-    + ' V ' + toMatch.geom.centerY
-    + ' H ' + toMatch.geom.boxLeft;
+  var joinX = Math.round(fromMatch.geom.boxRight + (dims.connectorGap / 2));
+
+  // When the target match has an external source (cross-bracket feed) on
+  // one slot, route this internal connector to the OTHER slot so the two
+  // entry lines are visually distinct instead of overlapping at centerY.
+  var targetY = toMatch.geom.centerY;
+  if (toMatch.topResolved && toMatch.bottomResolved && toMatch.bracket) {
+    var topSrc = toMatch.topResolved.sourceRef;
+    var botSrc = toMatch.bottomResolved.sourceRef;
+    var topIsExt = topSrc ? shouldShowExternalSource(topSrc, toMatch.bracket) : false;
+    var botIsExt = botSrc ? shouldShowExternalSource(botSrc, toMatch.bracket) : false;
+    if (topIsExt && !botIsExt) {
+      targetY = toMatch.geom.teamBottomY;
+    } else if (botIsExt && !topIsExt) {
+      targetY = toMatch.geom.teamTopY;
+    }
+  }
+
+  // When targeting a specific slot (external source present), also start
+  // the connector at that slot Y.  In 1:1 LB rounds both matches share
+  // identical geometry, so this produces a clean straight horizontal line
+  // instead of an L-shaped path that bends from centerY to the slot.
+  var startY = (targetY !== toMatch.geom.centerY) ? targetY : fromMatch.geom.centerY;
+
+  var d;
+  if (startY === targetY) {
+    d = 'M ' + fromMatch.geom.boxRight + ' ' + startY
+      + ' H ' + toMatch.geom.boxLeft;
+  } else {
+    d = 'M ' + fromMatch.geom.boxRight + ' ' + startY
+      + ' H ' + joinX
+      + ' V ' + targetY
+      + ' H ' + toMatch.geom.boxLeft;
+  }
   svg.appendChild(_ltSvgPath(d, strong, 'lt-connector', players));
 }
 
@@ -1046,9 +1077,10 @@ function createExternalSourceBadge(options) {
   var badge = document.createElement('div');
   var entrant = options.targetEntrant;
   var playerKey = (entrant && entrant.type === 'player') ? _ltNormalizePlayer(entrant.name) : '';
-  var startX = Math.max(8, options.x - options.dims.connectorGap + 4);
-  var maxWidth = Math.max(100, options.x - startX - 10);
+  var gapLeft = options.x - options.dims.connectorGap;
+  var maxWidth = Math.max(100, options.dims.connectorGap - 16);
   var pillWidth = Math.min(_ltEstimateSourceLabelWidth(labelText, statusText, options.dims), maxWidth);
+  var startX = Math.max(8, gapLeft + (options.dims.connectorGap - pillWidth) / 2);
   var routeId = _ltBuildRouteId(options.sourceRef, options.targetRef, options.slotName);
 
   badge.className = 'lt-incoming-source' + (options.sourceOutcome === 'loser' ? ' is-loser' : '');
@@ -1092,13 +1124,19 @@ function createExternalSourceBadge(options) {
  * Attach external source badges and their connector lines to a match.
  */
 function appendExternalSources(container, svg, match, dims, currentBracket, matchMap, settings) {
+  // Always target each source badge at its specific team-slot Y position
+  // so the external feeder line is visually distinct from the internal
+  // bracket connector (which enters at centerY).
+  var topY = match.geom.teamTopY;
+  var bottomY = match.geom.teamBottomY;
+
   var topBadge = createExternalSourceBadge({
     sourceRef: match.topResolved.sourceRef,
     sourceOutcome: match.topResolved.sourceOutcome,
     targetEntrant: match.topResolved.entrant,
     currentBracket: currentBracket,
     x: match.geom.boxLeft,
-    y: match.geom.teamTopY,
+    y: topY,
     dims: dims,
     targetRef: match.ref,
     slotName: 'top',
@@ -1112,7 +1150,7 @@ function appendExternalSources(container, svg, match, dims, currentBracket, matc
     targetEntrant: match.bottomResolved.entrant,
     currentBracket: currentBracket,
     x: match.geom.boxLeft,
-    y: match.geom.teamBottomY,
+    y: bottomY,
     dims: dims,
     targetRef: match.ref,
     slotName: 'bottom',
@@ -1121,7 +1159,7 @@ function appendExternalSources(container, svg, match, dims, currentBracket, matc
   });
 
   var entries = [topBadge, bottomBadge];
-  var yPositions = [match.geom.teamTopY, match.geom.teamBottomY];
+  var yPositions = [topY, bottomY];
   var idx;
   for (idx = 0; idx < entries.length; idx++) {
     if (!entries[idx]) continue;
