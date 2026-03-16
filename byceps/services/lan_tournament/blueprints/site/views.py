@@ -35,9 +35,15 @@ from byceps.util.framework.blueprint import create_blueprint
 from byceps.util.framework.flash import flash_error, flash_success
 from byceps.util.framework.templating import templated
 from byceps.util.result import Err, Ok
+from byceps.util.authz import has_current_user_permission
 from byceps.util.views import login_required, redirect_to
 
-from .forms import HighscoreSubmitForm, SiteTeamCreateForm, SiteTeamUpdateForm
+from .forms import (
+    HighscoreSubmitForm,
+    MatchCommentForm,
+    SiteTeamCreateForm,
+    SiteTeamUpdateForm,
+)
 
 
 blueprint = create_blueprint('lan_tournament', __name__)
@@ -909,6 +915,21 @@ def view_match(match_id):
     current_user_can_confirm = role.can_confirm
     current_user_can_submit = role.can_submit
 
+    # Comment auth: match contestants OR tournament admins, during ONGOING.
+    # get_user_match_role() returns contestant=None for confirmed matches,
+    # so resolve separately with match_confirmed=False.
+    if g.user.authenticated and tournament.tournament_status == TournamentStatus.ONGOING:
+        comment_role = tournament_match_service.get_user_match_role(
+            match.tournament_id, g.user.id, contestants,
+            match_confirmed=False,
+        )
+        is_contestant = comment_role.contestant is not None
+        is_admin = has_current_user_permission('lan_tournament.administrate')
+        current_user_can_comment = is_contestant or is_admin
+    else:
+        current_user_can_comment = False
+    comment_form = MatchCommentForm() if current_user_can_comment else None
+
     return {
         'tournament': tournament,
         'match': match,
@@ -923,6 +944,8 @@ def view_match(match_id):
         'current_user_is_loser': current_user_is_loser,
         'current_user_can_confirm': current_user_can_confirm,
         'current_user_can_submit': current_user_can_submit,
+        'current_user_can_comment': current_user_can_comment,
+        'comment_form': comment_form,
     }
 
 
@@ -978,6 +1001,52 @@ def set_score(match_id):
         flash_error(result.unwrap_err())
     else:
         flash_success(gettext('Match result submitted.'))
+    return redirect_to('.view_match', match_id=match_id)
+
+
+@blueprint.post('/matches/<match_id>/add_comment')
+@login_required
+def add_comment(match_id):
+    """Add a comment to a match (contestants or tournament admins)."""
+    from byceps.services.lan_tournament.models.tournament_match import (
+        TournamentMatchID,
+    )
+
+    try:
+        match_id_obj = TournamentMatchID(uuid.UUID(match_id))
+        match = tournament_match_service.get_match(match_id_obj)
+    except ValueError:
+        abort(404)
+
+    tournament = _get_tournament_or_404(match.tournament_id)
+    if tournament.tournament_status != TournamentStatus.ONGOING:
+        flash_error(gettext('Tournament is not in progress.'))
+        return redirect_to('.view_match', match_id=match_id)
+
+    # Authorization: match contestants OR tournament admins.
+    is_admin = has_current_user_permission('lan_tournament.administrate')
+    contestants = tournament_match_service.get_contestants_for_match(
+        match_id_obj
+    )
+    role = tournament_match_service.get_user_match_role(
+        match.tournament_id, g.user.id, contestants,
+        match_confirmed=False,
+    )
+    if role.contestant is None and not is_admin:
+        abort(403)
+
+    form = MatchCommentForm(request.form)
+    if not form.validate():
+        flash_error(gettext('Invalid comment.'))
+        return redirect_to('.view_match', match_id=match_id)
+
+    result = tournament_match_service.add_comment(
+        match_id_obj, g.user.id, form.comment.data.strip()
+    )
+    if result.is_err():
+        flash_error(result.unwrap_err())
+    else:
+        flash_success(gettext('Comment added.'))
     return redirect_to('.view_match', match_id=match_id)
 
 
