@@ -437,7 +437,7 @@
               {%- endif %}
             </div>
             <div class='bracket-contestant-score'>
-              {{ contestant.score|default('–', true) }}
+              {{ contestant.score if contestant.score is not none else '–' }}
             </div>
           </div>
           {%- endfor %}
@@ -513,7 +513,7 @@
           {%- else %}
             {{ _('defwin') }}
           {%- endif %}
-          <strong>{{ contestant.score|default('–', true) }}</strong>
+          <strong>{{ contestant.score if contestant.score is not none else '–' }}</strong>
           <span class='badge-defwin' title='{{ _("Free Win") }}'>{{ _('defwin') }}</span>
         </div>
       {%- else %}
@@ -537,7 +537,7 @@
             {%- else %}
               {{ _('defwin') }}
             {%- endif %}
-            <strong>{{ contestant.score|default('–', true) }}</strong>
+            <strong>{{ contestant.score if contestant.score is not none else '–' }}</strong>
           </div>
           {%- if not loop.last %}
           <div style='text-align: center; color: #999;'>vs</div>
@@ -758,7 +758,7 @@
           {%- endif %}
         </div>
         <div class='bracket-contestant-score'>
-          {{ contestant.score|default('–', true) }}
+          {{ contestant.score if contestant.score is not none else '–' }}
         </div>
       </div>
       {%- endfor %}
@@ -887,7 +887,7 @@
             {{ _('defwin') }}
           {%- endif %}
           <strong>
-            {{ contestant.score|default('–', true) }}
+            {{ contestant.score if contestant.score is not none else '–' }}
           </strong>
           <span class='badge-defwin'
                 title='{{ _("Free Win") }}'>
@@ -923,7 +923,7 @@
               {{ _('defwin') }}
             {%- endif %}
             <strong>
-              {{ contestant.score|default('–', true) }}
+              {{ contestant.score if contestant.score is not none else '–' }}
             </strong>
           </div>
           {%- if not loop.last %}

@@ -87,7 +87,7 @@
         </td>
         <td>
           {%- for contestant in contestants %}
-            {{ contestant.score|default('–', true) }}
+            {{ contestant.score if contestant.score is not none else '–' }}
             {%- if not loop.last %} : {% endif %}
           {%- endfor %}
         </td>

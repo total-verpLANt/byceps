@@ -54,7 +54,7 @@
           {%- endif %}
         </div>
         <div class='contestant-score'>
-          {{ contestant.score|default('–', true) }}
+          {{ contestant.score if contestant.score is not none else '–' }}
         </div>
       </div>
       {%- if not loop.last %}
