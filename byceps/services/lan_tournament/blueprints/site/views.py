@@ -853,6 +853,13 @@ def matches(tournament_id):
         participants=participants,
     )
 
+    current_user_participant = None
+    if g.user.authenticated:
+        for p in participants:
+            if p.user_id == g.user.id:
+                current_user_participant = p
+                break
+
     return {
         'tournament': tournament,
         'match_data': match_data,
@@ -860,6 +867,7 @@ def matches(tournament_id):
         'participants_by_id': participants_by_id,
         'seats_by_user_id': seats_by_user_id,
         'team_members_by_team_id': team_members_by_team_id,
+        'current_user_participant': current_user_participant,
     }
 
 

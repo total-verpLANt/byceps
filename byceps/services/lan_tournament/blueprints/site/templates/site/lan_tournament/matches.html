@@ -17,13 +17,26 @@
 
   <h1 class='title'>{{ _('Matches') }}</h1>
 
+  {%- if current_user_participant and match_data %}
+  <div class='match-filter-bar'>
+    <button type='button' id='match-filter-mine' class='button secondary'
+            aria-pressed='false'
+            data-user-team-id='{{ current_user_participant.team_id or "" }}'
+            data-user-participant-id='{{ current_user_participant.id or "" }}'>
+      {{ render_icon('user') }} {{ _('My Matches') }}
+    </button>
+  </div>
+  {%- endif %}
+
   {%- if match_data %}
   <div class='match-table'>
     {%- for data in match_data %}
     {%- set match = data.match %}
     {%- set contestants = data.contestants %}
     <a href='{{ url_for('.view_match', match_id=match.id) }}'
-       class='match-link-reset'>
+       class='match-link-reset'
+       data-team-ids='{{ contestants|selectattr("team_id")|map(attribute="team_id")|join(",") }}'
+       data-participant-ids='{{ contestants|selectattr("participant_id")|map(attribute="participant_id")|join(",") }}'>
       <div class='match-row'>
         <div class='match-number'>
           {{ _('Match') }} #{{ match.match_order }}
