@@ -345,10 +345,20 @@
 .rr-standings .rr-pts {
   font-weight: bold;
 }
+.bracket-match-link {
+  text-decoration: none;
+  color: inherit;
+  display: block;
+}
+.bracket-match-link:hover .bracket-match-card,
+.bracket-match-link:hover .bracket-list-item {
+  outline: 2px solid rgba(0, 123, 255, 0.5);
+  box-shadow: 0 0 4px rgba(0, 123, 255, 0.25);
+}
 </style>
 {%- endmacro -%}
 
-{% macro render_bracket(match_data, tournament, teams_by_id={}, participants_by_id={}, seats_by_user_id={}, team_members_by_team_id={}) %}
+{% macro render_bracket(match_data, tournament, teams_by_id={}, participants_by_id={}, seats_by_user_id={}, team_members_by_team_id={}, match_url_endpoint=None) %}
 {#
   Renders a tournament bracket visualization.
 
@@ -395,7 +405,9 @@
       {%- set is_even_index = loop.index0 % 2 == 0 %}
       {%- set is_last_in_pair = loop.index0 % 2 == 1 %}
       {%- if is_even_index %}<div class='bracket-connector-group' style='position: relative;'>{%- endif %}
+      {%- set _match_url = url_for(match_url_endpoint, match_id=match.id) if match_url_endpoint else None %}
       <div class='bracket-match'>
+        {%- if _match_url %}<a href="{{ _match_url }}" class="bracket-match-link">{%- endif %}
         <div class='bracket-match-card {% if match.confirmed_by %}confirmed{% endif %} {% if contestants|length == 1 %}defwin{% endif %}'>
           <div class='bracket-match-header'>
             {{ _('Match') }} #{{ match.match_order }}
@@ -456,6 +468,7 @@
           </div>
           {%- endif %}
         </div>
+        {%- if _match_url %}</a>{%- endif %}
       </div>
       {%- if is_last_in_pair or loop.last %}<div class='bracket-connector'></div></div>{%- endif %}
       {%- endfor %}
@@ -472,7 +485,7 @@
 {%- endmacro %}
 
 
-{% macro render_simple_bracket_list(match_data, teams_by_id={}, participants_by_id={}, seats_by_user_id={}, team_members_by_team_id={}) %}
+{% macro render_simple_bracket_list(match_data, teams_by_id={}, participants_by_id={}, seats_by_user_id={}, team_members_by_team_id={}, match_url_endpoint=None) %}
 {#
   Simpler list-based bracket view for small screens or fallback.
 
@@ -484,6 +497,8 @@
   {%- for data in match_data %}
   {%- set match = data.match %}
   {%- set contestants = data.contestants %}
+  {%- set _match_url = url_for(match_url_endpoint, match_id=match.id) if match_url_endpoint else None %}
+  {%- if _match_url %}<a href="{{ _match_url }}" class="bracket-match-link">{%- endif %}
   <div class='bracket-list-item'>
     <div class='bracket-list-header'>
       <strong>{{ _('Match') }} #{{ match.match_order }}</strong>
@@ -546,6 +561,7 @@
       {%- endif %}
     </div>
   </div>
+  {%- if _match_url %}</a>{%- endif %}
   {%- endfor %}
 </div>
 
@@ -556,7 +572,8 @@
     match_data, tournament, teams_by_id={},
     participants_by_id={}, seats_by_user_id={},
     team_members_by_team_id={},
-    bracket_id='de'
+    bracket_id='de',
+    match_url_endpoint=None
 ) %}
 {#
   Renders a double-elimination bracket visualization.
@@ -622,7 +639,8 @@
         {{ _render_de_round_matches(
             rounds[round_num], teams_by_id,
             participants_by_id, seats_by_user_id,
-            team_members_by_team_id
+            team_members_by_team_id,
+            match_url_endpoint=match_url_endpoint
         ) }}
       </div>
       {%- endfor %}
@@ -654,7 +672,8 @@
         {{ _render_de_round_matches(
             rounds[round_num], teams_by_id,
             participants_by_id, seats_by_user_id,
-            team_members_by_team_id
+            team_members_by_team_id,
+            match_url_endpoint=match_url_endpoint
         ) }}
       </div>
       {%- endfor %}
@@ -673,7 +692,8 @@
         {{ _render_de_round_matches(
             gf_data, teams_by_id,
             participants_by_id, seats_by_user_id,
-            team_members_by_team_id
+            team_members_by_team_id,
+            match_url_endpoint=match_url_endpoint
         ) }}
       </div>
     </div>
@@ -696,12 +716,15 @@
 {% macro _render_de_round_matches(
     round_matches, teams_by_id,
     participants_by_id, seats_by_user_id,
-    team_members_by_team_id
+    team_members_by_team_id,
+    match_url_endpoint=None
 ) %}
   {%- for data in round_matches %}
   {%- set match = data.match %}
   {%- set contestants = data.contestants %}
+  {%- set _match_url = url_for(match_url_endpoint, match_id=match.id) if match_url_endpoint else None %}
   <div class='bracket-match'>
+    {%- if _match_url %}<a href="{{ _match_url }}" class="bracket-match-link">{%- endif %}
     <div class='bracket-match-card {% if match.confirmed_by %}confirmed{% endif %} {% if contestants|length == 1 %}defwin{% endif %}'>
       <div class='bracket-match-header'>
         {{ _('Match') }} #{{ match.match_order }}
@@ -775,6 +798,7 @@
       </div>
       {%- endif %}
     </div>
+    {%- if _match_url %}</a>{%- endif %}
   </div>
   {%- endfor %}
 {%- endmacro %}
@@ -783,7 +807,8 @@
 {% macro render_simple_de_bracket_list(
     match_data, teams_by_id={},
     participants_by_id={}, seats_by_user_id={},
-    team_members_by_team_id={}
+    team_members_by_team_id={},
+    match_url_endpoint=None
 ) %}
 {#
   List-based DE bracket view for small screens.
@@ -811,7 +836,8 @@
   </h3>
   {{ _render_de_list_section(
       wb_data, teams_by_id, participants_by_id,
-      seats_by_user_id, team_members_by_team_id
+      seats_by_user_id, team_members_by_team_id,
+      match_url_endpoint=match_url_endpoint
   ) }}
   {%- endif %}
 
@@ -821,7 +847,8 @@
   </h3>
   {{ _render_de_list_section(
       lb_data, teams_by_id, participants_by_id,
-      seats_by_user_id, team_members_by_team_id
+      seats_by_user_id, team_members_by_team_id,
+      match_url_endpoint=match_url_endpoint
   ) }}
   {%- endif %}
 
@@ -831,7 +858,8 @@
   </h3>
   {{ _render_de_list_section(
       gf_data, teams_by_id, participants_by_id,
-      seats_by_user_id, team_members_by_team_id
+      seats_by_user_id, team_members_by_team_id,
+      match_url_endpoint=match_url_endpoint
   ) }}
   {%- endif %}
 </div>
@@ -843,11 +871,14 @@
 {% macro _render_de_list_section(
     section_data, teams_by_id,
     participants_by_id, seats_by_user_id,
-    team_members_by_team_id
+    team_members_by_team_id,
+    match_url_endpoint=None
 ) %}
   {%- for data in section_data %}
   {%- set match = data.match %}
   {%- set contestants = data.contestants %}
+  {%- set _match_url = url_for(match_url_endpoint, match_id=match.id) if match_url_endpoint else None %}
+  {%- if _match_url %}<a href="{{ _match_url }}" class="bracket-match-link">{%- endif %}
   <div class='bracket-list-item'>
     <div class='bracket-list-header'>
       <strong>{{ _('Match') }} #{{ match.match_order }}</strong>
@@ -935,6 +966,7 @@
       {%- endif %}
     </div>
   </div>
+  {%- if _match_url %}</a>{%- endif %}
   {%- endfor %}
 {%- endmacro %}
 

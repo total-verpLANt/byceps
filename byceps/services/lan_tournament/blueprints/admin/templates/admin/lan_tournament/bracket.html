@@ -20,18 +20,18 @@
     {{ render_round_robin_standings(standings, tournament, teams_by_id=teams_by_id, participants_by_id=participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id) }}
   {% elif tournament.tournament_mode and tournament.tournament_mode.name == 'DOUBLE_ELIMINATION' %}
     <div class='bracket-desktop'>
-      {{ render_de_bracket(match_data, tournament, teams_by_id, participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id, bracket_id='de-' ~ tournament.id) }}
+      {{ render_de_bracket(match_data, tournament, teams_by_id, participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id, bracket_id='de-' ~ tournament.id, match_url_endpoint='lan_tournament_admin.view_match') }}
     </div>
     <div class='bracket-mobile'>
-      {{ render_simple_de_bracket_list(match_data, teams_by_id, participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id) }}
+      {{ render_simple_de_bracket_list(match_data, teams_by_id, participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id, match_url_endpoint='lan_tournament_admin.view_match') }}
     </div>
   {% else %}
     <div class='bracket-desktop'>
-      {{ render_bracket(match_data, tournament, teams_by_id, participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id) }}
+      {{ render_bracket(match_data, tournament, teams_by_id, participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id, match_url_endpoint='lan_tournament_admin.view_match') }}
     </div>
 
     <div class='bracket-mobile'>
-      {{ render_simple_bracket_list(match_data, teams_by_id, participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id) }}
+      {{ render_simple_bracket_list(match_data, teams_by_id, participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id, match_url_endpoint='lan_tournament_admin.view_match') }}
     </div>
   {% endif %}
 
