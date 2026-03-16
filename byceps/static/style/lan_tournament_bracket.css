@@ -198,14 +198,14 @@
 .lt-match {
   position: absolute;
   border-radius: var(--lt-radius);
-  padding: 0.45rem;
+  padding: 7px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
   border: 1px solid var(--lt-border);
   --match-accent: color-mix(in srgb, var(--lt-brand-blue) 72%, white);
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
   display: grid;
   grid-template-rows: minmax(26px, auto) minmax(0, 1fr) minmax(0, 1fr);
-  gap: 6px;
+  gap: 5px;
   z-index: 3;
   overflow: hidden;
   transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease, background 140ms ease, opacity 140ms ease;
@@ -513,6 +513,8 @@
   pointer-events: auto;
   transition: opacity 140ms ease, transform 140ms ease, filter 140ms ease;
   cursor: pointer;
+  display: flex;
+  align-items: center;
 }
 
 .lt-incoming-pill {
