@@ -298,6 +298,32 @@
 }
 
 
+/* --- Match filter bar --- */
+
+.match-filter-bar {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.match-filter-bar .button {
+  font-size: 0.85rem;
+}
+
+/* Active/toggled state — extends design-system .button--current with visible fill */
+.match-filter-bar .button.active {
+  border-color: color-mix(in srgb, var(--lt-brand-blue) 55%, white);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--lt-brand-blue) 30%, white);
+  color: #fff;
+  background: color-mix(in srgb, var(--lt-brand-blue) 30%, transparent);
+}
+
+/* Hidden match row (JS-toggled) */
+.match-link-reset.match-row--hidden {
+  display: none;
+}
+
+
 /* ------------------------------------------------------------
    1i. Match detail page
    ------------------------------------------------------------ */

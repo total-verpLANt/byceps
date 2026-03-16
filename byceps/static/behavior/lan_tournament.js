@@ -139,10 +139,77 @@ function enableBracketPan(scrollEl) {
 
 
 /**
+ * "My Matches" filter for the match list page.
+ *
+ * Toggles visibility of match rows based on whether the current
+ * user's team or participant ID appears in the row's data attributes.
+ * State persists via ?my_matches=1 URL query param.
+ */
+function initMatchFilter() {
+  var btn = document.getElementById('match-filter-mine');
+  if (!btn) return;
+
+  var userTeamId = btn.getAttribute('data-user-team-id') || '';
+  var userParticipantId = btn.getAttribute('data-user-participant-id') || '';
+  var active = false;
+
+  // Restore state from URL query param on page load
+  var params = new URLSearchParams(window.location.search);
+  if (params.get('my_matches') === '1') {
+    active = true;
+    btn.setAttribute('aria-pressed', 'true');
+    btn.classList.add('active');
+  }
+
+  function applyFilter() {
+    var rows = document.querySelectorAll('.match-link-reset');
+    rows.forEach(function(row) {
+      if (!active) {
+        row.classList.remove('match-row--hidden');
+        return;
+      }
+      var teamIds = (row.getAttribute('data-team-ids') || '').split(',');
+      var participantIds = (row.getAttribute('data-participant-ids') || '').split(',');
+      // Hide matches without real contestants (TBD/defwin slots)
+      var hasContestants = (row.getAttribute('data-team-ids') || '').replace(/,/g, '') !== ''
+                        || (row.getAttribute('data-participant-ids') || '').replace(/,/g, '') !== '';
+      if (!hasContestants) {
+        row.classList.add('match-row--hidden');
+        return;
+      }
+      var isMyMatch = (userTeamId && teamIds.indexOf(userTeamId) !== -1)
+                   || (userParticipantId && participantIds.indexOf(userParticipantId) !== -1);
+      row.classList.toggle('match-row--hidden', !isMyMatch);
+    });
+
+    // Persist state to URL without page reload
+    var url = new URL(window.location);
+    if (active) {
+      url.searchParams.set('my_matches', '1');
+    } else {
+      url.searchParams.delete('my_matches');
+    }
+    history.replaceState(null, '', url);
+  }
+
+  btn.addEventListener('click', function() {
+    active = !active;
+    btn.setAttribute('aria-pressed', String(active));
+    btn.classList.toggle('active', active);
+    applyFilter();
+  });
+
+  // Apply on load if restored from URL
+  if (active) applyFilter();
+}
+
+
+/**
  * Init on DOM ready + debounced resize handler for pannable state.
  */
 document.addEventListener('DOMContentLoaded', function() {
   initBracketViewSwitcher();
+  initMatchFilter();
 
   document.querySelectorAll('.bracket-desktop').forEach(enableBracketPan);
 
