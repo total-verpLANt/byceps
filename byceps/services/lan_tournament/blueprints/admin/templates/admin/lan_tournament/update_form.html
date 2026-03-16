@@ -21,7 +21,9 @@
       {{ form_field(form.image_url) }}
       {{ form_field(form.contestant_type) }}
       {{ form_field(form.tournament_mode) }}
-      {{ form_field(form.score_ordering) }}
+      <div id="highscore-constraints" style="display: none;">
+        {{ form_field(form.score_ordering) }}
+      </div>
       {{ form_field(form.start_time) }}
       {{ form_field(form.ruleset) }}
     </div>

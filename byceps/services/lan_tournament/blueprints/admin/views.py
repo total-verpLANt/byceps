@@ -268,6 +268,10 @@ def create(party_id):
         min_players = None
         max_players = None
 
+    # Clear score ordering for non-highscore tournaments.
+    if tournament_mode != TournamentMode.HIGHSCORE:
+        score_ordering = None
+
     result = tournament_service.create_tournament(
         party.id,
         name,
@@ -416,6 +420,10 @@ def update(tournament_id):
     elif contestant_type == ContestantType.TEAM:
         min_players = None
         max_players = None
+
+    # Clear score ordering for non-highscore tournaments.
+    if tournament_mode != TournamentMode.HIGHSCORE:
+        score_ordering = None
 
     result = tournament_service.update_tournament(
         tournament.id,
