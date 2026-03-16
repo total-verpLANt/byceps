@@ -124,6 +124,11 @@ def view(tournament_id):
         and tournament.tournament_status == TournamentStatus.REGISTRATION_OPEN
     )
 
+    is_team_tournament = (
+        tournament.contestant_type is not None
+        and tournament.contestant_type == ContestantType.TEAM
+    )
+
     # Resolve user names
     user_ids = {p.user_id for p in participants}
     users_by_id = user_service.get_users_indexed_by_id(user_ids)
@@ -136,6 +141,7 @@ def view(tournament_id):
         'participants': participants,
         'participant_count': participant_count,
         'current_user_participant': current_user_participant,
+        'is_team_tournament': is_team_tournament,
         'can_join': can_join,
         'can_leave': can_leave,
         'users_by_id': users_by_id,
@@ -231,6 +237,8 @@ def teams(tournament_id):
     ):
         abort(404)
 
+    _require_team_tournament(tournament)
+
     teams = tournament_team_service.get_teams_for_tournament(tournament.id)
     member_counts = tournament_team_service.get_team_member_counts(
         tournament.id
@@ -250,6 +258,8 @@ def create_team_form(tournament_id, erroneous_form=None):
     """Show form to create a team."""
     tournament = _get_tournament_or_404(tournament_id)
 
+    _require_team_tournament(tournament)
+
     if tournament.tournament_status != TournamentStatus.REGISTRATION_OPEN:
         flash_error(gettext('Registration is not open.'))
         return redirect_to('.view', tournament_id=tournament.id)
@@ -267,6 +277,8 @@ def create_team_form(tournament_id, erroneous_form=None):
 def create_team(tournament_id):
     """Create a team."""
     tournament = _get_tournament_or_404(tournament_id)
+
+    _require_team_tournament(tournament)
 
     if tournament.tournament_status != TournamentStatus.REGISTRATION_OPEN:
         flash_error(gettext('Registration is not open.'))
@@ -320,6 +332,8 @@ def view_team(team_id):
         and tournament.tournament_status == TournamentStatus.DRAFT
     ):
         abort(404)
+
+    _require_team_tournament(tournament)
 
     # Get all participants for this team.
     all_participants = (
@@ -394,6 +408,8 @@ def join_team(team_id):
     team = _get_team_or_404(team_id)
     tournament = _get_tournament_or_404(team.tournament_id)
 
+    _require_team_tournament(tournament)
+
     if tournament.tournament_status != TournamentStatus.REGISTRATION_OPEN:
         flash_error(gettext('Registration is not open.'))
         return redirect_to('.view_team', team_id=team_id)
@@ -449,6 +465,8 @@ def leave_team(team_id):
     team = _get_team_or_404(team_id)
     tournament = _get_tournament_or_404(team.tournament_id)
 
+    _require_team_tournament(tournament)
+
     if tournament.tournament_status != TournamentStatus.REGISTRATION_OPEN:
         flash_error(gettext('Registration is not open.'))
         return redirect_to('.view_team', team_id=team_id)
@@ -495,6 +513,15 @@ def leave_team(team_id):
 # -------------------------------------------------------------------- #
 # captain management helpers
 # -------------------------------------------------------------------- #
+
+
+def _require_team_tournament(tournament) -> None:
+    """Abort with 404 if the tournament does not use teams."""
+    if (
+        tournament.contestant_type is None
+        or tournament.contestant_type != ContestantType.TEAM
+    ):
+        abort(404)
 
 
 def _is_captain_management_allowed(tournament) -> bool:
@@ -548,6 +575,8 @@ def update_team_form(tournament_id, team_id, erroneous_form=None):
     tournament = _get_tournament_or_404(tournament_id)
     team = _get_team_or_404(team_id)
 
+    _require_team_tournament(tournament)
+
     if team.tournament_id != tournament.id:
         abort(404)
 
@@ -568,6 +597,8 @@ def update_team(tournament_id, team_id):
     """Process team update form (captain only)."""
     tournament = _get_tournament_or_404(tournament_id)
     team = _get_team_or_404(team_id)
+
+    _require_team_tournament(tournament)
 
     if team.tournament_id != tournament.id:
         abort(404)
@@ -619,6 +650,8 @@ def site_transfer_captain(tournament_id, team_id):
     tournament = _get_tournament_or_404(tournament_id)
     team = _get_team_or_404(team_id)
 
+    _require_team_tournament(tournament)
+
     if team.tournament_id != tournament.id:
         abort(404)
 
@@ -669,6 +702,8 @@ def site_remove_member(tournament_id, team_id):
     """Remove a non-captain member from the team (captain only)."""
     tournament = _get_tournament_or_404(tournament_id)
     team = _get_team_or_404(team_id)
+
+    _require_team_tournament(tournament)
 
     if team.tournament_id != tournament.id:
         abort(404)
