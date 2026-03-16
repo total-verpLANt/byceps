@@ -625,6 +625,10 @@ def generate_bracket(tournament_id):
 def teams_for_tournament(tournament_id):
     """List teams for that tournament."""
     tournament = _get_tournament_or_404(tournament_id)
+
+    if tournament.contestant_type != ContestantType.TEAM:
+        abort(404)
+
     party = party_service.get_party(tournament.party_id)
 
     teams = tournament_team_service.get_teams_for_tournament(tournament.id)
