@@ -825,10 +825,12 @@
 }
 
 .bracket-contestant-score {
+  flex: 0 0 auto;
   font-weight: bold;
   margin-left: 0.5rem;
   min-width: 30px;
   text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 

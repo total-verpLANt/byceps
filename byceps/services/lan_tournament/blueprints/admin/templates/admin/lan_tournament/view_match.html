@@ -34,8 +34,8 @@
     <h2>{{ _('Contestants') }}</h2>
 
     {%- for contestant in contestants %}
-    <div class='row row--space-between' style='margin-bottom: 1rem;'>
-      <div>
+    <div class='row row--space-between' style='margin-bottom: 1rem; flex-wrap: nowrap;'>
+      <div style='flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;'>
         <strong>
           {%- if contestant.team_id %}
             {{ _('Team') }}:
@@ -58,11 +58,11 @@
           {%- endif %}
         </strong>
       </div>
-      <div>
+      <div style='flex: 0 0 auto; min-width: 100px; text-align: right;'>
         <strong>{{ _('Score') }}:</strong>
         {{ contestant.score if contestant.score is not none else '–' }}
       </div>
-      <div>
+      <div style='flex: 0 0 auto;'>
         {%- if not match.confirmed_by and
                has_current_user_permission('lan_tournament.update') %}
         <form action='{{ url_for('.set_match_score', match_id=match.id) }}'
