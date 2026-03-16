@@ -43,3 +43,10 @@ class HighscoreSubmitForm(LocalizedForm):
     note = StringField(
         lazy_gettext('Note'), [Optional(), Length(max=200)]
     )
+
+
+class MatchCommentForm(LocalizedForm):
+    comment = TextAreaField(
+        lazy_gettext('Comment'),
+        [InputRequired(), Length(max=1000)],
+    )

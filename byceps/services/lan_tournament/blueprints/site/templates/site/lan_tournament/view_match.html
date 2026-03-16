@@ -108,6 +108,13 @@
       {%- else %}
       <p class='dimmed'>{{ _('No comments yet.') }}</p>
       {%- endif %}
+
+      {%- if current_user_can_comment %}
+      <form method='post' action='{{ url_for('.add_comment', match_id=match.id) }}' class='comment-form'>
+        {{ comment_form.comment(class='form-control', rows='3', placeholder=_('Write a comment...'), maxlength='1000') }}
+        <button type='submit' class='btn'>{{ _('Post Comment') }}</button>
+      </form>
+      {%- endif %}
     </div>
   </div>
 
