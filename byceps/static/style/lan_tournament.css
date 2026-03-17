@@ -181,7 +181,7 @@
 
 .overview-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.75rem;
 }
 
@@ -189,6 +189,57 @@
   background-color: var(--lt-card);
   border-color: var(--lt-border);
   color: var(--lt-text);
+  padding: 0.95rem;
+}
+
+.lt-dark .data-label {
+  color: var(--lt-muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.3rem;
+}
+
+.lt-dark .data-value {
+  font-size: 0.94rem;
+  font-weight: 600;
+}
+
+.lt-dark .dimmed {
+  color: var(--lt-muted);
+}
+
+.lt-dark .title {
+  letter-spacing: -0.02em;
+}
+
+.lt-dark .tag {
+  border-radius: 999px;
+  border: 1px solid var(--lt-border);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  line-height: 1;
+  padding: 0.28rem 0.56rem;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: white;
+  background: rgba(255, 255, 255, 0.08);
+  text-shadow: none;
+}
+
+.lt-dark nav.breadcrumbs {
+  margin-bottom: 0.85rem;
+  color: var(--lt-muted);
+  font-size: 0.82rem;
+}
+
+.lt-dark :is(.block, .box, .button-row):not(:last-child) {
+  margin-bottom: 1rem;
+}
+
+.lt-dark .overview-grid > .box {
+  margin-bottom: 0;
 }
 
 
