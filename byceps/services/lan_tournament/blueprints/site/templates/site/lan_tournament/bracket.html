@@ -1,5 +1,5 @@
 {% extends 'layout/site/lan_tournament.html' %}
-{% from 'macros/lan_tournament.html' import render_bracket, render_de_bracket, render_round_robin_standings %}
+{% from 'macros/lan_tournament.html' import render_bracket, render_de_bracket, render_round_robin_standings, render_tournament_subnav %}
 {% set page_title = [_('Bracket'), tournament.name] %}
 
 {% block body %}
@@ -12,6 +12,8 @@
       </a></li>
     </ol>
   </nav>
+
+  {{ render_tournament_subnav(tournament, active_tab) }}
 
   <h1 class='title'>{{ _('Tournament Bracket') }}</h1>
 

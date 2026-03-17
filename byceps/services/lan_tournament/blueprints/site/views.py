@@ -130,11 +130,6 @@ def view(tournament_id):
         and tournament.tournament_status == TournamentStatus.REGISTRATION_OPEN
     )
 
-    is_team_tournament = (
-        tournament.contestant_type is not None
-        and tournament.contestant_type == ContestantType.TEAM
-    )
-
     # Resolve user names
     user_ids = {p.user_id for p in participants}
     users_by_id = user_service.get_users_indexed_by_id(user_ids)
@@ -147,7 +142,6 @@ def view(tournament_id):
         'participants': participants,
         'participant_count': participant_count,
         'current_user_participant': current_user_participant,
-        'is_team_tournament': is_team_tournament,
         'can_join': can_join,
         'can_leave': can_leave,
         'users_by_id': users_by_id,
@@ -254,6 +248,7 @@ def teams(tournament_id):
         'tournament': tournament,
         'teams': teams,
         'member_counts': member_counts,
+        'active_tab': 'teams',
     }
 
 
@@ -404,6 +399,7 @@ def view_team(team_id):
         'can_leave_team': can_leave_team,
         'users_by_id': users_by_id,
         'seats_by_user_id': seats_by_user_id,
+        'active_tab': 'teams',
     }
 
 
@@ -877,6 +873,7 @@ def matches(tournament_id):
         'seats_by_user_id': seats_by_user_id,
         'team_members_by_team_id': team_members_by_team_id,
         'current_user_participant': current_user_participant,
+        'active_tab': 'matches',
     }
 
 
@@ -963,6 +960,7 @@ def view_match(match_id):
         'current_user_can_submit': current_user_can_submit,
         'current_user_can_comment': current_user_can_comment,
         'comment_form': comment_form,
+        'active_tab': 'matches',
     }
 
 

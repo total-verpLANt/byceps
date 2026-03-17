@@ -1,6 +1,6 @@
 {% extends 'layout/site/lan_tournament.html' %}
 {% from 'macros/forms.html' import form_buttons, form_field %}
-{% from 'macros/lan_tournament.html' import render_highscore_leaderboard %}
+{% from 'macros/lan_tournament.html' import render_highscore_leaderboard, render_tournament_subnav %}
 {% set page_title = [_('Highscore'), tournament.name] %}
 
 {% block body %}
@@ -13,6 +13,8 @@
       </a></li>
     </ol>
   </nav>
+
+  {{ render_tournament_subnav(tournament, active_tab) }}
 
   <h1 class='title'>{{ _('Highscore Leaderboard') }}</h1>
 
