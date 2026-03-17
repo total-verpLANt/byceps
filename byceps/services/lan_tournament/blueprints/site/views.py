@@ -837,6 +837,15 @@ def matches(tournament_id):
         )
         all_contestants.append(contestants)
 
+    # Only include matches that are ready to play (all contestants
+    # assigned) or already confirmed (including DEFWIN).
+    match_data = [
+        entry
+        for entry in match_data
+        if len(entry['contestants']) >= 2
+        or entry['match'].confirmed_by is not None
+    ]
+
     # Fetch participants once, share across both helpers.
     participants = (
         tournament_participant_service.get_participants_for_tournament(
