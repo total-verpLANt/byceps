@@ -16,6 +16,7 @@ from byceps.util.framework.flash import (
 )
 from byceps.util.framework.templating import templated
 from byceps.util.result import Err, Ok
+from byceps.util.navigation import Navigation
 from byceps.util.views import permission_required, redirect_to
 
 from byceps.services.lan_tournament import (
@@ -1197,6 +1198,14 @@ def _get_match_or_404(match_id) -> TournamentMatch:
 # matches
 
 
+def _is_match_ready(entry: dict) -> bool:
+    """A match is ready when it has 2+ contestants or is confirmed."""
+    return (
+        len(entry['contestants']) >= 2
+        or entry['match'].confirmed_by is not None
+    )
+
+
 @blueprint.get('/tournaments/<tournament_id>/matches')
 @permission_required('lan_tournament.view')
 @templated
@@ -1204,6 +1213,8 @@ def matches_for_tournament(tournament_id):
     """List matches for that tournament."""
     tournament = _get_tournament_or_404(tournament_id)
     party = party_service.get_party(tournament.party_id)
+
+    only = request.args.get('only', 'open')
 
     matches = tournament_match_service.get_matches_for_tournament_ordered(
         tournament.id
@@ -1224,6 +1235,23 @@ def matches_for_tournament(tournament_id):
         )
         all_contestants.append(contestants)
 
+    # Compute counts before filtering.
+    total_count = len(match_data)
+    ready_count = sum(1 for e in match_data if _is_match_ready(e))
+    open_count = total_count - ready_count
+    match_quantities = {
+        'all': total_count,
+        'open': open_count,
+        'ready': ready_count,
+    }
+
+    # Apply status filter.
+    if only == 'open':
+        match_data = [e for e in match_data if not _is_match_ready(e)]
+    elif only == 'ready':
+        match_data = [e for e in match_data if _is_match_ready(e)]
+    # 'all' → no filtering
+
     teams_by_id, participants_by_id = build_contestant_name_lookups(
         tournament.id, all_contestants
     )
@@ -1236,6 +1264,8 @@ def matches_for_tournament(tournament_id):
         'party': party,
         'tournament': tournament,
         'match_data': match_data,
+        'only': only,
+        'match_quantities': match_quantities,
         'teams_by_id': teams_by_id,
         'participants_by_id': participants_by_id,
         'seats_by_user_id': seats_by_user_id,
