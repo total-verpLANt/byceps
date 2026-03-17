@@ -7,10 +7,14 @@ byceps.blueprints.admin
 """
 
 from flask import Flask
+import structlog
+from importlib import util as importlib_util
 
 from byceps.util.framework.blueprint import register_blueprints
 
 from .common import get_common_blueprints
+
+log = structlog.get_logger()
 
 
 def register_admin_blueprints(
@@ -87,5 +91,15 @@ def register_admin_blueprints(
 
     if metrics_enabled:
         blueprints.append(('services.metrics.blueprints.metrics', '/metrics'))
+
+    if importlib_util.find_spec('byceps.services.lan_tournament.blueprints.admin'):
+        blueprints.append(
+            ('services.lan_tournament.blueprints.admin', '/lan-tournaments')
+        )
+    else:
+        log.warning(
+            'Module byceps.services.lan_tournament.blueprints.admin '
+            'is not importable; skipping admin blueprints for lan_tournament'
+        )
 
     register_blueprints(app, blueprints)

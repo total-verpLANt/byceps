@@ -1,0 +1,153 @@
+{% extends 'layout/base.html' %}
+{% from 'macros/icons.html' import render_icon %}
+{% from 'macros/misc.html' import render_tag %}
+{% set page_title = [_('Match'), tournament.name] %}
+
+{% block head %}
+<style>
+  .match-detail {
+    margin-top: 1.5rem;
+  }
+
+  .match-header {
+    text-align: center;
+    margin-bottom: 2rem;
+  }
+
+  .match-header h1 {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .contestants-box {
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    padding: 2rem;
+    background-color: #f5f5f5;
+    border-radius: 8px;
+    margin-bottom: 2rem;
+  }
+
+  .contestant {
+    text-align: center;
+    flex: 1;
+  }
+
+  .contestant-name {
+    font-size: 1.5rem;
+    font-weight: bold;
+    margin-bottom: 0.5rem;
+  }
+
+  .contestant-score {
+    font-size: 3rem;
+    font-weight: bold;
+    color: #333;
+  }
+
+  .vs-divider {
+    font-size: 2rem;
+    font-weight: bold;
+    color: #999;
+    padding: 0 1rem;
+  }
+
+  .comments-section {
+    margin-top: 2rem;
+  }
+
+  .comment {
+    padding: 1rem;
+    background-color: #f9f9f9;
+    border-left: 3px solid #ccc;
+    margin-bottom: 1rem;
+  }
+
+  .comment-author {
+    font-weight: bold;
+    margin-bottom: 0.25rem;
+  }
+
+  .comment-text {
+    margin-bottom: 0.5rem;
+  }
+
+  .comment-timestamp {
+    font-size: 0.875rem;
+    color: #666;
+  }
+</style>
+{%- endblock %}
+
+{% block body %}
+
+  <nav class='breadcrumbs'>
+    <ol>
+      <li><a href='{{ url_for('.index') }}'>{{ _('Tournaments') }}</a></li>
+      <li><a href='{{ url_for('.view', tournament_id=tournament.id) }}'>
+        {{ tournament.name }}
+      </a></li>
+      <li><a href='{{ url_for('.matches', tournament_id=tournament.id) }}'>
+        {{ _('Matches') }}
+      </a></li>
+    </ol>
+  </nav>
+
+  <div class='match-detail'>
+    <div class='match-header'>
+      <h1>{{ _('Match #') }}{{ match.match_order }}</h1>
+      {%- if match.confirmed_by %}
+        {{ render_tag(_('Confirmed'), class='color-success') }}
+      {%- else %}
+        {{ render_tag(_('Pending'), class='color-warning') }}
+      {%- endif %}
+    </div>
+
+    {# Contestants display #}
+    <div class='contestants-box'>
+      {%- for contestant in contestants %}
+      <div class='contestant'>
+        <div class='contestant-name'>
+          {%- if contestant.team_id %}
+            {{ _('Team') }}<br>{{ contestant.team_id }}
+          {%- elif contestant.participant_id %}
+            {{ _('Player') }}<br>{{ contestant.participant_id }}
+          {%- else %}
+            BYE
+          {%- endif %}
+        </div>
+        <div class='contestant-score'>
+          {{ contestant.score|default('–', true) }}
+        </div>
+      </div>
+      {%- if not loop.last %}
+      <div class='vs-divider'>vs</div>
+      {%- endif %}
+      {%- endfor %}
+    </div>
+
+    {# Comments section #}
+    <div class='comments-section'>
+      <h2>{{ _('Comments') }}</h2>
+
+      {%- if comments %}
+      <div>
+        {%- for comment in comments %}
+        <div class='comment'>
+          <div class='comment-author'>{{ comment.created_by }}</div>
+          <div class='comment-text'>{{ comment.comment }}</div>
+          <div class='comment-timestamp'>
+            {{ comment.created_at|dateformat }},
+            {{ comment.created_at|timeformat('short') }}
+          </div>
+        </div>
+        {%- endfor %}
+      </div>
+      {%- else %}
+      <p class='dimmed'>{{ _('No comments yet.') }}</p>
+      {%- endif %}
+    </div>
+  </div>
+
+{%- endblock %}

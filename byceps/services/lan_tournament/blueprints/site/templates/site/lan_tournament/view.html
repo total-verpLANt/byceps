@@ -1,0 +1,192 @@
+{% extends 'layout/base.html' %}
+{% from 'macros/icons.html' import render_icon %}
+{% from 'macros/misc.html' import render_tag %}
+{% set page_title = [_('Tournament'), tournament.name] %}
+
+{% block head %}
+<style>
+  .tournament-header {
+    margin-bottom: 1.5rem;
+    margin-top: 1rem;
+    min-height: 5.5rem;
+  }
+
+  .tournament-header h1 {
+    margin: 0;
+    padding: 0;
+  }
+
+  .tournament-icon img {
+    height: 64px;
+    width: 64px;
+    display: block;
+    border-radius: 4px;
+  }
+
+  .tournament-icon .icon {
+    font-size: 4rem;
+  }
+
+  .tournament-details .data-label {
+    margin-top: 0.75rem;
+  }
+
+  .progress {
+    background-color: #cccccc;
+    height: 0.3rem;
+    width: 4rem;
+  }
+
+  .progress-bar {
+    box-shadow: 1px 0 1px #333;
+  }
+
+  .progress-bar.color--available {
+    background-color: #11aa22;
+  }
+
+  .progress-bar.color--scarce {
+    background-color: #eecc00;
+  }
+
+  .progress-bar.color--full {
+    background-color: #ee3322;
+  }
+</style>
+{%- endblock %}
+
+{% block body %}
+
+  <nav class="breadcrumbs">
+    <ol>
+      <li><a href="{{ url_for('.index') }}">{{ _('Tournaments') }}</a></li>
+    </ol>
+  </nav>
+
+  <div class="tournament-header">
+    <div class="row">
+      <div>
+        <div class="tournament-icon">
+          {%- if tournament.image_url %}
+            <img src="{{ tournament.image_url }}" alt="">
+          {%- else %}
+            {{ render_icon('trophy') }}
+          {%- endif %}
+        </div>
+      </div>
+      <div>
+        <h1 class="title">{{ tournament.name }}</h1>
+        {%- if tournament.game %}
+        <div class="dimmed">{{ tournament.game }}</div>
+        {%- endif %}
+      </div>
+    </div>
+  </div>
+
+  {# Status badge #}
+  {%- if tournament.tournament_status %}
+  <div class="block">
+    {%- if tournament.tournament_status.name == 'REGISTRATION_OPEN' %}
+      {{ render_tag(_('Registration open'), class='color-info') }}
+    {%- elif tournament.tournament_status.name == 'REGISTRATION_CLOSED' %}
+      {{ render_tag(_('Registration closed'), class='color-warning') }}
+    {%- elif tournament.tournament_status.name == 'ONGOING' %}
+      {{ render_tag(_('Ongoing'), class='color-success') }}
+    {%- elif tournament.tournament_status.name == 'PAUSED' %}
+      {{ render_tag(_('Paused'), class='color-warning') }}
+    {%- elif tournament.tournament_status.name == 'COMPLETED' %}
+      {{ render_tag(_('Completed'), class='color-success') }}
+    {%- elif tournament.tournament_status.name == 'CANCELLED' %}
+      {{ render_tag(_('Cancelled'), class='color-danger') }}
+    {%- endif %}
+  </div>
+  {%- endif %}
+
+  {# Tournament details #}
+  <div class="tournament-details block">
+    {%- if tournament.start_time %}
+    <div class="data-label">{{ _('Start') }}</div>
+    <div class="data-value">{{ tournament.start_time|dateformat('EEEE') }}, {{ tournament.start_time|timeformat('short') }}</div>
+    {%- endif %}
+
+    {%- if tournament.tournament_mode %}
+    <div class="data-label">{{ _('Mode') }}</div>
+    <div class="data-value">{{ tournament.tournament_mode.name|replace('_', ' ')|title }}</div>
+    {%- endif %}
+
+    {%- if tournament.contestant_type %}
+    <div class="data-label">{{ _('Type') }}</div>
+    <div class="data-value">{{ tournament.contestant_type.name|title }}</div>
+    {%- endif %}
+  </div>
+
+  {%- if tournament.description %}
+  <div class="box block">
+    <div class="data-label">{{ _('Description') }}</div>
+    <div class="data-value" style="white-space: pre-wrap;">{{ tournament.description }}</div>
+  </div>
+  {%- endif %}
+
+  {%- if tournament.ruleset %}
+  <div class="box block">
+    <div class="data-label">{{ _('Ruleset') }}</div>
+    <div class="data-value" style="white-space: pre-wrap;">{{ tournament.ruleset }}</div>
+  </div>
+  {%- endif %}
+
+  {# Participants section #}
+  <h2>
+    <div class="row" style="align-items: center;">
+      <div>
+        {{ _('Participants') }}
+      </div>
+      {%- if tournament.max_players %}
+      <div>
+        <div class="progress">
+          {%- set percentage = (100 * participant_count / tournament.max_players) if tournament.max_players else 0 %}
+          <div class="progress-bar color--{% if percentage < 100 %}{% if percentage < 70 %}available{% else %}scarce{% endif %}{% else %}full{% endif %}" style="width: {{ percentage }}%;"></div>
+        </div>
+      </div>
+      <div>
+        <small class="dimmed nowrap">{{ participant_count }} / {{ tournament.max_players }}</small>
+      </div>
+      {%- else %}
+      <div>
+        <small class="dimmed nowrap">{{ participant_count }}</small>
+      </div>
+      {%- endif %}
+    </div>
+  </h2>
+
+  {# Join/Leave buttons #}
+  {%- if can_join %}
+  <div class="block">
+    <form action="{{ url_for('.join', tournament_id=tournament.id) }}" method="post">
+      <button type="submit" class="button color-info">{{ _('Join tournament') }}</button>
+    </form>
+  </div>
+  {%- elif can_leave %}
+  <div class="block">
+    <form action="{{ url_for('.leave', tournament_id=tournament.id) }}" method="post">
+      <button type="submit" class="button color-warning">{{ _('Leave tournament') }}</button>
+    </form>
+  </div>
+  {%- elif current_user_participant %}
+  <div class="block">
+    <p class="dimmed">{{ _('You are registered for this tournament.') }}</p>
+  </div>
+  {%- endif %}
+
+  <div class="main-body-box">
+  {%- if participants %}
+    <ul>
+      {%- for participant in participants %}
+      <li>{{ participant.user_id }}</li>
+      {%- endfor %}
+    </ul>
+  {%- else %}
+    <p class="dimmed">{{ _('No participants have registered yet.') }}</p>
+  {%- endif %}
+  </div>
+
+{%- endblock %}

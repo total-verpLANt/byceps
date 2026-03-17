@@ -1,0 +1,19 @@
+{% extends 'layout/admin/base.html' %}
+{% from 'macros/admin.html' import render_main_tabs %}
+{% set current_page = 'lan_tournament_admin' %}
+
+{% block before_body %}
+  {%- with party = current_page_party %}
+{{
+  render_main_tabs(
+    Navigation()
+      .add_item(
+        url_for('lan_tournament_admin.index', party_id=party.id),
+        _('Tournaments'),
+        id='tournaments',
+        required_permission='lan_tournament.view')
+    , current_tab
+  )
+}}
+  {%- endwith %}
+{%- endblock %}

@@ -1,0 +1,27 @@
+{% extends 'layout/base.html' %}
+{% from 'site/lan_tournament/_bracket_macros.html' import render_bracket %}
+{% set page_title = [_('Bracket'), tournament.name] %}
+
+{% block body %}
+
+  <nav class='breadcrumbs'>
+    <ol>
+      <li><a href='{{ url_for('.index') }}'>{{ _('Tournaments') }}</a></li>
+      <li><a href='{{ url_for('.view', tournament_id=tournament.id) }}'>
+        {{ tournament.name }}
+      </a></li>
+    </ol>
+  </nav>
+
+  <h1 class='title'>{{ _('Tournament Bracket') }}</h1>
+
+  {{ render_bracket(match_data, tournament) }}
+
+  <div style='text-align: center; margin-top: 2rem;'>
+    <a href='{{ url_for('.matches', tournament_id=tournament.id) }}'
+       class='button'>
+      {{ _('View Matches List') }}
+    </a>
+  </div>
+
+{%- endblock %}

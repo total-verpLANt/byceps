@@ -1,0 +1,28 @@
+{% extends 'layout/admin/lan_tournament.html' %}
+{% from 'macros/admin.html' import render_backlink %}
+{% from 'macros/forms.html' import form_buttons, form_field %}
+{% set current_page_party = party %}
+{% set current_tab = 'tournaments' %}
+{% set page_title = _('Create team') %}
+
+{% block before_body %}
+{{ render_backlink(url_for('.teams_for_tournament', tournament_id=tournament.id), _('Teams')) }}
+{%- endblock %}
+
+{% block body %}
+
+  <h1 class="title">{{ page_title }}</h1>
+
+  <form action="{{ url_for('.create_team', tournament_id=tournament.id) }}" method="post">
+    <div class="box">
+      {{ form_field(form.name, autofocus='autofocus') }}
+      {{ form_field(form.tag) }}
+      {{ form_field(form.description) }}
+      {{ form_field(form.image_url) }}
+      {{ form_field(form.join_code, type='password') }}
+    </div>
+
+    {{ form_buttons(_('Create'), cancel_url=url_for('.teams_for_tournament', tournament_id=tournament.id)) }}
+  </form>
+
+{%- endblock %}
