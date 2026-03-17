@@ -1,0 +1,118 @@
+{% extends 'layout/base.html' %}
+{% from 'macros/icons.html' import render_icon %}
+{% from 'macros/misc.html' import render_tag %}
+{% set page_title = _('Tournaments') %}
+
+{% block head %}
+<style>
+  .tournament-card {
+    display: flex;
+    gap: 1rem;
+    padding: 1rem;
+    align-items: center;
+  }
+
+  .tournament-card + .tournament-card {
+    border-top: 1px solid var(--color-border, #ddd);
+  }
+
+  .tournament-icon img {
+    height: 48px;
+    width: 48px;
+    display: block;
+    border-radius: 4px;
+  }
+
+  .tournament-icon .icon {
+    font-size: 2.5rem;
+  }
+
+  .tournament-info {
+    flex: 1;
+  }
+
+  .tournament-name {
+    font-weight: bold;
+    font-size: 1.1em;
+  }
+
+  .tournament-game {
+    color: var(--color-dimmed, #888);
+    font-size: 0.9em;
+  }
+
+  .tournament-meta {
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .tournament-participants {
+    font-size: 1.2em;
+    font-weight: bold;
+  }
+
+  .tournament-start {
+    font-size: 0.85em;
+    color: var(--color-dimmed, #888);
+  }
+</style>
+{%- endblock %}
+
+{% block body %}
+
+  <h1 class="title">{{ page_title }}</h1>
+
+  <div class="main-body-box">
+  {%- if tournaments %}
+    {%- for tournament in tournaments %}
+    <div class="tournament-card">
+      <div class="tournament-icon">
+        {%- if tournament.image_url %}
+          <img src="{{ tournament.image_url }}" alt="">
+        {%- else %}
+          {{ render_icon('trophy') }}
+        {%- endif %}
+      </div>
+      <div class="tournament-info">
+        <a href="{{ url_for('.view', tournament_id=tournament.id) }}" class="disguised">
+          <div class="tournament-name">{{ tournament.name }}</div>
+          {%- if tournament.game %}
+          <div class="tournament-game">{{ tournament.game }}</div>
+          {%- endif %}
+        </a>
+        {%- if tournament.tournament_status %}
+          {%- if tournament.tournament_status.name == 'REGISTRATION_OPEN' %}
+            {{ render_tag(_('Registration open'), class='color-info') }}
+          {%- elif tournament.tournament_status.name == 'REGISTRATION_CLOSED' %}
+            {{ render_tag(_('Registration closed'), class='color-warning') }}
+          {%- elif tournament.tournament_status.name == 'ONGOING' %}
+            {{ render_tag(_('Ongoing'), class='color-success') }}
+          {%- elif tournament.tournament_status.name == 'PAUSED' %}
+            {{ render_tag(_('Paused'), class='color-warning') }}
+          {%- elif tournament.tournament_status.name == 'COMPLETED' %}
+            {{ render_tag(_('Completed'), class='color-success') }}
+          {%- elif tournament.tournament_status.name == 'CANCELLED' %}
+            {{ render_tag(_('Cancelled'), class='color-danger') }}
+          {%- endif %}
+        {%- endif %}
+      </div>
+      <div class="tournament-meta">
+        {%- if tournament.max_players %}
+        <div class="tournament-participants">
+          {{ participant_counts.get(tournament.id, 0) }} / {{ tournament.max_players }}
+        </div>
+        {%- endif %}
+        {%- if tournament.start_time %}
+        <div class="tournament-start">
+          {{ tournament.start_time|dateformat }}, {{ tournament.start_time|timeformat('short') }}
+        </div>
+        {%- endif %}
+      </div>
+    </div>
+    {%- endfor %}
+  {%- else %}
+    <p class="dimmed">{{ _('No tournaments found.') }}</p>
+  {%- endif %}
+  </div>
+
+{%- endblock %}

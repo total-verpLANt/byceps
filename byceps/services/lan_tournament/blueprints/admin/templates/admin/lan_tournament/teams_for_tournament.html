@@ -1,0 +1,78 @@
+{% extends 'layout/admin/lan_tournament.html' %}
+{% from 'macros/admin.html' import render_extra_in_heading %}
+{% from 'macros/icons.html' import render_icon %}
+{% set current_page_party = party %}
+{% set page_title = [_('LAN'), party.title, _('Tournaments'), tournament.name, _('Teams')] %}
+
+{% block head %}
+  <style>
+    .team-list .column-name {
+      width: 30%;
+    }
+    .column-tag {
+      width: 10%;
+    }
+    .column-members {
+      width: 10%;
+      text-align: center;
+    }
+  </style>
+{%- endblock %}
+
+{% block body %}
+
+  <nav class="breadcrumbs">
+    <ol>
+      <li><a href="{{ url_for('.index', party_id=party.id) }}">{{ party.title }}</a></li>
+      <li><a href="{{ url_for('.view', tournament_id=tournament.id) }}">{{ tournament.name }}</a></li>
+    </ol>
+  </nav>
+
+  <h1 class="title">{{ _('Teams') }}</h1>
+
+  <div class="button-row is-right-aligned block">
+    <a href="{{ url_for('.create_team_form', tournament_id=tournament.id) }}" class="button">{{ render_icon('add') }} <span>{{ _('Create team') }}</span></a>
+  </div>
+
+  {%- if teams %}
+  <table class="itemlist is-vcentered is-wide team-list">
+    <thead>
+      <tr>
+        <th class="column-name">{{ _('Name') }}</th>
+        <th class="column-tag">{{ _('Tag') }}</th>
+        <th class="column-members">{{ _('Members') }}</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {%- for team in teams %}
+      <tr>
+        <td class="column-name">{{ team.name }}</td>
+        <td class="column-tag">
+          {%- if team.tag %}
+            <span class="dimmed">[{{ team.tag }}]</span>
+          {%- endif %}
+        </td>
+        <td class="column-members">
+          {# TODO: Show actual member count #}
+          -
+        </td>
+        <td class="bared">
+          <div class="button-row is-compact is-right-aligned">
+            <a href="{{ url_for('.update_team_form', team_id=team.id) }}" class="button is-compact" title="{{ _('Edit') }}">{{ render_icon('edit') }}</a>
+            <form action="{{ url_for('.delete_team', team_id=team.id) }}" method="post" style="display: inline;">
+              <button type="submit" class="button is-compact" title="{{ _('Delete') }}" onclick="return confirm('{{ _('Delete team?') }}');">{{ render_icon('delete') }}</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+  {%- else %}
+  <div class="box">
+    <div class="dimmed">{{ _('No teams have been created yet.') }}</div>
+  </div>
+  {%- endif %}
+
+{%- endblock %}
