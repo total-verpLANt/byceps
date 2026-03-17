@@ -1,7 +1,7 @@
 {% extends 'layout/site/lan_tournament.html' %}
 {% from 'macros/icons.html' import render_icon %}
 {% from 'macros/misc.html' import render_tag %}
-{% from 'macros/lan_tournament.html' import render_hover_name %}
+{% from 'macros/lan_tournament.html' import render_hover_name, render_match_ref %}
 {% set page_title = [_('Match'), tournament.name] %}
 
 {% block body %}
@@ -20,7 +20,7 @@
 
   <div class='match-detail'>
     <div class='match-header'>
-      <h1>{{ _('Match #') }}{{ match.match_order }}</h1>
+      <h1>{{ render_match_ref(match) }}</h1>
       {%- if match.confirmed_by and contestants|selectattr('team_id')|list|length + contestants|selectattr('participant_id')|list|length < 2 %}
         {{ render_tag(_('DEFWIN'), class='color-info') }}
       {%- elif match.confirmed_by %}

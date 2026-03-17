@@ -1,7 +1,7 @@
 {% extends 'layout/site/lan_tournament.html' %}
 {% from 'macros/icons.html' import render_icon %}
 {% from 'macros/misc.html' import render_tag %}
-{% from 'macros/lan_tournament.html' import render_hover_name %}
+{% from 'macros/lan_tournament.html' import render_hover_name, render_match_ref %}
 {% set page_title = [_('Matches'), tournament.name] %}
 
 {% block body %}
@@ -39,7 +39,7 @@
        data-participant-ids='{{ contestants|selectattr("participant_id")|map(attribute="participant_id")|join(",") }}'>
       <div class='match-row'>
         <div class='match-number'>
-          {{ _('Match') }} #{{ match.match_order }}
+          {{ render_match_ref(match) }}
         </div>
         <div class='match-contestants'>
           {%- for contestant in contestants %}

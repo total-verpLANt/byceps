@@ -2,7 +2,7 @@
 {% from 'macros/admin.html' import render_backlink %}
 {% from 'macros/icons.html' import render_icon %}
 {% from 'macros/misc.html' import render_tag %}
-{% from 'macros/lan_tournament.html' import render_hover_name, hover_card_styles %}
+{% from 'macros/lan_tournament.html' import render_hover_name, render_match_ref, hover_card_styles %}
 {% set current_page_party = party %}
 {% set current_tab = 'tournaments' %}
 {% set page_title = [_('Matches'), tournament.name, party.title] %}
@@ -22,7 +22,7 @@
   <table class='table table--wide'>
     <thead>
       <tr>
-        <th>{{ _('Match #') }}</th>
+        <th>{{ _('Match') }}</th>
         <th>{{ _('Contestants') }}</th>
         <th>{{ _('Score') }}</th>
         <th>{{ _('Status') }}</th>
@@ -34,7 +34,7 @@
       {%- set match = data.match %}
       {%- set contestants = data.contestants %}
       <tr>
-        <td>{{ match.match_order }}</td>
+        <td>{{ render_match_ref(match) }}</td>
         <td>
           {%- if contestants|length == 1 %}
             {# Defwin match: only one contestant, free advancement #}
