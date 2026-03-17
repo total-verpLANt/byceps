@@ -16,8 +16,6 @@
 
   {{ render_tournament_subnav(tournament, active_tab) }}
 
-  <h1 class='title'>{{ _('Highscore Leaderboard') }}</h1>
-
   {{ render_highscore_leaderboard(leaderboard, tournament, teams_by_id=teams_by_id, participants_by_id=participants_by_id) }}
 
   {% if g.user.authenticated %}

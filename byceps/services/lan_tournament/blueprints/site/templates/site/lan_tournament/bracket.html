@@ -15,8 +15,6 @@
 
   {{ render_tournament_subnav(tournament, active_tab) }}
 
-  <h1 class='title'>{{ _('Tournament Bracket') }}</h1>
-
   {% if tournament.tournament_mode and tournament.tournament_mode.name == 'ROUND_ROBIN' %}
     {{ render_round_robin_standings(standings, tournament, teams_by_id=teams_by_id, participants_by_id=participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id) }}
   {% else %}
