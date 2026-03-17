@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import NewType
 from uuid import UUID
 
-from byceps.services.user.models.user import UserID
+from byceps.services.user.models import UserID
 from .bracket import Bracket
 from .tournament import TournamentID
 

@@ -2,7 +2,7 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from typing import NamedTuple
 
-from byceps.services.user.models.user import UserID
+from byceps.services.user.models import UserID
 from byceps.util.result import Err, Ok, Result
 from byceps.util.uuid import generate_uuid7
 

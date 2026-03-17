@@ -42,7 +42,7 @@ from byceps.services.lan_tournament.lan_tournament_view_helpers import (
     serialize_bracket_json,
 )
 from byceps.services.party.models import PartyID
-from byceps.services.user.models.user import User, UserID
+from byceps.services.user.models import User, UserID
 
 from tests.helpers import generate_uuid
 

@@ -22,7 +22,7 @@ from byceps.services.lan_tournament.models.tournament import TournamentID
 from byceps.services.lan_tournament.lan_tournament_view_helpers import (
     build_round_robin_standings,
 )
-from byceps.services.user.models.user import UserID
+from byceps.services.user.models import UserID
 
 from tests.helpers import generate_uuid
 

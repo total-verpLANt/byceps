@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 from sqlalchemy.exc import IntegrityError
 
 from byceps.database import db
-from byceps.services.user.models.user import UserID
+from byceps.services.user.models import UserID
 from byceps.util.result import Err, Ok, Result
 from byceps.util.uuid import generate_uuid7
 
