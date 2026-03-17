@@ -7,6 +7,8 @@
 {% endblock %}
 
 {% block body %}
+{# Ticket URL is used in multiple branches below; define once globally. #}
+{% set ticket_url = url_for('shop_order.order_form') if g.party else '/shop' %}
 {#
   Template Variables:
   - g.party.starts_at: DateTime - Event start date/time
@@ -74,11 +76,6 @@
         </div>
 
         <div class="landing-hero__cta">
-          {# Defensive fallback: use /shop if party context missing #}
-          {% set ticket_url = '/shop' %}
-          {% if g.party %}
-            {% set ticket_url = url_for('shop_order.order_form') %}
-          {% endif %}
           <a href="{{ ticket_url }}"
              class="btn btn-primary btn-lg"
              {% if g.party -%}
