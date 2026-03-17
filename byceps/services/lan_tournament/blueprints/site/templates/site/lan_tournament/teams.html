@@ -1,5 +1,6 @@
 {% extends 'layout/site/lan_tournament.html' %}
 {% from 'macros/icons.html' import render_icon %}
+{% from 'macros/lan_tournament.html' import render_tournament_subnav %}
 {% set page_title = [_('Tournament'), tournament.name, _('Teams')] %}
 
 {% block body %}
@@ -10,6 +11,8 @@
       <li><a href="{{ url_for('.view', tournament_id=tournament.id) }}">{{ tournament.name }}</a></li>
     </ol>
   </nav>
+
+  {{ render_tournament_subnav(tournament, active_tab) }}
 
   <h1 class="title">{{ _('Teams') }}</h1>
 

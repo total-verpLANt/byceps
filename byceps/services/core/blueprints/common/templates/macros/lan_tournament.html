@@ -30,6 +30,32 @@
 </span>
 {%- endmacro -%}
 
+
+{# ── Tournament sub-navigation ────────────────────────────── #}
+
+{% macro render_tournament_subnav(tournament, active_tab='') -%}
+{%- set is_team = tournament.contestant_type and tournament.contestant_type.name == 'TEAM' -%}
+<div class="button-row subnav block">
+  <a class="button{% if active_tab == 'overview' %} button--current{% else %} secondary{% endif %}" href="{{ url_for('lan_tournament.view', tournament_id=tournament.id) }}">{{ _('Overview') }}</a>
+  {%- if is_team %}
+  <a class="button{% if active_tab == 'teams' %} button--current{% else %} secondary{% endif %}" href="{{ url_for('lan_tournament.teams', tournament_id=tournament.id) }}">{{ _('Teams') }}</a>
+  {%- endif %}
+  <a class="button{% if active_tab == 'matches' %} button--current{% else %} secondary{% endif %}" href="{{ url_for('lan_tournament.matches', tournament_id=tournament.id) }}">{{ _('Matches') }}</a>
+  {% if tournament.tournament_mode and tournament.tournament_mode.name == 'HIGHSCORE' %}
+  <a class="button{% if active_tab == 'highscore' %} button--current{% else %} secondary{% endif %}" href="{{ url_for('lan_tournament.highscore', tournament_id=tournament.id) }}">{{ _('Leaderboard') }}</a>
+  {% else %}
+  <a class="button{% if active_tab == 'bracket' %} button--current{% else %} secondary{% endif %}" href="{{ url_for('lan_tournament.bracket', tournament_id=tournament.id) }}">
+    {%- if tournament.tournament_mode and tournament.tournament_mode.name == 'ROUND_ROBIN' -%}
+      {{ _('Standings') }}
+    {%- else -%}
+      {{ _('Bracket') }}
+    {%- endif -%}
+  </a>
+  {% endif %}
+</div>
+{%- endmacro %}
+
+
 {%- macro hover_card_styles() -%}
 <style>
 .lt-hover-wrap {

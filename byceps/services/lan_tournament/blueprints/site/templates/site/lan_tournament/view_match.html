@@ -1,7 +1,7 @@
 {% extends 'layout/site/lan_tournament.html' %}
 {% from 'macros/icons.html' import render_icon %}
 {% from 'macros/misc.html' import render_tag %}
-{% from 'macros/lan_tournament.html' import render_hover_name, render_match_ref %}
+{% from 'macros/lan_tournament.html' import render_hover_name, render_match_ref, render_tournament_subnav %}
 {% set page_title = [_('Match'), tournament.name] %}
 
 {% block body %}
@@ -17,6 +17,8 @@
       </a></li>
     </ol>
   </nav>
+
+  {{ render_tournament_subnav(tournament, active_tab) }}
 
   <div class='match-detail'>
     <div class='match-header'>
