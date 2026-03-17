@@ -65,32 +65,59 @@
 
     {# Score entry — visible only when user may submit (participant, not confirmed, not winner, not DEFWIN) #}
     {% if current_user_can_submit %}
-    <div class="score-submit">
-      <h2>{{ _('Submit Scores') }}</h2>
-      <form method='post' action='{{ url_for('.set_score', match_id=match.id) }}'>
-        {% for contestant in contestants if contestant.participant_id or contestant.team_id %}
-        <div class="match-score-field">
-          <label>
-            {%- if contestant.team_id -%}
-              {{ teams_by_id.get(contestant.team_id).name|default(contestant.team_id|string) }}
-            {%- elif contestant.participant_id -%}
-              {{ participants_by_id.get(contestant.participant_id).screen_name|default(contestant.participant_id|string) }}
-            {%- else -%}{{ _('defwin') }}{%- endif -%}
-          </label>
-          <input type='hidden' name='contestant_id'
-                 value='{{ contestant.participant_id or contestant.team_id }}'>
-          <input type='number' name='score' min='0'
-                 value='{{ contestant.score if contestant.score is not none else "" }}' required>
+    <div class="score-submit-card block" data-score-submit-state="editable">
+      <div class="score-submit-head">
+        <h2 class="title score-submit-title">{{ _('Submit Scores') }}</h2>
+        {%- if current_user_is_loser %}
+        <span class="tag">{{ _('Loser submits') }}</span>
+        {%- endif %}
+      </div>
+      <p class="score-submit-copy">
+        {%- if current_user_is_loser -%}
+          {{ _('Enter the final score for this match.') }}
+        {%- else -%}
+          {{ _('The losing side submits the final score.') }}
+        {%- endif -%}
+      </p>
+
+      <form method='post' action='{{ url_for('.set_score', match_id=match.id) }}' class="score-submit-form">
+        <div class="score-submit-grid" role="group" aria-label="{{ _('Match Score') }}">
+          {%- for contestant in contestants if contestant.participant_id or contestant.team_id %}
+          {%- if not loop.first %}
+          <div class="score-submit-versus" aria-hidden="true">:</div>
+          {%- endif %}
+          <div class="score-submit-side">
+            <label class="score-submit-team-label" for="score_{{ loop.index }}">
+              <span class="score-submit-team-name">
+                {%- if contestant.team_id -%}
+                  {{ teams_by_id.get(contestant.team_id).name|default(contestant.team_id|string) }}
+                {%- elif contestant.participant_id -%}
+                  {{ participants_by_id.get(contestant.participant_id).screen_name|default(contestant.participant_id|string) }}
+                {%- endif -%}
+              </span>
+            </label>
+            <input type='hidden' name='contestant_id'
+                   value='{{ contestant.participant_id or contestant.team_id }}'>
+            <input class="score-submit-input" type='number' name='score'
+                   id="score_{{ loop.index }}" min='0' max='999999999'
+                   value='{{ contestant.score if contestant.score is not none else "" }}'
+                   inputmode="numeric" required>
+          </div>
+          {%- endfor %}
         </div>
-        {% endfor %}
-        <button type='submit'>{{ _('Save Scores') }}</button>
+
+        <div class="button-row score-submit-actions">
+          <button type='submit' class='button is-compact secondary'>
+            <i class="fa fa-save" aria-hidden="true"></i> {{ _('Save Scores') }}
+          </button>
+        </div>
       </form>
     </div>
     {% endif %}
 
     {# Comments section #}
     <div class='comments-section'>
-      <h2>{{ _('Comments') }}</h2>
+      <h2 class="title">{{ _('Comments') }}</h2>
 
       {%- if comments %}
       <div>
