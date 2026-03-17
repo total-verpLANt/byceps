@@ -953,6 +953,7 @@
 .score-submit-input[type="number"] {
   -moz-appearance: textfield;
   appearance: textfield;
+  text-align: center;
 }
 
 .score-submit-card[data-score-submit-state="locked"] .score-submit-side {
