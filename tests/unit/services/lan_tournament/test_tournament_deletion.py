@@ -24,7 +24,7 @@ from byceps.services.lan_tournament.models.tournament_team import (
     TournamentTeam,
     TournamentTeamID,
 )
-from byceps.services.user.models.user import UserID
+from byceps.services.user.models import UserID
 
 from tests.helpers import generate_uuid
 

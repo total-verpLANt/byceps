@@ -10,8 +10,8 @@ from byceps.services.lan_tournament.models.tournament import (
 from byceps.services.lan_tournament.models.tournament_team import (
     TournamentTeamID,
 )
-from byceps.services.user.dbmodels.user import DbUser
-from byceps.services.user.models.user import UserID
+from byceps.services.user.dbmodels import DbUser
+from byceps.services.user.models import UserID
 from byceps.util.instances import ReprBuilder
 from byceps.util.uuid import generate_uuid7
 

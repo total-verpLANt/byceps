@@ -6,7 +6,7 @@ from sqlalchemy import delete, select, update
 
 from byceps.database import db
 from byceps.services.party.models import PartyID
-from byceps.services.user.models.user import UserID
+from byceps.services.user.models import UserID
 from byceps.util.result import Err, Ok, Result
 
 from .dbmodels.match import DbTournamentMatch

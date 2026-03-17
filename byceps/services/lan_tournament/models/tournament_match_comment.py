@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import NewType
 from uuid import UUID
 
-from byceps.services.user.models.user import UserID
+from byceps.services.user.models import UserID
 from .tournament_match import TournamentMatchID
 
 TournamentMatchCommentID = NewType('TournamentMatchCommentID', UUID)

@@ -292,4 +292,4 @@ def get_match_label(match_event) -> str:
 
 
 def get_participant_label(participant: EventTourneyParticipant | None) -> str:
-    return participant.name if (participant is not None) else gettext('defwin')
+    return participant.name if (participant is not None) else gettext('bye')

@@ -33,7 +33,7 @@ from byceps.services.lan_tournament.tournament_domain_service import (
 )
 from byceps.services.party.models import PartyID
 from byceps.services.user import user_service
-from byceps.services.user.models.user import User, UserID
+from byceps.services.user.models import User, UserID
 
 
 def build_contestant_name_lookups(

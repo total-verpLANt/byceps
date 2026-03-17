@@ -30,7 +30,7 @@ from byceps.services.lan_tournament.models.tournament_mode import (
 )
 from byceps.services.party import party_service
 from byceps.services.user import user_service
-from byceps.services.user.models.user import UserID
+from byceps.services.user.models import UserID
 from byceps.util.framework.blueprint import create_blueprint
 from byceps.util.framework.flash import flash_error, flash_success
 from byceps.util.framework.templating import templated

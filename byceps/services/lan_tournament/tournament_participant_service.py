@@ -5,7 +5,7 @@ from sqlalchemy import select
 from byceps.database import db
 from byceps.services.party.models import PartyID
 from byceps.services.ticketing import ticket_service
-from byceps.services.user.models.user import User, UserID
+from byceps.services.user.models import User, UserID
 from byceps.util.result import Err, Ok, Result
 from byceps.util.uuid import generate_uuid7
 
