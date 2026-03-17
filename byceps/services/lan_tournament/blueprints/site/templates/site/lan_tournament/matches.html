@@ -17,8 +17,6 @@
 
   {{ render_tournament_subnav(tournament, active_tab) }}
 
-  <h1 class='title'>{{ _('Matches') }}</h1>
-
   {%- if current_user_participant and match_data %}
   <div class='match-filter-bar'>
     <button type='button' id='match-filter-mine' class='button secondary'

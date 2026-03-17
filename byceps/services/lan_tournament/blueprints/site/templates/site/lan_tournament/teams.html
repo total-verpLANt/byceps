@@ -14,8 +14,6 @@
 
   {{ render_tournament_subnav(tournament, active_tab) }}
 
-  <h1 class="title">{{ _('Teams') }}</h1>
-
   {%- if g.user.authenticated and tournament.tournament_status.name == 'REGISTRATION_OPEN' %}
   <div class="block">
     <a href="{{ url_for('.create_team_form', tournament_id=tournament.id) }}" class="button color-info">{{ render_icon('add') }} {{ _('Create team') }}</a>
