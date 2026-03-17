@@ -74,6 +74,23 @@
 {%- endmacro -%}
 
 
+{%- macro render_match_ref(match) -%}
+{%- set r = (match.round or 0) + 1 -%}
+{%- set m = (match.match_order or 0) + 1 -%}
+{%- if match.bracket and match.bracket.value == 'GF' -%}
+GF M{{ m }}
+{%- elif match.bracket and match.bracket.value == 'P3' -%}
+P3 M{{ m }}
+{%- elif match.bracket and match.bracket.value == 'WB' -%}
+WB R{{ r }} M{{ m }}
+{%- elif match.bracket and match.bracket.value == 'LB' -%}
+LB R{{ r }} M{{ m }}
+{%- else -%}
+R{{ r }} M{{ m }}
+{%- endif -%}
+{%- endmacro -%}
+
+
 {%- macro bracket_all_styles(bracket_id='de') -%}
 <style>
 /* --- Hover card --- */
@@ -410,7 +427,7 @@
         {%- if _match_url %}<a href="{{ _match_url }}" class="bracket-match-link">{%- endif %}
         <div class='bracket-match-card {% if match.confirmed_by %}confirmed{% endif %} {% if contestants|length == 1 %}defwin{% endif %}'>
           <div class='bracket-match-header'>
-            {{ _('Match') }} #{{ match.match_order }}
+            {{ render_match_ref(match) }}
             {%- if contestants|length == 1 %}
               <span class='badge-defwin' title='{{ _("Free Win - Opponent advanced automatically") }}'>
                 {{ _('defwin') }}
@@ -501,7 +518,7 @@
   {%- if _match_url %}<a href="{{ _match_url }}" class="bracket-match-link">{%- endif %}
   <div class='bracket-list-item'>
     <div class='bracket-list-header'>
-      <strong>{{ _('Match') }} #{{ match.match_order }}</strong>
+      <strong>{{ render_match_ref(match) }}</strong>
       {%- if match.confirmed_by %}
         <span style='color: #28a745; margin-left: 0.5rem;'>✓</span>
       {%- endif %}
@@ -727,7 +744,7 @@
     {%- if _match_url %}<a href="{{ _match_url }}" class="bracket-match-link">{%- endif %}
     <div class='bracket-match-card {% if match.confirmed_by %}confirmed{% endif %} {% if contestants|length == 1 %}defwin{% endif %}'>
       <div class='bracket-match-header'>
-        {{ _('Match') }} #{{ match.match_order }}
+        {{ render_match_ref(match) }}
         {%- if contestants|length == 1 %}
           <span class='badge-defwin'
                 title='{{ _("Free Win") }}'>
@@ -881,7 +898,7 @@
   {%- if _match_url %}<a href="{{ _match_url }}" class="bracket-match-link">{%- endif %}
   <div class='bracket-list-item'>
     <div class='bracket-list-header'>
-      <strong>{{ _('Match') }} #{{ match.match_order }}</strong>
+      <strong>{{ render_match_ref(match) }}</strong>
       {%- if match.confirmed_by %}
         <span style='color: #28a745; margin-left: 0.5rem;'>
           ✓
