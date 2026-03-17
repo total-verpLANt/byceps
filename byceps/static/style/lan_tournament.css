@@ -769,12 +769,257 @@
 
 
 /* ------------------------------------------------------------
+   1m-ii. Match detail layout
+   ------------------------------------------------------------ */
+
+.match-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.match-header h1 {
+  margin: 0;
+}
+
+
+/* ------------------------------------------------------------
+   1m-iii. Score-submit-card (match detail score entry)
+   ------------------------------------------------------------ */
+
+.score-submit-card {
+  position: relative;
+  border: 1px solid color-mix(in srgb, var(--lt-brand-blue) 16%, var(--lt-border));
+  border-radius: 16px;
+  padding: 0.85rem 0.95rem;
+  margin: 0 auto 1rem;
+  width: min(100%, 700px);
+  background:
+    radial-gradient(circle at 14% 8%, color-mix(in srgb, var(--lt-brand-blue) 11%, transparent), transparent 40%),
+    linear-gradient(180deg, rgba(7, 19, 49, 0.72), rgba(5, 15, 38, 0.78));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 6px 16px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+}
+
+.score-submit-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 100%;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.18);
+  opacity: 0.45;
+}
+
+.score-submit-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.55rem;
+  margin-bottom: 0.3rem;
+}
+
+.score-submit-title {
+  font-size: clamp(0.92rem, 1.1vw, 1.05rem);
+  line-height: 1.15;
+}
+
+.score-submit-copy {
+  margin: 0 0 0.55rem;
+  color: var(--lt-muted);
+  max-width: 64ch;
+  font-size: 0.78rem;
+}
+
+.score-submit-form {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.score-submit-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: stretch;
+  gap: 0.45rem;
+}
+
+.score-submit-side {
+  display: grid;
+  gap: 0.34rem;
+  padding: 0.52rem 0.62rem 0.58rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.025);
+  transition: border-color 140ms ease, background 140ms ease;
+}
+
+.score-submit-side:hover {
+  border-color: color-mix(in srgb, var(--lt-brand-blue) 20%, white);
+  background: rgba(255, 255, 255, 0.038);
+}
+
+.score-submit-team-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.14rem;
+  min-width: 0;
+}
+
+.score-submit-team-name {
+  font-size: 0.9rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.score-submit-versus {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  justify-self: center;
+  align-self: center;
+  min-width: 1.75rem;
+  padding: 0;
+  color: var(--lt-muted);
+  font-size: 0.95rem;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  background: transparent;
+  border: 0;
+}
+
+.score-submit-input {
+  width: 100%;
+  min-height: 2.7rem;
+  border: 1px solid color-mix(in srgb, var(--lt-brand-blue) 24%, var(--lt-border));
+  border-radius: 12px;
+  background: rgba(2, 8, 20, 0.8);
+  color: var(--lt-text);
+  font: inherit;
+  font-size: clamp(1.15rem, 1.5vw, 1.38rem);
+  font-weight: 800;
+  text-align: center;
+  padding: 0.35rem 0.4rem;
+  outline: none;
+  transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;
+}
+
+.score-submit-input:focus-visible {
+  border-color: color-mix(in srgb, var(--lt-brand-blue) 62%, white);
+  background: rgba(3, 10, 28, 0.92);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--lt-brand-blue) 20%, transparent);
+}
+
+.score-submit-input::-webkit-outer-spin-button,
+.score-submit-input::-webkit-inner-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+
+.score-submit-input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.score-submit-card[data-score-submit-state="locked"] .score-submit-side {
+  opacity: 0.64;
+  filter: saturate(0.7);
+}
+
+.score-submit-card[data-score-submit-state="locked"] .score-submit-input,
+.score-submit-card[data-score-submit-state="locked"] .score-submit-actions .button {
+  pointer-events: none;
+}
+
+.score-submit-card[data-score-submit-state="locked"] .score-submit-actions .button {
+  opacity: 0.54;
+}
+
+.score-submit-actions {
+  margin-top: 0.05rem;
+  margin-bottom: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+}
+
+.score-submit-actions .button {
+  min-height: 2.15rem;
+  padding: 0.45rem 0.72rem;
+  font-size: 0.82rem;
+}
+
+
+/* ------------------------------------------------------------
+   1m-iv. Comments section & comment form
+   ------------------------------------------------------------ */
+
+.comments-section .title {
+  font-size: 1.1rem;
+  margin-bottom: 0.6rem;
+}
+
+.comment-form {
+  margin-top: 1rem;
+}
+
+.comment-form textarea {
+  width: 100%;
+  background: var(--lt-bg);
+  border: 1px solid var(--lt-border);
+  color: var(--lt-text);
+  border-radius: var(--lt-radius-sm);
+  padding: 0.6rem;
+  resize: vertical;
+}
+
+.comment-form textarea:focus-visible {
+  border-color: color-mix(in srgb, var(--lt-brand-blue) 74%, white);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--lt-brand-blue) 22%, transparent);
+  outline: none;
+}
+
+.comment-form button[type="submit"] {
+  margin-top: 0.5rem;
+}
+
+
+/* ------------------------------------------------------------
    1n. Responsive bracket wrapper
    ------------------------------------------------------------ */
 
 @media (max-width: 760px) {
   .bracket-desktop { display: none; }
   .bracket-mobile  { display: block; }
+
+  .score-submit-card {
+    padding: 0.72rem;
+  }
+
+  .score-submit-grid {
+    grid-template-columns: 1fr;
+    gap: 0.42rem;
+  }
+
+  .score-submit-side {
+    padding: 0.62rem;
+  }
+
+  .score-submit-versus {
+    min-height: 0;
+  }
+
+  .score-submit-input {
+    max-width: 100%;
+  }
+
+  .score-submit-actions {
+    justify-content: center;
+  }
 }
 
 @media (min-width: 761px) {
