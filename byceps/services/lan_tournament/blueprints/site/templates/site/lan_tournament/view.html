@@ -12,17 +12,15 @@
   </nav>
 
   <div class="tournament-header">
-    <div class="row">
-      <div>
-        <div class="tournament-icon">
-          {%- if tournament.image_url %}
-            <div class="tournament-media tournament-media--hero">
-              <img src="{{ tournament.image_url }}" alt="">
-            </div>
-          {%- else %}
-            {{ render_icon('trophy') }}
-          {%- endif %}
-        </div>
+    <div class="row is-vcentered">
+      <div class="tournament-icon">
+        {%- if tournament.image_url %}
+          <div class="tournament-media tournament-media--hero">
+            <img src="{{ tournament.image_url }}" alt="">
+          </div>
+        {%- else %}
+          {{ render_icon('trophy') }}
+        {%- endif %}
       </div>
       <div>
         <h1 class="title">{{ tournament.name }}</h1>
@@ -144,7 +142,7 @@
   </div>
   {%- endif %}
 
-  <div class="main-body-box">
+  <div class="main-body-box box block">
     <div class="data-label">{{ _('Checked-in players') }}</div>
   {%- if participants %}
     <ul class="lt-player-list">
