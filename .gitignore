@@ -35,7 +35,3 @@ __pycache__
 messages.pot
 
 secret_key.txt
-
-# Dolt database files (added by bd init)
-.dolt/
-*.db
