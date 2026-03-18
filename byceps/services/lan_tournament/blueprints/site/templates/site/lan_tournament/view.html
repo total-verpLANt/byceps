@@ -12,6 +12,8 @@
     </ol>
   </nav>
 
+  {{ render_tournament_subnav(tournament, active_tab) }}
+
   <div class="tournament-header">
     <div class="row is-vcentered">
       <div class="tournament-icon">
@@ -50,8 +52,6 @@
     {%- endif %}
   </div>
   {%- endif %}
-
-  {{ render_tournament_subnav(tournament, active_tab) }}
 
   {# Tournament details #}
   <div class="overview-grid block">

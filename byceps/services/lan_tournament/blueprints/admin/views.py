@@ -173,6 +173,7 @@ def view(tournament_id):
         'party': party,
         'tournament': tournament,
         'has_bracket': has_bracket,
+        'requires_bracket': tournament.tournament_mode.requires_bracket if tournament.tournament_mode else False,
         'is_team_tournament': is_team_tournament,
         'participant_count': participant_count,
         'team_count': team_count,
