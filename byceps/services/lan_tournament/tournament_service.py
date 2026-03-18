@@ -295,11 +295,12 @@ def change_status(
 
     # Only after a valid transition: check bracket exists when starting
     if new_status == TournamentStatus.ONGOING:
-        if not _has_bracket_generated(tournament_id):
-            return Err(
-                'Cannot start tournament without generated brackets. '
-                'Generate brackets first.'
-            )
+        if tournament.tournament_mode and tournament.tournament_mode.requires_bracket:
+            if not _has_bracket_generated(tournament_id):
+                return Err(
+                    'Cannot start tournament without generated brackets. '
+                    'Generate brackets first.'
+                )
 
     (event,) = result.unwrap()
 
