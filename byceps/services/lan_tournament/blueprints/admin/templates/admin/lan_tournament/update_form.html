@@ -1,6 +1,7 @@
 {% extends 'layout/admin/lan_tournament.html' %}
 {% from 'macros/admin.html' import render_backlink %}
 {% from 'macros/forms.html' import form_buttons, form_field %}
+{% from 'macros/icons.html' import render_icon %}
 {% set current_page_party = party %}
 {% set current_tab = 'tournaments' %}
 {% set page_title = _('Edit tournament') %}
@@ -13,32 +14,40 @@
 
   <h1 class="title">{{ page_title }}</h1>
 
+  {% if is_locked %}
+    <div class="notification color-info" style="margin-bottom: 1rem;">
+      {{ render_icon('lock') }} {{ _('This tournament is ongoing. Only description, image, and ruleset can be changed.') }}
+    </div>
+  {% endif %}
+
+  {% set lock = {'disabled': 'disabled'} if is_locked else {} %}
+
   <form action="{{ url_for('.update', tournament_id=tournament.id) }}" method="post">
     <div class="box">
-      {{ form_field(form.name, maxlength=80, autofocus='autofocus') }}
-      {{ form_field(form.game) }}
+      {{ form_field(form.name, maxlength=80, **lock) }}
+      {{ form_field(form.game, **lock) }}
       {{ form_field(form.description) }}
       {{ form_field(form.image_url) }}
-      {{ form_field(form.contestant_type) }}
-      {{ form_field(form.tournament_mode) }}
+      {{ form_field(form.contestant_type, **lock) }}
+      {{ form_field(form.tournament_mode, **lock) }}
       <div id="highscore-constraints" style="display: none;">
-        {{ form_field(form.score_ordering) }}
+        {{ form_field(form.score_ordering, **lock) }}
       </div>
-      {{ form_field(form.start_time) }}
+      {{ form_field(form.start_time, **lock) }}
       {{ form_field(form.ruleset) }}
     </div>
 
     <div class="box">
       <h3>{{ _('Player/team constraints') }}</h3>
       <div id="solo-constraints" style="display: none;">
-        {{ form_field(form.min_players, min=0, style='width: 5rem;') }}
-        {{ form_field(form.max_players, min=0, style='width: 5rem;') }}
+        {{ form_field(form.min_players, min=0, style='width: 5rem;', **lock) }}
+        {{ form_field(form.max_players, min=0, style='width: 5rem;', **lock) }}
       </div>
       <div id="team-constraints" style="display: none;">
-        {{ form_field(form.min_teams, min=0, style='width: 5rem;') }}
-        {{ form_field(form.max_teams, min=0, style='width: 5rem;') }}
-        {{ form_field(form.min_players_in_team, min=0, style='width: 5rem;') }}
-        {{ form_field(form.max_players_in_team, min=0, style='width: 5rem;') }}
+        {{ form_field(form.min_teams, min=0, style='width: 5rem;', **lock) }}
+        {{ form_field(form.max_teams, min=0, style='width: 5rem;', **lock) }}
+        {{ form_field(form.min_players_in_team, min=0, style='width: 5rem;', **lock) }}
+        {{ form_field(form.max_players_in_team, min=0, style='width: 5rem;', **lock) }}
       </div>
     </div>
 

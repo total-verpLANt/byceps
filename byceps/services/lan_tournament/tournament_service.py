@@ -23,6 +23,13 @@ from .models.tournament_mode import TournamentMode
 from .models.tournament_status import TournamentStatus
 
 
+# Statuses where only cosmetic fields may be edited.
+EDIT_LOCKED_STATUSES: frozenset[TournamentStatus] = frozenset({
+    TournamentStatus.ONGOING,
+    TournamentStatus.PAUSED,
+})
+
+
 def _validate_image_url(image_url: str | None) -> Result[None, str]:
     """Validate image URL to prevent XSS/SSRF attacks."""
     if image_url is None or image_url == '':
@@ -139,6 +146,41 @@ def update_tournament(
         return Err(validation_result.unwrap_err())
 
     tournament = tournament_repository.get_tournament(tournament_id)
+
+    # Reject structural changes while the tournament is in play.
+    if tournament.tournament_status in EDIT_LOCKED_STATUSES:
+        locked_changes: list[str] = []
+        if name != tournament.name:
+            locked_changes.append('name')
+        if game != tournament.game:
+            locked_changes.append('game')
+        if start_time != tournament.start_time:
+            locked_changes.append('start_time')
+        if contestant_type != tournament.contestant_type:
+            locked_changes.append('contestant_type')
+        if tournament_mode != tournament.tournament_mode:
+            locked_changes.append('tournament_mode')
+        if score_ordering != tournament.score_ordering:
+            locked_changes.append('score_ordering')
+        if min_players != tournament.min_players:
+            locked_changes.append('min_players')
+        if max_players != tournament.max_players:
+            locked_changes.append('max_players')
+        if min_teams != tournament.min_teams:
+            locked_changes.append('min_teams')
+        if max_teams != tournament.max_teams:
+            locked_changes.append('max_teams')
+        if min_players_in_team != tournament.min_players_in_team:
+            locked_changes.append('min_players_in_team')
+        if max_players_in_team != tournament.max_players_in_team:
+            locked_changes.append('max_players_in_team')
+        if locked_changes:
+            fields_str = ', '.join(locked_changes)
+            return Err(
+                f'Tournament is {tournament.tournament_status.name.lower()}. '
+                f'Only description, image, and ruleset can be changed. '
+                f'Attempted to change: {fields_str}.'
+            )
 
     updated = dataclasses.replace(
         tournament,

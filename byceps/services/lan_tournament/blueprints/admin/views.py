@@ -49,6 +49,9 @@ from byceps.services.lan_tournament.models.tournament_mode import (
 from byceps.services.lan_tournament.models.tournament_status import (
     TournamentStatus,
 )
+from byceps.services.lan_tournament.tournament_service import (
+    EDIT_LOCKED_STATUSES,
+)
 from byceps.services.lan_tournament.lan_tournament_view_helpers import (
     build_contestant_name_lookups,
     build_hover_lookups,
@@ -318,6 +321,8 @@ def update_form(tournament_id, erroneous_form=None):
 
     party = party_service.get_party(tournament.party_id)
 
+    is_locked = tournament.tournament_status in EDIT_LOCKED_STATUSES
+
     if erroneous_form:
         form = erroneous_form
     else:
@@ -351,6 +356,7 @@ def update_form(tournament_id, erroneous_form=None):
         'party': party,
         'tournament': tournament,
         'form': form,
+        'is_locked': is_locked,
     }
 
 
@@ -360,7 +366,69 @@ def update(tournament_id):
     """Update the tournament."""
     tournament = _get_tournament_or_404(tournament_id)
 
-    form = TournamentUpdateForm(request.form)
+    is_locked = tournament.tournament_status in EDIT_LOCKED_STATUSES
+
+    # Disabled fields are not submitted by browsers.  Inject the
+    # stored values so WTForms validation passes normally.
+    if is_locked:
+        formdata = request.form.copy()
+        formdata['name'] = tournament.name
+        formdata['game'] = tournament.game or ''
+        formdata['contestant_type'] = (
+            tournament.contestant_type.name
+            if tournament.contestant_type
+            else ''
+        )
+        formdata['tournament_mode'] = (
+            tournament.tournament_mode.name
+            if tournament.tournament_mode
+            else ''
+        )
+        formdata['score_ordering'] = (
+            tournament.score_ordering.name
+            if tournament.score_ordering
+            else ''
+        )
+        if tournament.start_time:
+            formdata['start_time'] = to_user_timezone(
+                tournament.start_time
+            ).strftime('%Y-%m-%dT%H:%M')
+        else:
+            formdata['start_time'] = ''
+        formdata['min_players'] = (
+            str(tournament.min_players)
+            if tournament.min_players is not None
+            else ''
+        )
+        formdata['max_players'] = (
+            str(tournament.max_players)
+            if tournament.max_players is not None
+            else ''
+        )
+        formdata['min_teams'] = (
+            str(tournament.min_teams)
+            if tournament.min_teams is not None
+            else ''
+        )
+        formdata['max_teams'] = (
+            str(tournament.max_teams)
+            if tournament.max_teams is not None
+            else ''
+        )
+        formdata['min_players_in_team'] = (
+            str(tournament.min_players_in_team)
+            if tournament.min_players_in_team is not None
+            else ''
+        )
+        formdata['max_players_in_team'] = (
+            str(tournament.max_players_in_team)
+            if tournament.max_players_in_team is not None
+            else ''
+        )
+    else:
+        formdata = request.form
+
+    form = TournamentUpdateForm(formdata)
     form.set_contestant_type_choices()
     form.set_tournament_mode_choices()
     form.set_score_ordering_choices()
