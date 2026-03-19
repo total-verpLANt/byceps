@@ -29,7 +29,11 @@
         <div class="data-value">
           {%- set captain_user = users_by_id.get(team.captain_user_id) -%}
           {%- if captain_user -%}
-            {{ captain_user.screen_name }}
+            {%- if not captain_user.deleted -%}
+              <a href="{{ url_for('user_profile.view', user_id=captain_user.id) }}" class="lt-hover-name-link">{{ captain_user.screen_name }}</a>
+            {%- else -%}
+              {{ captain_user.screen_name }}
+            {%- endif -%}
           {%- else -%}
             {{ team.captain_user_id|string }}
           {%- endif -%}
@@ -153,7 +157,7 @@
             <tr>
               <td>
                 {%- if _user -%}
-                  {{ render_hover_name(_user.screen_name, user_id=_user.id, seats_by_user_id=seats_by_user_id) }}
+                  {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted, seats_by_user_id=seats_by_user_id) }}
                 {%- else -%}
                   {{ member.user_id|string }}
                 {%- endif -%}
