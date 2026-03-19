@@ -13,6 +13,40 @@
     border-color: #1199ff;
     opacity: 1;
   }
+
+  /* Cancel confirmation modal */
+  .cancel-modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+  }
+  .cancel-modal-overlay.is-active {
+    display: flex;
+  }
+  .cancel-modal {
+    background: var(--color-background, #fff);
+    border-radius: 8px;
+    padding: 2rem;
+    max-width: 480px;
+    width: 90%;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+  }
+  .cancel-modal h3 {
+    margin-top: 0;
+    color: #cc3333;
+  }
+  .cancel-modal p strong {
+    color: #cc3333;
+  }
+  .cancel-modal .button-row {
+    margin-top: 1.5rem;
+    justify-content: flex-end;
+    gap: 0.5rem;
+  }
 </style>
 {%- endblock %}
 
@@ -241,7 +275,7 @@
       <form action="{{ url_for('.open_registration', tournament_id=tournament.id) }}" method="post">
         <button type="submit" class="button color-info">{{ _('Open registration') }}</button>
       </form>
-      <form action="{{ url_for('.cancel', tournament_id=tournament.id) }}" method="post">
+      <form action="{{ url_for('.cancel', tournament_id=tournament.id) }}" method="post" data-action="cancel-tournament">
         <button type="submit" class="button color-danger">{{ _('Cancel') }}</button>
       </form>
 
@@ -249,7 +283,7 @@
       <form action="{{ url_for('.close_registration', tournament_id=tournament.id) }}" method="post">
         <button type="submit" class="button color-warning">{{ _('Close registration') }}</button>
       </form>
-      <form action="{{ url_for('.cancel', tournament_id=tournament.id) }}" method="post">
+      <form action="{{ url_for('.cancel', tournament_id=tournament.id) }}" method="post" data-action="cancel-tournament">
         <button type="submit" class="button color-danger">{{ _('Cancel') }}</button>
       </form>
 
@@ -272,7 +306,7 @@
       <form action="{{ url_for('.start', tournament_id=tournament.id) }}" method="post">
         <button type="submit" class="button color-success">{{ _('Start tournament') }}</button>
       </form>
-      <form action="{{ url_for('.cancel', tournament_id=tournament.id) }}" method="post">
+      <form action="{{ url_for('.cancel', tournament_id=tournament.id) }}" method="post" data-action="cancel-tournament">
         <button type="submit" class="button color-danger">{{ _('Cancel') }}</button>
       </form>
 
@@ -283,7 +317,7 @@
       <form action="{{ url_for('.complete', tournament_id=tournament.id) }}" method="post">
         <button type="submit" class="button color-success">{{ _('Complete') }}</button>
       </form>
-      <form action="{{ url_for('.cancel', tournament_id=tournament.id) }}" method="post">
+      <form action="{{ url_for('.cancel', tournament_id=tournament.id) }}" method="post" data-action="cancel-tournament">
         <button type="submit" class="button color-danger">{{ _('Cancel') }}</button>
       </form>
 
@@ -291,7 +325,7 @@
       <form action="{{ url_for('.resume', tournament_id=tournament.id) }}" method="post">
         <button type="submit" class="button color-success">{{ _('Resume') }}</button>
       </form>
-      <form action="{{ url_for('.cancel', tournament_id=tournament.id) }}" method="post">
+      <form action="{{ url_for('.cancel', tournament_id=tournament.id) }}" method="post" data-action="cancel-tournament">
         <button type="submit" class="button color-danger">{{ _('Cancel') }}</button>
       </form>
     {%- endif %}
@@ -304,6 +338,19 @@
     {%- endif %}
   </div>
   {%- endif %}
+
+  {# Cancel confirmation modal #}
+  <div id="cancel-modal-overlay" class="cancel-modal-overlay">
+    <div class="cancel-modal">
+      <h3>{{ render_icon('warning') }} {{ _('Cancel Tournament?') }}</h3>
+      <p>{{ _('You are about to cancel the tournament "%(name)s".', name=tournament.name) }}</p>
+      <p><strong>{{ _('This action is irreversible. A cancelled tournament cannot be reopened.') }}</strong></p>
+      <div class="button-row">
+        <button type="button" class="button" id="cancel-modal-dismiss">{{ _('Go back') }}</button>
+        <button type="button" class="button color-danger" id="cancel-modal-confirm">{{ _('Yes, cancel tournament') }}</button>
+      </div>
+    </div>
+  </div>
 
 {%- endblock %}
 
@@ -319,5 +366,43 @@
       }
     });
   }
+
+  // Cancel tournament confirmation modal
+  const cancelForms = document.querySelectorAll('[data-action="cancel-tournament"]');
+  const overlay = document.getElementById('cancel-modal-overlay');
+  const confirmBtn = document.getElementById('cancel-modal-confirm');
+  const dismissBtn = document.getElementById('cancel-modal-dismiss');
+  let pendingForm = null;
+
+  cancelForms.forEach(function(form) {
+    form.addEventListener('submit', function(event) {
+      event.preventDefault();
+      pendingForm = form;
+      overlay.classList.add('is-active');
+    });
+  });
+
+  confirmBtn.addEventListener('click', function() {
+    if (pendingForm) pendingForm.submit();
+  });
+
+  dismissBtn.addEventListener('click', function() {
+    overlay.classList.remove('is-active');
+    pendingForm = null;
+  });
+
+  overlay.addEventListener('click', function(event) {
+    if (event.target === overlay) {
+      overlay.classList.remove('is-active');
+      pendingForm = null;
+    }
+  });
+
+  document.addEventListener('keydown', function(event) {
+    if (event.key === 'Escape' && overlay.classList.contains('is-active')) {
+      overlay.classList.remove('is-active');
+      pendingForm = null;
+    }
+  });
 </script>
 {%- endblock %}
