@@ -6,7 +6,8 @@
     team_members_by_team_id={},
     truncate_len=0,
     user_deleted=False,
-    link_profiles=True
+    link_profiles=True,
+    profile_url_endpoint=None
 ) -%}
 {%- set has_hover_data = (
     (team_id and team_id in team_members_by_team_id)
@@ -14,7 +15,8 @@
 ) -%}
 <span class="lt-hover-wrap" tabindex="0">
   {%- if user_id and not user_deleted and link_profiles -%}
-    <a href="{{ url_for('user_profile.view', user_id=user_id) }}" class="lt-hover-name-link">
+    {%- set _profile_endpoint = profile_url_endpoint or 'user_profile.view' -%}
+    <a href="{{ url_for(_profile_endpoint, user_id=user_id) }}" class="lt-hover-name-link">
     {%- if truncate_len > 0 -%}
       {{ display_name|truncate(truncate_len) }}
     {%- else -%}
@@ -413,7 +415,7 @@ R{{ r }} M{{ m }}
 </style>
 {%- endmacro -%}
 
-{% macro render_bracket(match_data, tournament, teams_by_id={}, participants_by_id={}, seats_by_user_id={}, team_members_by_team_id={}, match_url_endpoint=None) %}
+{% macro render_bracket(match_data, tournament, teams_by_id={}, participants_by_id={}, seats_by_user_id={}, team_members_by_team_id={}, match_url_endpoint=None, profile_url_endpoint=None) %}
 {#
   Renders a tournament bracket visualization.
 
@@ -488,14 +490,14 @@ R{{ r }} M{{ m }}
               {%- if contestant.team_id %}
                 {%- set _team = teams_by_id.get(contestant.team_id) -%}
                 {%- if _team -%}
-                  {{ render_hover_name(_team.name, team_id=_team.id, team_members_by_team_id=team_members_by_team_id, truncate_len=15) }}
+                  {{ render_hover_name(_team.name, team_id=_team.id, team_members_by_team_id=team_members_by_team_id, truncate_len=15, profile_url_endpoint=profile_url_endpoint) }}
                 {%- else -%}
                   {{ contestant.team_id|string }}
                 {%- endif -%}
               {%- elif contestant.participant_id %}
                 {%- set _user = participants_by_id.get(contestant.participant_id) -%}
                 {%- if _user -%}
-                  {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted, seats_by_user_id=seats_by_user_id, truncate_len=15) }}
+                  {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted, seats_by_user_id=seats_by_user_id, truncate_len=15, profile_url_endpoint=profile_url_endpoint) }}
                 {%- else -%}
                   {{ contestant.participant_id|string }}
                 {%- endif -%}
@@ -540,7 +542,7 @@ R{{ r }} M{{ m }}
 {%- endmacro %}
 
 
-{% macro render_simple_bracket_list(match_data, teams_by_id={}, participants_by_id={}, seats_by_user_id={}, team_members_by_team_id={}, match_url_endpoint=None) %}
+{% macro render_simple_bracket_list(match_data, teams_by_id={}, participants_by_id={}, seats_by_user_id={}, team_members_by_team_id={}, match_url_endpoint=None, profile_url_endpoint=None) %}
 {#
   Simpler list-based bracket view for small screens or fallback.
 
@@ -569,14 +571,14 @@ R{{ r }} M{{ m }}
           {%- if contestant.team_id %}
             {%- set _team = teams_by_id.get(contestant.team_id) -%}
             {%- if _team -%}
-              {{ render_hover_name(_team.name, team_id=_team.id, team_members_by_team_id=team_members_by_team_id) }}
+              {{ render_hover_name(_team.name, team_id=_team.id, team_members_by_team_id=team_members_by_team_id, profile_url_endpoint=profile_url_endpoint) }}
             {%- else -%}
               {{ contestant.team_id|string }}
             {%- endif -%}
           {%- elif contestant.participant_id %}
             {%- set _user = participants_by_id.get(contestant.participant_id) -%}
             {%- if _user -%}
-              {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted, seats_by_user_id=seats_by_user_id) }}
+              {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted, seats_by_user_id=seats_by_user_id, profile_url_endpoint=profile_url_endpoint) }}
             {%- else -%}
               {{ contestant.participant_id|string }}
             {%- endif -%}
@@ -593,14 +595,14 @@ R{{ r }} M{{ m }}
             {%- if contestant.team_id %}
               {%- set _team = teams_by_id.get(contestant.team_id) -%}
               {%- if _team -%}
-                {{ render_hover_name(_team.name, team_id=_team.id, team_members_by_team_id=team_members_by_team_id) }}
+                {{ render_hover_name(_team.name, team_id=_team.id, team_members_by_team_id=team_members_by_team_id, profile_url_endpoint=profile_url_endpoint) }}
               {%- else -%}
                 {{ contestant.team_id|string }}
               {%- endif -%}
             {%- elif contestant.participant_id %}
               {%- set _user = participants_by_id.get(contestant.participant_id) -%}
               {%- if _user -%}
-                {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted, seats_by_user_id=seats_by_user_id) }}
+                {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted, seats_by_user_id=seats_by_user_id, profile_url_endpoint=profile_url_endpoint) }}
               {%- else -%}
                 {{ contestant.participant_id|string }}
               {%- endif -%}
@@ -628,7 +630,8 @@ R{{ r }} M{{ m }}
     participants_by_id={}, seats_by_user_id={},
     team_members_by_team_id={},
     bracket_id='de',
-    match_url_endpoint=None
+    match_url_endpoint=None,
+    profile_url_endpoint=None
 ) %}
 {#
   Renders a double-elimination bracket visualization.
@@ -695,7 +698,8 @@ R{{ r }} M{{ m }}
             rounds[round_num], teams_by_id,
             participants_by_id, seats_by_user_id,
             team_members_by_team_id,
-            match_url_endpoint=match_url_endpoint
+            match_url_endpoint=match_url_endpoint,
+            profile_url_endpoint=profile_url_endpoint
         ) }}
       </div>
       {%- endfor %}
@@ -728,7 +732,8 @@ R{{ r }} M{{ m }}
             rounds[round_num], teams_by_id,
             participants_by_id, seats_by_user_id,
             team_members_by_team_id,
-            match_url_endpoint=match_url_endpoint
+            match_url_endpoint=match_url_endpoint,
+            profile_url_endpoint=profile_url_endpoint
         ) }}
       </div>
       {%- endfor %}
@@ -748,7 +753,8 @@ R{{ r }} M{{ m }}
             gf_data, teams_by_id,
             participants_by_id, seats_by_user_id,
             team_members_by_team_id,
-            match_url_endpoint=match_url_endpoint
+            match_url_endpoint=match_url_endpoint,
+            profile_url_endpoint=profile_url_endpoint
         ) }}
       </div>
     </div>
@@ -772,7 +778,8 @@ R{{ r }} M{{ m }}
     round_matches, teams_by_id,
     participants_by_id, seats_by_user_id,
     team_members_by_team_id,
-    match_url_endpoint=None
+    match_url_endpoint=None,
+    profile_url_endpoint=None
 ) %}
   {%- for data in round_matches %}
   {%- set match = data.match %}
@@ -814,7 +821,8 @@ R{{ r }} M{{ m }}
               {{ render_hover_name(
                   _team.name, team_id=_team.id,
                   team_members_by_team_id=team_members_by_team_id,
-                  truncate_len=15
+                  truncate_len=15,
+                  profile_url_endpoint=profile_url_endpoint
               ) }}
             {%- else -%}
               {{ contestant.team_id|string }}
@@ -827,7 +835,8 @@ R{{ r }} M{{ m }}
                   _user.screen_name, user_id=_user.id,
                   user_deleted=_user.deleted,
                   seats_by_user_id=seats_by_user_id,
-                  truncate_len=15
+                  truncate_len=15,
+                  profile_url_endpoint=profile_url_endpoint
               ) }}
             {%- else -%}
               {{ contestant.participant_id|string }}
@@ -864,7 +873,8 @@ R{{ r }} M{{ m }}
     match_data, teams_by_id={},
     participants_by_id={}, seats_by_user_id={},
     team_members_by_team_id={},
-    match_url_endpoint=None
+    match_url_endpoint=None,
+    profile_url_endpoint=None
 ) %}
 {#
   List-based DE bracket view for small screens.
@@ -893,7 +903,8 @@ R{{ r }} M{{ m }}
   {{ _render_de_list_section(
       wb_data, teams_by_id, participants_by_id,
       seats_by_user_id, team_members_by_team_id,
-      match_url_endpoint=match_url_endpoint
+      match_url_endpoint=match_url_endpoint,
+      profile_url_endpoint=profile_url_endpoint
   ) }}
   {%- endif %}
 
@@ -904,7 +915,8 @@ R{{ r }} M{{ m }}
   {{ _render_de_list_section(
       lb_data, teams_by_id, participants_by_id,
       seats_by_user_id, team_members_by_team_id,
-      match_url_endpoint=match_url_endpoint
+      match_url_endpoint=match_url_endpoint,
+      profile_url_endpoint=profile_url_endpoint
   ) }}
   {%- endif %}
 
@@ -915,7 +927,8 @@ R{{ r }} M{{ m }}
   {{ _render_de_list_section(
       gf_data, teams_by_id, participants_by_id,
       seats_by_user_id, team_members_by_team_id,
-      match_url_endpoint=match_url_endpoint
+      match_url_endpoint=match_url_endpoint,
+      profile_url_endpoint=profile_url_endpoint
   ) }}
   {%- endif %}
 </div>
@@ -928,7 +941,8 @@ R{{ r }} M{{ m }}
     section_data, teams_by_id,
     participants_by_id, seats_by_user_id,
     team_members_by_team_id,
-    match_url_endpoint=None
+    match_url_endpoint=None,
+    profile_url_endpoint=None
 ) %}
   {%- for data in section_data %}
   {%- set match = data.match %}
@@ -954,7 +968,8 @@ R{{ r }} M{{ m }}
             {%- if _team -%}
               {{ render_hover_name(
                   _team.name, team_id=_team.id,
-                  team_members_by_team_id=team_members_by_team_id
+                  team_members_by_team_id=team_members_by_team_id,
+                  profile_url_endpoint=profile_url_endpoint
               ) }}
             {%- else -%}
               {{ contestant.team_id|string }}
@@ -966,7 +981,8 @@ R{{ r }} M{{ m }}
               {{ render_hover_name(
                   _user.screen_name, user_id=_user.id,
                   user_deleted=_user.deleted,
-                  seats_by_user_id=seats_by_user_id
+                  seats_by_user_id=seats_by_user_id,
+                  profile_url_endpoint=profile_url_endpoint
               ) }}
             {%- else -%}
               {{ contestant.participant_id|string }}
@@ -991,7 +1007,8 @@ R{{ r }} M{{ m }}
               {%- if _team -%}
                 {{ render_hover_name(
                     _team.name, team_id=_team.id,
-                    team_members_by_team_id=team_members_by_team_id
+                    team_members_by_team_id=team_members_by_team_id,
+                    profile_url_endpoint=profile_url_endpoint
                 ) }}
               {%- else -%}
                 {{ contestant.team_id|string }}
@@ -1003,7 +1020,8 @@ R{{ r }} M{{ m }}
                 {{ render_hover_name(
                     _user.screen_name, user_id=_user.id,
                     user_deleted=_user.deleted,
-                    seats_by_user_id=seats_by_user_id
+                    seats_by_user_id=seats_by_user_id,
+                    profile_url_endpoint=profile_url_endpoint
                 ) }}
               {%- else -%}
                 {{ contestant.participant_id|string }}
@@ -1043,7 +1061,8 @@ R{{ r }} M{{ m }}
 
 {% macro render_highscore_leaderboard(
     leaderboard, tournament, teams_by_id={},
-    participants_by_id={}
+    participants_by_id={},
+    profile_url_endpoint=None
 ) %}
 {#
   Renders a highscore leaderboard table.
@@ -1129,14 +1148,14 @@ R{{ r }} M{{ m }}
         {%- if entry.team_id -%}
           {%- set _team = teams_by_id.get(entry.team_id) -%}
           {%- if _team -%}
-            {{ render_hover_name(_team.name, team_id=_team.id) }}
+            {{ render_hover_name(_team.name, team_id=_team.id, profile_url_endpoint=profile_url_endpoint) }}
           {%- else -%}
             {{ entry.team_id|string }}
           {%- endif -%}
         {%- elif entry.participant_id -%}
           {%- set _user = participants_by_id.get(entry.participant_id) -%}
           {%- if _user -%}
-            {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted) }}
+            {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted, profile_url_endpoint=profile_url_endpoint) }}
           {%- else -%}
             {{ entry.participant_id|string }}
           {%- endif -%}
@@ -1161,7 +1180,8 @@ R{{ r }} M{{ m }}
 {% macro render_round_robin_standings(
     standings, tournament, teams_by_id={},
     participants_by_id={}, seats_by_user_id={},
-    team_members_by_team_id={}
+    team_members_by_team_id={},
+    profile_url_endpoint=None
 ) %}
 {#
   Renders a round-robin standings table.
@@ -1198,12 +1218,12 @@ R{{ r }} M{{ m }}
         {%- set ns = namespace(found=false) -%}
         {%- for tid, team in teams_by_id.items() if tid|string == cid -%}
           {%- set ns.found = true -%}
-          {{ render_hover_name(team.name, team_id=tid, team_members_by_team_id=team_members_by_team_id) }}
+          {{ render_hover_name(team.name, team_id=tid, team_members_by_team_id=team_members_by_team_id, profile_url_endpoint=profile_url_endpoint) }}
         {%- endfor -%}
         {%- if not ns.found -%}
           {%- for pid, user in participants_by_id.items() if pid|string == cid -%}
             {%- set ns.found = true -%}
-            {{ render_hover_name(user.screen_name, user_id=user.id, user_deleted=user.deleted, seats_by_user_id=seats_by_user_id) }}
+            {{ render_hover_name(user.screen_name, user_id=user.id, user_deleted=user.deleted, seats_by_user_id=seats_by_user_id, profile_url_endpoint=profile_url_endpoint) }}
           {%- endfor -%}
         {%- endif -%}
         {%- if not ns.found -%}
