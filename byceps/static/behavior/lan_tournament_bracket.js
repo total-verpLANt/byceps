@@ -1321,13 +1321,15 @@ function _ltBuildStatsBarHtml(stats) {
 /**
  * Create a view-select dropdown for filtering DE bracket sections.
  *
- * Options: All (default), Winners only, Losers only.
- * Fires a 'change' event consumed by applyMode() in lan_tournament.js.
+ * Options: All (default), Winners only, Losers only, Top 8.
+ * Fires a 'change' event consumed by applyMode() in lan_tournament.js,
+ * which delegates to the bracket instance's setViewMode() for re-render.
  *
- * @param {HTMLElement} rootEl  The bracket root container.
+ * @param {HTMLElement} rootEl       The bracket root container.
+ * @param {string}      currentMode  Active view mode to pre-select.
  * @returns {HTMLElement}  The dropdown wrapper element.
  */
-function _ltCreateViewSelect(rootEl) {
+function _ltCreateViewSelect(rootEl, currentMode) {
   var wrapper = document.createElement('div');
   wrapper.className = 'lt-view-select';
 
@@ -1342,7 +1344,8 @@ function _ltCreateViewSelect(rootEl) {
   var options = [
     { value: 'full', text: 'All brackets' },
     { value: 'winners', text: 'Winners only' },
-    { value: 'losers', text: 'Losers only' }
+    { value: 'losers', text: 'Losers only' },
+    { value: 'top8', text: 'Top 8' }
   ];
 
   var i, opt;
@@ -1350,6 +1353,9 @@ function _ltCreateViewSelect(rootEl) {
     opt = document.createElement('option');
     opt.value = options[i].value;
     opt.textContent = options[i].text;
+    if (currentMode && options[i].value === currentMode) {
+      opt.selected = true;
+    }
     select.appendChild(opt);
   }
 
@@ -1901,6 +1907,33 @@ function _ltRenderBracketResetSection(match, matchMap, settings, matchUrls, appE
 
 
 /* ===================================================================
+ *  View-mode round filtering (ported from Turniercss/turnier-shared.js)
+ * =================================================================== */
+
+/**
+ * Filter WB rounds to Top 8 view: keep rounds with <= 4 matches or GF.
+ * For a 16-slot bracket: drops R1 (8 matches), keeps R2-R4 (4/2/1).
+ */
+function _ltGetTop8WinnerRounds(rounds) {
+  if (rounds.length <= 4) return rounds;
+  return rounds.filter(function(round) {
+    return round.bracket === 'GF' || round.matches.length <= 4;
+  });
+}
+
+/**
+ * Filter LB rounds to Top 8 view: keep rounds with <= 2 matches
+ * or the last 4 rounds (whichever is more inclusive).
+ */
+function _ltGetTop8LoserRounds(rounds) {
+  if (rounds.length <= 4) return rounds;
+  return rounds.filter(function(round, index) {
+    return round.matches.length <= 2 || index >= rounds.length - 4;
+  });
+}
+
+
+/* ===================================================================
  *  Public API
  * =================================================================== */
 
@@ -1936,6 +1969,7 @@ function createBracketInstance(config) {
   var matchUrls = config.matchUrls || data.match_urls || {};
   var parsed = null;
   var pendingScrollRef = '';
+  var viewMode = 'full';
 
   function ensureParsed() {
     if (!parsed) {
@@ -1975,42 +2009,52 @@ function createBracketInstance(config) {
       return;
     }
 
-    // Compute field size from the first WB round's match count
+    // Compute field size from the ORIGINAL (unfiltered) first WB round
     var fieldSize = 2;
     if (p.winnerRounds.length > 0) {
       fieldSize = p.winnerRounds[0].matches.length * 2;
-      // Ensure it's a power of two
       if (fieldSize < 2) fieldSize = 2;
     }
 
-    // Insert view-select dropdown for DE brackets
+    // Apply view-mode round filtering
+    var wbRounds = p.winnerRounds;
+    var lbRounds = p.loserRounds;
+    if (viewMode === 'top8') {
+      wbRounds = _ltGetTop8WinnerRounds(wbRounds);
+      lbRounds = _ltGetTop8LoserRounds(lbRounds);
+    }
     var isDE = p.loserRounds.length > 0;
+    var showWB = (viewMode === 'full' || viewMode === 'winners' || viewMode === 'top8');
+    var showLB = (viewMode === 'full' || viewMode === 'losers' || viewMode === 'top8');
+    var showFinals = (viewMode !== 'losers');
+
+    // Insert view-select dropdown for DE brackets
     if (isDE) {
-      rootEl.appendChild(_ltCreateViewSelect(rootEl));
+      rootEl.appendChild(_ltCreateViewSelect(rootEl, viewMode));
     }
 
     // Render winners bracket
-    if (p.winnerRounds.length > 0) {
+    if (showWB && wbRounds.length > 0) {
       rootEl.appendChild(renderBracketSection({
-        title: p.loserRounds.length > 0 ? 'Winners Bracket (WB)' : 'Bracket',
+        title: isDE ? 'Winners Bracket (WB)' : 'Bracket',
         subtitle: fieldSize + '-slot field',
-        rounds: p.winnerRounds,
+        rounds: wbRounds,
         fieldSize: fieldSize,
         matchMap: p.matchMap,
         settings: settings,
         appEl: rootEl,
         matchUrls: urls,
         hoverData: hoverData,
-        bracketView: p.loserRounds.length > 0 ? 'winners' : null
+        bracketView: isDE ? 'winners' : null
       }));
     }
 
     // Render losers bracket
-    if (p.loserRounds.length > 0) {
+    if (showLB && lbRounds.length > 0) {
       rootEl.appendChild(renderBracketSection({
         title: 'Losers Bracket (LB)',
         subtitle: 'Source labels on cross-bracket entries with jump navigation',
-        rounds: p.loserRounds,
+        rounds: lbRounds,
         fieldSize: fieldSize,
         matchMap: p.matchMap,
         settings: settings,
@@ -2022,7 +2066,7 @@ function createBracketInstance(config) {
     }
 
     // Render extra finals — separate bracket-reset matches when enabled
-    if (p.finalMatches.length > 0) {
+    if (showFinals && p.finalMatches.length > 0) {
       var resetMatches = [];
       var otherFinals = [];
       for (i = 0; i < p.finalMatches.length; i++) {
@@ -2051,7 +2095,7 @@ function createBracketInstance(config) {
     }
 
     // Render third-place matches
-    if (settings.showThirdPlaceMatch && p.thirdPlaceMatches.length > 0) {
+    if (showFinals && settings.showThirdPlaceMatch && p.thirdPlaceMatches.length > 0) {
       rootEl.appendChild(renderThirdPlaceSection(
         p.thirdPlaceMatches, p.matchMap, settings, urls, rootEl, hoverData
       ));
@@ -2085,10 +2129,32 @@ function createBracketInstance(config) {
     return ensureParsed().matchMap;
   }
 
+  /**
+   * Switch the bracket view mode and re-render with filtered rounds.
+   *
+   * Modes: 'full', 'top8', 'winners', 'losers'.
+   * The bracket clears and re-renders so geometry, SVG connectors,
+   * and layout are all recomputed for the visible rounds only.
+   */
+  function setViewMode(mode) {
+    if (mode === viewMode) return;
+    viewMode = mode;
+    render();
+    // Re-init view switcher for the recreated dropdown
+    if (typeof initBracketViewSwitcher === 'function') {
+      initBracketViewSwitcher();
+    }
+    // Re-init pan on recreated scroll wrappers
+    rootEl.querySelectorAll('.lt-bracket-scroll').forEach(function(el) {
+      if (typeof enableBracketPan === 'function') enableBracketPan(el);
+    });
+  }
+
   return {
     render: render,
     destroy: destroy,
-    getMatchMap: getMatchMap
+    getMatchMap: getMatchMap,
+    setViewMode: setViewMode
   };
 }
 
@@ -2122,6 +2188,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
   if (instance) {
     instance.render();
+    // Expose instance on the root element so applyMode() can delegate
+    rootEl._ltBracketInstance = instance;
     // Re-init view switcher for dynamically created view-select dropdowns
     if (typeof initBracketViewSwitcher === 'function') {
       initBracketViewSwitcher();
