@@ -76,6 +76,22 @@
     </div>
     {%- endif %}
 
+    {%- if is_team_tournament %}
+    <div class="box">
+      <div class="data-label">{{ _('Teams') }}</div>
+      {%- if tournament.max_teams %}
+      <div class="row is-vcentered">
+        {%- set percentage = (100 * team_count / tournament.max_teams) if tournament.max_teams else 0 %}
+        <span class="progress">
+          <span class="progress-bar color--{% if percentage < 100 %}{% if percentage < 70 %}available{% else %}scarce{% endif %}{% else %}full{% endif %}" style="width: {{ percentage }}%"></span>
+        </span>
+        <small class="dimmed nowrap">{{ team_count }} / {{ tournament.max_teams }}</small>
+      </div>
+      {%- else %}
+      <div class="data-value">{{ team_count }}</div>
+      {%- endif %}
+    </div>
+    {%- else %}
     <div class="box">
       <div class="data-label">{{ _('Participants') }}</div>
       {%- if tournament.max_players %}
@@ -90,6 +106,7 @@
       <div class="data-value">{{ participant_count }}</div>
       {%- endif %}
     </div>
+    {%- endif %}
   </div>
 
   {%- if tournament.description %}
@@ -125,6 +142,58 @@
   </div>
   {%- endif %}
 
+  {%- if is_team_tournament %}
+  {# Team tournament: show teams as primary, players collapsed #}
+  <div class="main-body-box box block">
+    <div class="data-label">{{ _('Registered teams') }}</div>
+  {%- if teams %}
+    <ul class="lt-player-list">
+      {%- for team in teams %}
+      <li class="lt-player-row">
+        <span class="lt-player-name">
+          <a href="{{ url_for('.view_team', team_id=team.id) }}">{{ team.name }}</a>
+        </span>
+        <span class="lt-player-sep" aria-hidden="true"></span>
+        <span class="lt-player-seat">{{ member_counts.get(team.id, 0) }} {{ _('members') }}</span>
+      </li>
+      {%- endfor %}
+    </ul>
+  {%- else %}
+    <p class="dimmed">{{ _('No teams have registered yet.') }}</p>
+  {%- endif %}
+  </div>
+  {%- if participants %}
+  <details class="block">
+    <summary class="dimmed">{{ _('Show all players') }} ({{ participant_count }})</summary>
+    <div class="main-body-box box mt">
+      <ul class="lt-player-list">
+        {%- for participant in participants %}
+        <li class="lt-player-row">
+          {%- set _user = users_by_id.get(participant.user_id) -%}
+          {%- if _user -%}
+            <span class="lt-player-name">
+              {%- if not _user.deleted -%}
+                <a href="{{ url_for('user_profile.view', user_id=_user.id) }}" class="lt-hover-name-link">{{ _user.screen_name }}</a>
+              {%- else -%}
+                {{ _user.screen_name }}
+              {%- endif -%}
+            </span>
+            {%- set _seat = seats_by_user_id.get(_user.id) -%}
+            {%- if _seat -%}
+              <span class="lt-player-sep" aria-hidden="true"></span>
+              <span class="lt-player-seat">{{ _seat }}</span>
+            {%- endif -%}
+          {%- else -%}
+            <span class="lt-player-name">{{ participant.user_id|string }}</span>
+          {%- endif -%}
+        </li>
+        {%- endfor %}
+      </ul>
+    </div>
+  </details>
+  {%- endif %}
+  {%- else %}
+  {# Solo tournament: show players as primary (unchanged) #}
   <div class="main-body-box box block">
     <div class="data-label">{{ _('Checked-in players') }}</div>
   {%- if participants %}
@@ -155,5 +224,6 @@
     <p class="dimmed">{{ _('No participants have registered yet.') }}</p>
   {%- endif %}
   </div>
+  {%- endif %}
 
 {%- endblock %}

@@ -163,9 +163,13 @@ def view(tournament_id):
     teams = []
     team_count = 0
     teams_below_minimum = []
+    member_counts = {}
     if is_team_tournament:
         teams = tournament_team_service.get_teams_for_tournament(tournament.id)
         team_count = len(teams)
+        member_counts = tournament_team_service.get_team_member_counts(
+            tournament.id
+        )
         teams_below_minimum = (
             tournament_participant_service.get_teams_below_minimum_size(
                 tournament.id, tournament=tournament
@@ -181,6 +185,7 @@ def view(tournament_id):
         'participant_count': participant_count,
         'team_count': team_count,
         'teams': teams,
+        'member_counts': member_counts,
         'teams_below_minimum': teams_below_minimum,
         'active_tab': 'overview',
     }

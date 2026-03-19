@@ -130,6 +130,22 @@ def view(tournament_id):
         and tournament.tournament_status == TournamentStatus.REGISTRATION_OPEN
     )
 
+    # Team data for team tournaments
+    is_team_tournament = (
+        tournament.contestant_type == ContestantType.TEAM
+    )
+    teams = []
+    team_count = 0
+    member_counts = {}
+    if is_team_tournament:
+        teams = tournament_team_service.get_teams_for_tournament(
+            tournament.id
+        )
+        team_count = len(teams)
+        member_counts = tournament_team_service.get_team_member_counts(
+            tournament.id
+        )
+
     # Resolve user names
     user_ids = {p.user_id for p in participants}
     users_by_id = user_service.get_users_indexed_by_id(user_ids)
@@ -141,6 +157,10 @@ def view(tournament_id):
         'tournament': tournament,
         'participants': participants,
         'participant_count': participant_count,
+        'is_team_tournament': is_team_tournament,
+        'teams': teams,
+        'team_count': team_count,
+        'member_counts': member_counts,
         'current_user_participant': current_user_participant,
         'can_join': can_join,
         'can_leave': can_leave,

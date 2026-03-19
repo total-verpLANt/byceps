@@ -171,6 +171,17 @@
 
   {# Participant & team summaries #}
   <div class="grid block">
+    {%- if is_team_tournament %}
+    {# Team tournament: Teams box first, Participants second #}
+    <div class="column">
+      <div class="box column-cell--grow">
+        <div class="data-label">{{ _('Teams') }}</div>
+        <div class="data-value" style="font-size: 1.5rem; font-weight: bold">{{ team_count }}</div>
+        <div class="mt">
+          <a class="button button--compact" href="{{ url_for('.teams_for_tournament', tournament_id=tournament.id) }}">{{ _('View all') }}</a>
+        </div>
+      </div>
+    </div>
     <div class="column">
       <div class="box column-cell--grow">
         <div class="data-label">{{ _('Participants') }}</div>
@@ -180,13 +191,14 @@
         </div>
       </div>
     </div>
-    {%- if is_team_tournament %}
+    {%- else %}
+    {# Solo tournament: Participants box only #}
     <div class="column">
       <div class="box column-cell--grow">
-        <div class="data-label">{{ _('Teams') }}</div>
-        <div class="data-value" style="font-size: 1.5rem; font-weight: bold">{{ team_count }}</div>
+        <div class="data-label">{{ _('Participants') }}</div>
+        <div class="data-value" style="font-size: 1.5rem; font-weight: bold">{{ participant_count }}</div>
         <div class="mt">
-          <a class="button button--compact" href="{{ url_for('.teams_for_tournament', tournament_id=tournament.id) }}">{{ _('View all') }}</a>
+          <a class="button button--compact" href="{{ url_for('.participants_for_tournament', tournament_id=tournament.id) }}">{{ _('View all') }}</a>
         </div>
       </div>
     </div>
@@ -201,6 +213,7 @@
         <tr>
           <th>{{ _('Name') }}</th>
           <th>{{ _('Tag') }}</th>
+          <th>{{ _('Members') }}</th>
         </tr>
       </thead>
       <tbody>
@@ -208,6 +221,7 @@
         <tr>
           <td><a href="{{ url_for('.view_team', team_id=team.id) }}">{{ team.name }}</a></td>
           <td>{{ team.tag|default('–', true) }}</td>
+          <td>{{ member_counts.get(team.id, 0) }}</td>
         </tr>
         {%- endfor %}
       </tbody>
