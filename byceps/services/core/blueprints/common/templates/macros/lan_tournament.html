@@ -4,17 +4,29 @@
     team_id=None,
     seats_by_user_id={},
     team_members_by_team_id={},
-    truncate_len=0
+    truncate_len=0,
+    user_deleted=False,
+    link_profiles=True
 ) -%}
 {%- set has_hover_data = (
     (team_id and team_id in team_members_by_team_id)
     or (user_id and user_id in seats_by_user_id)
 ) -%}
 <span class="lt-hover-wrap" tabindex="0">
-  {%- if truncate_len > 0 -%}
-    {{ display_name|truncate(truncate_len) }}
+  {%- if user_id and not user_deleted and link_profiles -%}
+    <a href="{{ url_for('user_profile.view', user_id=user_id) }}" class="lt-hover-name-link">
+    {%- if truncate_len > 0 -%}
+      {{ display_name|truncate(truncate_len) }}
+    {%- else -%}
+      {{ display_name }}
+    {%- endif -%}
+    </a>
   {%- else -%}
-    {{ display_name }}
+    {%- if truncate_len > 0 -%}
+      {{ display_name|truncate(truncate_len) }}
+    {%- else -%}
+      {{ display_name }}
+    {%- endif -%}
   {%- endif -%}
   {%- if has_hover_data %}
   <span class="lt-hover-card">
@@ -483,7 +495,7 @@ R{{ r }} M{{ m }}
               {%- elif contestant.participant_id %}
                 {%- set _user = participants_by_id.get(contestant.participant_id) -%}
                 {%- if _user -%}
-                  {{ render_hover_name(_user.screen_name, user_id=_user.id, seats_by_user_id=seats_by_user_id, truncate_len=15) }}
+                  {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted, seats_by_user_id=seats_by_user_id, truncate_len=15) }}
                 {%- else -%}
                   {{ contestant.participant_id|string }}
                 {%- endif -%}
@@ -564,7 +576,7 @@ R{{ r }} M{{ m }}
           {%- elif contestant.participant_id %}
             {%- set _user = participants_by_id.get(contestant.participant_id) -%}
             {%- if _user -%}
-              {{ render_hover_name(_user.screen_name, user_id=_user.id, seats_by_user_id=seats_by_user_id) }}
+              {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted, seats_by_user_id=seats_by_user_id) }}
             {%- else -%}
               {{ contestant.participant_id|string }}
             {%- endif -%}
@@ -588,7 +600,7 @@ R{{ r }} M{{ m }}
             {%- elif contestant.participant_id %}
               {%- set _user = participants_by_id.get(contestant.participant_id) -%}
               {%- if _user -%}
-                {{ render_hover_name(_user.screen_name, user_id=_user.id, seats_by_user_id=seats_by_user_id) }}
+                {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted, seats_by_user_id=seats_by_user_id) }}
               {%- else -%}
                 {{ contestant.participant_id|string }}
               {%- endif -%}
@@ -813,6 +825,7 @@ R{{ r }} M{{ m }}
             {%- if _user -%}
               {{ render_hover_name(
                   _user.screen_name, user_id=_user.id,
+                  user_deleted=_user.deleted,
                   seats_by_user_id=seats_by_user_id,
                   truncate_len=15
               ) }}
@@ -952,6 +965,7 @@ R{{ r }} M{{ m }}
             {%- if _user -%}
               {{ render_hover_name(
                   _user.screen_name, user_id=_user.id,
+                  user_deleted=_user.deleted,
                   seats_by_user_id=seats_by_user_id
               ) }}
             {%- else -%}
@@ -988,6 +1002,7 @@ R{{ r }} M{{ m }}
               {%- if _user -%}
                 {{ render_hover_name(
                     _user.screen_name, user_id=_user.id,
+                    user_deleted=_user.deleted,
                     seats_by_user_id=seats_by_user_id
                 ) }}
               {%- else -%}
@@ -1121,7 +1136,7 @@ R{{ r }} M{{ m }}
         {%- elif entry.participant_id -%}
           {%- set _user = participants_by_id.get(entry.participant_id) -%}
           {%- if _user -%}
-            {{ render_hover_name(_user.screen_name, user_id=_user.id) }}
+            {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted) }}
           {%- else -%}
             {{ entry.participant_id|string }}
           {%- endif -%}
@@ -1188,7 +1203,7 @@ R{{ r }} M{{ m }}
         {%- if not ns.found -%}
           {%- for pid, user in participants_by_id.items() if pid|string == cid -%}
             {%- set ns.found = true -%}
-            {{ render_hover_name(user.screen_name, user_id=user.id, seats_by_user_id=seats_by_user_id) }}
+            {{ render_hover_name(user.screen_name, user_id=user.id, user_deleted=user.deleted, seats_by_user_id=seats_by_user_id) }}
           {%- endfor -%}
         {%- endif -%}
         {%- if not ns.found -%}

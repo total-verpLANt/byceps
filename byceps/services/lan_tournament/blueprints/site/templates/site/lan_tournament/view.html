@@ -133,7 +133,13 @@
       <li class="lt-player-row">
         {%- set _user = users_by_id.get(participant.user_id) -%}
         {%- if _user -%}
-          <span class="lt-player-name">{{ _user.screen_name }}</span>
+          <span class="lt-player-name">
+            {%- if not _user.deleted -%}
+              <a href="{{ url_for('user_profile.view', user_id=_user.id) }}" class="lt-hover-name-link">{{ _user.screen_name }}</a>
+            {%- else -%}
+              {{ _user.screen_name }}
+            {%- endif -%}
+          </span>
           {%- set _seat = seats_by_user_id.get(_user.id) -%}
           {%- if _seat -%}
             <span class="lt-player-sep" aria-hidden="true"></span>

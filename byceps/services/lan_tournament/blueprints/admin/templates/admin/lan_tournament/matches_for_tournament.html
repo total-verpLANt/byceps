@@ -57,7 +57,7 @@
               Team:
               {%- set _team = teams_by_id.get(contestant.team_id) -%}
               {%- if _team -%}
-                {{ render_hover_name(_team.name, team_id=_team.id, team_members_by_team_id=team_members_by_team_id, truncate_len=15) }}
+                {{ render_hover_name(_team.name, team_id=_team.id, link_profiles=False, team_members_by_team_id=team_members_by_team_id, truncate_len=15) }}
               {%- else -%}
                 {{ contestant.team_id|string }}
               {%- endif -%}
@@ -65,7 +65,7 @@
               Player:
               {%- set _user = participants_by_id.get(contestant.participant_id) -%}
               {%- if _user -%}
-                {{ render_hover_name(_user.screen_name, user_id=_user.id, seats_by_user_id=seats_by_user_id, truncate_len=15) }}
+                {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted, link_profiles=False, seats_by_user_id=seats_by_user_id, truncate_len=15) }}
               {%- else -%}
                 {{ contestant.participant_id|string }}
               {%- endif -%}
@@ -80,7 +80,7 @@
                 Team:
                 {%- set _team = teams_by_id.get(contestant.team_id) -%}
                 {%- if _team -%}
-                  {{ render_hover_name(_team.name, team_id=_team.id, team_members_by_team_id=team_members_by_team_id, truncate_len=15) }}
+                  {{ render_hover_name(_team.name, team_id=_team.id, link_profiles=False, team_members_by_team_id=team_members_by_team_id, truncate_len=15) }}
                 {%- else -%}
                   {{ contestant.team_id|string }}
                 {%- endif -%}
@@ -88,7 +88,7 @@
                 Player:
                 {%- set _user = participants_by_id.get(contestant.participant_id) -%}
                 {%- if _user -%}
-                  {{ render_hover_name(_user.screen_name, user_id=_user.id, seats_by_user_id=seats_by_user_id, truncate_len=15) }}
+                  {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted, link_profiles=False, seats_by_user_id=seats_by_user_id, truncate_len=15) }}
                 {%- else -%}
                   {{ contestant.participant_id|string }}
                 {%- endif -%}

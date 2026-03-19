@@ -47,7 +47,7 @@
           {%- elif contestant.participant_id %}
             {%- set _user = participants_by_id.get(contestant.participant_id) -%}
             {%- if _user -%}
-              {{ render_hover_name(_user.screen_name, user_id=_user.id, seats_by_user_id=seats_by_user_id) }}
+              {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted, seats_by_user_id=seats_by_user_id) }}
             {%- else -%}
               {{ contestant.participant_id|string }}
             {%- endif -%}
