@@ -8,7 +8,9 @@ from byceps.util.result import Err, Ok, Result
 from . import (
     signals,
     tournament_domain_service,
+    tournament_participant_service,
     tournament_repository,
+    tournament_team_service,
 )
 from .events import (
     TournamentCreatedEvent,
@@ -380,3 +382,28 @@ def end_tournament(
 ) -> Result[tuple[Tournament, TournamentStatusChangedEvent], str]:
     """End a tournament."""
     return change_status(tournament_id, TournamentStatus.COMPLETED)
+
+
+def resolve_winner_display_name(tournament: Tournament) -> str | None:
+    """Return a human-readable winner name for a completed tournament,
+    or ``None`` if no winner is recorded or the tournament is not
+    completed.
+    """
+    if tournament.tournament_status != TournamentStatus.COMPLETED:
+        return None
+
+    if tournament.winner_team_id:
+        team = tournament_team_service.find_team(tournament.winner_team_id)
+        if team is not None:
+            return team.name
+    elif tournament.winner_participant_id:
+        from byceps.services.user import user_service
+
+        participant = tournament_participant_service.find_participant(
+            tournament.winner_participant_id
+        )
+        if participant is not None:
+            user = user_service.get_user(participant.user_id)
+            return user.screen_name
+
+    return None

@@ -153,6 +153,8 @@ def view(tournament_id):
     # Build seat lookup
     seats_by_user_id = build_seat_lookup(user_ids, tournament.party_id)
 
+    winner_name = tournament_service.resolve_winner_display_name(tournament)
+
     return {
         'tournament': tournament,
         'participants': participants,
@@ -166,6 +168,7 @@ def view(tournament_id):
         'can_leave': can_leave,
         'users_by_id': users_by_id,
         'seats_by_user_id': seats_by_user_id,
+        'winner_name': winner_name,
         'active_tab': 'overview',
     }
 

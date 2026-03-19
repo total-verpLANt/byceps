@@ -491,6 +491,126 @@ function parseBracketData(json) {
 }
 
 /**
+ * Compute placement ranks (1st, 2nd, 3rd) for completed bracket matches.
+ *
+ * Mutates each match object in parsed data to add:
+ *   match.topPlacement  (1, 2, 3, or null)
+ *   match.bottomPlacement (1, 2, 3, or null)
+ *
+ * SE logic:
+ *   - Last round of winnerRounds = final: winner → 1, loser → 2
+ *   - Second-to-last round = semifinal: losers → 3
+ *   - Third-place match (P3): winner → 3 (overrides SF losers)
+ *
+ * DE logic:
+ *   - GF match (last round of winnerRounds with bracket === 'GF') = final: winner → 1, loser → 2
+ *   - If GF M2 (bracket reset) exists: GF M1 placements cleared; GF M2 decides rank 1/2
+ *   - If GF M2 exists but incomplete: no placements on either GF match
+ *   - Third-place match (P3): winner → 3
+ *   - If no P3 match, LB final loser → 3
+ *
+ * @param {Object} parsed  The output of parseBracketData().
+ */
+function _ltComputePlacements(parsed) {
+  var winnerRounds = parsed.winnerRounds;
+  var loserRounds = parsed.loserRounds;
+  var thirdPlaceMatches = parsed.thirdPlaceMatches;
+  var isDE = loserRounds.length > 0;
+  var i, match;
+
+  // Find the final round (last round in winnerRounds)
+  var finalRound = winnerRounds.length > 0 ? winnerRounds[winnerRounds.length - 1] : null;
+
+  // Tag the final match (rank 1 for winner, rank 2 for loser)
+  if (finalRound) {
+    for (i = 0; i < finalRound.matches.length; i++) {
+      match = finalRound.matches[i];
+      if (!match.isComplete) continue;
+      if (match.winnerIndex === 1) {
+        match.topPlacement = 1;
+        match.bottomPlacement = 2;
+      } else if (match.winnerIndex === 2) {
+        match.topPlacement = 2;
+        match.bottomPlacement = 1;
+      }
+    }
+  }
+
+  // DE bracket-reset: if GF M2 exists in finalMatches, it is the decisive match.
+  // GF M1 placements must be cleared regardless (the bracket is not yet decided,
+  // or the true result is on GF M2).
+  if (isDE && finalRound) {
+    var gfResetMatch = null;
+    for (i = 0; i < parsed.finalMatches.length; i++) {
+      if (_ltIsGFResetMatch(parsed.finalMatches[i])) {
+        gfResetMatch = parsed.finalMatches[i];
+        break;
+      }
+    }
+    if (gfResetMatch) {
+      // Clear premature GF M1 placements
+      for (i = 0; i < finalRound.matches.length; i++) {
+        match = finalRound.matches[i];
+        delete match.topPlacement;
+        delete match.bottomPlacement;
+      }
+      // If GF M2 is complete, it determines rank 1 and rank 2
+      if (gfResetMatch.isComplete) {
+        if (gfResetMatch.winnerIndex === 1) {
+          gfResetMatch.topPlacement = 1;
+          gfResetMatch.bottomPlacement = 2;
+        } else if (gfResetMatch.winnerIndex === 2) {
+          gfResetMatch.topPlacement = 2;
+          gfResetMatch.bottomPlacement = 1;
+        }
+      }
+    }
+  }
+
+  // Tag semifinal losers (rank 3) — second-to-last round
+  if (!isDE) {
+    // SE: second-to-last winnerRound = semifinal
+    var sfRound = winnerRounds.length >= 2 ? winnerRounds[winnerRounds.length - 2] : null;
+    if (sfRound) {
+      for (i = 0; i < sfRound.matches.length; i++) {
+        match = sfRound.matches[i];
+        if (!match.isComplete) continue;
+        if (match.winnerIndex === 1) {
+          match.bottomPlacement = 3;
+        } else if (match.winnerIndex === 2) {
+          match.topPlacement = 3;
+        }
+      }
+    }
+  } else {
+    // DE: if no third-place match, the LB final loser gets rank 3
+    if (thirdPlaceMatches.length === 0 && loserRounds.length > 0) {
+      var lbFinalRound = loserRounds[loserRounds.length - 1];
+      for (i = 0; i < lbFinalRound.matches.length; i++) {
+        match = lbFinalRound.matches[i];
+        if (!match.isComplete) continue;
+        if (match.winnerIndex === 1) {
+          match.bottomPlacement = 3;
+        } else if (match.winnerIndex === 2) {
+          match.topPlacement = 3;
+        }
+      }
+    }
+  }
+
+  // Tag third-place match (P3): winner → rank 3
+  for (i = 0; i < thirdPlaceMatches.length; i++) {
+    match = thirdPlaceMatches[i];
+    if (!match.isComplete) continue;
+    if (match.winnerIndex === 1) {
+      match.topPlacement = 3;
+    } else if (match.winnerIndex === 2) {
+      match.bottomPlacement = 3;
+    }
+  }
+}
+
+/**
  * Assign a source ref to the first empty slot (top or bottom) of a target match.
  */
 function _ltAssignSourceRef(targetMatch, sourceRef, outcome) {
@@ -941,12 +1061,21 @@ function createRoundTitle(round, dims) {
 
 /**
  * Build a single team row (top or bottom contestant) inside a match card.
+ *
+ * @param {Object}  entrant    Entrant data object.
+ * @param {boolean} isWinner   Whether this entrant won the match.
+ * @param {number|null} score  Entrant score.
+ * @param {Object}  dims       Dimension/layout config.
+ * @param {string}  matchRef   Match reference string.
+ * @param {Object}  hoverData  Hover/tooltip data.
+ * @param {number|null} placement  Rank placement (1, 2, 3) or null.
  */
-function buildTeamRow(entrant, isWinner, score, dims, matchRef, hoverData) {
+function buildTeamRow(entrant, isWinner, score, dims, matchRef, hoverData, placement) {
   var team = _ltFormatEntrantForView(entrant);
   var classes = ['lt-team'];
   if (team.className) classes.push(team.className);
   if (isWinner && team.className !== 'defwin') classes.push('winner');
+  if (placement && team.className !== 'defwin') classes.push('lt-team-rank-' + placement);
   var scoreText = (score === 0 || score) ? String(score) : '-';
   var playerAttr = team.key ? ' data-player="' + _ltEscapeHtml(team.key) + '"' : '';
   var scoreAttrs = team.key
@@ -977,13 +1106,21 @@ function buildTeamRow(entrant, isWinner, score, dims, matchRef, hoverData) {
     }
   }
 
+  // Trophy icon SVG for 1st place
+  var trophyHtml = (placement === 1)
+    ? '<span class="lt-trophy-icon" aria-label="Winner">' +
+      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="#FFD700" aria-hidden="true">' +
+      '<path d="M19 5h-2V3H7v2H5c-1.1 0-2 .9-2 2v1c0 2.55 1.92 4.63 4.39 4.94A5.01 5.01 0 0 0 11 15.9V19H7v2h10v-2h-4v-3.1a5.01 5.01 0 0 0 3.61-2.96C19.08 12.63 21 10.55 21 8V7c0-1.1-.9-2-2-2zM5 8V7h2v3.82C5.84 10.4 5 9.3 5 8zm14 0c0 1.3-.84 2.4-2 2.82V7h2v1z"/>' +
+      '</svg></span>'
+    : '';
+
   var teamTextHtml;
   if (hoverHtml) {
     teamTextHtml = '<span class="lt-hover-wrap lt-team-text" tabindex="0" title="' +
-      _ltEscapeHtml(team.text) + '">' + _ltEscapeHtml(team.text) + hoverHtml + '</span>';
+      _ltEscapeHtml(team.text) + '">' + trophyHtml + _ltEscapeHtml(team.text) + hoverHtml + '</span>';
   } else {
     teamTextHtml = '<span class="lt-team-text" title="' + _ltEscapeHtml(team.text) + '">' +
-      _ltEscapeHtml(team.text) + '</span>';
+      trophyHtml + _ltEscapeHtml(team.text) + '</span>';
   }
 
   return '<div class="' + classes.join(' ') + '"' + playerAttr +
@@ -1052,8 +1189,8 @@ function createMatchEl(match, dims, options, matchUrls) {
     '</span>' +
     '<span class="lt-match-meta">' + stageText + statusTag + '</span>' +
     '</div>' +
-    buildTeamRow(match.topResolved.entrant, match.winnerIndex === 1, match.scores[0], dims, match.ref, options.hoverData) +
-    buildTeamRow(match.bottomResolved.entrant, match.winnerIndex === 2, match.scores[1], dims, match.ref, options.hoverData);
+    buildTeamRow(match.topResolved.entrant, match.winnerIndex === 1, match.scores[0], dims, match.ref, options.hoverData, match.topPlacement || null) +
+    buildTeamRow(match.bottomResolved.entrant, match.winnerIndex === 2, match.scores[1], dims, match.ref, options.hoverData, match.bottomPlacement || null);
 
   return el;
 }
@@ -1974,6 +2111,7 @@ function createBracketInstance(config) {
   function ensureParsed() {
     if (!parsed) {
       parsed = parseBracketData(data);
+      _ltComputePlacements(parsed);
     }
     return parsed;
   }

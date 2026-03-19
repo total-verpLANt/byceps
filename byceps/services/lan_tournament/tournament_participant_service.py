@@ -567,6 +567,13 @@ def get_ticket_status_for_participants(
     return users_with_tickets, participants_without_tickets
 
 
+def find_participant(
+    participant_id: TournamentParticipantID,
+) -> TournamentParticipant | None:
+    """Return the participant, or `None` if not found."""
+    return tournament_repository.find_participant(participant_id)
+
+
 def get_participant(
     participant_id: TournamentParticipantID,
 ) -> TournamentParticipant:
