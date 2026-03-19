@@ -17,14 +17,32 @@
 
   {{ render_tournament_subnav(tournament, active_tab) }}
 
-  {%- if current_user_participant and match_data %}
+  {%- if current_user_participant and match_quantities %}
   <div class='match-filter-bar'>
+    <a href='{{ url_for('.matches', tournament_id=tournament.id, only='ready') }}'
+       class='button secondary{{ ' active' if only == 'ready' else '' }}'>
+      {{ render_icon('success') }} {{ _('Ready') }}
+      <span class='dimmed' style='margin-left: 0.3rem;'>{{ match_quantities.ready }}</span>
+    </a>
+    <a href='{{ url_for('.matches', tournament_id=tournament.id, only='open') }}'
+       class='button secondary{{ ' active' if only == 'open' else '' }}'>
+      {{ render_icon('pending') }} {{ _('Open') }}
+      <span class='dimmed' style='margin-left: 0.3rem;'>{{ match_quantities.open }}</span>
+    </a>
+    <a href='{{ url_for('.matches', tournament_id=tournament.id, only='all') }}'
+       class='button secondary{{ ' active' if only == 'all' else '' }}'>
+      {{ render_icon('view') }} {{ _('All') }}
+      <span class='dimmed' style='margin-left: 0.3rem;'>{{ match_quantities.all }}</span>
+    </a>
+
+    {%- if match_data %}
     <button type='button' id='match-filter-mine' class='button secondary'
             aria-pressed='false'
             data-user-team-id='{{ current_user_participant.team_id or "" }}'
             data-user-participant-id='{{ current_user_participant.id or "" }}'>
       {{ render_icon('user') }} {{ _('My Matches') }}
     </button>
+    {%- endif %}
   </div>
   {%- endif %}
 
@@ -83,7 +101,15 @@
     {%- endfor %}
   </div>
   {%- else %}
-  <p class='dimmed'>{{ _('No matches are ready to play yet.') }}</p>
+  <p class='dimmed'>
+    {%- if only == 'ready' %}
+      {{ _('No matches are ready for you yet.') }}
+    {%- elif only == 'open' %}
+      {{ _('No open matches.') }}
+    {%- else %}
+      {{ _('No matches have been created yet.') }}
+    {%- endif %}
+  </p>
   {%- endif %}
 
 {%- endblock %}
