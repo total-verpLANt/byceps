@@ -822,6 +822,24 @@ def _get_team_or_404(team_id) -> TournamentTeam:
 # matches
 
 
+def _is_match_ready(entry: dict) -> bool:
+    """A match is ready when it has 2+ contestants or is confirmed."""
+    return (
+        len(entry['contestants']) >= 2
+        or entry['match'].confirmed_by is not None
+    )
+
+
+def _is_user_match(entry: dict, participant) -> bool:
+    """Check if any contestant in the match belongs to this participant."""
+    for c in entry['contestants']:
+        if c.team_id and participant.team_id and c.team_id == participant.team_id:
+            return True
+        if c.participant_id and c.participant_id == participant.id:
+            return True
+    return False
+
+
 @blueprint.get('/<tournament_id>/matches')
 @templated
 def matches(tournament_id):
@@ -856,21 +874,55 @@ def matches(tournament_id):
         )
         all_contestants.append(contestants)
 
-    # Only include matches that are ready to play (all contestants
-    # assigned) or already confirmed (including DEFWIN).
-    match_data = [
-        entry
-        for entry in match_data
-        if len(entry['contestants']) >= 2
-        or entry['match'].confirmed_by is not None
-    ]
-
     # Fetch participants once, share across both helpers.
     participants = (
         tournament_participant_service.get_participants_for_tournament(
             tournament.id
         )
     )
+
+    # Determine current participant early — needed for personal-scope filtering.
+    current_user_participant = None
+    if g.user.authenticated:
+        for p in participants:
+            if p.user_id == g.user.id:
+                current_user_participant = p
+                break
+
+    # Apply status filter based on ?only= param (participants only).
+    if current_user_participant:
+        only = request.args.get('only', 'ready')
+
+        ready_user_count = sum(
+            1 for e in match_data
+            if _is_match_ready(e) and _is_user_match(e, current_user_participant)
+        )
+        open_count = sum(1 for e in match_data if not _is_match_ready(e))
+        total_count = len(match_data)
+        match_quantities = {
+            'ready': ready_user_count,
+            'open': open_count,
+            'all': total_count,
+        }
+
+        if only == 'ready':
+            match_data = [
+                e for e in match_data
+                if _is_match_ready(e) and _is_user_match(e, current_user_participant)
+            ]
+        elif only == 'open':
+            match_data = [e for e in match_data if not _is_match_ready(e)]
+        # 'all' → no filtering
+    else:
+        only = None
+        match_quantities = None
+        # Non-participants: keep existing behavior — ready matches only.
+        match_data = [
+            entry
+            for entry in match_data
+            if len(entry['contestants']) >= 2
+            or entry['match'].confirmed_by is not None
+        ]
 
     teams_by_id, participants_by_id = build_contestant_name_lookups(
         tournament.id, all_contestants, participants=participants
@@ -881,16 +933,11 @@ def matches(tournament_id):
         participants=participants,
     )
 
-    current_user_participant = None
-    if g.user.authenticated:
-        for p in participants:
-            if p.user_id == g.user.id:
-                current_user_participant = p
-                break
-
     return {
         'tournament': tournament,
         'match_data': match_data,
+        'only': only,
+        'match_quantities': match_quantities,
         'teams_by_id': teams_by_id,
         'participants_by_id': participants_by_id,
         'seats_by_user_id': seats_by_user_id,
