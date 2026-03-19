@@ -15,11 +15,18 @@
  *
  * Modes:
  *   "full"     – show every round and every bracket section (default).
- *   "top8"     – hide all rounds except the last 3 (QF, SF, F).
+ *   "top8"     – show only the final rounds (QF, SF, F). For client-
+ *                rendered brackets, delegates to the bracket instance
+ *                which re-renders with filtered rounds.
  *   "winners"  – show only sections with data-bracket-view="winners"
  *                or "finals"; hide "losers".
  *   "losers"   – show only sections with data-bracket-view="losers"
  *                or "finals"; hide "winners".
+ *
+ * Client-rendered brackets (those with a _ltBracketInstance on the
+ * root element) delegate ALL view modes to the instance's setViewMode()
+ * for a full re-render. This ensures geometry, SVG connectors, and
+ * layout are recomputed correctly for filtered rounds.
  */
 function initBracketViewSwitcher() {
   var selects = document.querySelectorAll('.view-select');
@@ -32,6 +39,16 @@ function initBracketViewSwitcher() {
     select.setAttribute('data-view-bound', '1');
 
     function applyMode(mode) {
+      // --- Client-rendered bracket delegation ---
+      // If the bracket instance is available, delegate all view modes
+      // to its setViewMode() which re-renders with filtered rounds.
+      // shell itself may be #bracket-app (client-rendered), or contain it
+      var appRoot = shell.id === 'bracket-app' ? shell : shell.querySelector('#bracket-app');
+      if (appRoot && appRoot._ltBracketInstance) {
+        appRoot._ltBracketInstance.setViewMode(mode);
+        return;
+      }
+
       // --- Round-level filtering (server-rendered brackets) ---
       var rounds = shell.querySelectorAll('.bracket-round');
       var total = rounds.length;
@@ -43,20 +60,17 @@ function initBracketViewSwitcher() {
         }
       });
 
-      // --- Section-level filtering (client-rendered DE brackets) ---
+      // --- Section-level filtering (legacy client-rendered fallback) ---
       var sections = shell.querySelectorAll('.lt-bracket-section[data-bracket-view]');
       if (sections.length === 0) return;
 
       sections.forEach(function(section) {
         var view = section.getAttribute('data-bracket-view');
         if (mode === 'winners') {
-          // Show winners and finals, hide losers
           section.style.display = (view === 'losers') ? 'none' : '';
         } else if (mode === 'losers') {
-          // Show losers and finals, hide winners
           section.style.display = (view === 'winners') ? 'none' : '';
         } else {
-          // 'full' or any other mode: show all
           section.style.display = '';
         }
       });
