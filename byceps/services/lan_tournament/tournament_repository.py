@@ -827,6 +827,30 @@ def get_participant_counts_for_tournaments(
     return dict(rows)
 
 
+def get_team_counts_for_tournaments(
+    tournament_ids: list[TournamentID],
+) -> dict[TournamentID, int]:
+    """Return active team counts per tournament in a single query."""
+    if not tournament_ids:
+        return {}
+    rows = (
+        db.session.execute(
+            select(
+                DbTournamentTeam.tournament_id,
+                db.func.count(DbTournamentTeam.id),
+            )
+            .where(
+                DbTournamentTeam.tournament_id.in_(tournament_ids),
+                DbTournamentTeam.removed_at.is_(None),
+            )
+            .group_by(DbTournamentTeam.tournament_id)
+        )
+        .tuples()
+        .all()
+    )
+    return dict(rows)
+
+
 def _db_participant_to_participant(
     db_participant: DbTournamentParticipant,
 ) -> TournamentParticipant:

@@ -133,9 +133,15 @@ def index(party_id):
 
     tournaments = tournament_service.get_tournaments_for_party(party.id)
 
+    tournament_ids = [t.id for t in tournaments]
+    participant_counts = tournament_service.get_participant_counts_for_tournaments(tournament_ids)
+    team_counts = tournament_team_service.get_team_counts_for_tournaments(tournament_ids)
+
     return {
         'party': party,
         'tournaments': tournaments,
+        'participant_counts': participant_counts,
+        'team_counts': team_counts,
     }
 
 

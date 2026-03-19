@@ -29,6 +29,7 @@
         <th>{{ _('Game') }}</th>
         <th>{{ _('Mode') }}</th>
         <th>{{ _('Type') }}</th>
+        <th>{{ _('Registrations') }}</th>
         <th>{{ _('Start') }}</th>
         <th>{{ _('Status') }}</th>
       </tr>
@@ -50,6 +51,15 @@
         <td>
           {%- if tournament.contestant_type %}
             {{ tournament.contestant_type.name|title }}
+          {%- endif %}
+        </td>
+        <td>
+          {%- if tournament.contestant_type and tournament.contestant_type.name == 'TEAM' %}
+            {{ team_counts.get(tournament.id, 0) }}{% if tournament.max_teams %}/{{ tournament.max_teams }}{% endif %} {{ _('Teams') }}
+          {%- elif tournament.max_players %}
+            {{ participant_counts.get(tournament.id, 0) }}/{{ tournament.max_players }}
+          {%- else %}
+            —
           {%- endif %}
         </td>
         <td>

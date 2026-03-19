@@ -319,6 +319,13 @@ def get_team_member_counts(
     return tournament_repository.get_team_member_counts(tournament_id)
 
 
+def get_team_counts_for_tournaments(
+    tournament_ids: list[TournamentID],
+) -> dict[TournamentID, int]:
+    """Return active team counts per tournament in a single query."""
+    return tournament_repository.get_team_counts_for_tournaments(tournament_ids)
+
+
 def get_teams_by_ids(
     team_ids: set[TournamentTeamID],
 ) -> list[TournamentTeam]:
