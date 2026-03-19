@@ -76,14 +76,14 @@ def index():
 
     visible_tournaments.sort(key=_sort_key)
 
-    participant_counts = {
-        t.id: tournament_service.get_participant_count(t.id)
-        for t in visible_tournaments
-    }
+    tournament_ids = [t.id for t in visible_tournaments]
+    participant_counts = tournament_service.get_participant_counts_for_tournaments(tournament_ids)
+    team_counts = tournament_team_service.get_team_counts_for_tournaments(tournament_ids)
 
     return {
         'tournaments': visible_tournaments,
         'participant_counts': participant_counts,
+        'team_counts': team_counts,
     }
 
 

@@ -44,7 +44,14 @@
         {%- endif %}
       </div>
       <div class="tournament-meta">
-        {%- if tournament.max_players %}
+        {%- if tournament.contestant_type and tournament.contestant_type.name == 'TEAM' %}
+        <div class="tournament-participants">
+          {{ team_counts.get(tournament.id, 0) }}{% if tournament.max_teams %}/{{ tournament.max_teams }}{% endif %} {{ _('Teams') }}
+          {%- if tournament.max_players %}
+            · {{ participant_counts.get(tournament.id, 0) }}/{{ tournament.max_players }} {{ _('Players') }}
+          {%- endif %}
+        </div>
+        {%- elif tournament.max_players %}
         <div class="tournament-participants">
           {{ participant_counts.get(tournament.id, 0) }} / {{ tournament.max_players }}
         </div>
