@@ -171,6 +171,16 @@
     </div>
   </div>
 
+  {%- if tournament.tournament_status and tournament.tournament_status.name == 'COMPLETED' and winner_name %}
+  <div class="winner-banner block">
+    <div class="winner-banner-inner">
+      {{ render_icon('trophy') }}
+      <span class="winner-banner-label">{{ _('Champion') }}</span>
+      <span class="winner-banner-name">{{ winner_name }}</span>
+    </div>
+  </div>
+  {%- endif %}
+
   {# Participant & team summaries #}
   <div class="grid block">
     {%- if is_team_tournament %}

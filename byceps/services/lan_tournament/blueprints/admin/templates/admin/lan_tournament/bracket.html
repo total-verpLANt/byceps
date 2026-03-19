@@ -5,7 +5,15 @@
 {% set current_tab = 'tournaments' %}
 {% set page_title = [_('Bracket'), tournament.name, party.title] %}
 
-{% block head %}{{ super() }}{{ bracket_all_styles(bracket_id='de-' ~ tournament.id) }}{% endblock %}
+{% block head %}{{ super() }}{{ bracket_all_styles(bracket_id='de-' ~ tournament.id) }}
+<style>
+/* Placement highlighting — overrides core .winner green */
+.bracket-contestant.bracket-rank-1 { background-color: #fff8e1 !important; font-weight: bold; }
+.bracket-contestant.bracket-rank-2 { background-color: #f5f5f5 !important; }
+.bracket-contestant.bracket-rank-3 { background-color: #fff3e0 !important; }
+.bracket-trophy-icon { margin-right: 0.35em; vertical-align: middle; }
+</style>
+{% endblock %}
 
 {% block before_body %}
 {{ render_backlink(url_for('.view', tournament_id=tournament.id),
@@ -34,6 +42,92 @@
       {{ render_simple_bracket_list(match_data, teams_by_id, participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id, match_url_endpoint='lan_tournament_admin.view_match') }}
     </div>
   {% endif %}
+
+  <script>
+  /* Post-render placement highlighting for admin bracket view.
+     Targets .bracket-desktop only (mobile list view is out of scope). */
+  document.addEventListener('DOMContentLoaded', function () {
+    var TROPHY_SVG = '<svg class="bracket-trophy-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="#d4a017" stroke="#b8860b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3"/><path d="M18 9h3a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1h-3"/><path d="M6 4h12v6a6 6 0 0 1-12 0V4z"/><path d="M9 17v2a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-2"/><rect x="8" y="17" width="8" height="2" rx="1"/></svg>';
+
+    function injectTrophy(contestantEl) {
+      var nameEl = contestantEl.querySelector('.bracket-contestant-name');
+      if (!nameEl || nameEl.querySelector('.bracket-trophy-icon')) return;
+      nameEl.insertAdjacentHTML('afterbegin', TROPHY_SVG);
+    }
+
+    function applyRankToContestants(roundEl, rankWinner, rankLoser) {
+      var matches = roundEl.querySelectorAll('.bracket-match');
+      matches.forEach(function (match) {
+        var contestants = match.querySelectorAll('.bracket-contestant');
+        contestants.forEach(function (c) {
+          if (c.classList.contains('winner')) {
+            if (rankWinner) c.classList.add(rankWinner);
+          } else {
+            if (rankLoser) c.classList.add(rankLoser);
+          }
+        });
+      });
+    }
+
+    /* ── SE bracket ── */
+    var desktopSE = document.querySelectorAll('.bracket-desktop > .bracket-container > .bracket');
+    desktopSE.forEach(function (bracketEl) {
+      var rounds = bracketEl.querySelectorAll('.bracket-round');
+      rounds.forEach(function (round) {
+        var label = round.querySelector('.bracket-round-label');
+        if (!label) return;
+        var text = label.textContent.trim();
+
+        if (text === 'Final') {
+          applyRankToContestants(round, 'bracket-rank-1', 'bracket-rank-2');
+          /* Trophy for winner */
+          var winners = round.querySelectorAll('.bracket-contestant.winner');
+          winners.forEach(function (w) { injectTrophy(w); });
+        } else if (text === 'Semi-Finals') {
+          applyRankToContestants(round, null, 'bracket-rank-3');
+        }
+      });
+    });
+
+    /* ── DE bracket ── */
+    var deSections = document.querySelectorAll('.bracket-desktop .de-bracket-section');
+    deSections.forEach(function (section) {
+      var sectionLabel = section.querySelector('.de-bracket-section-label');
+      if (!sectionLabel) return;
+      var labelText = sectionLabel.textContent.trim();
+
+      if (labelText.indexOf('Grand Final') !== -1) {
+        /* Grand Final: rank-1 for winner, rank-2 for loser.
+           In bracket-reset scenarios there are 2 matches (GF M1 + GF M2);
+           only the LAST (decisive) match determines final placement. */
+        var gfMatches = section.querySelectorAll('.bracket-match');
+        if (gfMatches.length > 0) {
+          var decisiveMatch = gfMatches[gfMatches.length - 1];
+          var contestants = decisiveMatch.querySelectorAll('.bracket-contestant');
+          contestants.forEach(function (c) {
+            if (c.classList.contains('winner')) {
+              c.classList.add('bracket-rank-1');
+              injectTrophy(c);
+            } else {
+              c.classList.add('bracket-rank-2');
+            }
+          });
+        }
+      }
+    });
+
+    /* DE 3rd place: LB Final loser is the true 3rd-place finisher
+       (they lose their last chance to reach the Grand Final). */
+    var lbSections = document.querySelectorAll('.bracket-desktop .de-bracket-section.lb-only');
+    lbSections.forEach(function (lbSection) {
+      var lbRounds = lbSection.querySelectorAll('.bracket > .bracket-round');
+      if (lbRounds.length > 0) {
+        var lastLbRound = lbRounds[lbRounds.length - 1];
+        applyRankToContestants(lastLbRound, null, 'bracket-rank-3');
+      }
+    });
+  });
+  </script>
 
   <div style='margin-top: 2rem;'>
     <a href='{{ url_for('.matches_for_tournament',
