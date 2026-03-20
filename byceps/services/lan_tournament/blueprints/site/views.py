@@ -635,15 +635,17 @@ def update_team(tournament_id, team_id):
         return update_team_form(tournament_id, team_id, form)
 
     name = form.name.data.strip()
+    tag = form.tag.data.strip() if form.tag.data else None
     description = form.description.data.strip() if form.description.data else None
+    join_code = form.join_code.data.strip() if form.join_code.data else None
 
     match tournament_team_service.update_team(
         team.id,
         name=name,
-        tag=team.tag,
+        tag=tag,
         description=description,
         image_url=team.image_url,
-        join_code=team.join_code,
+        join_code=join_code,
         current_user_id=g.user.id,
     ):
         case Ok(updated_team):
