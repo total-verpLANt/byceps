@@ -38,5 +38,6 @@ class Tournament:
     tournament_status: TournamentStatus | None
     tournament_mode: TournamentMode | None
     score_ordering: ScoreOrdering | None = None
+    use_bracket_reset: bool = True
     winner_team_id: 'TournamentTeamID | None' = None
     winner_participant_id: 'TournamentParticipantID | None' = None

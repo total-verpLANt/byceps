@@ -48,6 +48,9 @@ class DbTournament(db.Model):
     tournament_status: Mapped[str | None] = mapped_column(db.UnicodeText)
     tournament_mode: Mapped[str | None] = mapped_column(db.UnicodeText)
     score_ordering: Mapped[str | None] = mapped_column(db.UnicodeText)
+    use_bracket_reset: Mapped[bool] = mapped_column(
+        db.Boolean, server_default=db.text('true'),
+    )
     winner_team_id: Mapped[TournamentTeamID | None] = mapped_column(
         db.Uuid,
         db.ForeignKey('lan_tournament_teams.id'),

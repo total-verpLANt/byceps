@@ -10,11 +10,14 @@ from . import tournament_repository
 from .events import (
     ContestantAdvancedEvent,
     MatchConfirmedEvent,
+    MatchCreatedEvent,
+    MatchDeletedEvent,
     MatchUnconfirmedEvent,
     TournamentCompletedEvent,
     TournamentUncompletedEvent,
 )
 from .models.tournament import Tournament, TournamentID
+from .models.bracket import Bracket
 from .models.tournament_match import (
     TournamentMatch,
     TournamentMatchID,
@@ -35,6 +38,8 @@ from .models.tournament_status import TournamentStatus
 from .signals import (
     contestant_advanced,
     match_confirmed,
+    match_created,
+    match_deleted,
     match_unconfirmed,
     tournament_completed,
     tournament_uncompleted,
@@ -1386,6 +1391,119 @@ def _try_lb_defwin_advance(
     ]
 
 
+def _is_lb_champion_winner(
+    match: TournamentMatch,
+    winner: TournamentMatchToContestant,
+) -> bool:
+    """Check if the GF M1 winner came from the losers bracket.
+
+    Finds the LB feeder match (bracket=LOSERS) and checks if
+    the winner's identity matches the contestant advanced from it.
+    """
+    if match.bracket != Bracket.GRAND_FINAL:
+        return False
+
+    feeders = tournament_repository.find_feeder_matches(match.id)
+    lb_feeder = next(
+        (f for f in feeders if f.bracket == Bracket.LOSERS), None
+    )
+    if lb_feeder is None:
+        return False
+
+    # The LB feeder's winner was advanced to GF M1.
+    lb_contestants = tournament_repository.get_contestants_for_match(
+        lb_feeder.id
+    )
+    lb_winner_result = determine_match_winner(lb_contestants)
+    if lb_winner_result.is_err():
+        return False
+    lb_winner = lb_winner_result.unwrap()
+    if lb_winner is None:
+        return False
+
+    # Compare identity
+    return (
+        winner.team_id == lb_winner.team_id
+        and winner.participant_id == lb_winner.participant_id
+    )
+
+
+def _create_bracket_reset(
+    match: TournamentMatch,
+    winner: TournamentMatchToContestant,
+    contestants: list[TournamentMatchToContestant],
+    now: datetime,
+) -> tuple[TournamentMatchID, list]:
+    """Create GF M2 bracket reset match and advance both contestants.
+
+    Returns (gf_m2_id, events).
+    """
+    loser_result = _determine_loser(contestants, winner)
+    loser = loser_result.unwrap()  # caller guarantees this succeeds
+
+    # Caller only invokes this when LB champion won GF M1.
+    # Therefore: winner = LB champ, loser = WB champ.
+    wb_champ = loser   # WB champion lost GF M1
+    lb_champ = winner  # LB champion won GF M1
+
+    gf_m2_id = TournamentMatchID(generate_uuid7())
+    gf_m2 = TournamentMatch(
+        id=gf_m2_id,
+        tournament_id=match.tournament_id,
+        group_order=None,
+        match_order=1,  # GF M1 = 0, GF M2 = 1
+        round=0,
+        next_match_id=None,  # GF M2 is the true terminal
+        bracket=Bracket.GRAND_FINAL,
+        loser_next_match_id=None,
+        confirmed_by=None,
+        created_at=now,
+    )
+    tournament_repository.create_match(gf_m2)
+
+    # Wire GF M1 → GF M2
+    tournament_repository.set_next_match_id_flush(
+        match.id, gf_m2_id
+    )
+
+    events = [
+        MatchCreatedEvent(
+            occurred_at=now,
+            initiator=None,
+            tournament_id=match.tournament_id,
+            match_id=gf_m2_id,
+        )
+    ]
+
+    # Insert WB champion as top slot (slot 0)
+    wb_contestant_id = TournamentMatchToContestantID(generate_uuid7())
+    tournament_repository.create_match_contestant(
+        TournamentMatchToContestant(
+            id=wb_contestant_id,
+            tournament_match_id=gf_m2_id,
+            team_id=wb_champ.team_id,
+            participant_id=wb_champ.participant_id,
+            score=None,
+            created_at=now,
+        )
+    )
+
+    # Insert LB champion as bottom slot (slot 1)
+    lb_contestant_id = TournamentMatchToContestantID(generate_uuid7())
+    tournament_repository.create_match_contestant(
+        TournamentMatchToContestant(
+            id=lb_contestant_id,
+            tournament_match_id=gf_m2_id,
+            team_id=lb_champ.team_id,
+            participant_id=lb_champ.participant_id,
+            score=None,
+            created_at=now,
+        )
+    )
+
+    return gf_m2_id, events
+
+
 def _try_auto_complete_tournament(
     match: TournamentMatch,
     tournament: Tournament,
@@ -1461,6 +1579,24 @@ def confirm_match(
         if lb.is_err():
             return Err(lb.unwrap_err())
         adv_events += lb.unwrap()
+    # ---- Bracket Reset (DE Grand Final) ----
+    # If this is GF M1, tournament is DE with bracket reset enabled,
+    # and the LB champion won, create GF M2.
+    bracket_reset_events = []
+    if (
+        match.bracket == Bracket.GRAND_FINAL
+        and match.match_order == 0  # GF M1
+        and match.next_match_id is None  # still terminal (no existing GF M2)
+        and tournament.tournament_mode == TournamentMode.DOUBLE_ELIMINATION
+        and tournament.use_bracket_reset
+        and _is_lb_champion_winner(match, winner)
+    ):
+        gf_m2_id, reset_events = _create_bracket_reset(
+            match, winner, contestants, now,
+        )
+        bracket_reset_events = reset_events
+        # Re-read match after wiring so _try_auto_complete sees next_match_id
+        match = tournament_repository.get_match(match_id)
     comp = _try_auto_complete_tournament(
         match, tournament, winner,
     )
@@ -1484,6 +1620,8 @@ def confirm_match(
         ))
     for event in adv_events:
         contestant_advanced.send(None, event=event)
+    for event in bracket_reset_events:
+        match_created.send(None, event=event)
     return Ok(None)
 
 
@@ -1492,7 +1630,7 @@ def _unconfirm_match_impl(
     initiator_id: UserID,
     _visited: set[TournamentMatchID] | None = None,
     _match: TournamentMatch | None = None,
-) -> Result[tuple[list[MatchUnconfirmedEvent], bool], str]:
+) -> Result[tuple[list[MatchUnconfirmedEvent], list[MatchDeletedEvent], bool], str]:
     """Flush-only, event-collecting helper for unconfirm_match.
 
     Performs all unconfirmation logic (including cascade) using
@@ -1501,8 +1639,8 @@ def _unconfirm_match_impl(
     caller is responsible for the single ``commit()`` and event
     dispatch.
 
-    Returns ``Ok((events, tournament_was_uncompleted))`` where
-    ``tournament_was_uncompleted`` is ``True`` when tournament
+    Returns ``Ok((events, deleted_events, tournament_was_uncompleted))``
+    where ``tournament_was_uncompleted`` is ``True`` when tournament
     winner/status was reverted (elimination terminal match).
 
     When ``_match`` is provided (pre-locked by the caller) it
@@ -1528,6 +1666,7 @@ def _unconfirm_match_impl(
         return Err('Match is not confirmed.')
 
     collected_events: list[MatchUnconfirmedEvent] = []
+    deleted_events: list[MatchDeletedEvent] = []
     tournament_was_uncompleted = False
 
     contestants = tournament_repository.get_contestants_for_match(
@@ -1557,10 +1696,11 @@ def _unconfirm_match_impl(
             )
             if cascade_result.is_err():
                 return cascade_result
-            cascade_events, cascade_uncompleted = (
+            cascade_events, cascade_deleted, cascade_uncompleted = (
                 cascade_result.unwrap()
             )
             collected_events.extend(cascade_events)
+            deleted_events.extend(cascade_deleted)
             tournament_was_uncompleted = (
                 tournament_was_uncompleted or cascade_uncompleted
             )
@@ -1599,10 +1739,11 @@ def _unconfirm_match_impl(
             )
             if cascade_result.is_err():
                 return cascade_result
-            cascade_events, cascade_uncompleted = (
+            cascade_events, cascade_deleted, cascade_uncompleted = (
                 cascade_result.unwrap()
             )
             collected_events.extend(cascade_events)
+            deleted_events.extend(cascade_deleted)
             tournament_was_uncompleted = (
                 tournament_was_uncompleted or cascade_uncompleted
             )
@@ -1634,6 +1775,48 @@ def _unconfirm_match_impl(
                     team_id=loser.team_id,
                     participant_id=loser.participant_id,
                 )
+
+    # ---- Bracket Reset cleanup (DE Grand Final) ----
+    # If this is GF M1 and a dynamically-created GF M2 exists,
+    # clean up the remaining contestant and delete GF M2.
+    # Note: the existing cascade already handled:
+    #   - recursive unconfirm of GF M2
+    #   - removal of winner contestant from GF M2
+    # We still need to remove the loser contestant and delete the match.
+    if (
+        match.bracket == Bracket.GRAND_FINAL
+        and match.match_order == 0  # GF M1
+        and match.next_match_id is not None
+    ):
+        gf_m2 = tournament_repository.find_match(match.next_match_id)
+        if (
+            gf_m2 is not None
+            and gf_m2.bracket == Bracket.GRAND_FINAL
+            and gf_m2.match_order == 1  # GF M2
+        ):
+            # Delete GF M2 children in FK order: comments → contestants → match
+            tournament_repository.delete_comments_for_match_flush(
+                gf_m2.id
+            )
+            tournament_repository.delete_contestants_for_match_flush(
+                gf_m2.id
+            )
+            # Null out GF M1's next_match_id BEFORE deleting GF M2 (FK)
+            tournament_repository.set_next_match_id_flush(
+                match_id, None
+            )
+            tournament_repository.delete_match_flush(gf_m2.id)
+
+            deleted_events.append(MatchDeletedEvent(
+                occurred_at=datetime.now(UTC),
+                initiator=None,
+                tournament_id=match.tournament_id,
+                match_id=gf_m2.id,
+            ))
+
+            # CRITICAL: Re-read match so the terminal-match check below
+            # sees next_match_id=None and reverts tournament completion.
+            match = tournament_repository.get_match(match_id)
 
     # Revert tournament state for terminal elimination
     # matches.
@@ -1677,7 +1860,7 @@ def _unconfirm_match_impl(
         )
     )
 
-    return Ok((collected_events, tournament_was_uncompleted))
+    return Ok((collected_events, deleted_events, tournament_was_uncompleted))
 
 
 def unconfirm_match(
@@ -1701,7 +1884,7 @@ def unconfirm_match(
     if result.is_err():
         return Err(result.unwrap_err())
 
-    events, tournament_was_uncompleted = result.unwrap()
+    events, deleted_events, tournament_was_uncompleted = result.unwrap()
 
     # Single commit for the entire cascade.
     tournament_repository.commit_session()
@@ -1709,6 +1892,8 @@ def unconfirm_match(
     # Dispatch all collected events after commit.
     for event in events:
         match_unconfirmed.send(None, event=event)
+    for event in deleted_events:
+        match_deleted.send(None, event=event)
 
     # Dispatch TournamentUncompletedEvent only for elimination
     # modes where tournament state was actually reverted.
