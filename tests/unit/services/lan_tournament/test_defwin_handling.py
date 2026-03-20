@@ -2,7 +2,10 @@ from datetime import UTC, datetime
 from unittest.mock import patch
 
 from byceps.services.lan_tournament import tournament_match_service
-from byceps.services.lan_tournament.models.tournament import TournamentID
+from byceps.services.lan_tournament.models.tournament import (
+    Tournament,
+    TournamentID,
+)
 from byceps.services.lan_tournament.models.tournament_match import (
     TournamentMatch,
     TournamentMatchID,
@@ -11,8 +14,12 @@ from byceps.services.lan_tournament.models.tournament_match_to_contestant import
     TournamentMatchToContestant,
     TournamentMatchToContestantID,
 )
+from byceps.services.lan_tournament.models.tournament_mode import TournamentMode
 from byceps.services.lan_tournament.models.tournament_participant import (
     TournamentParticipantID,
+)
+from byceps.services.lan_tournament.models.tournament_status import (
+    TournamentStatus,
 )
 from byceps.services.lan_tournament.models.tournament_team import (
     TournamentTeamID,
@@ -43,11 +50,13 @@ def test_defwin_participant_no_entries(mock_repo):
 
     mock_repo.find_contestant_entries_for_participant_in_tournament.return_value = []
 
-    events = tournament_match_service.handle_defwin_for_removed_participant(
+    result = tournament_match_service.handle_defwin_for_removed_participant(
         TOURNAMENT_ID, participant_id
     )
 
-    assert events == []
+    assert result.advanced == []
+    assert result.confirmed == []
+    assert result.completed == []
     mock_repo.delete_contestant_from_match.assert_not_called()
     mock_repo.create_match_contestant.assert_not_called()
 
@@ -82,15 +91,18 @@ def test_defwin_participant_sole_opponent_advances(mock_repo):
         [opponent] if mid == match_id else []
     )
 
-    events = tournament_match_service.handle_defwin_for_removed_participant(
+    result = tournament_match_service.handle_defwin_for_removed_participant(
         TOURNAMENT_ID, participant_id
     )
 
-    assert len(events) == 1
-    assert events[0].tournament_id == TOURNAMENT_ID
-    assert events[0].match_id == next_match_id
-    assert events[0].from_match_id == match_id
-    assert events[0].advanced_participant_id == opponent_participant_id
+    assert len(result.advanced) == 1
+    assert result.advanced[0].tournament_id == TOURNAMENT_ID
+    assert result.advanced[0].match_id == next_match_id
+    assert result.advanced[0].from_match_id == match_id
+    assert result.advanced[0].advanced_participant_id == opponent_participant_id
+    # No initiator_id => no confirmation/completion events
+    assert result.confirmed == []
+    assert result.completed == []
 
     # Contestant was deleted from the original match
     mock_repo.delete_contestant_from_match.assert_called_once_with(
@@ -105,9 +117,10 @@ def test_defwin_participant_sole_opponent_advances(mock_repo):
 @patch(
     'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
 )
-def test_defwin_participant_no_next_match_no_advance(mock_repo):
-    """When removed participant is in a final match (no next_match_id),
-    no advancement occurs."""
+def test_defwin_participant_terminal_no_advance_no_initiator(mock_repo):
+    """When removed participant is in a terminal match (no next_match_id)
+    and no initiator_id is provided, no advancement and no confirmation
+    occurs."""
     participant_id = TournamentParticipantID(generate_uuid())
     opponent_participant_id = TournamentParticipantID(generate_uuid())
     match_id = TournamentMatchID(generate_uuid())
@@ -125,12 +138,15 @@ def test_defwin_participant_no_next_match_no_advance(mock_repo):
     ]
     mock_repo.get_contestants_for_match.return_value = [opponent]
 
-    events = tournament_match_service.handle_defwin_for_removed_participant(
+    result = tournament_match_service.handle_defwin_for_removed_participant(
         TOURNAMENT_ID, participant_id
     )
 
-    assert events == []
+    assert result.advanced == []
+    assert result.confirmed == []
+    assert result.completed == []
     mock_repo.create_match_contestant.assert_not_called()
+    mock_repo.confirm_match.assert_not_called()
 
 
 @patch(
@@ -154,11 +170,13 @@ def test_defwin_participant_both_removed_no_advance(mock_repo):
     # After deletion, no contestants remain
     mock_repo.get_contestants_for_match.return_value = []
 
-    events = tournament_match_service.handle_defwin_for_removed_participant(
+    result = tournament_match_service.handle_defwin_for_removed_participant(
         TOURNAMENT_ID, participant_id
     )
 
-    assert events == []
+    assert result.advanced == []
+    assert result.confirmed == []
+    assert result.completed == []
     mock_repo.create_match_contestant.assert_not_called()
 
 
@@ -193,11 +211,13 @@ def test_defwin_participant_already_advanced_skips(mock_repo):
         [opponent] if mid == match_id else [opponent_in_next]
     )
 
-    events = tournament_match_service.handle_defwin_for_removed_participant(
+    result = tournament_match_service.handle_defwin_for_removed_participant(
         TOURNAMENT_ID, participant_id
     )
 
-    assert events == []
+    assert result.advanced == []
+    assert result.confirmed == []
+    assert result.completed == []
     mock_repo.create_match_contestant.assert_not_called()
 
 
@@ -246,11 +266,14 @@ def test_defwin_participant_multiple_matches(mock_repo):
 
     mock_repo.get_contestants_for_match.side_effect = get_contestants
 
-    events = tournament_match_service.handle_defwin_for_removed_participant(
+    result = tournament_match_service.handle_defwin_for_removed_participant(
         TOURNAMENT_ID, participant_id
     )
 
-    assert len(events) == 2
+    assert len(result.advanced) == 2
+    # No initiator_id => no confirmation/completion events
+    assert result.confirmed == []
+    assert result.completed == []
     assert mock_repo.delete_contestant_from_match.call_count == 2
     assert mock_repo.create_match_contestant.call_count == 2
 
@@ -269,11 +292,13 @@ def test_defwin_team_no_entries(mock_repo):
 
     mock_repo.find_contestant_entries_for_team_in_tournament.return_value = []
 
-    events = tournament_match_service.handle_defwin_for_removed_team(
+    result = tournament_match_service.handle_defwin_for_removed_team(
         TOURNAMENT_ID, team_id
     )
 
-    assert events == []
+    assert result.advanced == []
+    assert result.confirmed == []
+    assert result.completed == []
     mock_repo.delete_contestant_from_match.assert_not_called()
 
 
@@ -299,13 +324,16 @@ def test_defwin_team_sole_opponent_advances(mock_repo):
         [opponent] if mid == match_id else []
     )
 
-    events = tournament_match_service.handle_defwin_for_removed_team(
+    result = tournament_match_service.handle_defwin_for_removed_team(
         TOURNAMENT_ID, team_id
     )
 
-    assert len(events) == 1
-    assert events[0].advanced_team_id == opponent_team_id
-    assert events[0].match_id == next_match_id
+    assert len(result.advanced) == 1
+    assert result.advanced[0].advanced_team_id == opponent_team_id
+    assert result.advanced[0].match_id == next_match_id
+    # No initiator_id => no confirmation/completion events
+    assert result.confirmed == []
+    assert result.completed == []
     mock_repo.create_match_contestant.assert_called_once()
     # No initiator_id => confirm_match NOT called
     mock_repo.confirm_match.assert_not_called()
@@ -342,23 +370,31 @@ def test_defwin_participant_with_initiator_calls_confirm_match(mock_repo):
         [opponent] if mid == match_id else []
     )
 
-    events = tournament_match_service.handle_defwin_for_removed_participant(
+    result = tournament_match_service.handle_defwin_for_removed_participant(
         TOURNAMENT_ID, participant_id, initiator_id=INITIATOR_ID
     )
 
-    assert len(events) == 1
-    assert events[0].advanced_participant_id == opponent_participant_id
+    assert len(result.advanced) == 1
+    assert result.advanced[0].advanced_participant_id == opponent_participant_id
 
     # confirm_match called with original match_id and initiator
     mock_repo.confirm_match.assert_called_once_with(match_id, INITIATOR_ID)
+
+    # MatchConfirmedEvent emitted for the defwin match
+    assert len(result.confirmed) == 1
+    assert result.confirmed[0].match_id == match_id
+    assert result.confirmed[0].winner_participant_id == opponent_participant_id
+    # Non-terminal → no tournament completion
+    assert result.completed == []
 
 
 @patch(
     'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
 )
-def test_defwin_participant_no_advance_no_confirm(mock_repo):
-    """When no advancement occurs (no next_match_id), confirm_match()
-    is NOT called even with an initiator_id."""
+def test_defwin_participant_terminal_with_initiator_confirms(mock_repo):
+    """When a terminal match (no next_match_id) has a sole remaining
+    opponent and initiator_id is provided, the match IS confirmed
+    even though no advancement occurs."""
     participant_id = TournamentParticipantID(generate_uuid())
     opponent_participant_id = TournamentParticipantID(generate_uuid())
     match_id = TournamentMatchID(generate_uuid())
@@ -376,12 +412,25 @@ def test_defwin_participant_no_advance_no_confirm(mock_repo):
     ]
     mock_repo.get_contestants_for_match.return_value = [opponent]
 
-    events = tournament_match_service.handle_defwin_for_removed_participant(
+    # get_tournament() is called for auto-complete check on terminal matches.
+    mock_tournament = _create_tournament(TournamentMode.ROUND_ROBIN)
+    mock_repo.get_tournament.return_value = mock_tournament
+
+    result = tournament_match_service.handle_defwin_for_removed_participant(
         TOURNAMENT_ID, participant_id, initiator_id=INITIATOR_ID
     )
 
-    assert events == []
-    mock_repo.confirm_match.assert_not_called()
+    # No advancement (no next_match_id), but match IS confirmed.
+    assert result.advanced == []
+    mock_repo.create_match_contestant.assert_not_called()
+    mock_repo.confirm_match.assert_called_once_with(match_id, INITIATOR_ID)
+
+    # MatchConfirmedEvent emitted
+    assert len(result.confirmed) == 1
+    assert result.confirmed[0].match_id == match_id
+    # RR mode → no auto-complete
+    assert result.completed == []
+    mock_repo.set_tournament_winner.assert_not_called()
 
 
 @patch(
@@ -429,14 +478,19 @@ def test_defwin_participant_multiple_matches_with_initiator(mock_repo):
 
     mock_repo.get_contestants_for_match.side_effect = get_contestants
 
-    events = tournament_match_service.handle_defwin_for_removed_participant(
+    result = tournament_match_service.handle_defwin_for_removed_participant(
         TOURNAMENT_ID, participant_id, initiator_id=INITIATOR_ID
     )
 
-    assert len(events) == 2
+    assert len(result.advanced) == 2
     assert mock_repo.confirm_match.call_count == 2
     mock_repo.confirm_match.assert_any_call(match1_id, INITIATOR_ID)
     mock_repo.confirm_match.assert_any_call(match2_id, INITIATOR_ID)
+
+    # Two MatchConfirmedEvents (one per match)
+    assert len(result.confirmed) == 2
+    # Non-terminal → no completion
+    assert result.completed == []
 
 
 @patch(
@@ -461,13 +515,192 @@ def test_defwin_team_with_initiator_calls_confirm_match(mock_repo):
         [opponent] if mid == match_id else []
     )
 
-    events = tournament_match_service.handle_defwin_for_removed_team(
+    result = tournament_match_service.handle_defwin_for_removed_team(
         TOURNAMENT_ID, team_id, initiator_id=INITIATOR_ID
     )
 
-    assert len(events) == 1
-    assert events[0].advanced_team_id == opponent_team_id
+    assert len(result.advanced) == 1
+    assert result.advanced[0].advanced_team_id == opponent_team_id
     mock_repo.confirm_match.assert_called_once_with(match_id, INITIATOR_ID)
+
+    # MatchConfirmedEvent emitted for team defwin
+    assert len(result.confirmed) == 1
+    assert result.confirmed[0].match_id == match_id
+    assert result.confirmed[0].winner_team_id == opponent_team_id
+    # Non-terminal → no completion
+    assert result.completed == []
+
+
+# -------------------------------------------------------------------- #
+# Terminal defwin auto-confirmation
+# -------------------------------------------------------------------- #
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_defwin_terminal_no_initiator_no_confirm(mock_repo):
+    """Terminal match without initiator_id: no confirmation, no events."""
+    participant_id = TournamentParticipantID(generate_uuid())
+    opponent_participant_id = TournamentParticipantID(generate_uuid())
+    match_id = TournamentMatchID(generate_uuid())
+
+    match = _create_match(match_id=match_id, next_match_id=None)
+    contestant = _create_contestant(
+        match_id=match_id, participant_id=participant_id
+    )
+    opponent = _create_contestant(
+        match_id=match_id, participant_id=opponent_participant_id
+    )
+
+    mock_repo.find_contestant_entries_for_participant_in_tournament.return_value = [
+        (contestant, match)
+    ]
+    mock_repo.get_contestants_for_match.return_value = [opponent]
+
+    result = tournament_match_service.handle_defwin_for_removed_participant(
+        TOURNAMENT_ID, participant_id
+    )
+
+    assert result.advanced == []
+    assert result.confirmed == []
+    assert result.completed == []
+    mock_repo.create_match_contestant.assert_not_called()
+    mock_repo.confirm_match.assert_not_called()
+    mock_repo.get_tournament.assert_not_called()
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_defwin_terminal_elimination_triggers_auto_complete(mock_repo):
+    """Terminal SE match with initiator: confirm_match called AND
+    auto-complete triggered (set_tournament_winner + status flush)."""
+    participant_id = TournamentParticipantID(generate_uuid())
+    opponent_participant_id = TournamentParticipantID(generate_uuid())
+    match_id = TournamentMatchID(generate_uuid())
+
+    match = _create_match(match_id=match_id, next_match_id=None)
+    contestant = _create_contestant(
+        match_id=match_id, participant_id=participant_id
+    )
+    opponent = _create_contestant(
+        match_id=match_id, participant_id=opponent_participant_id
+    )
+
+    mock_repo.find_contestant_entries_for_participant_in_tournament.return_value = [
+        (contestant, match)
+    ]
+    mock_repo.get_contestants_for_match.return_value = [opponent]
+
+    # SE mode → auto-complete should trigger.
+    from byceps.util.result import Ok
+
+    mock_tournament = _create_tournament(TournamentMode.SINGLE_ELIMINATION)
+    mock_repo.get_tournament.return_value = mock_tournament
+    mock_repo.set_tournament_winner.return_value = Ok(None)
+    mock_repo.set_tournament_status_flush.return_value = Ok(None)
+
+    result = tournament_match_service.handle_defwin_for_removed_participant(
+        TOURNAMENT_ID, participant_id, initiator_id=INITIATOR_ID
+    )
+
+    assert result.advanced == []
+    mock_repo.confirm_match.assert_called_once_with(match_id, INITIATOR_ID)
+    mock_repo.get_tournament.assert_called_once_with(TOURNAMENT_ID)
+
+    # MatchConfirmedEvent emitted
+    assert len(result.confirmed) == 1
+    assert result.confirmed[0].match_id == match_id
+    assert result.confirmed[0].winner_participant_id == opponent_participant_id
+
+    # TournamentCompletedEvent emitted (SE terminal auto-complete)
+    assert len(result.completed) == 1
+    assert result.completed[0].tournament_id == TOURNAMENT_ID
+    assert result.completed[0].winner_participant_id == opponent_participant_id
+
+    # Auto-complete: winner set to sole opponent.
+    mock_repo.set_tournament_winner.assert_called_once_with(
+        TOURNAMENT_ID,
+        winner_team_id=opponent.team_id,
+        winner_participant_id=opponent.participant_id,
+    )
+    mock_repo.set_tournament_status_flush.assert_called_once_with(
+        TOURNAMENT_ID, TournamentStatus.COMPLETED
+    )
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_defwin_terminal_rr_no_auto_complete(mock_repo):
+    """Terminal RR match with initiator: confirm_match called but NO
+    auto-complete (RR mode is not eligible)."""
+    participant_id = TournamentParticipantID(generate_uuid())
+    opponent_participant_id = TournamentParticipantID(generate_uuid())
+    match_id = TournamentMatchID(generate_uuid())
+
+    match = _create_match(match_id=match_id, next_match_id=None)
+    contestant = _create_contestant(
+        match_id=match_id, participant_id=participant_id
+    )
+    opponent = _create_contestant(
+        match_id=match_id, participant_id=opponent_participant_id
+    )
+
+    mock_repo.find_contestant_entries_for_participant_in_tournament.return_value = [
+        (contestant, match)
+    ]
+    mock_repo.get_contestants_for_match.return_value = [opponent]
+
+    # RR mode → auto-complete should NOT trigger.
+    mock_tournament = _create_tournament(TournamentMode.ROUND_ROBIN)
+    mock_repo.get_tournament.return_value = mock_tournament
+
+    result = tournament_match_service.handle_defwin_for_removed_participant(
+        TOURNAMENT_ID, participant_id, initiator_id=INITIATOR_ID
+    )
+
+    assert result.advanced == []
+    mock_repo.confirm_match.assert_called_once_with(match_id, INITIATOR_ID)
+
+    # MatchConfirmedEvent emitted
+    assert len(result.confirmed) == 1
+    assert result.confirmed[0].match_id == match_id
+    # RR → no TournamentCompletedEvent
+    assert result.completed == []
+    mock_repo.set_tournament_winner.assert_not_called()
+    mock_repo.set_tournament_status_flush.assert_not_called()
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_defwin_both_removed_terminal_no_confirm(mock_repo):
+    """Terminal match, both contestants removed (len==0): no confirm,
+    no events — same behavior as non-terminal."""
+    participant_id = TournamentParticipantID(generate_uuid())
+    match_id = TournamentMatchID(generate_uuid())
+
+    match = _create_match(match_id=match_id, next_match_id=None)
+    contestant = _create_contestant(
+        match_id=match_id, participant_id=participant_id
+    )
+
+    mock_repo.find_contestant_entries_for_participant_in_tournament.return_value = [
+        (contestant, match)
+    ]
+    mock_repo.get_contestants_for_match.return_value = []
+
+    result = tournament_match_service.handle_defwin_for_removed_participant(
+        TOURNAMENT_ID, participant_id, initiator_id=INITIATOR_ID
+    )
+
+    assert result.advanced == []
+    assert result.confirmed == []
+    assert result.completed == []
+    mock_repo.create_match_contestant.assert_not_called()
+    mock_repo.confirm_match.assert_not_called()
 
 
 # -------------------------------------------------------------------- #
@@ -509,4 +742,29 @@ def _create_contestant(
         participant_id=participant_id,
         score=None,
         created_at=NOW,
+    )
+
+
+def _create_tournament(
+    mode: TournamentMode = TournamentMode.SINGLE_ELIMINATION,
+) -> Tournament:
+    return Tournament(
+        id=TOURNAMENT_ID,
+        party_id=PARTY_ID,
+        name='Test Tournament',
+        game=None,
+        description=None,
+        image_url=None,
+        ruleset=None,
+        start_time=None,
+        created_at=NOW,
+        min_players=None,
+        max_players=None,
+        min_teams=None,
+        max_teams=None,
+        min_players_in_team=None,
+        max_players_in_team=None,
+        contestant_type=None,
+        tournament_status=TournamentStatus.ONGOING,
+        tournament_mode=mode,
     )
