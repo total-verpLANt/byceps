@@ -451,27 +451,48 @@ function parseBracketData(json) {
   var winnerRounds = _ltBucketsToRounds(winnerBuckets, 'WB');
   var loserRounds = _ltBucketsToRounds(loserBuckets, 'LB');
 
-  // If there is a grand final and we have winner rounds, integrate it as the
-  // last column of the winners bracket for layout purposes.
-  var integratedGF = null;
+  // Separate GF matches from other finals so ALL GF matches can be
+  // integrated into winnerRounds (GF M1 as "Grand Final", GF M2+ as
+  // "Bracket Reset" columns to the right).
+  var gfMatches = [];
   var extraFinals = [];
   for (i = 0; i < finalMatches.length; i++) {
-    if (finalMatches[i].bracket === 'GF' && !integratedGF) {
-      integratedGF = finalMatches[i];
+    if (finalMatches[i].bracket === 'GF') {
+      gfMatches.push(finalMatches[i]);
     } else {
       extraFinals.push(finalMatches[i]);
     }
   }
+  gfMatches.sort(function(a, b) { return a.matchNo - b.matchNo; });
 
-  if (integratedGF && winnerRounds.length > 0) {
+  if (gfMatches.length > 0 && winnerRounds.length > 0) {
+    // GF M1 — main Grand Final
     winnerRounds.push({
       bracket: 'GF',
       displayBracket: 'WB',
       roundNo: winnerRounds.length + 1,
-      matches: [integratedGF],
+      matches: [gfMatches[0]],
       title: 'Grand Final',
       subtitle: 'WB Winner vs LB Winner'
     });
+    // GF M2+ — bracket reset (rendered as next column to the right).
+    // displayBracket stays 'GF' so that the source-label system treats
+    // GF M1 → GF M2 as same-bracket (no misleading "Winner of" badge).
+    for (i = 1; i < gfMatches.length; i++) {
+      winnerRounds.push({
+        bracket: 'GF',
+        displayBracket: 'GF',
+        roundNo: winnerRounds.length + 1,
+        matches: [gfMatches[i]],
+        title: 'Bracket Reset',
+        subtitle: 'Grand Final \u2013 Decisive Game'
+      });
+    }
+  } else {
+    // Fallback: no WB context, treat GF as extra finals
+    for (i = 0; i < gfMatches.length; i++) {
+      extraFinals.push(gfMatches[i]);
+    }
   }
 
   // Decorate round titles
@@ -860,6 +881,26 @@ function getTeamOffsets(dims) {
   var top = dims.padding + dims.labelHeight + dims.rowGap + (dims.teamHeight / 2);
   var bottom = top + dims.teamHeight + dims.rowGap;
   return { top: top, bottom: bottom };
+}
+
+/**
+ * Assign synthetic geometry for matches rendered in card layout
+ * (not part of the round layout engine). These matches use CSS
+ * flow positioning inside card wrappers, so absolute coordinates
+ * are zeroed out.
+ */
+function _ltAssignCardGeom(match, dims) {
+  var mh = getMatchHeight(dims);
+  var offsets = getTeamOffsets(dims);
+  match.geom = {
+    centerY: mh / 2,
+    boxLeft: 0,
+    boxRight: dims.matchWidth,
+    boxTop: 0,
+    boxBottom: mh,
+    teamTopY: offsets.top,
+    teamBottomY: offsets.bottom
+  };
 }
 
 /**
@@ -1601,6 +1642,7 @@ function renderFinalsSection(finalMatches, matchMap, settings, matchUrls, appEl,
 
     wrap = card.querySelector('.lt-final-match-wrap');
 
+    _ltAssignCardGeom(match, dims);
     matchEl = createMatchEl(match, dims, { stageText: titleText, hoverData: hoverData }, matchUrls);
     matchEl.className += ' static';
     matchEl.style.height = matchHeight + 'px';
@@ -1662,6 +1704,7 @@ function renderThirdPlaceSection(thirdPlaceMatches, matchMap, settings, matchUrl
 
     wrap = card.querySelector('.lt-final-match-wrap');
 
+    _ltAssignCardGeom(match, dims);
     matchEl = createMatchEl(match, dims, { stageText: titleText, hoverData: hoverData }, matchUrls);
     matchEl.className += ' static';
     matchEl.style.height = matchHeight + 'px';
@@ -2033,6 +2076,7 @@ function _ltRenderBracketResetSection(match, matchMap, settings, matchUrls, appE
     '<div class="lt-final-match-wrap"></div>';
 
   var wrap = card.querySelector('.lt-final-match-wrap');
+  _ltAssignCardGeom(match, dims);
   var matchEl = createMatchEl(match, dims, { stageText: titleText, hoverData: hoverData }, matchUrls);
   matchEl.className += ' static bracket-reset';
   matchEl.style.height = matchHeight + 'px';
