@@ -356,6 +356,11 @@
       </form>
     {%- endif %}
 
+    {# Email template setup #}
+    <form action="{{ url_for('.setup_email_templates', tournament_id=tournament.id) }}" method="post">
+      <button type="submit" class="button">{{ render_icon('email') }} {{ _('Setup email templates') }}</button>
+    </form>
+
     {# Delete button (always available except for completed/ongoing) #}
     {%- if tournament.tournament_status.name not in ('COMPLETED', 'ONGOING') %}
       <form action="{{ url_for('.delete', tournament_id=tournament.id) }}" method="post" style="margin-left: auto;">

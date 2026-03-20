@@ -4,6 +4,7 @@ from uuid import UUID
 from flask import abort, g, request, url_for
 from flask_babel import gettext, to_user_timezone, to_utc
 
+from byceps.services.brand import brand_service
 from byceps.services.party import party_service
 from byceps.services.party.models import Party
 from byceps.services.user import user_service
@@ -21,6 +22,7 @@ from byceps.util.views import permission_required, redirect_to
 
 from byceps.services.lan_tournament import (
     tournament_match_service,
+    tournament_notification_service,
     tournament_participant_service,
     tournament_score_service,
     tournament_service,
@@ -704,6 +706,30 @@ def generate_bracket(tournament_id):
                     error=error_message,
                 )
             )
+
+    return redirect_to('.view', tournament_id=tournament.id)
+
+
+@blueprint.post('/tournaments/<tournament_id>/setup_email_templates')
+@permission_required('lan_tournament.administrate')
+def setup_email_templates(tournament_id):
+    """Create default match-ready email snippets for the tournament's brand."""
+    tournament = _get_tournament_or_404(tournament_id)
+    party = party_service.get_party(tournament.party_id)
+    brand = brand_service.get_brand(party.brand_id)
+    current_user = g.user
+
+    created = tournament_notification_service.create_match_ready_email_snippets(
+        brand, current_user,
+    )
+    if created:
+        flash_success(
+            gettext('Match notification email templates created.')
+        )
+    else:
+        flash_notice(
+            gettext('Match notification email templates already exist.')
+        )
 
     return redirect_to('.view', tournament_id=tournament.id)
 

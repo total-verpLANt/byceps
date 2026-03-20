@@ -12,6 +12,7 @@ from .events import (
     MatchConfirmedEvent,
     MatchCreatedEvent,
     MatchDeletedEvent,
+    MatchReadyEvent,
     MatchUnconfirmedEvent,
     TournamentCompletedEvent,
     TournamentUncompletedEvent,
@@ -40,6 +41,7 @@ from .signals import (
     match_confirmed,
     match_created,
     match_deleted,
+    match_ready,
     match_unconfirmed,
     tournament_completed,
     tournament_uncompleted,
@@ -159,6 +161,11 @@ def set_seed(
     # Dispatch events after successful commit
     for match_event in match_events:
         signals.match_created.send(None, event=match_event)
+
+    seeded_match_ids = {e.match_id for e in match_events}
+    ready_events = _collect_ready_match_events(seeded_match_ids, tournament_id, now)
+    for event in ready_events:
+        match_ready.send(None, event=event)
 
     return Ok(None)
 
@@ -413,6 +420,15 @@ def generate_single_elimination_bracket(
     # Dispatch events after successful commit
     for event in match_events:
         signals.match_created.send(None, event=event)
+
+    all_match_ids = set()
+    for round_matches in rounds_matches:
+        all_match_ids.update(round_matches)
+    if p3_id is not None:
+        all_match_ids.add(p3_id)
+    ready_events = _collect_ready_match_events(all_match_ids, tournament_id, now)
+    for event in ready_events:
+        match_ready.send(None, event=event)
 
     total_matches = bracket_size - 1
     if p3_id is not None:
@@ -687,6 +703,17 @@ def generate_double_elimination_bracket(
     for event in match_events:
         signals.match_created.send(None, event=event)
 
+    all_match_ids = set()
+    for round_matches in wb_ids:
+        all_match_ids.update(round_matches)
+    for round_matches in lb_ids:
+        all_match_ids.update(round_matches)
+    if gf_id:
+        all_match_ids.add(gf_id)
+    ready_events = _collect_ready_match_events(all_match_ids, tournament_id, now)
+    for event in ready_events:
+        match_ready.send(None, event=event)
+
     return Ok(len(match_events))
 
 
@@ -798,6 +825,11 @@ def generate_round_robin_bracket(
     # Dispatch events after successful commit.
     for event in match_events:
         signals.match_created.send(None, event=event)
+
+    rr_match_ids = {e.match_id for e in match_events}
+    ready_events = _collect_ready_match_events(rr_match_ids, tournament_id, now)
+    for event in ready_events:
+        match_ready.send(None, event=event)
 
     return Ok(total_matches)
 
@@ -1237,6 +1269,25 @@ def _confirm_draw(
     return Ok(None)
 
 
+def _collect_ready_match_events(
+    match_ids: set[TournamentMatchID],
+    tournament_id: TournamentID,
+    now: datetime,
+) -> list[MatchReadyEvent]:
+    """Return MatchReadyEvent for each match that has >= 2 contestants."""
+    events = []
+    for match_id in match_ids:
+        contestants = tournament_repository.get_contestants_for_match(match_id)
+        if len(contestants) >= 2:
+            events.append(MatchReadyEvent(
+                occurred_at=now,
+                initiator=None,
+                tournament_id=tournament_id,
+                match_id=match_id,
+            ))
+    return events
+
+
 def _advance_winner(
     match: TournamentMatch,
     winner: TournamentMatchToContestant,
@@ -1622,6 +1673,15 @@ def confirm_match(
         contestant_advanced.send(None, event=event)
     for event in bracket_reset_events:
         match_created.send(None, event=event)
+    destination_match_ids: set[TournamentMatchID] = set()
+    for event in adv_events:
+        destination_match_ids.add(event.match_id)
+    for event in bracket_reset_events:
+        destination_match_ids.add(event.match_id)
+    if destination_match_ids:
+        ready_events = _collect_ready_match_events(destination_match_ids, tid, now)
+        for event in ready_events:
+            match_ready.send(None, event=event)
     return Ok(None)
 
 
