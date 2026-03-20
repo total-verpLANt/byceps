@@ -61,6 +61,7 @@ from byceps.services.lan_tournament.lan_tournament_view_helpers import (
     build_round_robin_standings,
     build_seat_lookup,
     build_team_members_lookup,
+    compute_feed_counts,
 )
 from byceps.services.more.blueprints.admin import item_service
 from byceps.services.more.blueprints.admin.item_service import MoreItem
@@ -1588,6 +1589,17 @@ def bracket(tournament_id):
     seats_by_user_id, team_members_by_team_id = build_hover_lookups(
         tournament, participants_by_id, teams_by_id, party.id
     )
+
+    # Tag matches that have pending feeders so the template can
+    # distinguish them from true structural defwins (bye matches).
+    feed_counts = compute_feed_counts(match_data)
+    for entry in match_data:
+        m = entry['match']
+        entry['has_pending_feeder'] = (
+            feed_counts.get(str(m.id), 0) > 0
+            and len(entry['contestants']) <= 1
+            and not m.confirmed_by
+        )
 
     # Round-robin: compute standings table.
     standings = None

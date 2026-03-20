@@ -316,14 +316,11 @@ function parseBracketData(json) {
     topScore = (topContestant && topContestant.score != null) ? topContestant.score : null;
     botScore = (botContestant && botContestant.score != null) ? botContestant.score : null;
 
-    // If only one real contestant, mark the other side as auto-advance
-    if (entrantTop.type === 'player' && entrantBot.type === 'placeholder' &&
-        m.contestants && m.contestants.length === 1) {
-      entrantBot = { type: 'defwin', name: '', label: '', key: '', score: null, id: null };
-    }
-
-    winnerIndex = _ltDetectWinner(!!m.confirmed, entrantTop, entrantBot, topScore, botScore);
-    status = _ltComputeStatus(!!m.confirmed, entrantTop, entrantBot);
+    // Defer defwin/auto-advance classification to pass 3 (after source refs
+    // are wired) so that matches waiting for incomplete feeders are not
+    // prematurely marked as DEFWIN.  Pass 1 only builds the raw entrants.
+    winnerIndex = null;
+    status = { key: 'pending', label: 'Pending' };
 
     topPlayers = (entrantTop.type === 'player') ? [entrantTop.key] : [];
     botPlayers = (entrantBot.type === 'player') ? [entrantBot.key] : [];
@@ -421,31 +418,64 @@ function parseBracketData(json) {
     }
   }
 
-  // Third pass: reclassify auto-advanced matches that have a pending
-  // feeder.  A match with one auto-advanced contestant and an incoming
-  // source ref from a non-completed match is not a true DEFWIN — it is
-  // waiting for a real opponent.  Show it as "Pending" instead.
+  // Third pass: classify with full source-ref knowledge.
+  // Now that pass 2 has wired all sourceRefs, we can accurately decide
+  // whether an empty slot is a true structural DEFWIN (no feeder) or a
+  // pending slot (feeder match exists but hasn't completed yet).
+  // We check the feeder's `isDead` flag (structural, set in pass 1)
+  // rather than `isComplete` (dynamic) to avoid iteration-order bugs.
   for (i = 0; i < rawMatches.length; i++) {
     m = rawMatches[i];
-    var recheck = matchById[m.id];
-    if (!recheck || !recheck.isAutoAdvanced) continue;
+    var classify = matchById[m.id];
+    if (!classify || classify.isDead) continue;
 
-    var topSrc = recheck.topResolved.sourceRef;
-    var botSrc = recheck.bottomResolved.sourceRef;
-    var hasPendingFeeder = false;
+    var topEnt = classify.topResolved.entrant;
+    var botEnt = classify.bottomResolved.entrant;
+    var topSrc = classify.topResolved.sourceRef;
+    var botSrc = classify.bottomResolved.sourceRef;
 
-    if (topSrc && matchMap[topSrc] && !matchMap[topSrc].isComplete) {
-      hasPendingFeeder = true;
+    // Convert placeholder to defwin ONLY if no pending feeder
+    if (topEnt.type === 'placeholder' && m.contestants && m.contestants.length <= 1) {
+      var topFeederPending = topSrc && matchMap[topSrc] && !matchMap[topSrc].isDead;
+      if (!topFeederPending) {
+        topEnt = { type: 'defwin', name: '', label: '', key: '', score: null, id: null };
+        classify.topResolved.entrant = topEnt;
+      }
     }
-    if (botSrc && matchMap[botSrc] && !matchMap[botSrc].isComplete) {
-      hasPendingFeeder = true;
+    if (botEnt.type === 'placeholder' && m.contestants && m.contestants.length <= 1) {
+      var botFeederPending = botSrc && matchMap[botSrc] && !matchMap[botSrc].isDead;
+      if (!botFeederPending) {
+        botEnt = { type: 'defwin', name: '', label: '', key: '', score: null, id: null };
+        classify.bottomResolved.entrant = botEnt;
+      }
     }
 
-    if (hasPendingFeeder) {
-      recheck.isAutoAdvanced = false;
-      recheck.isComplete = false;
-      recheck.isWaitingForPlayers = true;
+    // If any slot is still a placeholder after the defwin checks above,
+    // the match is waiting for a feeder — force "Pending" status.
+    // _ltComputeStatus and _ltDetectWinner only distinguish 'player' and
+    // 'defwin'; a surviving 'placeholder' would be misclassified as DEFWIN.
+    if (topEnt.type === 'placeholder' || botEnt.type === 'placeholder') {
+      classify.winnerIndex = null;
+      classify.isComplete = false;
+      classify.isAutoAdvanced = false;
+      classify.isReadyToPlay = false;
+      classify.isWaitingForPlayers = true;
+      classify.winnerEntrant = null;
+      classify.loserEntrant = null;
+      continue;
     }
+
+    // Now classify with accurate entrant types
+    var ts = classify.scores[0];
+    var bs = classify.scores[1];
+    classify.winnerIndex = _ltDetectWinner(classify.confirmed, topEnt, botEnt, ts, bs);
+    var st = _ltComputeStatus(classify.confirmed, topEnt, botEnt);
+    classify.isComplete = st.key === 'done' || st.key === 'auto';
+    classify.isAutoAdvanced = st.key === 'auto';
+    classify.isReadyToPlay = st.key === 'open';
+    classify.isWaitingForPlayers = st.key === 'pending';
+    classify.winnerEntrant = classify.winnerIndex === 1 ? topEnt : (classify.winnerIndex === 2 ? botEnt : null);
+    classify.loserEntrant = classify.winnerIndex === 1 ? botEnt : (classify.winnerIndex === 2 ? topEnt : null);
   }
 
   var winnerRounds = _ltBucketsToRounds(winnerBuckets, 'WB');

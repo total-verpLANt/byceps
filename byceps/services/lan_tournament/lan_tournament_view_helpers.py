@@ -203,6 +203,26 @@ def _resolve_contestant_name(
     return 'TBD'
 
 
+def compute_feed_counts(match_data: list[dict]) -> dict[str, int]:
+    """Count incoming feeds per match from next_match_id/loser_next_match_id.
+
+    Returns a mapping of ``str(match_id) -> count`` so callers can tell
+    how many feeder matches route into a given match.  A count of 0 (or
+    absent key) means the match has no incoming feeds — it sits at the
+    leaf of the bracket tree.
+    """
+    feed_counts: dict[str, int] = {}
+    for data in match_data:
+        m = data['match']
+        if m.next_match_id:
+            key = str(m.next_match_id)
+            feed_counts[key] = feed_counts.get(key, 0) + 1
+        if m.loser_next_match_id:
+            key = str(m.loser_next_match_id)
+            feed_counts[key] = feed_counts.get(key, 0) + 1
+    return feed_counts
+
+
 def serialize_bracket_json(
     tournament: Tournament,
     match_data: list[dict],
@@ -217,15 +237,7 @@ def serialize_bracket_json(
     # Compute incoming feed counts from the match graph so the
     # client can identify dead matches (0 feeds) without
     # recomputing the routing topology from next/loser links.
-    feed_counts: dict[str, int] = {}
-    for data in match_data:
-        m = data['match']
-        if m.next_match_id:
-            key = str(m.next_match_id)
-            feed_counts[key] = feed_counts.get(key, 0) + 1
-        if m.loser_next_match_id:
-            key = str(m.loser_next_match_id)
-            feed_counts[key] = feed_counts.get(key, 0) + 1
+    feed_counts = compute_feed_counts(match_data)
 
     return {
         'tournament': {
