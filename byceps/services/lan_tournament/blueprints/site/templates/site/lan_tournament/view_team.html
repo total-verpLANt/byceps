@@ -1,4 +1,5 @@
 {% extends 'layout/site/lan_tournament.html' %}
+{% from 'macros/icons.html' import render_icon %}
 {% from 'macros/misc.html' import render_tag %}
 {% from 'macros/lan_tournament.html' import render_hover_name, render_tournament_subnav %}
 {% set page_title = [_('Tournament'), tournament.name, _('Team'), team.name] %}
@@ -19,6 +20,11 @@
     <div>
       <h1 class="title">{{ team.name }}{% if team.tag %} <span class="dimmed">[{{ team.tag }}]</span>{% endif %}</h1>
     </div>
+    {%- if can_manage_team %}
+    <div>
+      <a class="button secondary" href="{{ url_for('.update_team_form', tournament_id=tournament.id, team_id=team.id) }}">{{ render_icon('edit') }} {{ _('Edit team') }}</a>
+    </div>
+    {%- endif %}
   </div>
 
   {# --- Metadata grid --- #}
@@ -85,7 +91,7 @@
             {%- if team.join_code %}
             <div class="column-auto">
               <label class="form-label" for="team_join_code">{{ _('Join code') }}</label>
-              <input class="form-control" type="password" name="join_code" id="team_join_code" size="20" maxlength="50" placeholder="{{ _('Join code required') }}" required>
+              <input class="form-control" type="password" name="join_code" id="team_join_code" size="20" maxlength="80" placeholder="{{ _('Join code required') }}" required>
             </div>
             {%- endif %}
             <div class="column-auto">

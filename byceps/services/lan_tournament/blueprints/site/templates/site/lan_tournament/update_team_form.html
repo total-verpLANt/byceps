@@ -18,7 +18,9 @@
   <form action="{{ url_for('.update_team', tournament_id=tournament.id, team_id=team.id) }}" method="post">
     <div class="main-body-box">
       {{ form_field(form.name, maxlength=80, autofocus='autofocus') }}
+      {{ form_field(form.tag, maxlength=20) }}
       {{ form_field(form.description) }}
+      {{ form_field(form.join_code, maxlength=80, caption=_('Optional code to restrict team joins. Leave empty to remove.')) }}
     </div>
 
     {{ form_buttons(_('Save'), cancel_url=url_for('.view_team', team_id=team.id)) }}

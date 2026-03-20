@@ -30,8 +30,12 @@ class SiteTeamUpdateForm(LocalizedForm):
     name = StringField(
         lazy_gettext('Name'), [InputRequired(), Length(max=80)]
     )
+    tag = StringField(lazy_gettext('Tag'), [Optional(), Length(max=20)])
     description = TextAreaField(
         lazy_gettext('Description'), [Optional(), Length(max=2000)]
+    )
+    join_code = StringField(
+        lazy_gettext('Join code'), [Optional(), Length(max=80)]
     )
 
 
