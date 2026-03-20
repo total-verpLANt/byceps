@@ -36,6 +36,7 @@ from byceps.services.user.models import UserID
 
 from byceps.services.lan_tournament.blueprints.site.views import (
     _is_match_ready,
+    _is_match_open,
     _is_user_match,
 )
 
@@ -94,12 +95,15 @@ def _make_contestant_simple() -> dict[str, Any]:
 
 
 def _apply_filter(match_data: list[dict]) -> list[dict]:
-    """Reproduce the exact filter from views.matches()."""
+    """Reproduce the non-participant fallback filter from views.matches().
+
+    Shows ready matches only: 2+ contestants AND not confirmed.
+    """
     return [
         entry
         for entry in match_data
         if len(entry['contestants']) >= 2
-        or entry['match'].confirmed_by is not None
+        and entry['match'].confirmed_by is None
     ]
 
 
@@ -124,15 +128,13 @@ class TestMatchOverviewFilter:
         assert len(result) == 1
         assert result[0] is entry
 
-    def test_filter_includes_confirmed_defwin_match(self):
-        """A confirmed defwin (1 contestant, confirmed) is shown."""
+    def test_filter_excludes_confirmed_defwin_match(self):
+        """A confirmed defwin (1 contestant, confirmed) is excluded."""
         entry = {
             'match': _make_match(confirmed=True),
             'contestants': [_make_contestant_simple()],
         }
-        result = _apply_filter([entry])
-        assert len(result) == 1
-        assert result[0] is entry
+        assert _apply_filter([entry]) == []
 
     def test_filter_excludes_partially_filled_unconfirmed_match(self):
         """A match with 1 contestant but NOT confirmed is hidden."""
@@ -156,23 +158,31 @@ class TestMatchOverviewFilter:
         result = _apply_filter([ready_a, empty, ready_b])
         assert result == [ready_a, ready_b]
 
-    def test_filter_includes_confirmed_match_with_two_contestants(self):
-        """A confirmed match with 2 contestants (normal completed) is shown."""
+    def test_filter_excludes_confirmed_match_with_two_contestants(self):
+        """A confirmed match with 2 contestants (completed) is excluded."""
         entry = {
             'match': _make_match(confirmed=True),
             'contestants': [_make_contestant_simple(), _make_contestant_simple()],
         }
-        result = _apply_filter([entry])
-        assert len(result) == 1
+        assert _apply_filter([entry]) == []
 
     def test_filter_returns_empty_when_no_matches_ready(self):
-        """All-empty input produces empty output."""
-        entries = [
+        """All-empty/partial input produces empty output; ready match passes."""
+        not_ready_entries = [
             {'match': _make_match(), 'contestants': []},
             {'match': _make_match(), 'contestants': []},
             {'match': _make_match(), 'contestants': [_make_contestant_simple()]},
         ]
-        assert _apply_filter(entries) == []
+        assert _apply_filter(not_ready_entries) == []
+
+        # A ready match (2 contestants, unconfirmed) IS included.
+        ready_entry = {
+            'match': _make_match(),
+            'contestants': [_make_contestant_simple(), _make_contestant_simple()],
+        }
+        result = _apply_filter(not_ready_entries + [ready_entry])
+        assert len(result) == 1
+        assert result[0] is ready_entry
 
 
 # -- _is_match_ready helper tests ------------------------------------------
@@ -187,10 +197,16 @@ class TestIsMatchReady:
         entry = {'match': _make_match(), 'contestants': [c1, c2]}
         assert _is_match_ready(entry) is True
 
-    def test_ready_when_confirmed(self):
+    def test_not_ready_when_confirmed(self):
         c1 = _make_contestant()
         entry = {'match': _make_match(confirmed=True), 'contestants': [c1]}
-        assert _is_match_ready(entry) is True
+        assert _is_match_ready(entry) is False
+
+    def test_not_ready_when_confirmed_with_two_contestants(self):
+        c1 = _make_contestant()
+        c2 = _make_contestant()
+        entry = {'match': _make_match(confirmed=True), 'contestants': [c1, c2]}
+        assert _is_match_ready(entry) is False
 
     def test_not_ready_with_one_unconfirmed(self):
         c1 = _make_contestant()
@@ -200,6 +216,33 @@ class TestIsMatchReady:
     def test_not_ready_with_no_contestants(self):
         entry = {'match': _make_match(), 'contestants': []}
         assert _is_match_ready(entry) is False
+
+
+# -- _is_match_open helper tests -------------------------------------------
+
+
+class TestIsMatchOpen:
+    """Tests for the _is_match_open() helper."""
+
+    def test_open_with_one_contestant(self):
+        c1 = _make_contestant()
+        entry = {'match': _make_match(), 'contestants': [c1]}
+        assert _is_match_open(entry) is True
+
+    def test_open_with_two_contestants(self):
+        c1 = _make_contestant()
+        c2 = _make_contestant()
+        entry = {'match': _make_match(), 'contestants': [c1, c2]}
+        assert _is_match_open(entry) is True
+
+    def test_not_open_when_confirmed(self):
+        c1 = _make_contestant()
+        entry = {'match': _make_match(confirmed=True), 'contestants': [c1]}
+        assert _is_match_open(entry) is False
+
+    def test_not_open_with_no_contestants(self):
+        entry = {'match': _make_match(), 'contestants': []}
+        assert _is_match_open(entry) is False
 
 
 # -- _is_user_match helper tests -------------------------------------------
@@ -269,7 +312,7 @@ class TestTabFilters:
             'match': _make_match(),
             'contestants': [_make_contestant(team_id=team_id)],
         }
-        # Confirmed defwin (ready, involving participant)
+        # Confirmed defwin (neither ready nor open, involving participant)
         defwin_mine = {
             'match': _make_match(confirmed=True),
             'contestants': [_make_contestant(team_id=team_id)],
@@ -288,22 +331,22 @@ class TestTabFilters:
             if _is_match_ready(e) and _is_user_match(e, participant)
         ]
         assert ready_mine in result
-        assert defwin_mine in result
+        assert defwin_mine not in result  # confirmed → not ready
         assert ready_other not in result
         assert open_match not in result
-        assert len(result) == 2
+        assert len(result) == 1
 
-    def test_open_tab_filters_to_unready_matches(self):
-        """Open tab shows all matches that are not ready, tournament-wide."""
+    def test_open_tab_filters_to_open_matches(self):
+        """Open tab shows all open matches (1+ contestant, unconfirmed), tournament-wide."""
         all_data, participant, ready_mine, ready_other, open_match, defwin_mine = (
             self._build_match_data()
         )
-        result = [e for e in all_data if not _is_match_ready(e)]
+        result = [e for e in all_data if _is_match_open(e)]
         assert open_match in result
-        assert ready_mine not in result
-        assert ready_other not in result
-        assert defwin_mine not in result
-        assert len(result) == 1
+        assert ready_mine in result   # ready is a subset of open
+        assert ready_other in result  # ready is a subset of open
+        assert defwin_mine not in result  # confirmed → not open
+        assert len(result) == 3
 
     def test_all_tab_returns_everything(self):
         """All tab returns all matches without filtering."""
@@ -311,15 +354,15 @@ class TestTabFilters:
         assert len(all_data) == 4
 
     def test_non_participant_gets_all_ready_matches(self):
-        """Non-participant fallback: all ready matches, not personal-scoped."""
+        """Non-participant fallback: all ready matches (2+ contestants, unconfirmed)."""
         all_data, *_ = self._build_match_data()
         result = [
             e for e in all_data
             if len(e['contestants']) >= 2
-            or e['match'].confirmed_by is not None
+            and e['match'].confirmed_by is None
         ]
-        # ready_mine (2 contestants), ready_other (2 contestants), defwin_mine (confirmed)
-        assert len(result) == 3
+        # ready_mine (2 contestants, unconfirmed), ready_other (2 contestants, unconfirmed)
+        assert len(result) == 2
 
     def test_match_quantities_computed_correctly(self):
         """Verify match_quantities dict counts for each tab."""
@@ -328,9 +371,9 @@ class TestTabFilters:
             1 for e in all_data
             if _is_match_ready(e) and _is_user_match(e, participant)
         )
-        open_count = sum(1 for e in all_data if not _is_match_ready(e))
+        open_count = sum(1 for e in all_data if _is_match_open(e))
         total_count = len(all_data)
 
-        assert ready_user_count == 2  # ready_mine + defwin_mine
-        assert open_count == 1        # open_match
+        assert ready_user_count == 1  # ready_mine only (defwin_mine is confirmed)
+        assert open_count == 3        # ready_mine + ready_other + open_match
         assert total_count == 4       # all
