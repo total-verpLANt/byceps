@@ -17,10 +17,12 @@ from . import (
 )
 from .events import (
     ContestantAdvancedEvent,
+    MatchConfirmedEvent,
     ParticipantJoinedEvent,
     ParticipantLeftEvent,
     TeamDeletedEvent,
     TeamMemberLeftEvent,
+    TournamentCompletedEvent,
 )
 from .models.contestant_type import ContestantType
 from .models.tournament_participant import (
@@ -217,11 +219,11 @@ def _remove_single_participant_bracket_aware(
     now: datetime,
     *,
     initiator_id: UserID | None = None,
-) -> tuple[list[ContestantAdvancedEvent], TournamentTeamID | None]:
+) -> tuple[tournament_match_service.DefwinResult, TournamentTeamID | None]:
     """Remove one participant, handling bracket defwins if needed.
 
     Flushes but does NOT commit — caller owns the transaction.
-    Returns (defwin_events, deleted_team_id).
+    Returns (defwin_result, deleted_team_id).
     deleted_team_id is non-None only when removing this participant
     caused their team to become empty and the team was soft-deleted.
     """
@@ -231,7 +233,7 @@ def _remove_single_participant_bracket_aware(
         TournamentStatus.PAUSED,
     )
 
-    defwin_events: list[ContestantAdvancedEvent] = []
+    defwin = tournament_match_service.DefwinResult([], [], [])
     deleted_team_id: TournamentTeamID | None = None
 
     # Step 1: remove the participant row (soft or hard).
@@ -245,12 +247,13 @@ def _remove_single_participant_bracket_aware(
 
     # Step 2: handle bracket consequences.
     if bracket_is_active and not is_team_tournament:
-        defwin_events.extend(
-            tournament_match_service.handle_defwin_for_removed_participant(
-                tournament.id, participant.id,
-                initiator_id=initiator_id,
-            )
+        result = tournament_match_service.handle_defwin_for_removed_participant(
+            tournament.id, participant.id,
+            initiator_id=initiator_id,
         )
+        defwin.advanced.extend(result.advanced)
+        defwin.confirmed.extend(result.confirmed)
+        defwin.completed.extend(result.completed)
     elif (
         bracket_is_active
         and is_team_tournament
@@ -261,12 +264,13 @@ def _remove_single_participant_bracket_aware(
             participant.team_id
         )
         if not remaining:
-            defwin_events.extend(
-                tournament_match_service.handle_defwin_for_removed_team(
-                    tournament.id, participant.team_id,
-                    initiator_id=initiator_id,
-                )
+            result = tournament_match_service.handle_defwin_for_removed_team(
+                tournament.id, participant.team_id,
+                initiator_id=initiator_id,
             )
+            defwin.advanced.extend(result.advanced)
+            defwin.confirmed.extend(result.confirmed)
+            defwin.completed.extend(result.completed)
             tournament_repository.remove_team_from_participants_flush(
                 participant.team_id
             )
@@ -275,7 +279,7 @@ def _remove_single_participant_bracket_aware(
             )
             deleted_team_id = participant.team_id
 
-    return defwin_events, deleted_team_id
+    return defwin, deleted_team_id
 
 
 def admin_remove_participant(
@@ -301,14 +305,18 @@ def admin_remove_participant(
     tournament = tournament_repository.get_tournament_for_update(tournament_id)
 
     now = datetime.now(UTC)
-    defwin_events, deleted_team_id = _remove_single_participant_bracket_aware(
+    defwin, deleted_team_id = _remove_single_participant_bracket_aware(
         tournament, participant, now,
         initiator_id=initiator.id if initiator is not None else None,
     )
     tournament_repository.commit_session()
 
-    for event in defwin_events:
+    for event in defwin.advanced:
         signals.contestant_advanced.send(None, event=event)
+    for event in defwin.confirmed:
+        signals.match_confirmed.send(None, event=event)
+    for event in defwin.completed:
+        signals.tournament_completed.send(None, event=event)
 
     if team_id is not None:
         signals.team_member_left.send(
@@ -394,16 +402,18 @@ def remove_participants_without_tickets(
             tournament_id, ticketless, participants
         )
 
-    defwin_events: list[ContestantAdvancedEvent] = []
+    defwin = tournament_match_service.DefwinResult([], [], [])
 
     if not is_team_tournament:
         # Solo: delegate per-participant bracket logic to helper
         for p in ticketless:
-            p_defwin_events, _ = _remove_single_participant_bracket_aware(
+            p_defwin, _ = _remove_single_participant_bracket_aware(
                 tournament, p, now,
                 initiator_id=initiator_id,
             )
-            defwin_events.extend(p_defwin_events)
+            defwin.advanced.extend(p_defwin.advanced)
+            defwin.confirmed.extend(p_defwin.confirmed)
+            defwin.completed.extend(p_defwin.completed)
     else:
         # Team: bulk-remove participant rows, then clean up empty teams
         bracket_is_active = tournament.tournament_status in (
@@ -423,12 +433,13 @@ def remove_participants_without_tickets(
         # Clean up empty teams (defwin + soft/hard delete)
         for team_id in teams_to_delete:
             if bracket_is_active:
-                defwin_events.extend(
-                    tournament_match_service.handle_defwin_for_removed_team(
-                        tournament_id, team_id,
-                        initiator_id=initiator_id,
-                    )
+                result = tournament_match_service.handle_defwin_for_removed_team(
+                    tournament_id, team_id,
+                    initiator_id=initiator_id,
                 )
+                defwin.advanced.extend(result.advanced)
+                defwin.confirmed.extend(result.confirmed)
+                defwin.completed.extend(result.completed)
             tournament_repository.remove_team_from_participants_flush(team_id)
             if bracket_is_active:
                 tournament_repository.soft_delete_team_flush(team_id, now)
@@ -443,8 +454,12 @@ def remove_participants_without_tickets(
     # attributes remain valid after DB deletion, so iterating
     # them here is safe.
 
-    for event in defwin_events:
+    for event in defwin.advanced:
         signals.contestant_advanced.send(None, event=event)
+    for event in defwin.confirmed:
+        signals.match_confirmed.send(None, event=event)
+    for event in defwin.completed:
+        signals.tournament_completed.send(None, event=event)
 
     for p in ticketless:
         if is_team_tournament and p.team_id is not None:

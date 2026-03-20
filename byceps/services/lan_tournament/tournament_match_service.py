@@ -1,3 +1,4 @@
+import logging
 from dataclasses import replace
 from datetime import UTC, datetime
 from typing import NamedTuple
@@ -51,8 +52,18 @@ from .tournament_domain_service import (
     generate_round_robin_schedule,
 )
 
+logger = logging.getLogger(__name__)
+
 
 MAX_MATCH_SCORE = 999_999_999
+
+class DefwinResult(NamedTuple):
+    """Events produced by defwin processing, for post-commit dispatch."""
+
+    advanced: list[ContestantAdvancedEvent]
+    confirmed: list[MatchConfirmedEvent]
+    completed: list[TournamentCompletedEvent]
+
 
 class MatchUserRole(NamedTuple):
     contestant: TournamentMatchToContestant | None
@@ -874,7 +885,7 @@ def handle_defwin_for_removed_participant(
     participant_id: TournamentParticipantID,
     *,
     initiator_id: UserID | None = None,
-) -> list[ContestantAdvancedEvent]:
+) -> DefwinResult:
     """Handle defwin logic when removing a participant from an
     active tournament. Removes their contestant entries from
     unconfirmed matches and auto-advances sole remaining opponents.
@@ -901,7 +912,7 @@ def handle_defwin_for_removed_team(
     team_id: TournamentTeamID,
     *,
     initiator_id: UserID | None = None,
-) -> list[ContestantAdvancedEvent]:
+) -> DefwinResult:
     """Handle defwin logic when removing a team from an active
     tournament.
 
@@ -930,17 +941,29 @@ def _process_defwin_entries(
     entries: list[tuple[TournamentMatchToContestant, TournamentMatch]],
     *,
     initiator_id: UserID | None = None,
-) -> list[ContestantAdvancedEvent]:
-    """Shared defwin advancement logic for removed contestants.
+) -> DefwinResult:
+    """Shared defwin advancement and confirmation logic for removed
+    contestants.
 
     After the removed contestant's entry has been deleted from each
     match, check whether the sole remaining opponent should be
-    auto-advanced to the next round.
+    auto-advanced to the next round and whether the defwin match
+    should be auto-confirmed.
 
-    Does NOT commit — caller handles the transaction.
+    Advancement requires ``next_match_id`` (cannot advance without a
+    destination).  Confirmation happens for ALL sole-opponent defwins
+    when ``initiator_id`` is provided, regardless of
+    ``next_match_id``.  For terminal elimination matches,
+    auto-complete is triggered via
+    ``_try_auto_complete_tournament()``.
+
+    Does NOT commit — caller handles the transaction and dispatches
+    the returned events post-commit.
     """
     now = datetime.now(UTC)
-    events: list[ContestantAdvancedEvent] = []
+    advanced_events: list[ContestantAdvancedEvent] = []
+    confirmed_events: list[MatchConfirmedEvent] = []
+    completed_events: list[TournamentCompletedEvent] = []
 
     # Each entry's contestant has already been deleted from its match
     # by the caller, so `remaining` below reflects the post-deletion
@@ -948,55 +971,90 @@ def _process_defwin_entries(
     for _contestant, match in entries:
         remaining = tournament_repository.get_contestants_for_match(match.id)
 
-        # If both contestants were removed (len == 0),
-        # no advancement is possible — skip silently.
-        if len(remaining) != 1 or match.next_match_id is None:
+        # If both contestants were removed (len == 0) or more than
+        # one remains, no defwin processing is needed.
+        if len(remaining) != 1:
             continue
 
         sole = remaining[0]
 
-        # Guard: skip if contestant already in next match
-        next_contestants = tournament_repository.get_contestants_for_match(
-            match.next_match_id
-        )
-        already_advanced = any(
-            c.participant_id == sole.participant_id
-            and c.team_id == sole.team_id
-            for c in next_contestants
-        )
-        if already_advanced:
-            continue
+        # --- Advancement (requires next_match_id) ---
+        if match.next_match_id is not None:
+            next_contestants = tournament_repository.get_contestants_for_match(
+                match.next_match_id
+            )
+            already_advanced = any(
+                c.participant_id == sole.participant_id
+                and c.team_id == sole.team_id
+                for c in next_contestants
+            )
+            if not already_advanced:
+                adv_id = TournamentMatchToContestantID(generate_uuid7())
+                advanced = TournamentMatchToContestant(
+                    id=adv_id,
+                    tournament_match_id=match.next_match_id,
+                    team_id=sole.team_id,
+                    participant_id=sole.participant_id,
+                    score=None,
+                    created_at=now,
+                )
+                tournament_repository.create_match_contestant(advanced)
 
-        adv_id = TournamentMatchToContestantID(generate_uuid7())
-        advanced = TournamentMatchToContestant(
-            id=adv_id,
-            tournament_match_id=match.next_match_id,
-            team_id=sole.team_id,
-            participant_id=sole.participant_id,
-            score=None,
-            created_at=now,
-        )
-        tournament_repository.create_match_contestant(advanced)
+                advanced_events.append(
+                    ContestantAdvancedEvent(
+                        occurred_at=now,
+                        initiator=None,
+                        tournament_id=tournament_id,
+                        match_id=match.next_match_id,
+                        from_match_id=match.id,
+                        advanced_team_id=sole.team_id,
+                        advanced_participant_id=sole.participant_id,
+                    )
+                )
 
-        # Auto-confirm the DEFWIN match
+        # --- Confirmation (always for sole-opponent defwins) ---
         if initiator_id is not None:
             tournament_repository.confirm_match(
                 match.id, initiator_id
             )
 
-        events.append(
-            ContestantAdvancedEvent(
-                occurred_at=now,
-                initiator=None,
-                tournament_id=tournament_id,
-                match_id=match.next_match_id,
-                from_match_id=match.id,
-                advanced_team_id=sole.team_id,
-                advanced_participant_id=sole.participant_id,
+            confirmed_events.append(
+                MatchConfirmedEvent(
+                    occurred_at=now,
+                    initiator=None,
+                    tournament_id=tournament_id,
+                    match_id=match.id,
+                    winner_team_id=sole.team_id,
+                    winner_participant_id=sole.participant_id,
+                )
             )
-        )
 
-    return events
+            # Terminal elimination match → auto-complete tournament.
+            if match.next_match_id is None:
+                tournament = tournament_repository.get_tournament(
+                    tournament_id
+                )
+                result = _try_auto_complete_tournament(match, tournament, sole)
+                if result.is_err():
+                    logger.warning(
+                        'Auto-complete failed for tournament %s '
+                        'after defwin on match %s: %s',
+                        tournament_id,
+                        match.id,
+                        result.unwrap_err(),
+                    )
+                elif result.unwrap():
+                    completed_events.append(
+                        TournamentCompletedEvent(
+                            occurred_at=now,
+                            initiator=None,
+                            tournament_id=tournament_id,
+                            winner_team_id=sole.team_id,
+                            winner_participant_id=sole.participant_id,
+                        )
+                    )
+
+    return DefwinResult(advanced_events, confirmed_events, completed_events)
 
 
 def _determine_loser(
