@@ -340,6 +340,7 @@ def _db_tournament_to_tournament(
         score_ordering=_safe_enum_lookup(
             ScoreOrdering, db_tournament.score_ordering
         ),
+        use_bracket_reset=db_tournament.use_bracket_reset,
         winner_team_id=db_tournament.winner_team_id,
         winner_participant_id=db_tournament.winner_participant_id,
     )
@@ -903,6 +904,14 @@ def delete_match(match_id: TournamentMatchID) -> None:
     db.session.commit()
 
 
+def delete_match_flush(match_id: TournamentMatchID) -> None:
+    """Delete a match (flush only - caller owns commit)."""
+    db.session.execute(
+        delete(DbTournamentMatch).filter_by(id=match_id)
+    )
+    db.session.flush()
+
+
 def delete_matches_for_tournament(
     tournament_id: TournamentID, *, commit: bool = True
 ) -> None:
@@ -1045,6 +1054,17 @@ def clear_next_match_id(
         db.session.flush()
 
 
+def set_next_match_id_flush(
+    match_id: TournamentMatchID,
+    next_match_id: TournamentMatchID | None,
+) -> None:
+    """Set or clear winner routing on a match (flush only)."""
+    db_match = db.session.get(DbTournamentMatch, match_id)
+    if db_match is not None:
+        db_match.next_match_id = next_match_id
+        db.session.flush()
+
+
 def count_incoming_feeds(
     match_id: TournamentMatchID,
 ) -> int:
@@ -1062,6 +1082,20 @@ def count_incoming_feeds(
         )
         or 0
     )
+
+
+def find_feeder_matches(
+    match_id: TournamentMatchID,
+) -> list[TournamentMatch]:
+    """Return matches whose next_match_id or loser_next_match_id
+    points to the given match."""
+    db_matches = db.session.execute(
+        select(DbTournamentMatch).filter(
+            (DbTournamentMatch.next_match_id == match_id)
+            | (DbTournamentMatch.loser_next_match_id == match_id)
+        )
+    ).scalars().all()
+    return [_db_match_to_match(m) for m in db_matches]
 
 
 def _safe_bracket_lookup(value: str | None) -> Bracket | None:
@@ -1155,6 +1189,18 @@ def delete_comments_for_match(match_id: TournamentMatchID) -> None:
         delete(DbTournamentMatchComment).filter_by(tournament_match_id=match_id)
     )
     db.session.commit()
+
+
+def delete_comments_for_match_flush(
+    match_id: TournamentMatchID,
+) -> None:
+    """Delete all comments for a match (flush only — caller owns commit)."""
+    db.session.execute(
+        delete(DbTournamentMatchComment).filter_by(
+            tournament_match_id=match_id
+        )
+    )
+    db.session.flush()
 
 
 def delete_comments_for_tournament(
@@ -1426,6 +1472,18 @@ def delete_contestants_for_match(match_id: TournamentMatchID) -> None:
         )
     )
     db.session.commit()
+
+
+def delete_contestants_for_match_flush(
+    match_id: TournamentMatchID,
+) -> None:
+    """Delete all contestants for a match (flush only)."""
+    db.session.execute(
+        delete(DbTournamentMatchToContestant).filter_by(
+            tournament_match_id=match_id
+        )
+    )
+    db.session.flush()
 
 
 def delete_contestants_for_tournament(

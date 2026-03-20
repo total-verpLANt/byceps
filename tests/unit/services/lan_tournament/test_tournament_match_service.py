@@ -4159,3 +4159,1023 @@ def _create_match_contestant(
         score=score,
         created_at=NOW,
     )
+
+
+# ---- Bracket Reset Confirm Tests ----
+
+
+def _make_gf_m1_scenario(
+    *,
+    lb_champ_wins: bool = True,
+    use_bracket_reset: bool = True,
+):
+    """Set up a GF M1 confirm scenario and return all the pieces.
+
+    Returns a dict with keys: mock_repo, match, tournament,
+    wb_champ_pid, lb_champ_pid, contestants, lb_feeder, lb_feeder_contestants.
+    """
+    gf_m1_id = TournamentMatchID(generate_uuid())
+    lb_feeder_id = TournamentMatchID(generate_uuid())
+
+    # GF M1: terminal (next_match_id=None), bracket=GF, match_order=0
+    match = TournamentMatch(
+        id=gf_m1_id,
+        tournament_id=TOURNAMENT_ID,
+        group_order=None,
+        match_order=0,
+        round=0,
+        next_match_id=None,
+        bracket=Bracket.GRAND_FINAL,
+        loser_next_match_id=None,
+        confirmed_by=None,
+        created_at=NOW,
+    )
+
+    tournament = _create_tournament(
+        tournament_mode=TournamentMode.DOUBLE_ELIMINATION,
+        use_bracket_reset=use_bracket_reset,
+    )
+
+    wb_champ_pid = TournamentParticipantID(generate_uuid())
+    lb_champ_pid = TournamentParticipantID(generate_uuid())
+
+    if lb_champ_wins:
+        # LB champ has higher score
+        contestants = [
+            TournamentMatchToContestant(
+                id=TournamentMatchToContestantID(generate_uuid()),
+                tournament_match_id=gf_m1_id,
+                team_id=None,
+                participant_id=wb_champ_pid,
+                score=5,
+                created_at=NOW,
+            ),
+            TournamentMatchToContestant(
+                id=TournamentMatchToContestantID(generate_uuid()),
+                tournament_match_id=gf_m1_id,
+                team_id=None,
+                participant_id=lb_champ_pid,
+                score=10,
+                created_at=NOW,
+            ),
+        ]
+    else:
+        # WB champ has higher score
+        contestants = [
+            TournamentMatchToContestant(
+                id=TournamentMatchToContestantID(generate_uuid()),
+                tournament_match_id=gf_m1_id,
+                team_id=None,
+                participant_id=wb_champ_pid,
+                score=10,
+                created_at=NOW,
+            ),
+            TournamentMatchToContestant(
+                id=TournamentMatchToContestantID(generate_uuid()),
+                tournament_match_id=gf_m1_id,
+                team_id=None,
+                participant_id=lb_champ_pid,
+                score=5,
+                created_at=NOW,
+            ),
+        ]
+
+    # LB feeder match (the last LB match whose winner advanced to GF M1).
+    lb_feeder = TournamentMatch(
+        id=lb_feeder_id,
+        tournament_id=TOURNAMENT_ID,
+        group_order=None,
+        match_order=0,
+        round=0,
+        next_match_id=gf_m1_id,
+        bracket=Bracket.LOSERS,
+        loser_next_match_id=None,
+        confirmed_by=USER_ID,
+        created_at=NOW,
+    )
+
+    # LB feeder contestants — lb_champ won
+    lb_feeder_contestants = [
+        TournamentMatchToContestant(
+            id=TournamentMatchToContestantID(generate_uuid()),
+            tournament_match_id=lb_feeder_id,
+            team_id=None,
+            participant_id=lb_champ_pid,
+            score=10,
+            created_at=NOW,
+        ),
+        TournamentMatchToContestant(
+            id=TournamentMatchToContestantID(generate_uuid()),
+            tournament_match_id=lb_feeder_id,
+            team_id=None,
+            participant_id=TournamentParticipantID(generate_uuid()),
+            score=3,
+            created_at=NOW,
+        ),
+    ]
+
+    return {
+        'gf_m1_id': gf_m1_id,
+        'match': match,
+        'tournament': tournament,
+        'wb_champ_pid': wb_champ_pid,
+        'lb_champ_pid': lb_champ_pid,
+        'contestants': contestants,
+        'lb_feeder': lb_feeder,
+        'lb_feeder_contestants': lb_feeder_contestants,
+    }
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_confirm_gf_m1_lb_champ_wins_creates_gf_m2(mock_repo):
+    """Confirming GF M1 when LB champ wins creates a GF M2 bracket
+    reset match with bracket=GRAND_FINAL, match_order=1, and GF M1's
+    next_match_id is wired to GF M2.
+    """
+    s = _make_gf_m1_scenario(lb_champ_wins=True)
+
+    mock_repo.get_match_for_update.return_value = s['match']
+    mock_repo.get_tournament.return_value = s['tournament']
+    mock_repo.find_feeder_matches.return_value = [s['lb_feeder']]
+    mock_repo.set_tournament_winner.return_value = Ok(None)
+    mock_repo.set_tournament_status_flush.return_value = Ok(None)
+
+    # get_contestants_for_match is called:
+    # 1) GF M1 contestants (validation)
+    # 2) LB feeder contestants (_is_lb_champion_winner)
+    mock_repo.get_contestants_for_match.side_effect = [
+        s['contestants'],
+        s['lb_feeder_contestants'],
+    ]
+
+    # After set_next_match_id_flush, re-read returns updated match
+    # with next_match_id pointing to the newly created GF M2.
+    def _get_match_after_wiring(mid):
+        return TournamentMatch(
+            id=s['gf_m1_id'],
+            tournament_id=TOURNAMENT_ID,
+            group_order=None,
+            match_order=0,
+            round=0,
+            next_match_id=TournamentMatchID(generate_uuid()),
+            bracket=Bracket.GRAND_FINAL,
+            loser_next_match_id=None,
+            confirmed_by=USER_ID,
+            created_at=NOW,
+        )
+
+    mock_repo.get_match.side_effect = _get_match_after_wiring
+
+    result = tournament_match_service.confirm_match(
+        s['gf_m1_id'], USER_ID,
+    )
+
+    assert result.is_ok()
+
+    # GF M2 was created via create_match
+    mock_repo.create_match.assert_called_once()
+    gf_m2 = mock_repo.create_match.call_args[0][0]
+    assert gf_m2.bracket == Bracket.GRAND_FINAL
+    assert gf_m2.match_order == 1
+    assert gf_m2.next_match_id is None
+    assert gf_m2.loser_next_match_id is None
+
+    # GF M1 was wired to GF M2
+    mock_repo.set_next_match_id_flush.assert_called_once_with(
+        s['gf_m1_id'], gf_m2.id,
+    )
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_confirm_gf_m1_wb_champ_wins_no_gf_m2(mock_repo):
+    """Confirming GF M1 when WB champ wins does not create GF M2;
+    tournament completes immediately.
+    """
+    s = _make_gf_m1_scenario(lb_champ_wins=False)
+
+    mock_repo.get_match_for_update.return_value = s['match']
+    mock_repo.get_tournament.return_value = s['tournament']
+    mock_repo.find_feeder_matches.return_value = [s['lb_feeder']]
+    mock_repo.set_tournament_winner.return_value = Ok(None)
+    mock_repo.set_tournament_status_flush.return_value = Ok(None)
+
+    # LB feeder contestants needed by _is_lb_champion_winner:
+    # winner of LB feeder = lb_champ_pid. But GF M1 winner = wb_champ_pid.
+    # So _is_lb_champion_winner returns False.
+    mock_repo.get_contestants_for_match.side_effect = [
+        s['contestants'],
+        s['lb_feeder_contestants'],
+    ]
+
+    result = tournament_match_service.confirm_match(
+        s['gf_m1_id'], USER_ID,
+    )
+
+    assert result.is_ok()
+
+    # No GF M2 created
+    mock_repo.create_match.assert_not_called()
+    mock_repo.set_next_match_id_flush.assert_not_called()
+
+    # Tournament was completed
+    mock_repo.set_tournament_winner.assert_called_once()
+    mock_repo.set_tournament_status_flush.assert_called_once_with(
+        TOURNAMENT_ID,
+        TournamentStatus.COMPLETED,
+    )
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_confirm_gf_m1_bracket_reset_disabled_no_gf_m2(mock_repo):
+    """With use_bracket_reset=False, LB champ winning GF M1 does not
+    create GF M2; tournament completes with LB champ as winner.
+    """
+    s = _make_gf_m1_scenario(
+        lb_champ_wins=True,
+        use_bracket_reset=False,
+    )
+
+    mock_repo.get_match_for_update.return_value = s['match']
+    mock_repo.get_tournament.return_value = s['tournament']
+    mock_repo.set_tournament_winner.return_value = Ok(None)
+    mock_repo.set_tournament_status_flush.return_value = Ok(None)
+
+    # When use_bracket_reset=False, the bracket reset condition short-circuits
+    # before calling _is_lb_champion_winner, so find_feeder_matches is NOT
+    # called. Only one get_contestants_for_match call (validation).
+    mock_repo.get_contestants_for_match.return_value = s['contestants']
+
+    result = tournament_match_service.confirm_match(
+        s['gf_m1_id'], USER_ID,
+    )
+
+    assert result.is_ok()
+
+    # No GF M2 created
+    mock_repo.create_match.assert_not_called()
+
+    # Tournament completed with LB champ (the winner of GF M1)
+    mock_repo.set_tournament_winner.assert_called_once()
+    winner_call = mock_repo.set_tournament_winner.call_args
+    assert winner_call.kwargs['winner_participant_id'] == s['lb_champ_pid']
+
+    mock_repo.set_tournament_status_flush.assert_called_once_with(
+        TOURNAMENT_ID,
+        TournamentStatus.COMPLETED,
+    )
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_gf_m2_contestant_ordering_wb_top_lb_bottom(mock_repo):
+    """WB champion is first contestant (top slot) in GF M2,
+    LB champion is second (bottom slot).
+    """
+    s = _make_gf_m1_scenario(lb_champ_wins=True)
+
+    mock_repo.get_match_for_update.return_value = s['match']
+    mock_repo.get_tournament.return_value = s['tournament']
+    mock_repo.find_feeder_matches.return_value = [s['lb_feeder']]
+    mock_repo.set_tournament_winner.return_value = Ok(None)
+    mock_repo.set_tournament_status_flush.return_value = Ok(None)
+
+    mock_repo.get_contestants_for_match.side_effect = [
+        s['contestants'],
+        s['lb_feeder_contestants'],
+    ]
+
+    # After wiring, re-read returns match with next_match_id set
+    mock_repo.get_match.return_value = TournamentMatch(
+        id=s['gf_m1_id'],
+        tournament_id=TOURNAMENT_ID,
+        group_order=None,
+        match_order=0,
+        round=0,
+        next_match_id=TournamentMatchID(generate_uuid()),
+        bracket=Bracket.GRAND_FINAL,
+        loser_next_match_id=None,
+        confirmed_by=USER_ID,
+        created_at=NOW,
+    )
+
+    result = tournament_match_service.confirm_match(
+        s['gf_m1_id'], USER_ID,
+    )
+
+    assert result.is_ok()
+
+    # create_match_contestant called twice for GF M2 contestants
+    # (winner advancement does NOT happen because GF M1 had
+    # next_match_id=None at time of _advance_winner call)
+    assert mock_repo.create_match_contestant.call_count == 2
+
+    created = [
+        call.args[0]
+        for call in mock_repo.create_match_contestant.call_args_list
+    ]
+
+    # First (top slot): WB champion (loser of GF M1)
+    assert created[0].participant_id == s['wb_champ_pid']
+    # Second (bottom slot): LB champion (winner of GF M1)
+    assert created[1].participant_id == s['lb_champ_pid']
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_gf_m2_is_terminal(mock_repo):
+    """GF M2 has next_match_id=None and loser_next_match_id=None."""
+    s = _make_gf_m1_scenario(lb_champ_wins=True)
+
+    mock_repo.get_match_for_update.return_value = s['match']
+    mock_repo.get_tournament.return_value = s['tournament']
+    mock_repo.find_feeder_matches.return_value = [s['lb_feeder']]
+    mock_repo.set_tournament_winner.return_value = Ok(None)
+    mock_repo.set_tournament_status_flush.return_value = Ok(None)
+
+    mock_repo.get_contestants_for_match.side_effect = [
+        s['contestants'],
+        s['lb_feeder_contestants'],
+    ]
+
+    mock_repo.get_match.return_value = TournamentMatch(
+        id=s['gf_m1_id'],
+        tournament_id=TOURNAMENT_ID,
+        group_order=None,
+        match_order=0,
+        round=0,
+        next_match_id=TournamentMatchID(generate_uuid()),
+        bracket=Bracket.GRAND_FINAL,
+        loser_next_match_id=None,
+        confirmed_by=USER_ID,
+        created_at=NOW,
+    )
+
+    result = tournament_match_service.confirm_match(
+        s['gf_m1_id'], USER_ID,
+    )
+
+    assert result.is_ok()
+
+    gf_m2 = mock_repo.create_match.call_args[0][0]
+    assert gf_m2.next_match_id is None, 'GF M2 must be terminal'
+    assert gf_m2.loser_next_match_id is None, (
+        'GF M2 must not route losers'
+    )
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_confirm_gf_m2_completes_tournament(mock_repo):
+    """Confirming GF M2 triggers _try_auto_complete_tournament,
+    setting tournament status to COMPLETED.
+    """
+    gf_m2_id = TournamentMatchID(generate_uuid())
+
+    # GF M2: terminal match, bracket=GF, match_order=1
+    gf_m2 = TournamentMatch(
+        id=gf_m2_id,
+        tournament_id=TOURNAMENT_ID,
+        group_order=None,
+        match_order=1,
+        round=0,
+        next_match_id=None,
+        bracket=Bracket.GRAND_FINAL,
+        loser_next_match_id=None,
+        confirmed_by=None,
+        created_at=NOW,
+    )
+
+    tournament = _create_tournament(
+        tournament_mode=TournamentMode.DOUBLE_ELIMINATION,
+        use_bracket_reset=True,
+    )
+
+    winner_pid = TournamentParticipantID(generate_uuid())
+    contestants = [
+        TournamentMatchToContestant(
+            id=TournamentMatchToContestantID(generate_uuid()),
+            tournament_match_id=gf_m2_id,
+            team_id=None,
+            participant_id=winner_pid,
+            score=10,
+            created_at=NOW,
+        ),
+        TournamentMatchToContestant(
+            id=TournamentMatchToContestantID(generate_uuid()),
+            tournament_match_id=gf_m2_id,
+            team_id=None,
+            participant_id=TournamentParticipantID(generate_uuid()),
+            score=5,
+            created_at=NOW,
+        ),
+    ]
+
+    mock_repo.get_match_for_update.return_value = gf_m2
+    mock_repo.get_contestants_for_match.return_value = contestants
+    mock_repo.get_tournament.return_value = tournament
+    mock_repo.set_tournament_winner.return_value = Ok(None)
+    mock_repo.set_tournament_status_flush.return_value = Ok(None)
+
+    result = tournament_match_service.confirm_match(gf_m2_id, USER_ID)
+
+    assert result.is_ok()
+
+    # Tournament was completed
+    mock_repo.set_tournament_status_flush.assert_called_once_with(
+        TOURNAMENT_ID,
+        TournamentStatus.COMPLETED,
+    )
+    mock_repo.set_tournament_winner.assert_called_once_with(
+        TOURNAMENT_ID,
+        winner_team_id=None,
+        winner_participant_id=winner_pid,
+    )
+
+
+# ---- Bracket Reset Unconfirm Tests ----
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_unconfirm_gf_m1_deletes_unconfirmed_gf_m2(mock_repo):
+    """Unconfirming GF M1 deletes a dynamically-created (unconfirmed)
+    GF M2 and nulls GF M1's next_match_id.
+    """
+    gf_m1_id = TournamentMatchID(generate_uuid())
+    gf_m2_id = TournamentMatchID(generate_uuid())
+    confirmed_by = UserID(generate_uuid())
+
+    gf_m1 = TournamentMatch(
+        id=gf_m1_id,
+        tournament_id=TOURNAMENT_ID,
+        group_order=None,
+        match_order=0,
+        round=1,
+        next_match_id=gf_m2_id,
+        confirmed_by=confirmed_by,
+        created_at=NOW,
+        bracket=Bracket.GRAND_FINAL,
+    )
+
+    gf_m2 = TournamentMatch(
+        id=gf_m2_id,
+        tournament_id=TOURNAMENT_ID,
+        group_order=None,
+        match_order=1,
+        round=2,
+        next_match_id=None,
+        confirmed_by=None,  # unconfirmed
+        created_at=NOW,
+        bracket=Bracket.GRAND_FINAL,
+    )
+
+    # GF M1 re-read after set_next_match_id_flush (next_match_id=None)
+    gf_m1_after = TournamentMatch(
+        id=gf_m1_id,
+        tournament_id=TOURNAMENT_ID,
+        group_order=None,
+        match_order=0,
+        round=1,
+        next_match_id=None,
+        confirmed_by=confirmed_by,
+        created_at=NOW,
+        bracket=Bracket.GRAND_FINAL,
+    )
+
+    winner_pid = TournamentParticipantID(generate_uuid())
+    loser_pid = TournamentParticipantID(generate_uuid())
+    contestants = [
+        _create_match_contestant(participant_id=winner_pid, score=10),
+        _create_match_contestant(participant_id=loser_pid, score=5),
+    ]
+
+    tournament = _create_tournament(
+        tournament_mode=TournamentMode.DOUBLE_ELIMINATION,
+    )
+
+    mock_repo.get_match_for_update.return_value = gf_m1
+    # get_match calls:
+    # 1) next_match cascade check (gf_m2) — unconfirmed
+    # 2) re-read gf_m1 after bracket reset cleanup
+    mock_repo.get_match.side_effect = [gf_m2, gf_m1_after]
+    mock_repo.find_match.return_value = gf_m2
+    mock_repo.get_contestants_for_match.return_value = contestants
+    mock_repo.get_tournament.return_value = tournament
+    mock_repo.set_tournament_winner.return_value = Ok(None)
+    mock_repo.set_tournament_status_flush.return_value = Ok(None)
+
+    result = tournament_match_service.unconfirm_match(gf_m1_id, USER_ID)
+
+    assert result.is_ok()
+
+    # GF M2 contestants deleted, GF M1 next_match_id nulled, GF M2 deleted
+    mock_repo.delete_contestants_for_match_flush.assert_called_once_with(
+        gf_m2_id
+    )
+    mock_repo.set_next_match_id_flush.assert_called_once_with(
+        gf_m1_id, None
+    )
+    mock_repo.delete_match_flush.assert_called_once_with(gf_m2_id)
+
+    # Tournament state reverted (terminal match after GF M2 removed)
+    mock_repo.set_tournament_winner.assert_called_once_with(
+        TOURNAMENT_ID,
+        winner_team_id=None,
+        winner_participant_id=None,
+    )
+    mock_repo.set_tournament_status_flush.assert_called_once_with(
+        TOURNAMENT_ID,
+        TournamentStatus.ONGOING,
+    )
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_unconfirm_gf_m1_cascades_through_confirmed_gf_m2(mock_repo):
+    """Unconfirming GF M1 first cascade-unconfirms a confirmed GF M2,
+    then deletes it.
+    """
+    gf_m1_id = TournamentMatchID(generate_uuid())
+    gf_m2_id = TournamentMatchID(generate_uuid())
+    confirmed_by = UserID(generate_uuid())
+    gf_m2_confirmed_by = UserID(generate_uuid())
+
+    gf_m1 = TournamentMatch(
+        id=gf_m1_id,
+        tournament_id=TOURNAMENT_ID,
+        group_order=None,
+        match_order=0,
+        round=1,
+        next_match_id=gf_m2_id,
+        confirmed_by=confirmed_by,
+        created_at=NOW,
+        bracket=Bracket.GRAND_FINAL,
+    )
+
+    gf_m2 = TournamentMatch(
+        id=gf_m2_id,
+        tournament_id=TOURNAMENT_ID,
+        group_order=None,
+        match_order=1,
+        round=2,
+        next_match_id=None,
+        confirmed_by=gf_m2_confirmed_by,  # confirmed — triggers cascade
+        created_at=NOW,
+        bracket=Bracket.GRAND_FINAL,
+    )
+
+    # GF M1 re-read after bracket reset cleanup (next_match_id=None)
+    gf_m1_after = TournamentMatch(
+        id=gf_m1_id,
+        tournament_id=TOURNAMENT_ID,
+        group_order=None,
+        match_order=0,
+        round=1,
+        next_match_id=None,
+        confirmed_by=confirmed_by,
+        created_at=NOW,
+        bracket=Bracket.GRAND_FINAL,
+    )
+
+    winner_pid = TournamentParticipantID(generate_uuid())
+    loser_pid = TournamentParticipantID(generate_uuid())
+    gf_m1_contestants = [
+        _create_match_contestant(participant_id=winner_pid, score=10),
+        _create_match_contestant(participant_id=loser_pid, score=5),
+    ]
+
+    # GF M2 contestants (draw => no further cascade from GF M2)
+    gf_m2_winner_pid = TournamentParticipantID(generate_uuid())
+    gf_m2_loser_pid = TournamentParticipantID(generate_uuid())
+    gf_m2_contestants = [
+        _create_match_contestant(
+            participant_id=gf_m2_winner_pid, score=10
+        ),
+        _create_match_contestant(
+            participant_id=gf_m2_loser_pid, score=5
+        ),
+    ]
+
+    tournament = _create_tournament(
+        tournament_mode=TournamentMode.DOUBLE_ELIMINATION,
+    )
+
+    # get_match_for_update calls:
+    # 0) unconfirm_match top-level lock (GF M1 passed as _match)
+    # 1) GF M2 (recursive _unconfirm_match_impl)
+    mock_repo.get_match_for_update.side_effect = [gf_m1, gf_m2]
+
+    # get_match calls:
+    # 1) next_match cascade check (GF M2 — confirmed)
+    # 2) re-read GF M1 after bracket reset cleanup
+    mock_repo.get_match.side_effect = [gf_m2, gf_m1_after]
+    mock_repo.find_match.return_value = gf_m2
+
+    # get_contestants_for_match calls:
+    # 1) GF M1 contestants
+    # 2) GF M2 contestants (recursive unconfirm)
+    mock_repo.get_contestants_for_match.side_effect = [
+        gf_m1_contestants,
+        gf_m2_contestants,
+    ]
+
+    mock_repo.get_tournament.return_value = tournament
+    mock_repo.set_tournament_winner.return_value = Ok(None)
+    mock_repo.set_tournament_status_flush.return_value = Ok(None)
+
+    result = tournament_match_service.unconfirm_match(gf_m1_id, USER_ID)
+
+    assert result.is_ok()
+
+    # GF M2 was cascade-unconfirmed first, then GF M1
+    assert mock_repo.unconfirm_match.call_count == 2
+    unconfirm_calls = mock_repo.unconfirm_match.call_args_list
+    assert unconfirm_calls[0].args[0] == gf_m2_id  # cascade first
+    assert unconfirm_calls[1].args[0] == gf_m1_id
+
+    # Bracket reset cleanup: GF M2 deleted
+    mock_repo.delete_contestants_for_match_flush.assert_called_once_with(
+        gf_m2_id
+    )
+    mock_repo.delete_match_flush.assert_called_once_with(gf_m2_id)
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_unconfirm_gf_m1_without_gf_m2_works_normally(mock_repo):
+    """Unconfirming GF M1 when WB champ won (no GF M2) behaves
+    like a normal terminal match unconfirm — no bracket reset cleanup.
+    """
+    gf_m1_id = TournamentMatchID(generate_uuid())
+    confirmed_by = UserID(generate_uuid())
+
+    gf_m1 = TournamentMatch(
+        id=gf_m1_id,
+        tournament_id=TOURNAMENT_ID,
+        group_order=None,
+        match_order=0,
+        round=1,
+        next_match_id=None,  # No GF M2 — WB champ won
+        confirmed_by=confirmed_by,
+        created_at=NOW,
+        bracket=Bracket.GRAND_FINAL,
+    )
+
+    winner_pid = TournamentParticipantID(generate_uuid())
+    loser_pid = TournamentParticipantID(generate_uuid())
+    contestants = [
+        _create_match_contestant(participant_id=winner_pid, score=10),
+        _create_match_contestant(participant_id=loser_pid, score=5),
+    ]
+
+    tournament = _create_tournament(
+        tournament_mode=TournamentMode.DOUBLE_ELIMINATION,
+    )
+
+    mock_repo.get_match_for_update.return_value = gf_m1
+    mock_repo.get_contestants_for_match.return_value = contestants
+    mock_repo.get_tournament.return_value = tournament
+    mock_repo.set_tournament_winner.return_value = Ok(None)
+    mock_repo.set_tournament_status_flush.return_value = Ok(None)
+
+    result = tournament_match_service.unconfirm_match(gf_m1_id, USER_ID)
+
+    assert result.is_ok()
+
+    # No bracket reset cleanup happened
+    mock_repo.delete_contestants_for_match_flush.assert_not_called()
+    mock_repo.set_next_match_id_flush.assert_not_called()
+    mock_repo.delete_match_flush.assert_not_called()
+
+    # Normal terminal match reversion still applied
+    mock_repo.set_tournament_winner.assert_called_once_with(
+        TOURNAMENT_ID,
+        winner_team_id=None,
+        winner_participant_id=None,
+    )
+    mock_repo.unconfirm_match.assert_called_once_with(gf_m1_id)
+
+
+# ---- Bracket Reset Provenance Helper Tests ----
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_is_lb_champion_winner_returns_true_for_lb_champ(mock_repo):
+    """_is_lb_champion_winner returns True when the GF M1 winner
+    came from the losers bracket.
+    """
+    gf_m1_id = TournamentMatchID(generate_uuid())
+    lb_final_id = TournamentMatchID(generate_uuid())
+
+    gf_m1 = TournamentMatch(
+        id=gf_m1_id,
+        tournament_id=TOURNAMENT_ID,
+        group_order=None,
+        match_order=0,
+        round=1,
+        next_match_id=None,
+        confirmed_by=None,
+        created_at=NOW,
+        bracket=Bracket.GRAND_FINAL,
+    )
+
+    lb_final = TournamentMatch(
+        id=lb_final_id,
+        tournament_id=TOURNAMENT_ID,
+        group_order=None,
+        match_order=0,
+        round=1,
+        next_match_id=gf_m1_id,
+        confirmed_by=UserID(generate_uuid()),
+        created_at=NOW,
+        bracket=Bracket.LOSERS,
+    )
+
+    # The LB champion's identity — same person is the GF M1 winner
+    lb_champ_pid = TournamentParticipantID(generate_uuid())
+
+    winner = _create_match_contestant(
+        participant_id=lb_champ_pid, score=10
+    )
+
+    lb_contestants = [
+        _create_match_contestant(
+            participant_id=lb_champ_pid, score=10
+        ),
+        _create_match_contestant(
+            participant_id=TournamentParticipantID(generate_uuid()),
+            score=5,
+        ),
+    ]
+
+    mock_repo.find_feeder_matches.return_value = [lb_final]
+    mock_repo.get_contestants_for_match.return_value = lb_contestants
+
+    result = tournament_match_service._is_lb_champion_winner(
+        gf_m1, winner
+    )
+
+    assert result is True
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_is_lb_champion_winner_returns_false_for_wb_champ(mock_repo):
+    """_is_lb_champion_winner returns False when the GF M1 winner
+    came from the winners bracket (not the LB champion).
+    """
+    gf_m1_id = TournamentMatchID(generate_uuid())
+    lb_final_id = TournamentMatchID(generate_uuid())
+    wb_final_id = TournamentMatchID(generate_uuid())
+
+    gf_m1 = TournamentMatch(
+        id=gf_m1_id,
+        tournament_id=TOURNAMENT_ID,
+        group_order=None,
+        match_order=0,
+        round=1,
+        next_match_id=None,
+        confirmed_by=None,
+        created_at=NOW,
+        bracket=Bracket.GRAND_FINAL,
+    )
+
+    lb_final = TournamentMatch(
+        id=lb_final_id,
+        tournament_id=TOURNAMENT_ID,
+        group_order=None,
+        match_order=0,
+        round=1,
+        next_match_id=gf_m1_id,
+        confirmed_by=UserID(generate_uuid()),
+        created_at=NOW,
+        bracket=Bracket.LOSERS,
+    )
+
+    wb_final = TournamentMatch(
+        id=wb_final_id,
+        tournament_id=TOURNAMENT_ID,
+        group_order=None,
+        match_order=0,
+        round=1,
+        next_match_id=gf_m1_id,
+        confirmed_by=UserID(generate_uuid()),
+        created_at=NOW,
+        bracket=Bracket.WINNERS,
+    )
+
+    # WB champion is the GF M1 winner — different from LB champion
+    wb_champ_pid = TournamentParticipantID(generate_uuid())
+    lb_champ_pid = TournamentParticipantID(generate_uuid())
+
+    winner = _create_match_contestant(
+        participant_id=wb_champ_pid, score=10
+    )
+
+    lb_contestants = [
+        _create_match_contestant(
+            participant_id=lb_champ_pid, score=10
+        ),
+        _create_match_contestant(
+            participant_id=TournamentParticipantID(generate_uuid()),
+            score=5,
+        ),
+    ]
+
+    mock_repo.find_feeder_matches.return_value = [lb_final, wb_final]
+    mock_repo.get_contestants_for_match.return_value = lb_contestants
+
+    result = tournament_match_service._is_lb_champion_winner(
+        gf_m1, winner
+    )
+
+    assert result is False
+
+
+# ---- Bracket Reset Cleanup Defect Fixes ----
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_unconfirm_gf_m1_deletes_gf_m2_comments(mock_repo):
+    """Unconfirming GF M1 deletes GF M2's comments before contestants,
+    preventing FK violation on match deletion.
+    """
+    gf_m1_id = TournamentMatchID(generate_uuid())
+    gf_m2_id = TournamentMatchID(generate_uuid())
+    confirmed_by = UserID(generate_uuid())
+
+    gf_m1 = TournamentMatch(
+        id=gf_m1_id,
+        tournament_id=TOURNAMENT_ID,
+        group_order=None,
+        match_order=0,
+        round=1,
+        next_match_id=gf_m2_id,
+        confirmed_by=confirmed_by,
+        created_at=NOW,
+        bracket=Bracket.GRAND_FINAL,
+    )
+
+    gf_m2 = TournamentMatch(
+        id=gf_m2_id,
+        tournament_id=TOURNAMENT_ID,
+        group_order=None,
+        match_order=1,
+        round=2,
+        next_match_id=None,
+        confirmed_by=None,
+        created_at=NOW,
+        bracket=Bracket.GRAND_FINAL,
+    )
+
+    gf_m1_after = TournamentMatch(
+        id=gf_m1_id,
+        tournament_id=TOURNAMENT_ID,
+        group_order=None,
+        match_order=0,
+        round=1,
+        next_match_id=None,
+        confirmed_by=confirmed_by,
+        created_at=NOW,
+        bracket=Bracket.GRAND_FINAL,
+    )
+
+    winner_pid = TournamentParticipantID(generate_uuid())
+    loser_pid = TournamentParticipantID(generate_uuid())
+    contestants = [
+        _create_match_contestant(participant_id=winner_pid, score=10),
+        _create_match_contestant(participant_id=loser_pid, score=5),
+    ]
+
+    tournament = _create_tournament(
+        tournament_mode=TournamentMode.DOUBLE_ELIMINATION,
+    )
+
+    mock_repo.get_match_for_update.return_value = gf_m1
+    mock_repo.get_match.side_effect = [gf_m2, gf_m1_after]
+    mock_repo.find_match.return_value = gf_m2
+    mock_repo.get_contestants_for_match.return_value = contestants
+    mock_repo.get_tournament.return_value = tournament
+    mock_repo.set_tournament_winner.return_value = Ok(None)
+    mock_repo.set_tournament_status_flush.return_value = Ok(None)
+
+    result = tournament_match_service.unconfirm_match(gf_m1_id, USER_ID)
+
+    assert result.is_ok()
+
+    # Comments deleted before contestants — verify both called with GF M2 ID
+    mock_repo.delete_comments_for_match_flush.assert_called_once_with(
+        gf_m2_id
+    )
+    mock_repo.delete_contestants_for_match_flush.assert_called_once_with(
+        gf_m2_id
+    )
+
+    # Verify FK-safe ordering: comments before contestants before match
+    # (all three called in sequence for gf_m2_id)
+    comment_order = mock_repo.delete_comments_for_match_flush.call_args_list
+    contestant_order = mock_repo.delete_contestants_for_match_flush.call_args_list
+    match_order = mock_repo.delete_match_flush.call_args_list
+    assert len(comment_order) == 1
+    assert len(contestant_order) == 1
+    assert len(match_order) == 1
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.match_deleted'
+)
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_unconfirm_gf_m1_emits_match_deleted_event(
+    mock_repo, mock_match_deleted_signal
+):
+    """Unconfirming GF M1 emits a MatchDeletedEvent for the deleted
+    GF M2, dispatched via match_deleted signal after commit.
+    """
+    gf_m1_id = TournamentMatchID(generate_uuid())
+    gf_m2_id = TournamentMatchID(generate_uuid())
+    confirmed_by = UserID(generate_uuid())
+
+    gf_m1 = TournamentMatch(
+        id=gf_m1_id,
+        tournament_id=TOURNAMENT_ID,
+        group_order=None,
+        match_order=0,
+        round=1,
+        next_match_id=gf_m2_id,
+        confirmed_by=confirmed_by,
+        created_at=NOW,
+        bracket=Bracket.GRAND_FINAL,
+    )
+
+    gf_m2 = TournamentMatch(
+        id=gf_m2_id,
+        tournament_id=TOURNAMENT_ID,
+        group_order=None,
+        match_order=1,
+        round=2,
+        next_match_id=None,
+        confirmed_by=None,
+        created_at=NOW,
+        bracket=Bracket.GRAND_FINAL,
+    )
+
+    gf_m1_after = TournamentMatch(
+        id=gf_m1_id,
+        tournament_id=TOURNAMENT_ID,
+        group_order=None,
+        match_order=0,
+        round=1,
+        next_match_id=None,
+        confirmed_by=confirmed_by,
+        created_at=NOW,
+        bracket=Bracket.GRAND_FINAL,
+    )
+
+    winner_pid = TournamentParticipantID(generate_uuid())
+    loser_pid = TournamentParticipantID(generate_uuid())
+    contestants = [
+        _create_match_contestant(participant_id=winner_pid, score=10),
+        _create_match_contestant(participant_id=loser_pid, score=5),
+    ]
+
+    tournament = _create_tournament(
+        tournament_mode=TournamentMode.DOUBLE_ELIMINATION,
+    )
+
+    mock_repo.get_match_for_update.return_value = gf_m1
+    mock_repo.get_match.side_effect = [gf_m2, gf_m1_after]
+    mock_repo.find_match.return_value = gf_m2
+    mock_repo.get_contestants_for_match.return_value = contestants
+    mock_repo.get_tournament.return_value = tournament
+    mock_repo.set_tournament_winner.return_value = Ok(None)
+    mock_repo.set_tournament_status_flush.return_value = Ok(None)
+
+    result = tournament_match_service.unconfirm_match(gf_m1_id, USER_ID)
+
+    assert result.is_ok()
+
+    # match_deleted signal was called once with a MatchDeletedEvent
+    mock_match_deleted_signal.send.assert_called_once()
+    call_kwargs = mock_match_deleted_signal.send.call_args
+    event = call_kwargs.kwargs.get('event') or call_kwargs[1]['event']
+    assert event.match_id == gf_m2_id
+    assert event.tournament_id == TOURNAMENT_ID
