@@ -268,6 +268,16 @@ R{{ r }} M{{ m }}
   border-radius: 3px;
   margin-left: 0.5rem;
 }
+.badge-pending {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.7rem;
+  font-weight: bold;
+  color: #fff;
+  background-color: #6c757d;
+  border-radius: 3px;
+  margin-left: 0.5rem;
+}
 
 /* --- Simple bracket list --- */
 .bracket-list {
@@ -465,12 +475,16 @@ R{{ r }} M{{ m }}
       {%- set _match_url = url_for(match_url_endpoint, match_id=match.id) if match_url_endpoint else None %}
       <div class='bracket-match'>
         {%- if _match_url %}<a href="{{ _match_url }}" class="bracket-match-link">{%- endif %}
-        <div class='bracket-match-card {% if match.confirmed_by %}confirmed{% endif %} {% if contestants|length == 1 %}defwin{% endif %}'>
+        <div class='bracket-match-card {% if match.confirmed_by %}confirmed{% endif %} {% if contestants|length == 1 and not data.get('has_pending_feeder') %}defwin{% endif %}'>
           <div class='bracket-match-header'>
             {{ render_match_ref(match) }}
-            {%- if contestants|length == 1 %}
+            {%- if contestants|length == 1 and not data.get('has_pending_feeder') %}
               <span class='badge-defwin' title='{{ _("Free Win - Opponent advanced automatically") }}'>
                 {{ _('defwin') }}
+              </span>
+            {%- elif data.get('has_pending_feeder') %}
+              <span class='badge-pending' title='{{ _("Waiting for opponent") }}'>
+                {{ _('Pending') }}
               </span>
             {%- endif %}
           </div>
@@ -564,7 +578,7 @@ R{{ r }} M{{ m }}
       {%- endif %}
     </div>
     <div class='bracket-list-matchup'>
-      {%- if contestants|length == 1 %}
+      {%- if contestants|length == 1 and not data.get('has_pending_feeder') %}
         {# Defwin match #}
         {%- set contestant = contestants[0] %}
         <div style='padding: 0.25rem 0;'>
@@ -587,6 +601,29 @@ R{{ r }} M{{ m }}
           {%- endif %}
           <strong>{{ contestant.score if contestant.score is not none else '–' }}</strong>
           <span class='badge-defwin' title='{{ _("Free Win") }}'>{{ _('defwin') }}</span>
+        </div>
+      {%- elif data.get('has_pending_feeder') and contestants|length == 1 %}
+        {# Pending match — waiting on feeder #}
+        {%- set contestant = contestants[0] %}
+        <div style='padding: 0.25rem 0;'>
+          {%- if contestant.team_id %}
+            {%- set _team = teams_by_id.get(contestant.team_id) -%}
+            {%- if _team -%}
+              {{ render_hover_name(_team.name, team_id=_team.id, team_members_by_team_id=team_members_by_team_id, profile_url_endpoint=profile_url_endpoint) }}
+            {%- else -%}
+              {{ contestant.team_id|string }}
+            {%- endif -%}
+          {%- elif contestant.participant_id %}
+            {%- set _user = participants_by_id.get(contestant.participant_id) -%}
+            {%- if _user -%}
+              {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted, seats_by_user_id=seats_by_user_id, profile_url_endpoint=profile_url_endpoint) }}
+            {%- else -%}
+              {{ contestant.participant_id|string }}
+            {%- endif -%}
+          {%- else %}
+            TBD
+          {%- endif %}
+          <span class='badge-pending' title='{{ _("Waiting for opponent") }}'>{{ _('Pending') }}</span>
         </div>
       {%- else %}
         {# Normal match #}
@@ -787,13 +824,18 @@ R{{ r }} M{{ m }}
   {%- set _match_url = url_for(match_url_endpoint, match_id=match.id) if match_url_endpoint else None %}
   <div class='bracket-match'>
     {%- if _match_url %}<a href="{{ _match_url }}" class="bracket-match-link">{%- endif %}
-    <div class='bracket-match-card {% if match.confirmed_by %}confirmed{% endif %} {% if contestants|length == 1 %}defwin{% endif %}'>
+    <div class='bracket-match-card {% if match.confirmed_by %}confirmed{% endif %} {% if contestants|length == 1 and not data.get('has_pending_feeder') %}defwin{% endif %}'>
       <div class='bracket-match-header'>
         {{ render_match_ref(match) }}
-        {%- if contestants|length == 1 %}
+        {%- if contestants|length == 1 and not data.get('has_pending_feeder') %}
           <span class='badge-defwin'
                 title='{{ _("Free Win") }}'>
             {{ _('defwin') }}
+          </span>
+        {%- elif data.get('has_pending_feeder') %}
+          <span class='badge-pending'
+                title='{{ _("Waiting for opponent") }}'>
+            {{ _('Pending') }}
           </span>
         {%- endif %}
       </div>
@@ -959,7 +1001,7 @@ R{{ r }} M{{ m }}
       {%- endif %}
     </div>
     <div class='bracket-list-matchup'>
-      {%- if contestants|length == 1 %}
+      {%- if contestants|length == 1 and not data.get('has_pending_feeder') %}
         {%- set contestant = contestants[0] %}
         <div style='padding: 0.25rem 0;'>
           {%- if contestant.team_id %}
@@ -996,6 +1038,43 @@ R{{ r }} M{{ m }}
           <span class='badge-defwin'
                 title='{{ _("Free Win") }}'>
             {{ _('defwin') }}
+          </span>
+        </div>
+      {%- elif data.get('has_pending_feeder') and contestants|length == 1 %}
+        {# Pending match — waiting on feeder #}
+        {%- set contestant = contestants[0] %}
+        <div style='padding: 0.25rem 0;'>
+          {%- if contestant.team_id %}
+            {%- set _team = teams_by_id.get(
+                contestant.team_id) -%}
+            {%- if _team -%}
+              {{ render_hover_name(
+                  _team.name, team_id=_team.id,
+                  team_members_by_team_id=team_members_by_team_id,
+                  profile_url_endpoint=profile_url_endpoint
+              ) }}
+            {%- else -%}
+              {{ contestant.team_id|string }}
+            {%- endif -%}
+          {%- elif contestant.participant_id %}
+            {%- set _user = participants_by_id.get(
+                contestant.participant_id) -%}
+            {%- if _user -%}
+              {{ render_hover_name(
+                  _user.screen_name, user_id=_user.id,
+                  user_deleted=_user.deleted,
+                  seats_by_user_id=seats_by_user_id,
+                  profile_url_endpoint=profile_url_endpoint
+              ) }}
+            {%- else -%}
+              {{ contestant.participant_id|string }}
+            {%- endif -%}
+          {%- else %}
+            TBD
+          {%- endif %}
+          <span class='badge-pending'
+                title='{{ _("Waiting for opponent") }}'>
+            {{ _('Pending') }}
           </span>
         </div>
       {%- else %}

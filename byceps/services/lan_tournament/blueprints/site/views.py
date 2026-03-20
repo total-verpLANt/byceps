@@ -20,6 +20,7 @@ from byceps.services.lan_tournament.lan_tournament_view_helpers import (
     build_hover_lookups,
     build_round_robin_standings,
     build_seat_lookup,
+    compute_feed_counts,
     serialize_bracket_json,
 )
 from byceps.services.lan_tournament.models.contestant_type import (
@@ -1200,6 +1201,17 @@ def bracket(tournament_id):
         tournament.party_id,
         participants=participants,
     )
+
+    # Tag matches that have pending feeders so the noscript template
+    # can distinguish them from true structural defwins (bye matches).
+    feed_counts = compute_feed_counts(match_data)
+    for entry in match_data:
+        m = entry['match']
+        entry['has_pending_feeder'] = (
+            feed_counts.get(str(m.id), 0) > 0
+            and len(entry['contestants']) <= 1
+            and not m.confirmed_by
+        )
 
     # Bracket serialization for client-side rendering (SE/DE only).
     bracket_json = None
