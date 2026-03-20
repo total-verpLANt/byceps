@@ -837,7 +837,8 @@ def test_generate_de_bracket_defwin_nullifies_loser_link(
     ]
     # get_contestants_for_match is called once per WBR0
     # match in the auto-advance loop, then again per match
-    # in the DEFWIN nullification loop.
+    # in the DEFWIN nullification loop, then once per match
+    # in the _collect_ready_match_events sweep.
     mock_repo.get_contestants_for_match.side_effect = [
         single,  # WBR0 match 0: DEFWIN (auto-advance)
         pair,  # WBR0 match 1: real match (skip)
@@ -847,7 +848,7 @@ def test_generate_de_bracket_defwin_nullifies_loser_link(
         pair,  # WBR0 match 1: real (nullify loop skips)
         single,  # WBR0 match 2: DEFWIN (nullify loop)
         single,  # WBR0 match 3: DEFWIN (nullify loop)
-    ]
+    ] + [[] for _ in range(14)]  # ready-check sweep over all matches
 
     result = tournament_match_service.generate_double_elimination_bracket(
         TOURNAMENT_ID
@@ -896,7 +897,7 @@ def test_generate_de_bracket_defwin_still_advances_to_wb1(
             participant_id=TournamentParticipantID(generate_uuid()),
         ),
     ]
-    # auto-advance loop + nullification loop
+    # auto-advance loop + nullification loop + ready-check sweep
     mock_repo.get_contestants_for_match.side_effect = [
         single,
         pair,
@@ -906,7 +907,7 @@ def test_generate_de_bracket_defwin_still_advances_to_wb1(
         pair,
         single,
         single,
-    ]
+    ] + [[] for _ in range(14)]  # ready-check sweep over all matches
 
     result = tournament_match_service.generate_double_elimination_bracket(
         TOURNAMENT_ID
@@ -963,7 +964,7 @@ def test_generate_de_bracket_defwin_auto_confirms_with_initiator(
             participant_id=TournamentParticipantID(generate_uuid()),
         ),
     ]
-    # auto-advance loop + nullification loop
+    # auto-advance loop + nullification loop + ready-check sweep
     mock_repo.get_contestants_for_match.side_effect = [
         single,
         pair,
@@ -973,7 +974,7 @@ def test_generate_de_bracket_defwin_auto_confirms_with_initiator(
         pair,
         single,
         single,
-    ]
+    ] + [[] for _ in range(14)]  # ready-check sweep over all matches
 
     result = tournament_match_service.generate_double_elimination_bracket(
         TOURNAMENT_ID, initiator_id=initiator_id
@@ -2000,9 +2001,13 @@ def test_confirm_match_de_auto_advances_lb_defwin(mock_repo):
     # get_contestants_for_match calls:
     # 1) main match contestants (confirm_match validation)
     # 2) lb match contestants (DEFWIN auto-advance check)
+    # 3-5) ready-check sweep over destination matches
     mock_repo.get_contestants_for_match.side_effect = [
         contestants,
         [lb_sole_contestant],
+        [],  # ready-check: next_match_id
+        [],  # ready-check: loser_next_match_id
+        [],  # ready-check: lb_next_match_id
     ]
 
     # Only 1 feed into this LB match (structural DEFWIN).
@@ -4305,9 +4310,11 @@ def test_confirm_gf_m1_lb_champ_wins_creates_gf_m2(mock_repo):
     # get_contestants_for_match is called:
     # 1) GF M1 contestants (validation)
     # 2) LB feeder contestants (_is_lb_champion_winner)
+    # 3) ready-check: GF M2 (bracket reset destination)
     mock_repo.get_contestants_for_match.side_effect = [
         s['contestants'],
         s['lb_feeder_contestants'],
+        [],  # ready-check for GF M2
     ]
 
     # After set_next_match_id_flush, re-read returns updated match
@@ -4449,6 +4456,7 @@ def test_gf_m2_contestant_ordering_wb_top_lb_bottom(mock_repo):
     mock_repo.get_contestants_for_match.side_effect = [
         s['contestants'],
         s['lb_feeder_contestants'],
+        [],  # ready-check for GF M2
     ]
 
     # After wiring, re-read returns match with next_match_id set
@@ -4503,6 +4511,7 @@ def test_gf_m2_is_terminal(mock_repo):
     mock_repo.get_contestants_for_match.side_effect = [
         s['contestants'],
         s['lb_feeder_contestants'],
+        [],  # ready-check for GF M2
     ]
 
     mock_repo.get_match.return_value = TournamentMatch(

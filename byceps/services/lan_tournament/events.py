@@ -136,3 +136,8 @@ class ContestantAdvancedEvent(_BaseMatchEvent):
     from_match_id: TournamentMatchID
     advanced_team_id: TournamentTeamID | None
     advanced_participant_id: TournamentParticipantID | None
+
+
+@dataclass(frozen=True, kw_only=True)
+class MatchReadyEvent(_BaseMatchEvent):
+    pass

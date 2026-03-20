@@ -148,6 +148,9 @@ def _create_app(
 
     enable_announcements()
 
+    from byceps.services.lan_tournament.notification_handlers import enable_match_notifications
+    enable_match_notifications()
+
     debug_toolbar_enabled = (
         byceps_config.development.toolbar_enabled
         and (app_mode.is_admin() or app_mode.is_site())

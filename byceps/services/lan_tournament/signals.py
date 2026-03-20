@@ -25,6 +25,7 @@ match_created      = lan_tournament_signals.signal('match-created')
 match_deleted      = lan_tournament_signals.signal('match-deleted')
 match_confirmed    = lan_tournament_signals.signal('match-confirmed')
 match_unconfirmed  = lan_tournament_signals.signal('match-unconfirmed')
+match_ready        = lan_tournament_signals.signal('match-ready')
 
 contestant_advanced = lan_tournament_signals.signal('contestant-advanced')
 # fmt: on
