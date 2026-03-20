@@ -823,10 +823,21 @@ def _get_team_or_404(team_id) -> TournamentTeam:
 
 
 def _is_match_ready(entry: dict) -> bool:
-    """A match is ready when it has 2+ contestants or is confirmed."""
+    """A match is ready when it has 2+ contestants and is NOT confirmed."""
     return (
         len(entry['contestants']) >= 2
-        or entry['match'].confirmed_by is not None
+        and entry['match'].confirmed_by is None
+    )
+
+
+def _is_match_open(entry: dict) -> bool:
+    """A match is open when it has 1+ contestant and is NOT confirmed.
+
+    This is a superset of ready — every ready match is also open.
+    """
+    return (
+        len(entry['contestants']) >= 1
+        and entry['match'].confirmed_by is None
     )
 
 
@@ -897,7 +908,7 @@ def matches(tournament_id):
             1 for e in match_data
             if _is_match_ready(e) and _is_user_match(e, current_user_participant)
         )
-        open_count = sum(1 for e in match_data if not _is_match_ready(e))
+        open_count = sum(1 for e in match_data if _is_match_open(e))
         total_count = len(match_data)
         match_quantities = {
             'ready': ready_user_count,
@@ -911,17 +922,17 @@ def matches(tournament_id):
                 if _is_match_ready(e) and _is_user_match(e, current_user_participant)
             ]
         elif only == 'open':
-            match_data = [e for e in match_data if not _is_match_ready(e)]
+            match_data = [e for e in match_data if _is_match_open(e)]
         # 'all' → no filtering
     else:
         only = None
         match_quantities = None
-        # Non-participants: keep existing behavior — ready matches only.
+        # Non-participants: show ready matches only (2+ contestants, not confirmed).
         match_data = [
             entry
             for entry in match_data
             if len(entry['contestants']) >= 2
-            or entry['match'].confirmed_by is not None
+            and entry['match'].confirmed_by is None
         ]
 
     teams_by_id, participants_by_id = build_contestant_name_lookups(

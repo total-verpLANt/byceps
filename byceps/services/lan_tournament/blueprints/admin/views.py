@@ -1283,10 +1283,21 @@ def _get_match_or_404(match_id) -> TournamentMatch:
 
 
 def _is_match_ready(entry: dict) -> bool:
-    """A match is ready when it has 2+ contestants or is confirmed."""
+    """A match is ready when it has 2+ contestants and is NOT confirmed."""
     return (
         len(entry['contestants']) >= 2
-        or entry['match'].confirmed_by is not None
+        and entry['match'].confirmed_by is None
+    )
+
+
+def _is_match_open(entry: dict) -> bool:
+    """A match is open when it has 1+ contestant and is NOT confirmed.
+
+    This is a superset of ready — every ready match is also open.
+    """
+    return (
+        len(entry['contestants']) >= 1
+        and entry['match'].confirmed_by is None
     )
 
 
@@ -1322,7 +1333,7 @@ def matches_for_tournament(tournament_id):
     # Compute counts before filtering.
     total_count = len(match_data)
     ready_count = sum(1 for e in match_data if _is_match_ready(e))
-    open_count = total_count - ready_count
+    open_count = sum(1 for e in match_data if _is_match_open(e))
     match_quantities = {
         'all': total_count,
         'open': open_count,
@@ -1331,7 +1342,7 @@ def matches_for_tournament(tournament_id):
 
     # Apply status filter.
     if only == 'open':
-        match_data = [e for e in match_data if not _is_match_ready(e)]
+        match_data = [e for e in match_data if _is_match_open(e)]
     elif only == 'ready':
         match_data = [e for e in match_data if _is_match_ready(e)]
     # 'all' → no filtering
