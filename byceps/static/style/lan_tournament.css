@@ -1103,6 +1103,7 @@ a.lt-hover-name-link:hover {
 .match-link-reset {
   text-decoration: none;
   color: inherit;
+  display: block;
 }
 
 .participants-row {

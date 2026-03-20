@@ -64,14 +64,14 @@
             {%- if contestant.team_id %}
               {%- set _team = teams_by_id.get(contestant.team_id) -%}
               {%- if _team -%}
-                {{ _('Team') }} {{ render_hover_name(_team.name, team_id=_team.id, team_members_by_team_id=team_members_by_team_id, truncate_len=15) }}
+                {{ _('Team') }} {{ render_hover_name(_team.name, team_id=_team.id, team_members_by_team_id=team_members_by_team_id, truncate_len=15, link_profiles=False) }}
               {%- else -%}
                 {{ contestant.team_id|string }}
               {%- endif -%}
             {%- elif contestant.participant_id %}
               {%- set _user = participants_by_id.get(contestant.participant_id) -%}
               {%- if _user -%}
-                {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted, seats_by_user_id=seats_by_user_id, truncate_len=15) }}
+                {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted, seats_by_user_id=seats_by_user_id, truncate_len=15, link_profiles=False) }}
               {%- else -%}
                 {{ contestant.participant_id|string }}
               {%- endif -%}
