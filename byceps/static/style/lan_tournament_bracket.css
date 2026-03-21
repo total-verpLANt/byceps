@@ -922,6 +922,16 @@
   --match-accent: color-mix(in srgb, var(--lt-brand-orange) 72%, white);
 }
 
+/* Inline P3 match within bracket grid (SE only) */
+.lt-match.lt-p3-inline {
+  border-color: color-mix(in srgb, var(--lt-brand-orange) 18%, var(--lt-border));
+  background: color-mix(in srgb, var(--lt-brand-orange) 4%, rgba(255, 255, 255, 0.04));
+}
+
+.lt-match.lt-p3-inline .lt-match-label {
+  color: color-mix(in srgb, var(--lt-brand-orange) 78%, white);
+}
+
 
 /* ------------------------------------------------------------
    2p. GF M2 / bracket reset card
