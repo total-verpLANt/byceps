@@ -8,7 +8,11 @@
 {% set page_title = [_('Match'), tournament.name, party.title] %}
 {% set is_ffa = tournament.game_format and tournament.game_format.name == 'FREE_FOR_ALL' %}
 
-{% block head %}{{ super() }}{{ hover_card_styles() }}{% endblock %}
+{% block head %}{{ super() }}{{ hover_card_styles() }}
+  {%- if is_ffa %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_ffa_admin.css') }}">
+  {%- endif %}
+{%- endblock %}
 
 {% block before_body %}
 {{ render_backlink(url_for('.matches_for_tournament',
@@ -39,7 +43,81 @@
     <h2>{{ _('Contestants & Placements') }}</h2>
 
     {%- if not match.confirmed_by and g.user.has_permission('lan_tournament.update') %}
-    {# Editable placement form #}
+    {# Drag-and-drop placement editor (JS-enhanced) #}
+    <form action='{{ url_for('.set_ffa_placements_action', match_id=match.id) }}'
+          method='post'>
+      <div id="ffa-ranking-list" class="ffa-ranking-list"
+           data-point-table='{{ tournament.point_table|tojson }}'>
+        {#- Contestants WITH saved placements first (sorted ascending) -#}
+        {%- for contestant in contestants|selectattr('placement')|sort(attribute='placement')|list %}
+        {%- set cid = (contestant.team_id|string) if contestant.team_id else (contestant.participant_id|string) %}
+        <div class="ffa-ranking-card" data-contestant-id="{{ cid }}">
+          <span class="ffa-ranking-card__handle" aria-hidden="true">&#8801;</span>
+          <span class="ffa-ranking-card__ordinal"></span>
+          <span class="ffa-ranking-card__medal"></span>
+          <span class="ffa-ranking-card__name">
+            {%- if contestant.team_id %}
+              {%- set _team = teams_by_id.get(contestant.team_id) -%}
+              {%- if _team -%}
+                {{ render_hover_name(_team.name, team_id=_team.id, link_profiles=False, team_members_by_team_id=team_members_by_team_id) }}
+              {%- else -%}
+                {{ contestant.team_id|string }}
+              {%- endif -%}
+            {%- elif contestant.participant_id %}
+              {%- set _user = participants_by_id.get(contestant.participant_id) -%}
+              {%- if _user -%}
+                {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted, link_profiles=False, seats_by_user_id=seats_by_user_id) }}
+              {%- else -%}
+                {{ contestant.participant_id|string }}
+              {%- endif -%}
+            {%- else %}
+              {{ _('defwin') }}
+            {%- endif %}
+          </span>
+          <span class="ffa-ranking-card__points"></span>
+          <input type="hidden" name="placement_{{ cid }}" value="{{ contestant.placement|default(loop.index) }}">
+        </div>
+        {%- endfor %}
+        {#- Contestants WITHOUT saved placements at the bottom -#}
+        {%- for contestant in contestants|rejectattr('placement')|list %}
+        {%- set cid = (contestant.team_id|string) if contestant.team_id else (contestant.participant_id|string) %}
+        <div class="ffa-ranking-card" data-contestant-id="{{ cid }}">
+          <span class="ffa-ranking-card__handle" aria-hidden="true">&#8801;</span>
+          <span class="ffa-ranking-card__ordinal"></span>
+          <span class="ffa-ranking-card__medal"></span>
+          <span class="ffa-ranking-card__name">
+            {%- if contestant.team_id %}
+              {%- set _team = teams_by_id.get(contestant.team_id) -%}
+              {%- if _team -%}
+                {{ render_hover_name(_team.name, team_id=_team.id, link_profiles=False, team_members_by_team_id=team_members_by_team_id) }}
+              {%- else -%}
+                {{ contestant.team_id|string }}
+              {%- endif -%}
+            {%- elif contestant.participant_id %}
+              {%- set _user = participants_by_id.get(contestant.participant_id) -%}
+              {%- if _user -%}
+                {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted, link_profiles=False, seats_by_user_id=seats_by_user_id) }}
+              {%- else -%}
+                {{ contestant.participant_id|string }}
+              {%- endif -%}
+            {%- else %}
+              {{ _('defwin') }}
+            {%- endif %}
+          </span>
+          <span class="ffa-ranking-card__points"></span>
+          <input type="hidden" name="placement_{{ cid }}" value="{{ loop.index + (contestants|selectattr('placement')|list|length) }}">
+        </div>
+        {%- endfor %}
+      </div>
+      <div style='margin-top: 1rem;'>
+        <button type='submit' class='button'>
+          {{ render_icon('save') }} {{ _('Set Placements') }}
+        </button>
+      </div>
+    </form>
+
+    <noscript>
+    {# Fallback: original select-based placement table for non-JS browsers #}
     <form action='{{ url_for('.set_ffa_placements_action', match_id=match.id) }}'
           method='post'>
       <table class='index' style='width: 100%;'>
@@ -77,17 +155,17 @@
             </td>
             <td style='text-align: center;'>
               <select name='placement_{{ cid }}' style='width: 80px;' required>
-                <option value=''>–</option>
+                <option value=''>&#8211;</option>
                 {%- for i in range(1, contestants|length + 1) %}
                 <option value='{{ i }}'
                   {%- if contestant.placement == i %} selected{% endif %}>
-                  {{ i }}{{ _('st') if i == 1 else (_('nd') if i == 2 else (_('rd') if i == 3 else _('th'))) }}
+                  {{ i }}{{ _('th') if (i % 100) in (11, 12, 13) else (_('st') if i % 10 == 1 else (_('nd') if i % 10 == 2 else (_('rd') if i % 10 == 3 else _('th')))) }}
                 </option>
                 {%- endfor %}
               </select>
             </td>
             <td style='text-align: center;'>
-              {{ contestant.points if contestant.points is not none else '–' }}
+              {{ contestant.points if contestant.points is not none else '&#8211;' }}
             </td>
           </tr>
           {%- endfor %}
@@ -99,6 +177,7 @@
         </button>
       </div>
     </form>
+    </noscript>
     {%- else %}
     {# Read-only placement display #}
     <table class='index' style='width: 100%;'>
@@ -315,3 +394,10 @@
   </div>
 
 {%- endblock %}
+
+{% block scripts %}
+{%- if is_ffa and not match.confirmed_by and g.user.has_permission('lan_tournament.update') %}
+<script src="{{ url_for('static', filename='behavior/sortable.min.js') }}"></script>
+<script src="{{ url_for('static', filename='behavior/lan_tournament_ffa.js') }}"></script>
+{%- endif %}
+{% endblock %}

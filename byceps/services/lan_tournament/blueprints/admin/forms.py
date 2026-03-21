@@ -107,7 +107,7 @@ class _BaseForm(LocalizedForm):
         lazy_gettext('Max. players per team'), [Optional()]
     )
     point_table = StringField(
-        lazy_gettext('Point table (comma-separated)'),
+        lazy_gettext('Points by placement'),
         [Optional(), Length(max=500)],
     )
     group_size_min = IntegerField(
