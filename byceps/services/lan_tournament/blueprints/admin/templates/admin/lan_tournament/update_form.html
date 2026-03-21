@@ -29,9 +29,19 @@
       {{ form_field(form.description) }}
       {{ form_field(form.image_url) }}
       {{ form_field(form.contestant_type, **lock) }}
-      {{ form_field(form.tournament_mode, **lock) }}
+      {{ form_field(form.game_format, **lock) }}
+      {{ form_field(form.elimination_mode, **lock) }}
       <div id="highscore-constraints" style="display: none;">
         {{ form_field(form.score_ordering, **lock) }}
+      </div>
+      <div id="ffa-constraints" style="display: none;">
+        {{ form_field(form.point_table, **lock) }}
+        {{ form_field(form.group_size_min, min=2, style='width: 5rem;', **lock) }}
+        {{ form_field(form.group_size_max, min=2, style='width: 5rem;', **lock) }}
+        {{ form_field(form.advancement_count, min=1, style='width: 5rem;', **lock) }}
+      </div>
+      <div id="ffa-de-constraints" style="display: none;">
+        {{ form_field(form.points_carry_to_losers, **lock) }}
       </div>
       {{ form_field(form.start_time, **lock) }}
       {{ form_field(form.ruleset) }}
@@ -58,4 +68,45 @@
 
 {% block scripts %}
 {% include 'admin/lan_tournament/_constraint_toggle.html' %}
+<script>
+  /* Toggle FFA fields based on game_format and elimination_mode. */
+  (function() {
+    const gameFormatSelect = document.getElementById('game_format');
+    const eliminationModeSelect = document.getElementById('elimination_mode');
+    const ffaConstraints = document.getElementById('ffa-constraints');
+    const ffaDeConstraints = document.getElementById('ffa-de-constraints');
+    const highscoreConstraints = document.getElementById('highscore-constraints');
+
+    function updateFormatVisibility() {
+      if (!gameFormatSelect) return;
+      const gf = gameFormatSelect.value;
+      const em = eliminationModeSelect ? eliminationModeSelect.value : '';
+
+      /* FFA fields: visible when game_format = FREE_FOR_ALL */
+      if (ffaConstraints) {
+        ffaConstraints.style.display = (gf === 'FREE_FOR_ALL') ? '' : 'none';
+      }
+
+      /* Points carry: visible when FFA + DOUBLE_ELIMINATION */
+      if (ffaDeConstraints) {
+        ffaDeConstraints.style.display = (
+          gf === 'FREE_FOR_ALL' && em === 'DOUBLE_ELIMINATION'
+        ) ? '' : 'none';
+      }
+
+      /* Highscore constraints: visible when game_format = HIGHSCORE */
+      if (highscoreConstraints) {
+        highscoreConstraints.style.display = (gf === 'HIGHSCORE') ? '' : 'none';
+      }
+    }
+
+    if (gameFormatSelect) {
+      gameFormatSelect.addEventListener('change', updateFormatVisibility);
+    }
+    if (eliminationModeSelect) {
+      eliminationModeSelect.addEventListener('change', updateFormatVisibility);
+    }
+    updateFormatVisibility();
+  })();
+</script>
 {%- endblock %}

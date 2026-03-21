@@ -24,8 +24,9 @@ from byceps.services.lan_tournament.models.tournament import (
     Tournament,
     TournamentID,
 )
-from byceps.services.lan_tournament.models.tournament_mode import (
-    TournamentMode,
+from byceps.services.lan_tournament.models.game_format import GameFormat
+from byceps.services.lan_tournament.models.elimination_mode import (
+    EliminationMode,
 )
 from byceps.services.lan_tournament.models.tournament_status import (
     TournamentStatus,
@@ -79,7 +80,8 @@ def _make_tournament(
         max_players_in_team=None,
         contestant_type=ContestantType.SOLO,
         tournament_status=status,
-        tournament_mode=TournamentMode.SINGLE_ELIMINATION,
+        game_format=GameFormat.ONE_V_ONE,
+        elimination_mode=EliminationMode.SINGLE_ELIMINATION,
         score_ordering=None,
     )
 
@@ -155,7 +157,8 @@ def test_locked_tournament_submit_without_disabled_fields_succeeds(app):
     assert kwargs['name'] == 'Locked Tournament'
     assert kwargs['game'] == 'CS2'
     assert kwargs['contestant_type'] == ContestantType.SOLO
-    assert kwargs['tournament_mode'] == TournamentMode.SINGLE_ELIMINATION
+    assert kwargs['game_format'] == GameFormat.ONE_V_ONE
+    assert kwargs['elimination_mode'] == EliminationMode.SINGLE_ELIMINATION
     assert kwargs['min_players'] == 2
     assert kwargs['max_players'] == 16
 
@@ -178,7 +181,8 @@ def test_unlocked_tournament_uses_submitted_values(app):
         'image_url': '',
         'ruleset': '',
         'contestant_type': 'SOLO',
-        'tournament_mode': 'SINGLE_ELIMINATION',
+        'game_format': 'ONE_V_ONE',
+        'elimination_mode': 'SINGLE_ELIMINATION',
         'score_ordering': '',
         'start_time': '',
         'min_players': '4',

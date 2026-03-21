@@ -1,4 +1,5 @@
 from .contestant_type import ContestantType as ContestantType
+from .ffa_de_pool_data import FfaDePoolData as FfaDePoolData
 from .round_robin_standing import (
     RoundRobinStanding as RoundRobinStanding,
 )
@@ -18,6 +19,9 @@ from .tournament_match_to_contestant import (
 from .tournament_match_to_contestant import (
     TournamentMatchToContestantID as TournamentMatchToContestantID,
 )
+from .contestant_status import ContestantStatus as ContestantStatus
+from .elimination_mode import EliminationMode as EliminationMode
+from .game_format import GameFormat as GameFormat
 from .tournament_mode import TournamentMode as TournamentMode
 from .tournament_participant import (
     TournamentParticipant as TournamentParticipant,

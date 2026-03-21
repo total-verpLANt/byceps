@@ -5,8 +5,8 @@ tests.unit.services.lan_tournament.test_admin_views_generate_bracket
 Unit tests for the generate_bracket admin view dispatch logic.
 
 Tests verify that the correct service function is called for each
-TournamentMode, and that HIGHSCORE/wrong-status modes return error
-flashes without invoking any bracket generation.
+GameFormat + EliminationMode combination, and that HIGHSCORE/wrong-status
+modes return error flashes without invoking any bracket generation.
 """
 
 from contextlib import contextmanager
@@ -19,8 +19,9 @@ from byceps.services.lan_tournament.models.tournament import (
     Tournament,
     TournamentID,
 )
-from byceps.services.lan_tournament.models.tournament_mode import (
-    TournamentMode,
+from byceps.services.lan_tournament.models.game_format import GameFormat
+from byceps.services.lan_tournament.models.elimination_mode import (
+    EliminationMode,
 )
 from byceps.services.lan_tournament.models.tournament_status import (
     TournamentStatus,
@@ -51,10 +52,14 @@ def app():
     return a
 
 
-def _make_tournament(mode: TournamentMode) -> MagicMock:
+def _make_tournament(
+    game_format: GameFormat,
+    elimination_mode: EliminationMode,
+) -> MagicMock:
     t = MagicMock(spec=Tournament)
     t.id = TOURNAMENT_ID
-    t.tournament_mode = mode
+    t.game_format = game_format
+    t.elimination_mode = elimination_mode
     t.tournament_status = TournamentStatus.REGISTRATION_CLOSED
     return t
 
@@ -103,7 +108,7 @@ def _call(app, tournament, *, force: str = 'false'):
 def test_se_mode_calls_single_elimination_bracket(app):
     """SINGLE_ELIMINATION dispatches to generate_single_elimination_bracket."""
     with _patched_view() as mocks:
-        tournament = _make_tournament(TournamentMode.SINGLE_ELIMINATION)
+        tournament = _make_tournament(GameFormat.ONE_V_ONE, EliminationMode.SINGLE_ELIMINATION)
         mocks['get_tournament'].return_value = tournament
         mocks[
             'match_svc'
@@ -123,7 +128,7 @@ def test_se_mode_calls_single_elimination_bracket(app):
 def test_de_mode_calls_double_elimination_bracket(app):
     """DOUBLE_ELIMINATION dispatches to generate_double_elimination_bracket."""
     with _patched_view() as mocks:
-        tournament = _make_tournament(TournamentMode.DOUBLE_ELIMINATION)
+        tournament = _make_tournament(GameFormat.ONE_V_ONE, EliminationMode.DOUBLE_ELIMINATION)
         mocks['get_tournament'].return_value = tournament
         mocks[
             'match_svc'
@@ -143,7 +148,7 @@ def test_de_mode_calls_double_elimination_bracket(app):
 def test_rr_mode_calls_round_robin_bracket(app):
     """ROUND_ROBIN dispatches to generate_round_robin_bracket."""
     with _patched_view() as mocks:
-        tournament = _make_tournament(TournamentMode.ROUND_ROBIN)
+        tournament = _make_tournament(GameFormat.ONE_V_ONE, EliminationMode.ROUND_ROBIN)
         mocks['get_tournament'].return_value = tournament
         mocks['match_svc'].generate_round_robin_bracket.return_value = Ok(6)
 
@@ -164,7 +169,7 @@ def test_rr_mode_calls_round_robin_bracket(app):
 def test_force_regenerate_true_passed_to_service(app):
     """force=true query param is forwarded as force_regenerate=True."""
     with _patched_view() as mocks:
-        tournament = _make_tournament(TournamentMode.SINGLE_ELIMINATION)
+        tournament = _make_tournament(GameFormat.ONE_V_ONE, EliminationMode.SINGLE_ELIMINATION)
         mocks['get_tournament'].return_value = tournament
         mocks[
             'match_svc'
@@ -187,7 +192,7 @@ def test_force_regenerate_true_passed_to_service(app):
 def test_highscore_mode_flashes_error_no_bracket_generation(app):
     """HIGHSCORE flashes an error and skips all bracket service calls."""
     with _patched_view() as mocks:
-        tournament = _make_tournament(TournamentMode.HIGHSCORE)
+        tournament = _make_tournament(GameFormat.HIGHSCORE, EliminationMode.NONE)
         mocks['get_tournament'].return_value = tournament
 
         _call(app, tournament)
@@ -207,7 +212,7 @@ def test_highscore_mode_flashes_error_no_bracket_generation(app):
 def test_ok_result_flashes_success(app):
     """Ok result from bracket service produces a success flash."""
     with _patched_view() as mocks:
-        tournament = _make_tournament(TournamentMode.SINGLE_ELIMINATION)
+        tournament = _make_tournament(GameFormat.ONE_V_ONE, EliminationMode.SINGLE_ELIMINATION)
         mocks['get_tournament'].return_value = tournament
         mocks[
             'match_svc'
@@ -222,7 +227,7 @@ def test_ok_result_flashes_success(app):
 def test_err_result_flashes_error(app):
     """Err result from bracket service produces an error flash."""
     with _patched_view() as mocks:
-        tournament = _make_tournament(TournamentMode.SINGLE_ELIMINATION)
+        tournament = _make_tournament(GameFormat.ONE_V_ONE, EliminationMode.SINGLE_ELIMINATION)
         mocks['get_tournament'].return_value = tournament
         mocks[
             'match_svc'
@@ -244,7 +249,7 @@ def test_err_result_flashes_error(app):
 def test_wrong_status_blocks_bracket_generation(app):
     """REGISTRATION_OPEN status blocks bracket generation with an error flash."""
     with _patched_view() as mocks:
-        tournament = _make_tournament(TournamentMode.SINGLE_ELIMINATION)
+        tournament = _make_tournament(GameFormat.ONE_V_ONE, EliminationMode.SINGLE_ELIMINATION)
         tournament.tournament_status = TournamentStatus.REGISTRATION_OPEN
         mocks['get_tournament'].return_value = tournament
 
@@ -262,11 +267,12 @@ def test_wrong_status_blocks_bracket_generation(app):
 # -------------------------------------------------------------------- #
 
 
-def test_unknown_tournament_mode_flashes_error(app):
-    """Non-standard tournament_mode hits the wildcard case and flashes error."""
+def test_unknown_game_format_flashes_error(app):
+    """Non-standard game_format hits the wildcard case and flashes error."""
     with _patched_view() as mocks:
-        tournament = _make_tournament(TournamentMode.SINGLE_ELIMINATION)
-        tournament.tournament_mode = 'NOT_A_REAL_MODE'
+        tournament = _make_tournament(GameFormat.ONE_V_ONE, EliminationMode.SINGLE_ELIMINATION)
+        tournament.game_format = 'NOT_A_REAL_FORMAT'
+        tournament.elimination_mode = 'NOT_A_REAL_MODE'
         mocks['get_tournament'].return_value = tournament
 
         _call(app, tournament)
@@ -287,7 +293,7 @@ def test_force_param_read_from_form_body(app):
     """force=true in POST body is forwarded as force_regenerate=True (RR)."""
     with _patched_view() as mocks:
         tournament = _make_tournament(
-            TournamentMode.ROUND_ROBIN,
+            GameFormat.ONE_V_ONE, EliminationMode.ROUND_ROBIN,
         )
         mocks['get_tournament'].return_value = tournament
         mocks['match_svc'].generate_round_robin_bracket.return_value = Ok(6)

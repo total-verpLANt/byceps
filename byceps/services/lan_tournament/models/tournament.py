@@ -7,7 +7,8 @@ from byceps.services.party.models import PartyID
 from .contestant_type import ContestantType
 from .tournament_status import TournamentStatus
 from .score_ordering import ScoreOrdering
-from .tournament_mode import TournamentMode
+from .game_format import GameFormat
+from .elimination_mode import EliminationMode
 
 if TYPE_CHECKING:
     from .tournament_participant import TournamentParticipantID
@@ -36,8 +37,14 @@ class Tournament:
     max_players_in_team: int | None
     contestant_type: ContestantType | None
     tournament_status: TournamentStatus | None
-    tournament_mode: TournamentMode | None
+    game_format: GameFormat | None
+    elimination_mode: EliminationMode | None
     score_ordering: ScoreOrdering | None = None
+    point_table: list[int] | None = None
+    advancement_count: int | None = None
+    group_size_min: int | None = None
+    group_size_max: int | None = None
+    points_carry_to_losers: bool | None = None
     use_bracket_reset: bool = True
     winner_team_id: 'TournamentTeamID | None' = None
     winner_participant_id: 'TournamentParticipantID | None' = None

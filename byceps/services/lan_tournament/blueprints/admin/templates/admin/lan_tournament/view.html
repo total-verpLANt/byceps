@@ -77,11 +77,13 @@
     <a class="button" href="{{ url_for('.teams_for_tournament', tournament_id=tournament.id) }}">{{ _('Teams') }}</a>
     {% endif %}
     <a class="button" href="{{ url_for('.matches_for_tournament', tournament_id=tournament.id) }}">{{ _('Matches') }}</a>
-    {% if tournament.tournament_mode and tournament.tournament_mode.name == 'HIGHSCORE' %}
+    {% if tournament.game_format and tournament.game_format.name == 'HIGHSCORE' %}
     <a class="button{% if active_tab == 'highscore' %} button--current{% endif %}" href="{{ url_for('.highscore', tournament_id=tournament.id) }}">{{ _('Leaderboard') }}</a>
     {% else %}
     <a class="button{% if active_tab == 'bracket' %} button--current{% endif %}" href="{{ url_for('.bracket', tournament_id=tournament.id) }}">
-      {%- if tournament.tournament_mode and tournament.tournament_mode.name == 'ROUND_ROBIN' -%}
+      {%- if tournament.game_format and tournament.game_format.name == 'FREE_FOR_ALL' -%}
+        {{ _('Standings') }}
+      {%- elif tournament.elimination_mode and tournament.elimination_mode.name == 'ROUND_ROBIN' -%}
         {{ _('Standings') }}
       {%- else -%}
         {{ _('Bracket') }}
@@ -123,8 +125,10 @@
       <div class="box column-cell--grow">
         <div class="data-label">{{ _('Tournament mode') }}</div>
         <div class="data-value">
-          {%- if tournament.tournament_mode %}
-            {{ tournament.tournament_mode.name|replace('_', ' ')|title }}
+          {%- if tournament.game_format and tournament.elimination_mode %}
+            {{ tournament.game_format.name|replace('_', ' ')|title }} / {{ tournament.elimination_mode.name|replace('_', ' ')|title }}
+          {%- elif tournament.game_format %}
+            {{ tournament.game_format.name|replace('_', ' ')|title }}
           {%- else %}
             {{ _('not set') }}
           {%- endif %}
@@ -301,6 +305,79 @@
     {%- endfor %}
     </ul>
   {%- endcall %}
+  {%- endif %}
+
+  {# FFA Configuration #}
+  {%- if tournament.game_format and tournament.game_format.name == 'FREE_FOR_ALL' %}
+  <div class="grid block">
+    <div class="column">
+      <div class="box column-cell--grow">
+        <div class="data-label">{{ _('Point table') }}</div>
+        <div class="data-value">
+          {%- if tournament.point_table %}
+            {{ tournament.point_table|join(', ') }}
+          {%- else %}
+            {{ _('not set') }}
+          {%- endif %}
+        </div>
+      </div>
+    </div>
+    <div class="column">
+      <div class="box column-cell--grow">
+        <div class="data-label">{{ _('Group size') }}</div>
+        <div class="data-value">
+          {{ tournament.group_size_min|default('–', true) }} – {{ tournament.group_size_max|default('–', true) }}
+        </div>
+      </div>
+    </div>
+    <div class="column">
+      <div class="box column-cell--grow">
+        <div class="data-label">{{ _('Advancement count') }}</div>
+        <div class="data-value">{{ tournament.advancement_count|default('–', true) }}</div>
+      </div>
+    </div>
+    {%- if tournament.elimination_mode and tournament.elimination_mode.name == 'DOUBLE_ELIMINATION' %}
+    <div class="column">
+      <div class="box column-cell--grow">
+        <div class="data-label">{{ _('Points carry to losers') }}</div>
+        <div class="data-value">
+          {%- if tournament.points_carry_to_losers %}
+            {{ _('Yes') }}
+          {%- else %}
+            {{ _('No') }}
+          {%- endif %}
+        </div>
+      </div>
+    </div>
+    {%- endif %}
+  </div>
+  {%- endif %}
+
+  {# FFA-DE Pool Status #}
+  {%- if ffa_de_pool_status %}
+  <div class="box block">
+    <div class="data-label">{{ _('Double Elimination Pool Status') }}</div>
+    <div class="data-value" style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 0.5rem;">
+      <span style="display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.3rem 0.7rem; border-radius: 4px; font-size: 0.85rem; font-weight: 600; background: #d4edda; color: #155724;">
+        {{ render_icon('arrow-up') }} {{ _('Winners Pool') }}: {{ ffa_de_pool_status.wb_count }}
+      </span>
+      <span style="display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.3rem 0.7rem; border-radius: 4px; font-size: 0.85rem; font-weight: 600; background: #fff3cd; color: #856404;">
+        {{ render_icon('arrow-down') }} {{ _('Losers Pool') }}: {{ ffa_de_pool_status.lb_count }}
+      </span>
+      <span style="display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.3rem 0.7rem; border-radius: 4px; font-size: 0.85rem; font-weight: 600; background: #f8d7da; color: #721c24;">
+        {{ render_icon('disabled') }} {{ _('Eliminated') }}: {{ ffa_de_pool_status.eliminated_count }}
+      </span>
+    </div>
+    {%- if ffa_gf_eligible and has_current_user_permission('lan_tournament.administrate') %}
+    <div style="margin-top: 1rem;">
+      <form action="{{ url_for('.generate_ffa_grand_final_action', tournament_id=tournament.id) }}" method="post" style="display: inline;">
+        <button type="submit" class="button color-warning" style="font-weight: 600;">
+          {{ render_icon('trophy') }} {{ _('Generate Grand Final') }}
+        </button>
+      </form>
+    </div>
+    {%- endif %}
+  </div>
   {%- endif %}
 
   {# Ruleset #}

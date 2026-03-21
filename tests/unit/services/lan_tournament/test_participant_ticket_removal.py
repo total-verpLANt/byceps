@@ -24,6 +24,9 @@ from byceps.services.lan_tournament.models.tournament_team import (
 )
 from byceps.services.party.models import PartyID
 from byceps.services.user.models import UserID
+from byceps.services.lan_tournament.tournament_match_service import (
+    DefwinResult,
+)
 from byceps.util.result import Ok
 
 from tests.helpers import generate_uuid
@@ -248,7 +251,7 @@ def test_remove_ticketless_ongoing_triggers_defwins(
     mock_repo.get_tournament.return_value = tournament
     mock_repo.get_participants_for_tournament.return_value = [p1]
     mock_ticket.select_ticket_users_for_party.return_value = set()
-    mock_match_svc.handle_defwin_for_removed_participant.return_value = []
+    mock_match_svc.handle_defwin_for_removed_participant.return_value = DefwinResult([], [], [])
 
     result = tournament_participant_service.remove_participants_without_tickets(
         TOURNAMENT_ID, PARTY_ID
@@ -384,7 +387,7 @@ def test_remove_ticketless_team_ongoing_soft_deletes(
     mock_repo.get_participants_for_tournament.return_value = [captain]
     mock_ticket.select_ticket_users_for_party.return_value = set()
     mock_repo.get_teams_by_ids.return_value = [team]
-    mock_match_svc.handle_defwin_for_removed_team.return_value = []
+    mock_match_svc.handle_defwin_for_removed_team.return_value = DefwinResult([], [], [])
 
     result = tournament_participant_service.remove_participants_without_tickets(
         TOURNAMENT_ID, PARTY_ID
@@ -646,7 +649,8 @@ def _create_tournament(**kwargs) -> Tournament:
         'max_players_in_team': None,
         'contestant_type': None,
         'tournament_status': None,
-        'tournament_mode': None,
+        'game_format': None,
+        'elimination_mode': None,
     }
     defaults.update(kwargs)
     return Tournament(**defaults)

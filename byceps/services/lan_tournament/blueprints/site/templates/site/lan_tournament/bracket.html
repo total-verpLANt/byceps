@@ -1,6 +1,81 @@
 {% extends 'layout/site/lan_tournament.html' %}
-{% from 'macros/lan_tournament.html' import render_bracket, render_de_bracket, render_round_robin_standings, render_tournament_subnav %}
+{% from 'macros/lan_tournament.html' import render_bracket, render_de_bracket, render_hover_name, render_round_robin_standings, render_tournament_subnav %}
 {% set page_title = [_('Bracket'), tournament.name] %}
+
+{#- ── FFA standings macro (inline) ──────────────────────────────── -#}
+{% macro render_ffa_standings(
+    ffa_standings, tournament, teams_by_id={},
+    participants_by_id={}, seats_by_user_id={},
+    team_members_by_team_id={}
+) %}
+{#
+  Renders a Free-For-All cumulative standings table.
+
+  Args:
+    ffa_standings: list[dict] from build_ffa_standings(), each with keys
+        contestant_id, total_points, rounds_played, avg_points, per_round
+    tournament: Tournament object
+    teams_by_id: dict mapping team ID to TournamentTeam
+    participants_by_id: dict mapping participant ID to User
+#}
+
+{%- set num_rounds = ffa_standings[0].per_round|length if ffa_standings else 0 -%}
+
+<div class='table-scroll-wrap table-scroll-wrap--rr'>
+<table class='rr-standings'>
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>{{ _('Name') }}</th>
+      {%- for r in range(1, num_rounds + 1) %}
+      <th title='{{ _("Round %(num)s", num=r) }}'>R{{ r }}</th>
+      {%- endfor %}
+      <th title='{{ _("Rounds Played") }}'>{{ _('GP') }}</th>
+      <th title='{{ _("Average Points") }}'>{{ _('Avg') }}</th>
+      <th title='{{ _("Total Points") }}'>{{ _('Pts') }}</th>
+    </tr>
+  </thead>
+  <tbody>
+    {%- for s in ffa_standings %}
+    {%- set rank = loop.index %}
+    <tr class='{% if rank == 1 %}rr-rank-1{% elif rank == 2 %}rr-rank-2{% elif rank == 3 %}rr-rank-3{% endif %}'>
+      <td>{{ rank }}</td>
+      <td>
+        {%- set cid = s.contestant_id -%}
+        {%- set ns = namespace(found=false) -%}
+        {%- for tid, team in teams_by_id.items() if tid|string == cid -%}
+          {%- set ns.found = true -%}
+          {{ render_hover_name(team.name, team_id=tid, team_members_by_team_id=team_members_by_team_id) }}
+        {%- endfor -%}
+        {%- if not ns.found -%}
+          {%- for pid, user in participants_by_id.items() if pid|string == cid -%}
+            {%- set ns.found = true -%}
+            {{ render_hover_name(user.screen_name, user_id=user.id, user_deleted=user.deleted, seats_by_user_id=seats_by_user_id) }}
+          {%- endfor -%}
+        {%- endif -%}
+        {%- if not ns.found -%}
+          {{ cid }}
+        {%- endif -%}
+      </td>
+      {%- for pts in s.per_round %}
+      <td>{{ pts }}</td>
+      {%- endfor %}
+      <td>{{ s.rounds_played }}</td>
+      <td>{{ s.avg_points }}</td>
+      <td class='rr-pts'>{{ s.total_points }}</td>
+    </tr>
+    {%- endfor %}
+  </tbody>
+</table>
+</div>
+
+{%- if not ffa_standings %}
+<p class='dimmed' style='text-align: center;'>
+  {{ _('No confirmed rounds yet.') }}
+</p>
+{%- endif %}
+
+{%- endmacro %}
 
 {% block body %}
 
@@ -15,7 +90,9 @@
 
   {{ render_tournament_subnav(tournament, active_tab) }}
 
-  {% if tournament.tournament_mode and tournament.tournament_mode.name == 'ROUND_ROBIN' %}
+  {% if tournament.game_format and tournament.game_format.name == 'FREE_FOR_ALL' %}
+    {{ render_ffa_standings(ffa_standings, tournament, teams_by_id=teams_by_id, participants_by_id=participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id) }}
+  {% elif tournament.elimination_mode and tournament.elimination_mode.name == 'ROUND_ROBIN' %}
     {{ render_round_robin_standings(standings, tournament, teams_by_id=teams_by_id, participants_by_id=participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id) }}
   {% else %}
     {# Client-side rendered bracket — responsive at all viewport sizes.
@@ -25,7 +102,7 @@
     <div id='bracket-app'>
       <noscript>
         {# Fallback: server-rendered bracket if JS disabled #}
-        {% if tournament.tournament_mode and tournament.tournament_mode.name == 'DOUBLE_ELIMINATION' %}
+        {% if tournament.elimination_mode and tournament.elimination_mode.name == 'DOUBLE_ELIMINATION' %}
           {{ render_de_bracket(match_data, tournament, teams_by_id, participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id, bracket_id='de-' ~ tournament.id) }}
         {% else %}
           {{ render_bracket(match_data, tournament, teams_by_id, participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id) }}

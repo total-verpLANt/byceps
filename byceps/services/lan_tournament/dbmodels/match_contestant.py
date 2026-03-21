@@ -57,6 +57,9 @@ class DbTournamentMatchToContestant(db.Model):
         DbTournamentParticipant
     )
     score: Mapped[int | None]
+    placement: Mapped[int | None]
+    points: Mapped[int | None]
+    contestant_status: Mapped[str | None] = mapped_column(db.UnicodeText)
     created_at: Mapped[datetime]
 
     def __init__(
@@ -68,6 +71,9 @@ class DbTournamentMatchToContestant(db.Model):
         team_id: TournamentTeamID | None = None,
         participant_id: TournamentParticipantID | None = None,
         score: int | None = None,
+        placement: int | None = None,
+        points: int | None = None,
+        contestant_status: str | None = None,
     ) -> None:
         if (team_id is None) == (participant_id is None):
             raise ValueError(
@@ -80,6 +86,9 @@ class DbTournamentMatchToContestant(db.Model):
         self.team_id = team_id
         self.participant_id = participant_id
         self.score = score
+        self.placement = placement
+        self.points = points
+        self.contestant_status = contestant_status
 
     def __repr__(self) -> str:
         return (

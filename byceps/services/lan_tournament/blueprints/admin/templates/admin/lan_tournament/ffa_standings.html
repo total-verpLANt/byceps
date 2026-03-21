@@ -1,0 +1,60 @@
+{% extends 'layout/admin/lan_tournament.html' %}
+{% from 'macros/admin.html' import render_backlink %}
+{% from 'macros/icons.html' import render_icon %}
+{% from 'macros/lan_tournament.html' import bracket_all_styles, render_ffa_standings, hover_card_styles %}
+{% set current_page_party = party %}
+{% set current_tab = 'tournaments' %}
+{% set page_title = [_('FFA Standings'), tournament.name, party.title] %}
+
+{% block head %}{{ super() }}{{ hover_card_styles() }}{{ bracket_all_styles(bracket_id='ffa-' ~ tournament.id) }}{% endblock %}
+
+{% block before_body %}
+{{ render_backlink(url_for('.view', tournament_id=tournament.id),
+                   _('Tournament')) }}
+{%- endblock %}
+
+{% block body %}
+
+  <h1 class='title'>{{ _('FFA Standings') }}</h1>
+
+  {%- if standings %}
+    {{ render_ffa_standings(standings, round_standings=round_standings, teams_by_id=teams_by_id, participants_by_id=participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id, profile_url_endpoint='user_admin.view') }}
+  {%- else %}
+    <p class='dimmed'>{{ _('No FFA rounds have been played yet.') }}</p>
+  {%- endif %}
+
+  {# FFA round management buttons #}
+  {%- if has_current_user_permission('lan_tournament.administrate') and tournament.tournament_status and tournament.tournament_status.name in ('ONGOING', 'REGISTRATION_CLOSED') %}
+  <div class='button-row block' style='margin-top: 1.5rem;'>
+    {%- if latest_round is none %}
+      <form action='{{ url_for('.generate_ffa_round_action', tournament_id=tournament.id) }}' method='post'>
+        <button type='submit' class='button color-success'>
+          {{ render_icon('arrange') }} {{ _('Generate First Round') }}
+        </button>
+      </form>
+    {%- elif all_confirmed %}
+      <form action='{{ url_for('.advance_ffa_round_action', tournament_id=tournament.id) }}' method='post'>
+        <button type='submit' class='button color-success'>
+          {{ render_icon('arrange') }} {{ _('Advance Round') }}
+        </button>
+      </form>
+    {%- else %}
+      <span class='dimmed'>{{ _('Confirm all groups in the current round before advancing.') }}</span>
+    {%- endif %}
+  </div>
+  {%- endif %}
+
+  <div style='margin-top: 2rem;'>
+    <a href='{{ url_for('.matches_for_tournament',
+                        tournament_id=tournament.id) }}'
+       class='button'>
+      {{ _('View Matches List') }}
+    </a>
+    <a href='{{ url_for('.bracket',
+                        tournament_id=tournament.id) }}'
+       class='button'>
+      {{ _('View Bracket') }}
+    </a>
+  </div>
+
+{%- endblock %}

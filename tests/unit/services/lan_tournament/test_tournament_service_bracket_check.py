@@ -3,7 +3,7 @@ tests.unit.services.lan_tournament.test_tournament_service_bracket_check
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Verify that ``change_status()`` enforces (or skips) the bracket guard
-depending on the tournament's ``TournamentMode.requires_bracket`` flag.
+depending on the tournament's ``GameFormat.requires_bracket_generation`` flag.
 
 :Copyright: 2014-2026 Jochen Kupperschmidt
 :License: Revised BSD (see `LICENSE` file for details)
@@ -16,8 +16,9 @@ from byceps.services.lan_tournament.models.tournament import (
     Tournament,
     TournamentID,
 )
-from byceps.services.lan_tournament.models.tournament_mode import (
-    TournamentMode,
+from byceps.services.lan_tournament.models.game_format import GameFormat
+from byceps.services.lan_tournament.models.elimination_mode import (
+    EliminationMode,
 )
 from byceps.services.lan_tournament.models.tournament_status import (
     TournamentStatus,
@@ -49,7 +50,8 @@ def _create_tournament(**kwargs) -> Tournament:
         'max_players_in_team': None,
         'contestant_type': None,
         'tournament_status': TournamentStatus.REGISTRATION_CLOSED,
-        'tournament_mode': TournamentMode.SINGLE_ELIMINATION,
+        'game_format': GameFormat.ONE_V_ONE,
+        'elimination_mode': EliminationMode.SINGLE_ELIMINATION,
     }
     defaults.update(kwargs)
     return Tournament(**defaults)
@@ -72,7 +74,8 @@ def test_start_bracketless_mode_without_matches_succeeds(
     from byceps.services.lan_tournament import tournament_service
 
     tournament = _create_tournament(
-        tournament_mode=TournamentMode.HIGHSCORE,
+        game_format=GameFormat.HIGHSCORE,
+        elimination_mode=EliminationMode.NONE,
     )
 
     mock_repository.get_tournament.return_value = tournament
@@ -109,7 +112,8 @@ def test_start_bracket_mode_without_matches_fails(
     from byceps.services.lan_tournament import tournament_service
 
     tournament = _create_tournament(
-        tournament_mode=TournamentMode.SINGLE_ELIMINATION,
+        game_format=GameFormat.ONE_V_ONE,
+        elimination_mode=EliminationMode.SINGLE_ELIMINATION,
     )
 
     mock_repository.get_tournament.return_value = tournament
@@ -139,7 +143,8 @@ def test_start_bracket_mode_with_matches_succeeds(
     from byceps.services.lan_tournament import tournament_service
 
     tournament = _create_tournament(
-        tournament_mode=TournamentMode.SINGLE_ELIMINATION,
+        game_format=GameFormat.ONE_V_ONE,
+        elimination_mode=EliminationMode.SINGLE_ELIMINATION,
     )
 
     mock_repository.get_tournament.return_value = tournament

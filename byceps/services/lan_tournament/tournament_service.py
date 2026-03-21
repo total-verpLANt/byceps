@@ -24,7 +24,8 @@ from .events import (
 from .models.contestant_type import ContestantType
 from .models.tournament import Tournament, TournamentID
 from .models.score_ordering import ScoreOrdering
-from .models.tournament_mode import TournamentMode
+from .models.game_format import GameFormat, is_valid_combination
+from .models.elimination_mode import EliminationMode
 from .models.tournament_status import TournamentStatus
 
 
@@ -33,6 +34,46 @@ EDIT_LOCKED_STATUSES: frozenset[TournamentStatus] = frozenset({
     TournamentStatus.ONGOING,
     TournamentStatus.PAUSED,
 })
+
+
+def _validate_ffa_config(
+    game_format: GameFormat | None,
+    point_table: list[int] | None,
+    group_size_max: int | None,
+    contestant_type: ContestantType | None,
+    max_teams: int | None,
+    group_size_min: int | None,
+) -> Result[None, str]:
+    """Validate FFA-specific configuration fields.
+
+    Returns ``Ok(None)`` when the format is not FFA or when all
+    required FFA fields are present and consistent.
+    """
+    if game_format != GameFormat.FREE_FOR_ALL:
+        return Ok(None)
+
+    if point_table is None:
+        return Err('FFA tournaments require a point_table.')
+    if group_size_max is None:
+        return Err('FFA tournaments require group_size_max.')
+    if group_size_min is not None and group_size_min > group_size_max:
+        return Err(
+            f'group_size_min ({group_size_min}) must not exceed '
+            f'group_size_max ({group_size_max}).'
+        )
+    # FFA+TEAM cross-validation
+    if (
+        contestant_type == ContestantType.TEAM
+        and max_teams is not None
+        and group_size_min is not None
+        and max_teams < group_size_min
+    ):
+        return Err(
+            'Cannot create FFA team tournament: '
+            f'max_teams ({max_teams}) < group_size_min '
+            f'({group_size_min}). Impossible to form valid groups.'
+        )
+    return Ok(None)
 
 
 def _validate_image_url(image_url: str | None) -> Result[None, str]:
@@ -69,8 +110,14 @@ def create_tournament(
     max_players_in_team: int | None = None,
     contestant_type: ContestantType | None = None,
     tournament_status: TournamentStatus | None = None,
-    tournament_mode: TournamentMode | None = None,
+    game_format: GameFormat | None = None,
+    elimination_mode: EliminationMode | None = None,
     score_ordering: ScoreOrdering | None = None,
+    point_table: list[int] | None = None,
+    advancement_count: int | None = None,
+    group_size_min: int | None = None,
+    group_size_max: int | None = None,
+    points_carry_to_losers: bool | None = None,
 ) -> Result[tuple[Tournament, TournamentCreatedEvent], str]:
     """Create a tournament.
 
@@ -85,6 +132,22 @@ def create_tournament(
     validation_result = _validate_image_url(image_url)
     if validation_result.is_err():
         return Err(validation_result.unwrap_err())
+
+    # Validate game_format + elimination_mode combination
+    if game_format is not None and elimination_mode is not None:
+        if not is_valid_combination(game_format, elimination_mode):
+            return Err(
+                f'Invalid combination: {game_format.name} + '
+                f'{elimination_mode.name}.'
+            )
+
+    # FFA-specific validation
+    ffa_result = _validate_ffa_config(
+        game_format, point_table, group_size_max,
+        contestant_type, max_teams, group_size_min,
+    )
+    if ffa_result.is_err():
+        return Err(ffa_result.unwrap_err())
 
     tournament, event = tournament_domain_service.create_tournament(
         party_id,
@@ -102,8 +165,14 @@ def create_tournament(
         max_players_in_team=max_players_in_team,
         contestant_type=contestant_type,
         tournament_status=tournament_status,
-        tournament_mode=tournament_mode,
+        game_format=game_format,
+        elimination_mode=elimination_mode,
         score_ordering=score_ordering,
+        point_table=point_table,
+        advancement_count=advancement_count,
+        group_size_min=group_size_min,
+        group_size_max=group_size_max,
+        points_carry_to_losers=points_carry_to_losers,
     )
 
     tournament_repository.create_tournament(tournament)
@@ -129,8 +198,14 @@ def update_tournament(
     min_players_in_team: int | None = None,
     max_players_in_team: int | None = None,
     contestant_type: ContestantType | None = None,
-    tournament_mode: TournamentMode | None = None,
+    game_format: GameFormat | None = None,
+    elimination_mode: EliminationMode | None = None,
     score_ordering: ScoreOrdering | None = None,
+    point_table: list[int] | None = None,
+    advancement_count: int | None = None,
+    group_size_min: int | None = None,
+    group_size_max: int | None = None,
+    points_carry_to_losers: bool | None = None,
 ) -> Result[Tournament, str]:
     """Update a tournament.
 
@@ -150,6 +225,22 @@ def update_tournament(
     if validation_result.is_err():
         return Err(validation_result.unwrap_err())
 
+    # Validate game_format + elimination_mode combination
+    if game_format is not None and elimination_mode is not None:
+        if not is_valid_combination(game_format, elimination_mode):
+            return Err(
+                f'Invalid combination: {game_format.name} + '
+                f'{elimination_mode.name}.'
+            )
+
+    # FFA-specific validation
+    ffa_result = _validate_ffa_config(
+        game_format, point_table, group_size_max,
+        contestant_type, max_teams, group_size_min,
+    )
+    if ffa_result.is_err():
+        return Err(ffa_result.unwrap_err())
+
     tournament = tournament_repository.get_tournament(tournament_id)
 
     # Reject structural changes while the tournament is in play.
@@ -163,8 +254,10 @@ def update_tournament(
             locked_changes.append('start_time')
         if contestant_type != tournament.contestant_type:
             locked_changes.append('contestant_type')
-        if tournament_mode != tournament.tournament_mode:
-            locked_changes.append('tournament_mode')
+        if game_format != tournament.game_format:
+            locked_changes.append('game_format')
+        if elimination_mode != tournament.elimination_mode:
+            locked_changes.append('elimination_mode')
         if score_ordering != tournament.score_ordering:
             locked_changes.append('score_ordering')
         if min_players != tournament.min_players:
@@ -179,6 +272,16 @@ def update_tournament(
             locked_changes.append('min_players_in_team')
         if max_players_in_team != tournament.max_players_in_team:
             locked_changes.append('max_players_in_team')
+        if point_table != tournament.point_table:
+            locked_changes.append('point_table')
+        if advancement_count != tournament.advancement_count:
+            locked_changes.append('advancement_count')
+        if group_size_min != tournament.group_size_min:
+            locked_changes.append('group_size_min')
+        if group_size_max != tournament.group_size_max:
+            locked_changes.append('group_size_max')
+        if points_carry_to_losers != tournament.points_carry_to_losers:
+            locked_changes.append('points_carry_to_losers')
         if locked_changes:
             fields_str = ', '.join(locked_changes)
             return Err(
@@ -203,8 +306,14 @@ def update_tournament(
         min_players_in_team=min_players_in_team,
         max_players_in_team=max_players_in_team,
         contestant_type=contestant_type,
-        tournament_mode=tournament_mode,
+        game_format=game_format,
+        elimination_mode=elimination_mode,
         score_ordering=score_ordering,
+        point_table=point_table,
+        advancement_count=advancement_count,
+        group_size_min=group_size_min,
+        group_size_max=group_size_max,
+        points_carry_to_losers=points_carry_to_losers,
     )
 
     tournament_repository.update_tournament(updated)
@@ -342,7 +451,7 @@ def change_status(
 
     # Only after a valid transition: check bracket exists when starting
     if new_status == TournamentStatus.ONGOING:
-        if tournament.tournament_mode and tournament.tournament_mode.requires_bracket:
+        if tournament.game_format and tournament.game_format.requires_bracket_generation:
             if not _has_bracket_generated(tournament_id):
                 return Err(
                     'Cannot start tournament without generated brackets. '
@@ -433,12 +542,16 @@ def resolve_podium_display_names(
     if tournament.tournament_status != TournamentStatus.COMPLETED:
         return empty
 
-    mode = tournament.tournament_mode
-    if mode in (TournamentMode.SINGLE_ELIMINATION, TournamentMode.DOUBLE_ELIMINATION):
+    gf = tournament.game_format
+    em = tournament.elimination_mode
+    if gf == GameFormat.ONE_V_ONE and em in (
+        EliminationMode.SINGLE_ELIMINATION,
+        EliminationMode.DOUBLE_ELIMINATION,
+    ):
         runner_up, bronze = _resolve_bracket_podium(tournament)
-    elif mode == TournamentMode.ROUND_ROBIN:
+    elif em == EliminationMode.ROUND_ROBIN:
         runner_up, bronze = _resolve_rr_podium(tournament)
-    elif mode == TournamentMode.HIGHSCORE:
+    elif gf == GameFormat.HIGHSCORE:
         runner_up, bronze = _resolve_hs_podium(tournament)
     else:
         runner_up, bronze = None, None
@@ -460,11 +573,11 @@ def _resolve_bracket_podium(
     if not matches:
         return None, None
 
-    mode = tournament.tournament_mode
+    em = tournament.elimination_mode
     runner_up_name: str | None = None
     bronze_name: str | None = None
 
-    if mode == TournamentMode.DOUBLE_ELIMINATION:
+    if em == EliminationMode.DOUBLE_ELIMINATION:
         # 2nd place: loser of the LAST Grand Final match (highest round
         # handles bracket-reset scenario).
         gf_matches = [m for m in matches if m.bracket == Bracket.GRAND_FINAL]

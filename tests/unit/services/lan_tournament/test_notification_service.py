@@ -117,7 +117,8 @@ def _make_tournament(
         max_players_in_team=None,
         contestant_type=contestant_type,
         tournament_status=None,
-        tournament_mode=None,
+        game_format=None,
+        elimination_mode=None,
     )
 
 

@@ -55,11 +55,13 @@
   <a class="button{% if active_tab == 'teams' %} button--current{% else %} secondary{% endif %}" href="{{ url_for('lan_tournament.teams', tournament_id=tournament.id) }}">{{ _('Teams') }}</a>
   {%- endif %}
   <a class="button{% if active_tab == 'matches' %} button--current{% else %} secondary{% endif %}" href="{{ url_for('lan_tournament.matches', tournament_id=tournament.id) }}">{{ _('Matches') }}</a>
-  {% if tournament.tournament_mode and tournament.tournament_mode.name == 'HIGHSCORE' %}
+  {% if tournament.game_format and tournament.game_format.name == 'HIGHSCORE' %}
   <a class="button{% if active_tab == 'highscore' %} button--current{% else %} secondary{% endif %}" href="{{ url_for('lan_tournament.highscore', tournament_id=tournament.id) }}">{{ _('Leaderboard') }}</a>
   {% else %}
   <a class="button{% if active_tab == 'bracket' %} button--current{% else %} secondary{% endif %}" href="{{ url_for('lan_tournament.bracket', tournament_id=tournament.id) }}">
-    {%- if tournament.tournament_mode and tournament.tournament_mode.name == 'ROUND_ROBIN' -%}
+    {%- if tournament.game_format and tournament.game_format.name == 'FREE_FOR_ALL' -%}
+      {{ _('Standings') }}
+    {%- elif tournament.elimination_mode and tournament.elimination_mode.name == 'ROUND_ROBIN' -%}
       {{ _('Standings') }}
     {%- else -%}
       {{ _('Bracket') }}
@@ -1328,4 +1330,167 @@ R{{ r }} M{{ m }}
 </p>
 {%- endif %}
 
+{%- endmacro %}
+
+
+{# ── FFA Standings Table ───────────────────────────────────────────── #}
+
+{% macro render_ffa_standings(
+    standings,
+    round_standings=None,
+    teams_by_id={},
+    participants_by_id={},
+    seats_by_user_id={},
+    team_members_by_team_id={},
+    profile_url_endpoint=None,
+    show_round_breakdown=True
+) %}
+{#
+  Renders an FFA cumulative standings table.
+
+  Args:
+    standings: list of (contestant_id, total_points) tuples sorted desc
+    round_standings: optional list of dicts with 'round_num' and 'standings'
+                     (each being a list of (contestant_id, points) tuples)
+    teams_by_id: team lookup dict
+    participants_by_id: participant lookup dict (participant_id -> User)
+#}
+
+<table class='rr-standings'>
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>{{ _('Contestant') }}</th>
+      <th>{{ _('Total Points') }}</th>
+      <th>{{ _('Rounds') }}</th>
+    </tr>
+  </thead>
+  <tbody>
+    {%- for cid, total_pts in standings %}
+    {%- set rank = loop.index %}
+    <tr class='{% if rank == 1 %}rr-rank-1{% elif rank == 2 %}rr-rank-2{% elif rank == 3 %}rr-rank-3{% endif %}'>
+      <td>{{ rank }}</td>
+      <td style='text-align: left;'>
+        {{ _render_ffa_contestant_name(cid, teams_by_id, participants_by_id, seats_by_user_id, team_members_by_team_id, profile_url_endpoint) }}
+      </td>
+      <td class='rr-pts'>{{ total_pts }}</td>
+      <td>
+        {%- if round_standings %}
+          {%- set round_count = namespace(value=0) %}
+          {%- for rs in round_standings %}
+            {%- for rc_id, _pts in rs.standings %}
+              {%- if rc_id == cid %}
+                {%- set round_count.value = round_count.value + 1 %}
+              {%- endif %}
+            {%- endfor %}
+          {%- endfor %}
+          {{ round_count.value }}
+        {%- else %}
+          –
+        {%- endif %}
+      </td>
+    </tr>
+    {%- endfor %}
+  </tbody>
+</table>
+
+{%- if not standings %}
+<p class='dimmed' style='text-align: center;'>
+  {{ _('No FFA results yet.') }}
+</p>
+{%- endif %}
+
+{%- if show_round_breakdown and round_standings %}
+<details style='margin-top: 1rem;'>
+  <summary style='cursor: pointer; font-weight: bold;'>{{ _('Per-round breakdown') }}</summary>
+  {%- for rs in round_standings %}
+  <div style='margin-top: 0.75rem;'>
+    <h4 style='margin-bottom: 0.25rem;'>{{ _('Round') }} {{ rs.round_num + 1 }}</h4>
+    <table class='rr-standings' style='font-size: 0.9rem;'>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>{{ _('Contestant') }}</th>
+          <th>{{ _('Points') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {%- for cid, pts in rs.standings %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td style='text-align: left;'>
+            {{ _render_ffa_contestant_name(cid, teams_by_id, participants_by_id, seats_by_user_id, team_members_by_team_id, profile_url_endpoint) }}
+          </td>
+          <td class='rr-pts'>{{ pts }}</td>
+        </tr>
+        {%- endfor %}
+      </tbody>
+    </table>
+  </div>
+  {%- endfor %}
+</details>
+{%- endif %}
+
+{%- endmacro %}
+
+
+{# ── FFA Match Result Display ──────────────────────────────────────── #}
+
+{% macro render_ffa_match_result(
+    contestants,
+    teams_by_id={},
+    participants_by_id={},
+    seats_by_user_id={},
+    team_members_by_team_id={},
+    profile_url_endpoint=None
+) %}
+{#
+  Renders an FFA match result as a placement list.
+
+  Args:
+    contestants: list of TournamentMatchToContestant objects (with placement/points set)
+#}
+{%- set sorted_contestants = contestants|sort(attribute='placement') %}
+<div class='ffa-match-result'>
+  {%- for c in sorted_contestants %}
+  <div class='row row--space-between' style='padding: 0.35rem 0.5rem; {% if c.placement == 1 %}background-color: #fff8e1;{% elif c.placement == 2 %}background-color: #f5f5f5;{% elif c.placement == 3 %}background-color: #fff3e0;{% endif %} border-radius: 3px; margin-bottom: 2px;'>
+    <div>
+      <strong>{{ c.placement|default('–', true) }}.</strong>
+      {%- set cid = (c.team_id|string) if c.team_id else (c.participant_id|string) %}
+      {{ _render_ffa_contestant_name(cid, teams_by_id, participants_by_id, seats_by_user_id, team_members_by_team_id, profile_url_endpoint) }}
+    </div>
+    <div>
+      <strong>{{ c.points if c.points is not none else '–' }}</strong> {{ _('pts') }}
+    </div>
+  </div>
+  {%- endfor %}
+</div>
+{%- endmacro %}
+
+
+{# ── FFA Contestant Name Helper ────────────────────────────────────── #}
+
+{% macro _render_ffa_contestant_name(cid, teams_by_id, participants_by_id, seats_by_user_id, team_members_by_team_id, profile_url_endpoint) %}
+{#
+  Resolves and renders a contestant name from a string ID.
+  Checks teams_by_id first, then participants_by_id.
+#}
+{%- set found = namespace(rendered=false) %}
+{%- for tid, team in teams_by_id.items() %}
+  {%- if tid|string == cid|string and not found.rendered %}
+    {{ render_hover_name(team.name, team_id=tid, team_members_by_team_id=team_members_by_team_id, profile_url_endpoint=profile_url_endpoint) }}
+    {%- set found.rendered = true %}
+  {%- endif %}
+{%- endfor %}
+{%- if not found.rendered %}
+  {%- for pid, user in participants_by_id.items() %}
+    {%- if pid|string == cid|string and not found.rendered %}
+      {{ render_hover_name(user.screen_name, user_id=user.id, user_deleted=user.deleted, seats_by_user_id=seats_by_user_id, profile_url_endpoint=profile_url_endpoint) }}
+      {%- set found.rendered = true %}
+    {%- endif %}
+  {%- endfor %}
+{%- endif %}
+{%- if not found.rendered %}
+  {{ cid }}
+{%- endif %}
 {%- endmacro %}

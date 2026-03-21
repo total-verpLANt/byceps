@@ -14,7 +14,8 @@ from byceps.services.lan_tournament.models.tournament_match_to_contestant import
     TournamentMatchToContestant,
     TournamentMatchToContestantID,
 )
-from byceps.services.lan_tournament.models.tournament_mode import TournamentMode
+from byceps.services.lan_tournament.models.game_format import GameFormat
+from byceps.services.lan_tournament.models.elimination_mode import EliminationMode
 from byceps.services.lan_tournament.models.tournament_participant import (
     TournamentParticipantID,
 )
@@ -413,7 +414,7 @@ def test_defwin_participant_terminal_with_initiator_confirms(mock_repo):
     mock_repo.get_contestants_for_match.return_value = [opponent]
 
     # get_tournament() is called for auto-complete check on terminal matches.
-    mock_tournament = _create_tournament(TournamentMode.ROUND_ROBIN)
+    mock_tournament = _create_tournament(game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.ROUND_ROBIN)
     mock_repo.get_tournament.return_value = mock_tournament
 
     result = tournament_match_service.handle_defwin_for_removed_participant(
@@ -596,7 +597,7 @@ def test_defwin_terminal_elimination_triggers_auto_complete(mock_repo):
     # SE mode → auto-complete should trigger.
     from byceps.util.result import Ok
 
-    mock_tournament = _create_tournament(TournamentMode.SINGLE_ELIMINATION)
+    mock_tournament = _create_tournament(game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.SINGLE_ELIMINATION)
     mock_repo.get_tournament.return_value = mock_tournament
     mock_repo.set_tournament_winner.return_value = Ok(None)
     mock_repo.set_tournament_status_flush.return_value = Ok(None)
@@ -654,7 +655,7 @@ def test_defwin_terminal_rr_no_auto_complete(mock_repo):
     mock_repo.get_contestants_for_match.return_value = [opponent]
 
     # RR mode → auto-complete should NOT trigger.
-    mock_tournament = _create_tournament(TournamentMode.ROUND_ROBIN)
+    mock_tournament = _create_tournament(game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.ROUND_ROBIN)
     mock_repo.get_tournament.return_value = mock_tournament
 
     result = tournament_match_service.handle_defwin_for_removed_participant(
@@ -746,7 +747,9 @@ def _create_contestant(
 
 
 def _create_tournament(
-    mode: TournamentMode = TournamentMode.SINGLE_ELIMINATION,
+    *,
+    game_format: GameFormat = GameFormat.ONE_V_ONE,
+    elimination_mode: EliminationMode = EliminationMode.SINGLE_ELIMINATION,
 ) -> Tournament:
     return Tournament(
         id=TOURNAMENT_ID,
@@ -766,5 +769,6 @@ def _create_tournament(
         max_players_in_team=None,
         contestant_type=None,
         tournament_status=TournamentStatus.ONGOING,
-        tournament_mode=mode,
+        game_format=game_format,
+        elimination_mode=elimination_mode,
     )

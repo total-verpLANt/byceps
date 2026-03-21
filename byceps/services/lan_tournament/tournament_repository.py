@@ -1,3 +1,4 @@
+import json
 import logging
 from datetime import datetime
 from typing import TypeVar
@@ -30,7 +31,9 @@ from .models.tournament_match_to_contestant import (
 )
 from .models.score_ordering import ScoreOrdering
 from .models.score_submission import ScoreSubmission
-from .models.tournament_mode import TournamentMode
+from .models.contestant_status import ContestantStatus
+from .models.game_format import GameFormat
+from .models.elimination_mode import EliminationMode
 from .models.tournament_participant import (
     TournamentParticipant,
     TournamentParticipantID,
@@ -99,9 +102,14 @@ def create_tournament(tournament: Tournament) -> None:
             if tournament.tournament_status
             else None
         ),
-        tournament_mode=(
-            tournament.tournament_mode.name
-            if tournament.tournament_mode
+        game_format=(
+            tournament.game_format.name
+            if tournament.game_format
+            else None
+        ),
+        elimination_mode=(
+            tournament.elimination_mode.name
+            if tournament.elimination_mode
             else None
         ),
         score_ordering=(
@@ -109,6 +117,15 @@ def create_tournament(tournament: Tournament) -> None:
             if tournament.score_ordering
             else None
         ),
+        point_table=(
+            json.dumps(tournament.point_table)
+            if tournament.point_table
+            else None
+        ),
+        advancement_count=tournament.advancement_count,
+        group_size_min=tournament.group_size_min,
+        group_size_max=tournament.group_size_max,
+        points_carry_to_losers=tournament.points_carry_to_losers,
     )
 
     db.session.add(db_tournament)
@@ -141,12 +158,26 @@ def update_tournament(tournament: Tournament) -> None:
         if tournament.tournament_status
         else None
     )
-    db_tournament.tournament_mode = (
-        tournament.tournament_mode.name if tournament.tournament_mode else None
+    db_tournament.game_format = (
+        tournament.game_format.name if tournament.game_format else None
+    )
+    db_tournament.elimination_mode = (
+        tournament.elimination_mode.name
+        if tournament.elimination_mode
+        else None
     )
     db_tournament.score_ordering = (
         tournament.score_ordering.name if tournament.score_ordering else None
     )
+    db_tournament.point_table = (
+        json.dumps(tournament.point_table)
+        if tournament.point_table
+        else None
+    )
+    db_tournament.advancement_count = tournament.advancement_count
+    db_tournament.group_size_min = tournament.group_size_min
+    db_tournament.group_size_max = tournament.group_size_max
+    db_tournament.points_carry_to_losers = tournament.points_carry_to_losers
     db_tournament.winner_team_id = tournament.winner_team_id
     db_tournament.winner_participant_id = tournament.winner_participant_id
     db_tournament.updated_at = tournament.updated_at
@@ -334,12 +365,24 @@ def _db_tournament_to_tournament(
         tournament_status=_safe_enum_lookup(
             TournamentStatus, db_tournament.tournament_status
         ),
-        tournament_mode=_safe_enum_lookup(
-            TournamentMode, db_tournament.tournament_mode
+        game_format=_safe_enum_lookup(
+            GameFormat, db_tournament.game_format
+        ),
+        elimination_mode=_safe_enum_lookup(
+            EliminationMode, db_tournament.elimination_mode
         ),
         score_ordering=_safe_enum_lookup(
             ScoreOrdering, db_tournament.score_ordering
         ),
+        point_table=(
+            json.loads(db_tournament.point_table)
+            if db_tournament.point_table
+            else None
+        ),
+        advancement_count=db_tournament.advancement_count,
+        group_size_min=db_tournament.group_size_min,
+        group_size_max=db_tournament.group_size_max,
+        points_carry_to_losers=db_tournament.points_carry_to_losers,
         use_bracket_reset=db_tournament.use_bracket_reset,
         winner_team_id=db_tournament.winner_team_id,
         winner_participant_id=db_tournament.winner_participant_id,
@@ -1007,6 +1050,26 @@ def get_matches_for_tournament_ordered(
     return [_db_match_to_match(m) for m in db_matches]
 
 
+def get_matches_for_round(
+    tournament_id: TournamentID,
+    round_number: int,
+    *,
+    bracket: Bracket | None = None,
+) -> list[TournamentMatch]:
+    """Return all matches for a specific round of a tournament.
+
+    Optionally filter by bracket (WB/LB/GF).
+    """
+    query = (
+        select(DbTournamentMatch)
+        .filter_by(tournament_id=tournament_id, round=round_number)
+    )
+    if bracket is not None:
+        query = query.filter(DbTournamentMatch.bracket == bracket.value)
+    db_matches = db.session.execute(query).scalars().all()
+    return [_db_match_to_match(m) for m in db_matches]
+
+
 def confirm_match(
     match_id: TournamentMatchID,
     confirmed_by: UserID,
@@ -1262,6 +1325,13 @@ def create_match_contestant(
         team_id=contestant.team_id,
         participant_id=contestant.participant_id,
         score=contestant.score,
+        placement=contestant.placement,
+        points=contestant.points,
+        contestant_status=(
+            contestant.contestant_status.name
+            if contestant.contestant_status
+            else None
+        ),
     )
 
     db.session.add(db_contestant)
@@ -1295,6 +1365,25 @@ def update_contestant_scores(
         if db_contestant is None:
             raise ValueError(f'Unknown contestant ID "{contestant_id}"')
         db_contestant.score = score
+    db.session.flush()
+
+
+def update_contestant_placement_and_points(
+    updates: dict[TournamentMatchToContestantID, tuple[int, int]],
+) -> None:
+    """Update placement and points for multiple contestants in a single flush.
+
+    *updates* maps contestant ID to ``(placement, points)``.
+    Caller is responsible for committing the session.
+    """
+    for contestant_id, (placement, points) in updates.items():
+        db_contestant = db.session.get(
+            DbTournamentMatchToContestant, contestant_id
+        )
+        if db_contestant is None:
+            raise ValueError(f'Unknown contestant ID "{contestant_id}"')
+        db_contestant.placement = placement
+        db_contestant.points = points
     db.session.flush()
 
 
@@ -1375,6 +1464,11 @@ def _db_contestant_to_contestant(
         participant_id=db_contestant.participant_id,
         score=db_contestant.score,
         created_at=db_contestant.created_at,
+        placement=db_contestant.placement,
+        points=db_contestant.points,
+        contestant_status=_safe_enum_lookup(
+            ContestantStatus, db_contestant.contestant_status
+        ),
     )
 
 

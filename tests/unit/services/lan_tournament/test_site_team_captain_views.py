@@ -32,8 +32,9 @@ from byceps.services.lan_tournament.models.tournament import (
     Tournament,
     TournamentID,
 )
-from byceps.services.lan_tournament.models.tournament_mode import (
-    TournamentMode,
+from byceps.services.lan_tournament.models.game_format import GameFormat
+from byceps.services.lan_tournament.models.elimination_mode import (
+    EliminationMode,
 )
 from byceps.services.lan_tournament.models.tournament_participant import (
     TournamentParticipant,
@@ -91,7 +92,8 @@ def _make_tournament(
     t.party_id = PARTY_ID_STR
     t.name = 'Test Tournament'
     t.tournament_status = status
-    t.tournament_mode = TournamentMode.SINGLE_ELIMINATION
+    t.game_format = GameFormat.ONE_V_ONE
+    t.elimination_mode = EliminationMode.SINGLE_ELIMINATION
     t.contestant_type = ContestantType.TEAM
     t.max_players = None
     return t
@@ -675,9 +677,9 @@ def test_site_team_update_form_has_expected_fields(app):
 
     assert hasattr(form, 'name'), 'Missing field: name'
     assert hasattr(form, 'description'), 'Missing field: description'
-    # Should NOT have tag or join_code — those belong to create form.
-    assert not hasattr(form, 'tag'), 'Unexpected field: tag'
-    assert not hasattr(form, 'join_code'), 'Unexpected field: join_code'
+    # tag and join_code were intentionally added to the update form.
+    assert hasattr(form, 'tag'), 'Missing field: tag'
+    assert hasattr(form, 'join_code'), 'Missing field: join_code'
 
 
 def test_site_team_create_form_has_expected_fields(app):

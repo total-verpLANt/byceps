@@ -17,8 +17,9 @@ from byceps.services.lan_tournament.models.tournament import (
     Tournament,
     TournamentID,
 )
-from byceps.services.lan_tournament.models.tournament_mode import (
-    TournamentMode,
+from byceps.services.lan_tournament.models.game_format import GameFormat
+from byceps.services.lan_tournament.models.elimination_mode import (
+    EliminationMode,
 )
 from byceps.services.lan_tournament.models.tournament_status import (
     TournamentStatus,
@@ -31,7 +32,7 @@ from byceps.services.lan_tournament.models.tournament_match_to_contestant import
     TournamentMatchToContestantID,
 )
 from byceps.services.lan_tournament.tournament_domain_service import (
-    _contestant_id,
+    contestant_id,
     _standard_seed_order,
     compute_round_robin_standings,
     create_tournament,
@@ -77,7 +78,8 @@ def test_create_tournament_with_minimal_args():
     assert tournament.max_players_in_team is None
     assert tournament.contestant_type is None
     assert tournament.tournament_status is None
-    assert tournament.tournament_mode is None
+    assert tournament.game_format is None
+    assert tournament.elimination_mode is None
 
     assert event.tournament_id == tournament.id
     assert event.occurred_at == tournament.created_at
@@ -104,7 +106,8 @@ def test_create_tournament_with_all_args():
         max_players_in_team=5,
         contestant_type=ContestantType.TEAM,
         tournament_status=TournamentStatus.DRAFT,
-        tournament_mode=TournamentMode.SINGLE_ELIMINATION,
+        game_format=GameFormat.ONE_V_ONE,
+        elimination_mode=EliminationMode.SINGLE_ELIMINATION,
     )
 
     assert tournament.name == 'CS2 Championship'
@@ -119,7 +122,8 @@ def test_create_tournament_with_all_args():
     assert tournament.max_players_in_team == 5
     assert tournament.contestant_type == ContestantType.TEAM
     assert tournament.tournament_status == TournamentStatus.DRAFT
-    assert tournament.tournament_mode == TournamentMode.SINGLE_ELIMINATION
+    assert tournament.game_format == GameFormat.ONE_V_ONE
+    assert tournament.elimination_mode == EliminationMode.SINGLE_ELIMINATION
 
     assert event.tournament_id == tournament.id
 
@@ -188,7 +192,7 @@ def test_validate_team_count(max_teams, current_count, expected_ok):
 
 
 # -------------------------------------------------------------------- #
-# _contestant_id
+# contestant_id
 
 
 def test_contestant_id_raises_on_null_null():
@@ -197,7 +201,7 @@ def test_contestant_id_raises_on_null_null():
     assert contestant.participant_id is None
     assert contestant.team_id is None
     with pytest.raises(ValueError):
-        _contestant_id(contestant)
+        contestant_id(contestant)
 
 
 # -------------------------------------------------------------------- #
@@ -558,7 +562,8 @@ def _create_tournament(**kwargs) -> Tournament:
         'max_players_in_team': None,
         'contestant_type': None,
         'tournament_status': None,
-        'tournament_mode': None,
+        'game_format': None,
+        'elimination_mode': None,
     }
     defaults.update(kwargs)
     return Tournament(**defaults)

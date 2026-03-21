@@ -343,6 +343,7 @@ def test_create_team_integrity_error_returns_err(
     mock_domain.validate_team_count.return_value = Ok(None)
     mock_repo.find_active_team_by_name.return_value = None
     mock_repo.find_active_team_by_tag.return_value = None
+    mock_repo.find_participant_by_user.return_value = Mock(team_id=None)
 
     orig = Mock(
         constraint_name='uq_lan_tournament_teams_active_name_ci',
@@ -379,6 +380,7 @@ def test_create_team_integrity_error_tag_returns_err(
     mock_domain.validate_team_count.return_value = Ok(None)
     mock_repo.find_active_team_by_name.return_value = None
     mock_repo.find_active_team_by_tag.return_value = None
+    mock_repo.find_participant_by_user.return_value = Mock(team_id=None)
 
     orig = Mock(
         constraint_name='uq_lan_tournament_teams_active_tag_ci',
@@ -416,6 +418,7 @@ def test_create_team_integrity_error_unknown_constraint_reraises(
     mock_domain.validate_team_count.return_value = Ok(None)
     mock_repo.find_active_team_by_name.return_value = None
     mock_repo.find_active_team_by_tag.return_value = None
+    mock_repo.find_participant_by_user.return_value = Mock(team_id=None)
 
     orig = Mock(constraint_name='some_other_constraint')
     mock_repo.create_team.side_effect = IntegrityError('', {}, orig)
@@ -616,7 +619,8 @@ def _create_tournament(**kwargs) -> Tournament:
         'max_players_in_team': None,
         'contestant_type': None,
         'tournament_status': None,
-        'tournament_mode': None,
+        'game_format': None,
+        'elimination_mode': None,
     }
     defaults.update(kwargs)
     return Tournament(**defaults)

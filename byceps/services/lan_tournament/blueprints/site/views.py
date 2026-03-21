@@ -17,6 +17,7 @@ from byceps.services.lan_tournament.models.tournament_status import (
 )
 from byceps.services.lan_tournament.lan_tournament_view_helpers import (
     build_contestant_name_lookups,
+    build_ffa_standings,
     build_hover_lookups,
     build_round_robin_standings,
     build_seat_lookup,
@@ -26,8 +27,11 @@ from byceps.services.lan_tournament.lan_tournament_view_helpers import (
 from byceps.services.lan_tournament.models.contestant_type import (
     ContestantType,
 )
-from byceps.services.lan_tournament.models.tournament_mode import (
-    TournamentMode,
+from byceps.services.lan_tournament.models.elimination_mode import (
+    EliminationMode,
+)
+from byceps.services.lan_tournament.models.game_format import (
+    GameFormat,
 )
 from byceps.services.party import party_service
 from byceps.services.user import user_service
@@ -1220,9 +1224,9 @@ def bracket(tournament_id):
 
     # Bracket serialization for client-side rendering (SE/DE only).
     bracket_json = None
-    if tournament.tournament_mode in (
-        TournamentMode.SINGLE_ELIMINATION,
-        TournamentMode.DOUBLE_ELIMINATION,
+    if tournament.elimination_mode in (
+        EliminationMode.SINGLE_ELIMINATION,
+        EliminationMode.DOUBLE_ELIMINATION,
     ):
         from flask import url_for as flask_url_for
 
@@ -1242,13 +1246,19 @@ def bracket(tournament_id):
 
     # Round-robin: compute standings table.
     standings = None
-    if tournament.tournament_mode == TournamentMode.ROUND_ROBIN:
+    if tournament.elimination_mode == EliminationMode.ROUND_ROBIN:
         standings = build_round_robin_standings(match_data)
+
+    # FFA: compute cumulative standings with per-round breakdown.
+    ffa_standings = None
+    if tournament.game_format == GameFormat.FREE_FOR_ALL:
+        ffa_standings = build_ffa_standings(match_data)
 
     return {
         'tournament': tournament,
         'match_data': match_data,
         'standings': standings,
+        'ffa_standings': ffa_standings,
         'bracket_json': bracket_json,
         'teams_by_id': teams_by_id,
         'participants_by_id': participants_by_id,
@@ -1269,7 +1279,7 @@ def highscore(tournament_id, erroneous_form=None):
     tournament = _get_tournament_or_404(tournament_id)
 
     # Only HIGHSCORE tournaments have a leaderboard.
-    if tournament.tournament_mode != TournamentMode.HIGHSCORE:
+    if tournament.game_format != GameFormat.HIGHSCORE:
         abort(404)
 
     # Hide drafts from site visitors.
@@ -1328,7 +1338,7 @@ def highscore(tournament_id, erroneous_form=None):
 def highscore_submit(tournament_id):
     """Submit the current user's own score to the highscore leaderboard."""
     tournament = _get_tournament_or_404(tournament_id)
-    if tournament.tournament_mode != TournamentMode.HIGHSCORE:
+    if tournament.game_format != GameFormat.HIGHSCORE:
         abort(404)
     if tournament.tournament_status not in (
         TournamentStatus.REGISTRATION_OPEN,
