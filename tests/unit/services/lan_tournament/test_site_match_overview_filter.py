@@ -10,7 +10,7 @@ overview view, including the participant-scoped tab filters
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
@@ -54,7 +54,7 @@ def _make_match(*, confirmed: bool = False) -> TournamentMatch:
         round=1,
         next_match_id=None,
         confirmed_by=UserID(uuid4()) if confirmed else None,
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(UTC),
     )
 
 
@@ -70,7 +70,7 @@ def _make_contestant(
         team_id=team_id,
         participant_id=participant_id,
         score=None,
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(UTC),
     )
 
 
@@ -85,7 +85,7 @@ def _make_participant(
         tournament_id=TournamentID(uuid4()),
         substitute_player=False,
         team_id=team_id,
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(UTC),
     )
 
 
