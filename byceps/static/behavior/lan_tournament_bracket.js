@@ -832,10 +832,12 @@ function _ltGetMaxSourceBadgeWidth(rounds, dims, matchMap, settings) {
 /**
  * Compute fitted dimensions that scale columns to the available width.
  */
-function getFittedDims(columnCount, rounds, matchMap, settings, appEl) {
+function getFittedDims(columnCount, rounds, matchMap, settings, appEl, options) {
+  var opts = options || {};
   var base = getBaseDims();
   var availableWidth = Math.max(320, Math.min(window.innerWidth - (base.mobile ? 22 : 44), appEl.clientWidth || window.innerWidth));
-  var baseSourceBadgeWidth = _ltGetMaxSourceBadgeWidth(rounds, base, matchMap, settings);
+  var baseSourceBadgeWidth = opts.skipExternalSources ? 0 : _ltGetMaxSourceBadgeWidth(rounds, base, matchMap, settings);
+  if (opts.minSourceBadgeWidth > baseSourceBadgeWidth) baseSourceBadgeWidth = opts.minSourceBadgeWidth;
   var hasExternalSources = baseSourceBadgeWidth > 0;
   var gapBase = hasExternalSources ? Math.max(base.connectorGap, baseSourceBadgeWidth + 12) : base.connectorGap;
   var leftInsetBase = hasExternalSources ? Math.max(base.leftInset, gapBase - 6) : base.leftInset;
@@ -1583,7 +1585,15 @@ function _ltCreateViewSelect(rootEl, currentMode) {
  * match cards, connectors, and source badges.
  */
 function renderBracketSection(options) {
-  var dims = getFittedDims(options.rounds.length, options.rounds, options.matchMap, options.settings, options.appEl);
+  // Pre-compute P3 source badge width so the connector gap is wide enough
+  // for inline third-place source pills that appear only in SE brackets.
+  var fittedOpts = { skipExternalSources: !options.isDE };
+  if (!options.isDE && options.thirdPlaceMatches && options.thirdPlaceMatches.length > 0) {
+    var baseDims = getBaseDims();
+    var p3Round = { bracket: 'P3', displayBracket: 'P3', matches: options.thirdPlaceMatches };
+    fittedOpts.minSourceBadgeWidth = _ltGetMaxSourceBadgeWidth([p3Round], baseDims, options.matchMap, options.settings);
+  }
+  var dims = getFittedDims(options.rounds.length, options.rounds, options.matchMap, options.settings, options.appEl, fittedOpts);
   var layout = layoutRounds(options.rounds, options.fieldSize, dims);
   var i, round, j, match, stageText;
 
@@ -1653,7 +1663,11 @@ function renderBracketSection(options) {
     for (j = 0; j < round.matches.length; j++) {
       match = round.matches[j];
       stageText = round.title;
-      appendExternalSources(canvas, svg, match, dims, round.displayBracket || match.bracket, options.matchMap, options.settings);
+      // SE brackets don't need source badges on regular matches — the bracket
+      // structure is self-explanatory.  P3 inline matches (below) keep theirs.
+      if (options.isDE) {
+        appendExternalSources(canvas, svg, match, dims, round.displayBracket || match.bracket, options.matchMap, options.settings);
+      }
       canvas.appendChild(createMatchEl(match, dims, { stageText: stageText, hoverData: options.hoverData }, options.matchUrls));
     }
   }
@@ -2323,7 +2337,8 @@ function createBracketInstance(config) {
         appEl: rootEl,
         matchUrls: urls,
         hoverData: hoverData,
-        bracketView: 'losers'
+        bracketView: 'losers',
+        isDE: isDE
       }));
     }
 
