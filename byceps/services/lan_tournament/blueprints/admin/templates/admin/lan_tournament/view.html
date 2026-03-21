@@ -174,10 +174,28 @@
   {%- if tournament.tournament_status and tournament.tournament_status.name == 'COMPLETED' and winner_name %}
   <div class="winner-banner block">
     <div class="winner-banner-inner">
-      {{ render_icon('trophy') }}
+      {{ render_icon('trophy', color='#FFD700') }}
       <span class="winner-banner-label">{{ _('Champion') }}</span>
       <span class="winner-banner-name">{{ winner_name }}</span>
     </div>
+    {%- if runner_up_name or bronze_name %}
+    <div class="podium-runners">
+      {%- if runner_up_name %}
+      <div class="podium-entry podium-silver">
+        {{ render_icon('trophy', color='#C0C0C0') }}
+        <span class="podium-rank">{{ _('2nd') }}</span>
+        <span class="podium-name">{{ runner_up_name }}</span>
+      </div>
+      {%- endif %}
+      {%- if bronze_name %}
+      <div class="podium-entry podium-bronze">
+        {{ render_icon('trophy', color='#CD7F32') }}
+        <span class="podium-rank">{{ _('3rd') }}</span>
+        <span class="podium-name">{{ bronze_name }}</span>
+      </div>
+      {%- endif %}
+    </div>
+    {%- endif %}
   </div>
   {%- endif %}
 

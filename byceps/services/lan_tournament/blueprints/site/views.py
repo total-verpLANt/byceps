@@ -155,6 +155,9 @@ def view(tournament_id):
     seats_by_user_id = build_seat_lookup(user_ids, tournament.party_id)
 
     winner_name = tournament_service.resolve_winner_display_name(tournament)
+    podium = tournament_service.resolve_podium_display_names(tournament)
+    runner_up_name = podium.get('runner_up')
+    bronze_name = podium.get('bronze')
 
     return {
         'tournament': tournament,
@@ -170,6 +173,8 @@ def view(tournament_id):
         'users_by_id': users_by_id,
         'seats_by_user_id': seats_by_user_id,
         'winner_name': winner_name,
+        'runner_up_name': runner_up_name,
+        'bronze_name': bronze_name,
         'active_tab': 'overview',
     }
 
