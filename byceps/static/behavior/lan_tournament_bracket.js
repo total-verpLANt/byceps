@@ -1587,6 +1587,38 @@ function renderBracketSection(options) {
   var layout = layoutRounds(options.rounds, options.fieldSize, dims);
   var i, round, j, match, stageText;
 
+  // Compute inline P3 geometry (SE only)
+  var inlineP3Matches = [];
+  if (options.thirdPlaceMatches && options.thirdPlaceMatches.length > 0 && !options.isDE) {
+    var finalRound = options.rounds[options.rounds.length - 1];
+    var gfMatch = finalRound.matches[finalRound.matches.length - 1];
+    var p3Gap = dims.slotHeight;  // standard inter-match gap
+    var p3CenterY = gfMatch.geom.boxBottom + p3Gap + (layout.matchHeight / 2);
+    var teamOffsets = getTeamOffsets(dims);
+
+    for (var pi = 0; pi < options.thirdPlaceMatches.length; pi++) {
+      var p3m = options.thirdPlaceMatches[pi];
+      p3m.geom = {
+        centerY: p3CenterY,
+        boxLeft: finalRound.boxLeft,
+        boxRight: finalRound.boxRight,
+        boxTop: p3CenterY - (layout.matchHeight / 2),
+        boxBottom: p3CenterY + (layout.matchHeight / 2),
+        teamTopY: (p3CenterY - (layout.matchHeight / 2)) + teamOffsets.top,
+        teamBottomY: (p3CenterY - (layout.matchHeight / 2)) + teamOffsets.bottom
+      };
+      inlineP3Matches.push(p3m);
+      p3CenterY += layout.matchHeight + p3Gap;
+    }
+
+    // Extend canvas dimensions
+    var p3Bottom = inlineP3Matches[inlineP3Matches.length - 1].geom.boxBottom;
+    var extraHeight = p3Bottom - (layout.headerOffset + layout.bracketHeight);
+    if (extraHeight > 0) {
+      layout.height += extraHeight + dims.padding;
+    }
+  }
+
   var stats = computeSectionStats(options.rounds);
   var statsBarHtml = _ltBuildStatsBarHtml(stats);
 
@@ -1624,6 +1656,15 @@ function renderBracketSection(options) {
       appendExternalSources(canvas, svg, match, dims, round.displayBracket || match.bracket, options.matchMap, options.settings);
       canvas.appendChild(createMatchEl(match, dims, { stageText: stageText, hoverData: options.hoverData }, options.matchUrls));
     }
+  }
+
+  // Render inline P3 matches
+  for (i = 0; i < inlineP3Matches.length; i++) {
+    match = inlineP3Matches[i];
+    appendExternalSources(canvas, svg, match, dims, 'P3', options.matchMap, options.settings);
+    var p3El = createMatchEl(match, dims, { stageText: '3rd Place', hoverData: options.hoverData }, options.matchUrls);
+    p3El.className += ' lt-p3-inline';
+    canvas.appendChild(p3El);
   }
 
   requestAnimationFrame(function() { _ltEnableBracketPan(scroll); });
@@ -1925,6 +1966,13 @@ function bindHoverHighlight(rootEl, appEl, scrollToMatchRefFn) {
         sourceRef: source.getAttribute('data-source-ref'),
         targetRef: source.getAttribute('data-target-ref')
       };
+    }
+
+    // Hovering anywhere on an inline P3 match card triggers match-ref
+    // tracing so the loser-path from SF matches lights up.
+    var p3Match = node.closest ? node.closest('.lt-p3-inline[data-match-ref]') : null;
+    if (p3Match) {
+      return { type: 'score-match', key: p3Match.getAttribute('data-match-ref') };
     }
 
     return null;
@@ -2257,7 +2305,9 @@ function createBracketInstance(config) {
         appEl: rootEl,
         matchUrls: urls,
         hoverData: hoverData,
-        bracketView: isDE ? 'winners' : null
+        bracketView: isDE ? 'winners' : null,
+        thirdPlaceMatches: (!isDE && settings.showThirdPlaceMatch) ? p.thirdPlaceMatches : [],
+        isDE: isDE
       }));
     }
 
@@ -2306,8 +2356,8 @@ function createBracketInstance(config) {
       }
     }
 
-    // Render third-place matches
-    if (showFinals && settings.showThirdPlaceMatch && p.thirdPlaceMatches.length > 0) {
+    // Render third-place matches (standalone — only if NOT rendered inline)
+    if (showFinals && settings.showThirdPlaceMatch && p.thirdPlaceMatches.length > 0 && isDE) {
       rootEl.appendChild(renderThirdPlaceSection(
         p.thirdPlaceMatches, p.matchMap, settings, urls, rootEl, hoverData
       ));
