@@ -40,7 +40,6 @@ from byceps.util.framework.blueprint import create_blueprint
 from byceps.util.framework.flash import flash_error, flash_success
 from byceps.util.framework.templating import templated
 from byceps.util.result import Err, Ok
-from byceps.util.authz import has_current_user_permission
 from byceps.util.views import login_required, redirect_to
 
 from .forms import (
@@ -1031,7 +1030,7 @@ def view_match(match_id):
             match_confirmed=False,
         )
         is_contestant = comment_role.contestant is not None
-        is_admin = has_current_user_permission('lan_tournament.administrate')
+        is_admin = g.user.has_permission('lan_tournament.administrate')
         current_user_can_comment = is_contestant or is_admin
     else:
         current_user_can_comment = False
@@ -1132,7 +1131,7 @@ def add_comment(match_id):
         return redirect_to('.view_match', match_id=match_id)
 
     # Authorization: match contestants OR tournament admins.
-    is_admin = has_current_user_permission('lan_tournament.administrate')
+    is_admin = g.user.has_permission('lan_tournament.administrate')
     contestants = tournament_match_service.get_contestants_for_match(
         match_id_obj
     )

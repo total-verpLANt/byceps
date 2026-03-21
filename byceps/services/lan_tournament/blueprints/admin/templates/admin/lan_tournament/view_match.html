@@ -38,7 +38,7 @@
   <div class='box block'>
     <h2>{{ _('Contestants & Placements') }}</h2>
 
-    {%- if not match.confirmed_by and has_current_user_permission('lan_tournament.update') %}
+    {%- if not match.confirmed_by and g.user.has_permission('lan_tournament.update') %}
     {# Editable placement form #}
     <form action='{{ url_for('.set_ffa_placements_action', match_id=match.id) }}'
           method='post'>
@@ -146,7 +146,7 @@
 
   {# FFA Confirm / Unconfirm buttons #}
   {%- if not match.confirmed_by and
-         has_current_user_permission('lan_tournament.administrate') %}
+         g.user.has_permission('lan_tournament.administrate') %}
   <div class='block'>
     <form action='{{ url_for('.confirm_ffa_match_action', match_id=match.id) }}'
           method='post'>
@@ -158,7 +158,7 @@
   {%- endif %}
 
   {%- if match.confirmed_by and
-         has_current_user_permission('lan_tournament.administrate') %}
+         g.user.has_permission('lan_tournament.administrate') %}
   <div class='block'>
     <form action='{{ url_for('.unconfirm_match', match_id=match.id) }}'
           method='post'
@@ -206,7 +206,7 @@
       </div>
       <div style='flex: 0 0 auto;'>
         {%- if not match.confirmed_by and
-               has_current_user_permission('lan_tournament.update') %}
+               g.user.has_permission('lan_tournament.update') %}
         <form action='{{ url_for('.set_match_score', match_id=match.id) }}'
               method='post' style='display: inline;'>
           <input type='hidden' name='contestant_id'
@@ -226,7 +226,7 @@
 
   {# Confirm button #}
   {%- if not match.confirmed_by and
-         has_current_user_permission('lan_tournament.administrate') %}
+         g.user.has_permission('lan_tournament.administrate') %}
   <div class='block'>
     <form action='{{ url_for('.confirm_match', match_id=match.id) }}'
           method='post'>
@@ -238,7 +238,7 @@
   {%- endif %}
 
   {%- if match.confirmed_by and
-         has_current_user_permission('lan_tournament.administrate') %}
+         g.user.has_permission('lan_tournament.administrate') %}
   <div class='block'>
     <form action='{{ url_for('.unconfirm_match', match_id=match.id) }}'
           method='post'
@@ -277,7 +277,7 @@
           </div>
         </div>
         <div>
-          {%- if has_current_user_permission('lan_tournament.administrate') %}
+          {%- if g.user.has_permission('lan_tournament.administrate') %}
           <form action='{{ url_for('.delete_match_comment',
                                    match_id=match.id,
                                    comment_id=comment.id) }}'
@@ -296,7 +296,7 @@
     {%- endif %}
 
     {# Add comment form #}
-    {%- if has_current_user_permission('lan_tournament.update') %}
+    {%- if g.user.has_permission('lan_tournament.update') %}
     <div style='margin-top: 1rem;'>
       <form action='{{ url_for('.add_match_comment', match_id=match.id) }}'
             method='post'>

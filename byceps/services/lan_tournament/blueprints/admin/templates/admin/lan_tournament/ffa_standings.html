@@ -24,7 +24,7 @@
   {%- endif %}
 
   {# FFA round management buttons #}
-  {%- if has_current_user_permission('lan_tournament.administrate') and tournament.tournament_status and tournament.tournament_status.name in ('ONGOING', 'REGISTRATION_CLOSED') %}
+  {%- if g.user.has_permission('lan_tournament.administrate') and tournament.tournament_status and tournament.tournament_status.name in ('ONGOING', 'REGISTRATION_CLOSED') %}
   <div class='button-row block' style='margin-top: 1.5rem;'>
     {%- if latest_round is none %}
       <form action='{{ url_for('.generate_ffa_round_action', tournament_id=tournament.id) }}' method='post'>
