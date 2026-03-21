@@ -1,11 +1,14 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import NewType
+from typing import TYPE_CHECKING, NewType
 from uuid import UUID
 
 from byceps.services.user.models import UserID
 from .bracket import Bracket
 from .tournament import TournamentID
+
+if TYPE_CHECKING:
+    from .tournament_match_to_contestant import TournamentMatchToContestant
 
 TournamentMatchID = NewType('TournamentMatchID', UUID)
 
@@ -22,3 +25,11 @@ class TournamentMatch:
     created_at: datetime
     bracket: Bracket | None = None
     loser_next_match_id: TournamentMatchID | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class MatchUserRole:
+    contestant: "TournamentMatchToContestant | None"
+    is_loser: bool
+    can_confirm: bool
+    can_submit: bool

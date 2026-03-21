@@ -1012,7 +1012,7 @@ def view_match(match_id):
             match_confirmed=match.confirmed_by is not None,
         )
     else:
-        role = tournament_match_service.MatchUserRole(None, False, False, False)
+        role = tournament_match_service.MatchUserRole(contestant=None, is_loser=False, can_confirm=False, can_submit=False)
     current_user_contestant = role.contestant
     current_user_is_loser = role.is_loser
     current_user_can_confirm = role.can_confirm
