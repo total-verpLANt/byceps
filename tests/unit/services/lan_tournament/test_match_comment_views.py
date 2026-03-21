@@ -140,9 +140,6 @@ def _patched_comment_view(
             patch(f'{_V}.tournament_match_service') as mock_match_svc,
             patch(f'{_V}._get_tournament_or_404') as mock_get_tournament,
             patch(f'{_V}.g') as mock_g,
-            patch(
-                f'{_V}.has_current_user_permission'
-            ) as mock_has_perm,
         ):
             mock_get_tournament.return_value = tournament
             mock_match_svc.get_match.return_value = match
@@ -153,16 +150,16 @@ def _patched_comment_view(
             mock_match_svc.add_comment.return_value = Ok(None)
             mock_match_svc.TournamentMatchID = TournamentMatchID
 
-            mock_g.user = _make_user(
+            user_perms = permissions or frozenset()
+            mock_user = _make_user(
                 current_user_id,
                 authenticated=authenticated,
                 permissions=permissions,
             )
+            mock_user.has_permission = lambda p: p in user_perms
+            mock_g.user = mock_user
             mock_g.party = MagicMock()
             mock_g.party.id = PARTY_ID_STR
-
-            user_perms = permissions or frozenset()
-            mock_has_perm.side_effect = lambda p: p in user_perms
 
             mock_redirect_to.return_value = 'redirected'
 
@@ -173,7 +170,6 @@ def _patched_comment_view(
                 'match_svc': mock_match_svc,
                 'get_tournament': mock_get_tournament,
                 'g': mock_g,
-                'has_perm': mock_has_perm,
                 'tournament': tournament,
                 'match': match,
             }

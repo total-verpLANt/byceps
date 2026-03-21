@@ -5,6 +5,10 @@
 {% set current_tab = 'tournaments' %}
 {% set page_title = _('Create tournament') %}
 
+{% block head %}{{ super() }}
+  <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_ffa_admin.css') }}">
+{%- endblock %}
+
 {% block before_body %}
 {{ render_backlink(url_for('.index', party_id=party.id), _('Tournaments')) }}
 {%- endblock %}
@@ -26,7 +30,22 @@
         {{ form_field(form.score_ordering) }}
       </div>
       <div id="ffa-constraints" style="display: none;">
-        {{ form_field(form.point_table) }}
+        {# -- FFA Point Table: visual editor with hidden-input sync -- #}
+        <div class="ffa-point-editor" data-ffa-editor
+             data-field-id="{{ form.point_table.id }}"
+             data-field-name="{{ form.point_table.name }}"
+             data-field-value="{{ form.point_table.data or '' }}">
+          <label class="form-label">{{ form.point_table.label.text }}</label>
+          <div class="ffa-point-editor__toolbar">
+            <button type="button" data-ffa-preset="10,8,6,4,2,1">F1 (10-8-6-4-2-1)</button>
+            <button type="button" data-ffa-preset="25,18,15,12,10,8,6,4,2,1">Top 10</button>
+            <button type="button" data-ffa-add>+ Add place</button>
+          </div>
+          <div class="ffa-point-cards" data-ffa-cards-container></div>
+          <noscript>
+            {{ form_field(form.point_table) }}
+          </noscript>
+        </div>
         {{ form_field(form.group_size_min, min=2, style='width: 5rem;') }}
         {{ form_field(form.group_size_max, min=2, style='width: 5rem;') }}
         {{ form_field(form.advancement_count, min=1, style='width: 5rem;') }}
@@ -59,6 +78,7 @@
 
 {% block scripts %}
 {% include 'admin/lan_tournament/_constraint_toggle.html' %}
+<script src="{{ url_for('static', filename='behavior/lan_tournament_ffa.js') }}"></script>
 <script>
   /* Toggle FFA fields based on game_format and elimination_mode. */
   (function() {

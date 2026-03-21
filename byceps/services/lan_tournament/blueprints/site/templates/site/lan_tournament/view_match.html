@@ -3,6 +3,7 @@
 {% from 'macros/misc.html' import render_tag %}
 {% from 'macros/lan_tournament.html' import render_hover_name, render_match_ref, render_tournament_subnav %}
 {% set page_title = [_('Match'), tournament.name] %}
+{% set is_ffa = tournament.game_format and tournament.game_format.name == 'FREE_FOR_ALL' %}
 
 {% block body %}
 
@@ -30,9 +31,85 @@
       {%- else %}
         {{ render_tag(_('Pending'), class='color-warning') }}
       {%- endif %}
+      {%- if is_ffa %}
+        {{ render_tag(_('FFA'), class='color-info') }}
+      {%- endif %}
     </div>
 
-    {# Contestants display #}
+    {%- if is_ffa %}
+    {# ── FFA Placement Display ─────────────────────────────────── #}
+    {%- set placed_contestants = contestants|selectattr('placement')|sort(attribute='placement')|list %}
+    {%- if match.confirmed_by and placed_contestants %}
+    <div class='contestants-box'>
+      <h2 class="title">{{ _('Placements') }}</h2>
+      <div class="ffa-ranking-list ffa-ranking-list--readonly">
+        {%- for contestant in placed_contestants %}
+        <div class="ffa-ranking-card" data-rank="{{ contestant.placement }}">
+          <span class="ffa-ranking-card__ordinal">
+            {%- set _p = contestant.placement -%}
+            {{- _p -}}{{ _('th') if (_p % 100) in (11, 12, 13) else (_('st') if _p % 10 == 1 else (_('nd') if _p % 10 == 2 else (_('rd') if _p % 10 == 3 else _('th')))) -}}
+          </span>
+          <span class="ffa-ranking-card__medal">
+            {%- if contestant.placement == 1 %}&#x1F947;{% elif contestant.placement == 2 %}&#x1F948;{% elif contestant.placement == 3 %}&#x1F949;{% endif -%}
+          </span>
+          <span class="ffa-ranking-card__name">
+            {%- if contestant.team_id %}
+              {%- set _team = teams_by_id.get(contestant.team_id) -%}
+              {%- if _team -%}
+                {{ render_hover_name(_team.name, team_id=_team.id, team_members_by_team_id=team_members_by_team_id) }}
+              {%- else -%}
+                {{ contestant.team_id|string }}
+              {%- endif -%}
+            {%- elif contestant.participant_id %}
+              {%- set _user = participants_by_id.get(contestant.participant_id) -%}
+              {%- if _user -%}
+                {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted, seats_by_user_id=seats_by_user_id) }}
+              {%- else -%}
+                {{ contestant.participant_id|string }}
+              {%- endif -%}
+            {%- else %}
+              {{ _('defwin') }}
+            {%- endif %}
+          </span>
+          <span class="ffa-ranking-card__points">
+            {{- contestant.points if contestant.points is not none else '–' -}}
+          </span>
+        </div>
+        {%- endfor %}
+      </div>
+    </div>
+    {%- else %}
+    {# FFA match not yet confirmed or no placements — show simple contestant list #}
+    <div class='contestants-box'>
+      <h2 class="title">{{ _('Contestants') }}</h2>
+      {%- for contestant in contestants %}
+      <div class='contestant'>
+        <div class='contestant-name'>
+          {%- if contestant.team_id %}
+            {%- set _team = teams_by_id.get(contestant.team_id) -%}
+            {%- if _team -%}
+              {{ render_hover_name(_team.name, team_id=_team.id, team_members_by_team_id=team_members_by_team_id) }}
+            {%- else -%}
+              {{ contestant.team_id|string }}
+            {%- endif -%}
+          {%- elif contestant.participant_id %}
+            {%- set _user = participants_by_id.get(contestant.participant_id) -%}
+            {%- if _user -%}
+              {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted, seats_by_user_id=seats_by_user_id) }}
+            {%- else -%}
+              {{ contestant.participant_id|string }}
+            {%- endif -%}
+          {%- else %}
+            {{ _('defwin') }}
+          {%- endif %}
+        </div>
+      </div>
+      {%- endfor %}
+    </div>
+    {%- endif %}
+
+    {%- else %}
+    {# ── Standard 1v1 Display ──────────────────────────────────── #}
     <div class='contestants-box'>
       {%- for contestant in contestants %}
       <div class='contestant'>
@@ -116,6 +193,7 @@
       </form>
     </div>
     {% endif %}
+    {%- endif %}{# end is_ffa/standard branch #}
 
     {# Comments section #}
     <div class='comments-section'>

@@ -1531,3 +1531,295 @@ a.lt-hover-name-link:hover {
 .podium-bronze .podium-name {
   color: color-mix(in srgb, #CD7F32 90%, white);
 }
+
+
+/* ------------------------------------------------------------
+   15. FFA Point Table Editor (admin forms)
+   ------------------------------------------------------------ */
+
+.ffa-point-editor {
+  margin-top: 0.5rem;
+}
+
+.ffa-point-editor__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.ffa-point-editor__toolbar button {
+  padding: 0.25rem 0.75rem;
+  border: 1px solid var(--lt-border, rgba(255, 255, 255, 0.12));
+  border-radius: var(--lt-radius-sm, 12px);
+  background: var(--lt-card, rgba(255, 255, 255, 0.05));
+  color: var(--lt-text, #eef4ff);
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.ffa-point-editor__toolbar button:hover {
+  background: var(--lt-brand-blue, #2e7df6);
+  border-color: var(--lt-brand-blue, #2e7df6);
+}
+
+/* Card container (horizontal flex row) */
+.ffa-point-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  min-height: 3.5rem;
+  padding: 0.5rem;
+  border: 2px dashed var(--lt-border, rgba(255, 255, 255, 0.12));
+  border-radius: var(--lt-radius-sm, 12px);
+  background: var(--lt-card, rgba(255, 255, 255, 0.05));
+}
+
+/* Individual point card */
+.ffa-point-card {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--lt-line, rgba(194, 211, 255, 0.28));
+  border-radius: 8px;
+  background: var(--lt-panel, rgba(7, 18, 47, 0.88));
+  cursor: grab;
+  user-select: none;
+  transition: box-shadow 0.15s, opacity 0.15s;
+}
+
+.ffa-point-card:hover {
+  box-shadow: 0 0 0 2px var(--lt-brand-blue, #2e7df6);
+}
+
+.ffa-point-card.is-dragging {
+  opacity: 0.4;
+  cursor: grabbing;
+}
+
+.ffa-point-card__place {
+  font-weight: 700;
+  font-size: 0.78rem;
+  color: var(--lt-muted, #a8b8dd);
+  min-width: 1.8rem;
+  text-align: center;
+}
+
+.ffa-point-card__value {
+  width: 3.5rem;
+  padding: 0.2rem 0.35rem;
+  border: 1px solid var(--lt-border, rgba(255, 255, 255, 0.12));
+  border-radius: 4px;
+  background: transparent;
+  color: var(--lt-text, #eef4ff);
+  font-size: 0.9rem;
+  text-align: center;
+  -moz-appearance: textfield;
+}
+
+.ffa-point-card__value::-webkit-outer-spin-button,
+.ffa-point-card__value::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.ffa-point-card__value:focus {
+  outline: none;
+  border-color: var(--lt-brand-blue, #2e7df6);
+  box-shadow: 0 0 0 2px rgba(46, 125, 246, 0.35);
+}
+
+.ffa-point-card__remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--lt-muted, #a8b8dd);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.ffa-point-card__remove:hover {
+  background: var(--lt-brand-danger, #ff5f6d);
+  color: #fff;
+}
+
+
+/* ------------------------------------------------------------
+   11. FFA Ranking Cards  (drag-and-drop placement entry)
+   ------------------------------------------------------------ */
+
+.ffa-ranking-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.ffa-ranking-card {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--lt-line, rgba(194, 211, 255, 0.28));
+  border-left: 3px solid transparent;
+  border-radius: var(--lt-radius-sm, 12px);
+  background: var(--lt-card, rgba(255, 255, 255, 0.05));
+  cursor: grab;
+  user-select: none;
+  transition: transform 150ms ease, box-shadow 150ms ease, opacity 150ms ease;
+}
+
+.ffa-ranking-card:hover {
+  box-shadow: 0 0 0 2px var(--lt-brand-blue, #2e7df6);
+}
+
+/* Medal left-border highlights for top 3 */
+.ffa-ranking-card[data-rank="1"] {
+  border-left-color: #ffd700;
+}
+
+.ffa-ranking-card[data-rank="2"] {
+  border-left-color: #c0c0c0;
+}
+
+.ffa-ranking-card[data-rank="3"] {
+  border-left-color: #cd7f32;
+}
+
+/* SortableJS drag states */
+.ffa-ranking-card--ghost {
+  opacity: 0.4;
+  background: var(--lt-brand-blue, #2e7df6);
+}
+
+.ffa-ranking-card--chosen {
+  box-shadow: var(--lt-shadow, 0 18px 50px rgba(0, 0, 0, 0.34));
+  transform: scale(1.02);
+  cursor: grabbing;
+}
+
+/* Handle */
+.ffa-ranking-card__handle {
+  cursor: grab;
+  color: var(--lt-muted, #a8b8dd);
+  font-size: 1.2em;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.ffa-ranking-card--chosen .ffa-ranking-card__handle {
+  cursor: grabbing;
+}
+
+/* Ordinal (1st, 2nd, ...) */
+.ffa-ranking-card__ordinal {
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--lt-text, #eef4ff);
+  min-width: 2.2rem;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+/* Medal emoji */
+.ffa-ranking-card__medal {
+  font-size: 1.15em;
+  min-width: 1.6rem;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+/* Contestant name */
+.ffa-ranking-card__name {
+  flex: 1 1 0%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--lt-text, #eef4ff);
+}
+
+/* Points */
+.ffa-ranking-card__points {
+  color: var(--lt-brand-orange, #ff7a1a);
+  font-weight: 700;
+  font-size: 0.9rem;
+  min-width: 3.5rem;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* A11y arrow buttons */
+.ffa-ranking-card__a11y {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  flex-shrink: 0;
+  opacity: 0.45;
+  transition: opacity 150ms ease;
+}
+
+.ffa-ranking-card:hover .ffa-ranking-card__a11y,
+.ffa-ranking-card__a11y:focus-within {
+  opacity: 1;
+}
+
+.ffa-ranking-card__arrow-up,
+.ffa-ranking-card__arrow-down {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  height: 1.2rem;
+  padding: 0;
+  border: 1px solid var(--lt-border, rgba(255, 255, 255, 0.12));
+  border-radius: 4px;
+  background: transparent;
+  color: var(--lt-muted, #a8b8dd);
+  font-size: 0.65rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 120ms, color 120ms;
+}
+
+.ffa-ranking-card__arrow-up:hover:not(:disabled),
+.ffa-ranking-card__arrow-down:hover:not(:disabled) {
+  background: var(--lt-brand-blue, #2e7df6);
+  color: #fff;
+}
+
+.ffa-ranking-card__arrow-up:disabled,
+.ffa-ranking-card__arrow-down:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+/* ── Read-only modifier for FFA ranking cards (site view) ─────── */
+.ffa-ranking-list--readonly .ffa-ranking-card {
+  cursor: default;
+  user-select: auto;
+}
+
+.ffa-ranking-list--readonly .ffa-ranking-card:hover {
+  box-shadow: none;
+}
+
+/* Mismatch warning */
+.ffa-mismatch-warning {
+  background: var(--lt-brand-warning, #ffcc3f);
+  color: #1a1a1a;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--lt-radius-sm, 12px);
+  font-size: 0.85em;
+  font-weight: 500;
+  margin-bottom: 0.75rem;
+}
