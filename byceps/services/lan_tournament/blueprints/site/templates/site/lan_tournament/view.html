@@ -90,10 +90,15 @@
     </div>
     {%- endif %}
 
-    {%- if tournament.tournament_mode %}
+    {%- if tournament.game_format and tournament.elimination_mode %}
     <div class="box">
       <div class="data-label">{{ _('Mode') }}</div>
-      <div class="data-value">{{ tournament.tournament_mode.name|replace('_', ' ')|title }}</div>
+      <div class="data-value">{{ tournament.game_format.name|replace('_', ' ')|title }} / {{ tournament.elimination_mode.name|replace('_', ' ')|title }}</div>
+    </div>
+    {%- elif tournament.game_format %}
+    <div class="box">
+      <div class="data-label">{{ _('Mode') }}</div>
+      <div class="data-value">{{ tournament.game_format.name|replace('_', ' ')|title }}</div>
     </div>
     {%- endif %}
 

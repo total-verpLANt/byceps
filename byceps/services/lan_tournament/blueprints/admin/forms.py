@@ -1,5 +1,6 @@
 from flask_babel import lazy_gettext
 from wtforms import (
+    BooleanField,
     DateTimeLocalField,
     IntegerField,
     SelectField,
@@ -20,10 +21,11 @@ from byceps.util.l10n import LocalizedForm
 from byceps.services.lan_tournament.models.contestant_type import (
     ContestantType,
 )
-from byceps.services.lan_tournament.models.score_ordering import ScoreOrdering
-from byceps.services.lan_tournament.models.tournament_mode import (
-    TournamentMode,
+from byceps.services.lan_tournament.models.elimination_mode import (
+    EliminationMode,
 )
+from byceps.services.lan_tournament.models.game_format import GameFormat
+from byceps.services.lan_tournament.models.score_ordering import ScoreOrdering
 
 
 def _get_contestant_type_choices() -> list[tuple[str, str]]:
@@ -34,19 +36,28 @@ def _get_contestant_type_choices() -> list[tuple[str, str]]:
     ]
 
 
-def _get_tournament_mode_choices() -> list[tuple[str, str]]:
+def _get_game_format_choices() -> list[tuple[str, str]]:
+    return [
+        ('', lazy_gettext('– select –')),
+        (GameFormat.ONE_V_ONE.name, lazy_gettext('1 vs 1')),
+        (GameFormat.FREE_FOR_ALL.name, lazy_gettext('Free-for-All')),
+        (GameFormat.HIGHSCORE.name, lazy_gettext('Highscore')),
+    ]
+
+
+def _get_elimination_mode_choices() -> list[tuple[str, str]]:
     return [
         ('', lazy_gettext('– select –')),
         (
-            TournamentMode.SINGLE_ELIMINATION.name,
-            lazy_gettext('Single elimination'),
+            EliminationMode.SINGLE_ELIMINATION.name,
+            lazy_gettext('Single Elimination'),
         ),
         (
-            TournamentMode.DOUBLE_ELIMINATION.name,
-            lazy_gettext('Double elimination'),
+            EliminationMode.DOUBLE_ELIMINATION.name,
+            lazy_gettext('Double Elimination'),
         ),
-        (TournamentMode.ROUND_ROBIN.name, lazy_gettext('Round robin')),
-        (TournamentMode.HIGHSCORE.name, lazy_gettext('Highscore')),
+        (EliminationMode.ROUND_ROBIN.name, lazy_gettext('Round Robin')),
+        (EliminationMode.NONE.name, lazy_gettext('None')),
     ]
 
 
@@ -76,8 +87,11 @@ class _BaseForm(LocalizedForm):
     contestant_type = SelectField(
         lazy_gettext('Contestant type'), validators=[Optional()]
     )
-    tournament_mode = SelectField(
-        lazy_gettext('Tournament mode'), validators=[Optional()]
+    game_format = SelectField(
+        lazy_gettext('Game format'), validators=[Optional()]
+    )
+    elimination_mode = SelectField(
+        lazy_gettext('Elimination mode'), validators=[Optional()]
     )
     score_ordering = SelectField(
         lazy_gettext('Score ordering'), validators=[Optional()]
@@ -92,12 +106,34 @@ class _BaseForm(LocalizedForm):
     max_players_in_team = IntegerField(
         lazy_gettext('Max. players per team'), [Optional()]
     )
+    point_table = StringField(
+        lazy_gettext('Point table (comma-separated)'),
+        [Optional(), Length(max=500)],
+    )
+    group_size_min = IntegerField(
+        lazy_gettext('Min. group size'),
+        [Optional(), NumberRange(min=2)],
+    )
+    group_size_max = IntegerField(
+        lazy_gettext('Max. group size'),
+        [Optional(), NumberRange(min=2)],
+    )
+    advancement_count = IntegerField(
+        lazy_gettext('Advance per group'),
+        [Optional(), NumberRange(min=1)],
+    )
+    points_carry_to_losers = BooleanField(
+        lazy_gettext('Points carry to losers pool'),
+    )
 
     def set_contestant_type_choices(self):
         self.contestant_type.choices = _get_contestant_type_choices()
 
-    def set_tournament_mode_choices(self):
-        self.tournament_mode.choices = _get_tournament_mode_choices()
+    def set_game_format_choices(self):
+        self.game_format.choices = _get_game_format_choices()
+
+    def set_elimination_mode_choices(self):
+        self.elimination_mode.choices = _get_elimination_mode_choices()
 
     def set_score_ordering_choices(self):
         self.score_ordering.choices = _get_score_ordering_choices()

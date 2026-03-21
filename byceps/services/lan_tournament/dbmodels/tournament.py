@@ -46,8 +46,14 @@ class DbTournament(db.Model):
     max_players_in_team: Mapped[int | None]
     contestant_type: Mapped[str | None] = mapped_column(db.UnicodeText)
     tournament_status: Mapped[str | None] = mapped_column(db.UnicodeText)
-    tournament_mode: Mapped[str | None] = mapped_column(db.UnicodeText)
+    game_format: Mapped[str | None] = mapped_column(db.UnicodeText)
+    elimination_mode: Mapped[str | None] = mapped_column(db.UnicodeText)
     score_ordering: Mapped[str | None] = mapped_column(db.UnicodeText)
+    point_table: Mapped[str | None] = mapped_column(db.UnicodeText)  # JSON
+    advancement_count: Mapped[int | None]
+    group_size_min: Mapped[int | None]
+    group_size_max: Mapped[int | None]
+    points_carry_to_losers: Mapped[bool | None]
     use_bracket_reset: Mapped[bool] = mapped_column(
         db.Boolean, server_default=db.text('true'),
     )
@@ -82,8 +88,14 @@ class DbTournament(db.Model):
         max_players_in_team: int | None = None,
         contestant_type: str | None = None,
         tournament_status: str | None = None,
-        tournament_mode: str | None = None,
+        game_format: str | None = None,
+        elimination_mode: str | None = None,
         score_ordering: str | None = None,
+        point_table: str | None = None,
+        advancement_count: int | None = None,
+        group_size_min: int | None = None,
+        group_size_max: int | None = None,
+        points_carry_to_losers: bool | None = None,
         winner_team_id: TournamentTeamID | None = None,
         winner_participant_id: TournamentParticipantID | None = None,
     ) -> None:
@@ -105,8 +117,14 @@ class DbTournament(db.Model):
         self.max_players_in_team = max_players_in_team
         self.contestant_type = contestant_type
         self.tournament_status = tournament_status
-        self.tournament_mode = tournament_mode
+        self.game_format = game_format
+        self.elimination_mode = elimination_mode
         self.score_ordering = score_ordering
+        self.point_table = point_table
+        self.advancement_count = advancement_count
+        self.group_size_min = group_size_min
+        self.group_size_max = group_size_max
+        self.points_carry_to_losers = points_carry_to_losers
         self.winner_team_id = winner_team_id
         self.winner_participant_id = winner_participant_id
 

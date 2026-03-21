@@ -28,8 +28,9 @@ from byceps.services.lan_tournament.models.tournament import (
     Tournament,
     TournamentID,
 )
-from byceps.services.lan_tournament.models.tournament_mode import (
-    TournamentMode,
+from byceps.services.lan_tournament.models.game_format import GameFormat
+from byceps.services.lan_tournament.models.elimination_mode import (
+    EliminationMode,
 )
 from byceps.services.lan_tournament.models.tournament_participant import (
     TournamentParticipantID,
@@ -66,12 +67,14 @@ def app():
 
 
 def _make_tournament(
-    mode: TournamentMode,
+    game_format: GameFormat,
+    elimination_mode: EliminationMode,
     contestant_type: ContestantType = ContestantType.SOLO,
 ) -> MagicMock:
     t = MagicMock(spec=Tournament)
     t.id = TOURNAMENT_ID
-    t.tournament_mode = mode
+    t.game_format = game_format
+    t.elimination_mode = elimination_mode
     t.tournament_status = TournamentStatus.ONGOING
     t.party_id = PARTY_ID_STR
     t.contestant_type = contestant_type
@@ -201,7 +204,7 @@ def test_highscore_leaderboard_renders(app):
     """GET highscore returns leaderboard data."""
     with _patched_highscore_view() as mocks:
         tournament = _make_tournament(
-            TournamentMode.HIGHSCORE,
+            GameFormat.HIGHSCORE, EliminationMode.NONE,
         )
         mocks['get_tournament'].return_value = tournament
 
@@ -224,7 +227,7 @@ def test_highscore_submit_valid_score(app):
     """POST with valid score creates submission and flashes success."""
     with _patched_highscore_view() as mocks:
         tournament = _make_tournament(
-            TournamentMode.HIGHSCORE,
+            GameFormat.HIGHSCORE, EliminationMode.NONE,
         )
         mocks['get_tournament'].return_value = tournament
 
@@ -254,7 +257,7 @@ def test_highscore_submit_negative_score_rejected(app):
     """POST with negative score fails validation, flashes error."""
     with _patched_highscore_view() as mocks:
         tournament = _make_tournament(
-            TournamentMode.HIGHSCORE,
+            GameFormat.HIGHSCORE, EliminationMode.NONE,
         )
         mocks['get_tournament'].return_value = tournament
 
@@ -282,7 +285,7 @@ def test_highscore_submit_non_highscore_mode_rejected(app):
     """POST to a non-HIGHSCORE tournament returns error from service."""
     with _patched_highscore_view() as mocks:
         tournament = _make_tournament(
-            TournamentMode.HIGHSCORE,
+            GameFormat.HIGHSCORE, EliminationMode.NONE,
         )
         mocks['get_tournament'].return_value = tournament
 
@@ -312,7 +315,7 @@ def test_highscore_delete_all_scores(app):
     """Admin can clear all scores, success flash shown."""
     with _patched_highscore_view() as mocks:
         tournament = _make_tournament(
-            TournamentMode.HIGHSCORE,
+            GameFormat.HIGHSCORE, EliminationMode.NONE,
         )
         mocks['get_tournament'].return_value = tournament
         mocks['score_svc'].delete_scores_for_tournament.return_value = Ok(None)

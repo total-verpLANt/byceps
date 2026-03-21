@@ -17,8 +17,9 @@ from byceps.services.lan_tournament.models.tournament import (
     Tournament,
     TournamentID,
 )
-from byceps.services.lan_tournament.models.tournament_mode import (
-    TournamentMode,
+from byceps.services.lan_tournament.models.game_format import GameFormat
+from byceps.services.lan_tournament.models.elimination_mode import (
+    EliminationMode,
 )
 from byceps.services.lan_tournament.models.tournament_status import (
     TournamentStatus,
@@ -47,10 +48,14 @@ def app():
     return a
 
 
-def _make_tournament(mode: TournamentMode) -> MagicMock:
+def _make_tournament(
+    game_format: GameFormat,
+    elimination_mode: EliminationMode,
+) -> MagicMock:
     t = MagicMock(spec=Tournament)
     t.id = TOURNAMENT_ID
-    t.tournament_mode = mode
+    t.game_format = game_format
+    t.elimination_mode = elimination_mode
     t.tournament_status = TournamentStatus.REGISTRATION_CLOSED
     t.party_id = PARTY_ID_STR
     return t
@@ -110,7 +115,7 @@ def _call_bracket(app):
 def test_bracket_view_rr_mode_shows_standings(app):
     """RR tournament bracket page computes and returns standings."""
     with _patched_view() as mocks:
-        tournament = _make_tournament(TournamentMode.ROUND_ROBIN)
+        tournament = _make_tournament(GameFormat.ONE_V_ONE, EliminationMode.ROUND_ROBIN)
         mocks['get_tournament'].return_value = tournament
         mocks['rr_standings'].return_value = ['fake-standing']
 
@@ -131,7 +136,7 @@ def test_bracket_view_se_mode_shows_bracket(app):
     """SE tournament still shows bracket, standings is None."""
     with _patched_view() as mocks:
         tournament = _make_tournament(
-            TournamentMode.SINGLE_ELIMINATION,
+            GameFormat.ONE_V_ONE, EliminationMode.SINGLE_ELIMINATION,
         )
         mocks['get_tournament'].return_value = tournament
 

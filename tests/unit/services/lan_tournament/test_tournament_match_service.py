@@ -33,8 +33,9 @@ from byceps.services.lan_tournament.models.tournament_participant import (
     TournamentParticipantID,
 )
 from byceps.services.lan_tournament.models.bracket import Bracket
-from byceps.services.lan_tournament.models.tournament_mode import (
-    TournamentMode,
+from byceps.services.lan_tournament.models.game_format import GameFormat
+from byceps.services.lan_tournament.models.elimination_mode import (
+    EliminationMode,
 )
 from byceps.services.lan_tournament.models.tournament_team import (
     TournamentTeamID,
@@ -329,7 +330,7 @@ def test_generate_de_bracket_4_players_total_matches(
     """4 players => 6 matches (WB:3 + LB:2 + GF:1)."""
     tournament = _create_tournament(
         contestant_type=ContestantType.SOLO,
-        tournament_mode=TournamentMode.DOUBLE_ELIMINATION,
+        game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.DOUBLE_ELIMINATION,
     )
     participants = [
         _create_mock_participant(TournamentParticipantID(generate_uuid()))
@@ -357,7 +358,7 @@ def test_generate_de_bracket_8_players_total_matches(
     """8 players => 14 matches (2*8 - 2)."""
     tournament = _create_tournament(
         contestant_type=ContestantType.SOLO,
-        tournament_mode=TournamentMode.DOUBLE_ELIMINATION,
+        game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.DOUBLE_ELIMINATION,
     )
     participants = [
         _create_mock_participant(TournamentParticipantID(generate_uuid()))
@@ -388,7 +389,7 @@ def test_generate_de_bracket_5_players_total_matches(
     """
     tournament = _create_tournament(
         contestant_type=ContestantType.SOLO,
-        tournament_mode=TournamentMode.DOUBLE_ELIMINATION,
+        game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.DOUBLE_ELIMINATION,
     )
     participants = [
         _create_mock_participant(TournamentParticipantID(generate_uuid()))
@@ -426,7 +427,7 @@ def test_generate_de_bracket_wb_lb_gf_structure(
     """
     tournament = _create_tournament(
         contestant_type=ContestantType.SOLO,
-        tournament_mode=TournamentMode.DOUBLE_ELIMINATION,
+        game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.DOUBLE_ELIMINATION,
     )
     participants = [
         _create_mock_participant(TournamentParticipantID(generate_uuid()))
@@ -472,7 +473,7 @@ def test_de_bracket_gf_is_terminal(mock_repo):
     """
     tournament = _create_tournament(
         contestant_type=ContestantType.SOLO,
-        tournament_mode=TournamentMode.DOUBLE_ELIMINATION,
+        game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.DOUBLE_ELIMINATION,
     )
     participants = [
         _create_mock_participant(
@@ -523,7 +524,7 @@ def test_generate_de_bracket_loser_routing_wired(
     """
     tournament = _create_tournament(
         contestant_type=ContestantType.SOLO,
-        tournament_mode=TournamentMode.DOUBLE_ELIMINATION,
+        game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.DOUBLE_ELIMINATION,
     )
     participants = [
         _create_mock_participant(TournamentParticipantID(generate_uuid()))
@@ -561,7 +562,7 @@ def test_generate_de_bracket_seeding_correct(mock_repo):
     """Round 0 WB uses standard seed order."""
     tournament = _create_tournament(
         contestant_type=ContestantType.SOLO,
-        tournament_mode=TournamentMode.DOUBLE_ELIMINATION,
+        game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.DOUBLE_ELIMINATION,
     )
     participants = [
         _create_mock_participant(TournamentParticipantID(generate_uuid()))
@@ -613,7 +614,7 @@ def test_generate_de_bracket_4p_wb_final_loser_routes_to_lbr2(
     """
     tournament = _create_tournament(
         contestant_type=ContestantType.SOLO,
-        tournament_mode=TournamentMode.DOUBLE_ELIMINATION,
+        game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.DOUBLE_ELIMINATION,
     )
     participants = [
         _create_mock_participant(
@@ -679,7 +680,7 @@ def test_generate_de_bracket_8p_loser_routing_correctness(
     """
     tournament = _create_tournament(
         contestant_type=ContestantType.SOLO,
-        tournament_mode=TournamentMode.DOUBLE_ELIMINATION,
+        game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.DOUBLE_ELIMINATION,
     )
     participants = [
         _create_mock_participant(
@@ -743,7 +744,7 @@ def test_generate_de_bracket_2_players_rejected(
     """2 players must be rejected for DE brackets."""
     tournament = _create_tournament(
         contestant_type=ContestantType.SOLO,
-        tournament_mode=TournamentMode.DOUBLE_ELIMINATION,
+        game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.DOUBLE_ELIMINATION,
     )
     participants = [
         _create_mock_participant(
@@ -773,7 +774,7 @@ def test_generate_de_bracket_3_players_rejected(
     """3 players must be rejected for DE brackets."""
     tournament = _create_tournament(
         contestant_type=ContestantType.SOLO,
-        tournament_mode=TournamentMode.DOUBLE_ELIMINATION,
+        game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.DOUBLE_ELIMINATION,
     )
     participants = [
         _create_mock_participant(
@@ -805,7 +806,7 @@ def test_generate_de_bracket_defwin_nullifies_loser_link(
     """
     tournament = _create_tournament(
         contestant_type=ContestantType.SOLO,
-        tournament_mode=TournamentMode.DOUBLE_ELIMINATION,
+        game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.DOUBLE_ELIMINATION,
     )
     participants = [
         _create_mock_participant(
@@ -873,7 +874,7 @@ def test_generate_de_bracket_defwin_still_advances_to_wb1(
     """DEFWIN contestants still advance to next WB round."""
     tournament = _create_tournament(
         contestant_type=ContestantType.SOLO,
-        tournament_mode=TournamentMode.DOUBLE_ELIMINATION,
+        game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.DOUBLE_ELIMINATION,
     )
     participants = [
         _create_mock_participant(
@@ -940,7 +941,7 @@ def test_generate_de_bracket_defwin_auto_confirms_with_initiator(
     initiator_id = UserID(generate_uuid())
     tournament = _create_tournament(
         contestant_type=ContestantType.SOLO,
-        tournament_mode=TournamentMode.DOUBLE_ELIMINATION,
+        game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.DOUBLE_ELIMINATION,
     )
     participants = [
         _create_mock_participant(
@@ -1002,7 +1003,7 @@ def test_generate_de_bracket_creation_order_lb_before_wb(
     """
     tournament = _create_tournament(
         contestant_type=ContestantType.SOLO,
-        tournament_mode=TournamentMode.DOUBLE_ELIMINATION,
+        game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.DOUBLE_ELIMINATION,
     )
     participants = [
         _create_mock_participant(TournamentParticipantID(generate_uuid()))
@@ -1613,7 +1614,7 @@ def test_confirm_match_no_advancement_without_next_match(mock_repo):
 def test_confirm_match_draw_ok_in_round_robin(mock_repo):
     """Draw in round-robin mode confirms successfully."""
     tournament = _create_tournament(
-        tournament_mode=TournamentMode.ROUND_ROBIN,
+        game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.ROUND_ROBIN,
     )
     match = _create_match(confirmed_by=None, next_match_id=None)
 
@@ -1649,7 +1650,7 @@ def test_confirm_match_draw_blocked_in_single_elimination(
 ):
     """Draw in single-elimination mode returns Err."""
     tournament = _create_tournament(
-        tournament_mode=TournamentMode.SINGLE_ELIMINATION,
+        game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.SINGLE_ELIMINATION,
     )
     match = _create_match(confirmed_by=None, next_match_id=None)
 
@@ -1684,7 +1685,7 @@ def test_confirm_match_draw_blocked_in_single_elimination(
 def test_confirm_match_draw_event_has_no_winner(mock_repo, mock_signal):
     """MatchConfirmedEvent for a draw has no winner IDs."""
     tournament = _create_tournament(
-        tournament_mode=TournamentMode.ROUND_ROBIN,
+        game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.ROUND_ROBIN,
     )
     match = _create_match(confirmed_by=None, next_match_id=None)
 
@@ -2484,7 +2485,7 @@ def test_confirm_terminal_match_sets_winner(mock_repo):
     winner_pid = TournamentParticipantID(generate_uuid())
     match = _create_match(confirmed_by=None, next_match_id=None)
     tournament = _create_tournament(
-        tournament_mode=TournamentMode.SINGLE_ELIMINATION,
+        game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.SINGLE_ELIMINATION,
     )
 
     contestants = [
@@ -2518,7 +2519,7 @@ def test_confirm_terminal_match_completes_tournament(mock_repo):
     """Confirming a terminal match sets status to COMPLETED."""
     match = _create_match(confirmed_by=None, next_match_id=None)
     tournament = _create_tournament(
-        tournament_mode=TournamentMode.SINGLE_ELIMINATION,
+        game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.SINGLE_ELIMINATION,
     )
 
     contestants = [
@@ -2555,7 +2556,7 @@ def test_confirm_non_terminal_match_does_not_complete(mock_repo):
     next_match_id = TournamentMatchID(generate_uuid())
     match = _create_match(confirmed_by=None, next_match_id=next_match_id)
     tournament = _create_tournament(
-        tournament_mode=TournamentMode.SINGLE_ELIMINATION,
+        game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.SINGLE_ELIMINATION,
     )
 
     contestants = [
@@ -2586,7 +2587,7 @@ def test_confirm_non_terminal_match_does_not_complete(mock_repo):
 def test_confirm_draw_does_not_complete_tournament(mock_repo):
     """Draw result on terminal match does not trigger completion."""
     tournament = _create_tournament(
-        tournament_mode=TournamentMode.ROUND_ROBIN,
+        game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.ROUND_ROBIN,
     )
     match = _create_match(confirmed_by=None, next_match_id=None)
 
@@ -2700,7 +2701,7 @@ def test_unconfirm_terminal_match_clears_winner(mock_repo):
     confirmed_by = UserID(generate_uuid())
     match = _create_match(confirmed_by=confirmed_by, next_match_id=None)
     tournament = _create_tournament(
-        tournament_mode=TournamentMode.SINGLE_ELIMINATION,
+        game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.SINGLE_ELIMINATION,
     )
 
     contestants = [
@@ -2743,7 +2744,7 @@ def test_unconfirm_terminal_match_reverts_status_to_ongoing(
     confirmed_by = UserID(generate_uuid())
     match = _create_match(confirmed_by=confirmed_by, next_match_id=None)
     tournament = _create_tournament(
-        tournament_mode=TournamentMode.SINGLE_ELIMINATION,
+        game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.SINGLE_ELIMINATION,
     )
 
     contestants = [
@@ -2790,7 +2791,7 @@ def test_unconfirm_terminal_match_dispatches_uncompleted_event(
     confirmed_by = UserID(generate_uuid())
     match = _create_match(confirmed_by=confirmed_by, next_match_id=None)
     tournament = _create_tournament(
-        tournament_mode=TournamentMode.SINGLE_ELIMINATION,
+        game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.SINGLE_ELIMINATION,
     )
 
     contestants = [
@@ -2859,7 +2860,7 @@ def test_unconfirm_non_terminal_cascading_to_gf_dispatches_uncompleted_event(
     )
 
     tournament = _create_tournament(
-        tournament_mode=TournamentMode.DOUBLE_ELIMINATION,
+        game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.DOUBLE_ELIMINATION,
     )
 
     winner_pid = TournamentParticipantID(generate_uuid())
@@ -2978,7 +2979,7 @@ def test_unconfirm_rr_terminal_match_no_uncompleted_event(
         next_match_id=None,
     )
     tournament = _create_tournament(
-        tournament_mode=TournamentMode.ROUND_ROBIN,
+        game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.ROUND_ROBIN,
     )
 
     contestants = [
@@ -4100,7 +4101,8 @@ def _create_tournament(**kwargs) -> Tournament:
         'max_players_in_team': None,
         'contestant_type': None,
         'tournament_status': None,
-        'tournament_mode': None,
+        'game_format': None,
+        'elimination_mode': None,
     }
     defaults.update(kwargs)
     return Tournament(**defaults)
@@ -4197,7 +4199,7 @@ def _make_gf_m1_scenario(
     )
 
     tournament = _create_tournament(
-        tournament_mode=TournamentMode.DOUBLE_ELIMINATION,
+        game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.DOUBLE_ELIMINATION,
         use_bracket_reset=use_bracket_reset,
     )
 
@@ -4564,7 +4566,7 @@ def test_confirm_gf_m2_completes_tournament(mock_repo):
     )
 
     tournament = _create_tournament(
-        tournament_mode=TournamentMode.DOUBLE_ELIMINATION,
+        game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.DOUBLE_ELIMINATION,
         use_bracket_reset=True,
     )
 
@@ -4669,7 +4671,7 @@ def test_unconfirm_gf_m1_deletes_unconfirmed_gf_m2(mock_repo):
     ]
 
     tournament = _create_tournament(
-        tournament_mode=TournamentMode.DOUBLE_ELIMINATION,
+        game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.DOUBLE_ELIMINATION,
     )
 
     mock_repo.get_match_for_update.return_value = gf_m1
@@ -4777,7 +4779,7 @@ def test_unconfirm_gf_m1_cascades_through_confirmed_gf_m2(mock_repo):
     ]
 
     tournament = _create_tournament(
-        tournament_mode=TournamentMode.DOUBLE_ELIMINATION,
+        game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.DOUBLE_ELIMINATION,
     )
 
     # get_match_for_update calls:
@@ -4850,7 +4852,7 @@ def test_unconfirm_gf_m1_without_gf_m2_works_normally(mock_repo):
     ]
 
     tournament = _create_tournament(
-        tournament_mode=TournamentMode.DOUBLE_ELIMINATION,
+        game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.DOUBLE_ELIMINATION,
     )
 
     mock_repo.get_match_for_update.return_value = gf_m1
@@ -5074,7 +5076,7 @@ def test_unconfirm_gf_m1_deletes_gf_m2_comments(mock_repo):
     ]
 
     tournament = _create_tournament(
-        tournament_mode=TournamentMode.DOUBLE_ELIMINATION,
+        game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.DOUBLE_ELIMINATION,
     )
 
     mock_repo.get_match_for_update.return_value = gf_m1
@@ -5167,7 +5169,7 @@ def test_unconfirm_gf_m1_emits_match_deleted_event(
     ]
 
     tournament = _create_tournament(
-        tournament_mode=TournamentMode.DOUBLE_ELIMINATION,
+        game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.DOUBLE_ELIMINATION,
     )
 
     mock_repo.get_match_for_update.return_value = gf_m1

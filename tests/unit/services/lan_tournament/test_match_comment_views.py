@@ -29,8 +29,9 @@ from byceps.services.lan_tournament.models.tournament_match import (
 from byceps.services.lan_tournament.models.tournament_match_to_contestant import (
     TournamentMatchToContestant,
 )
-from byceps.services.lan_tournament.models.tournament_mode import (
-    TournamentMode,
+from byceps.services.lan_tournament.models.game_format import GameFormat
+from byceps.services.lan_tournament.models.elimination_mode import (
+    EliminationMode,
 )
 from byceps.services.lan_tournament.models.tournament_status import (
     TournamentStatus,
@@ -80,7 +81,8 @@ def _make_tournament(
     t.party_id = PARTY_ID_STR
     t.name = 'Test Tournament'
     t.tournament_status = status
-    t.tournament_mode = TournamentMode.SINGLE_ELIMINATION
+    t.game_format = GameFormat.ONE_V_ONE
+    t.elimination_mode = EliminationMode.SINGLE_ELIMINATION
     t.contestant_type = ContestantType.TEAM
     t.max_players = None
     return t
@@ -126,8 +128,8 @@ def _patched_comment_view(
     match = _make_match()
     contestant = _make_contestant()
 
-    role_with_contestant = MatchUserRole(contestant, False, False, False)
-    role_without_contestant = MatchUserRole(None, False, False, False)
+    role_with_contestant = MatchUserRole(contestant=contestant, is_loser=False, can_confirm=False, can_submit=False)
+    role_without_contestant = MatchUserRole(contestant=None, is_loser=False, can_confirm=False, can_submit=False)
 
     with app.app_context():
         with (

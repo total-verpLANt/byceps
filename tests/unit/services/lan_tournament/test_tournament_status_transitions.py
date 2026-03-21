@@ -288,7 +288,8 @@ def _create_tournament(**kwargs) -> Tournament:
         'max_players_in_team': None,
         'contestant_type': None,
         'tournament_status': None,
-        'tournament_mode': None,
+        'game_format': None,
+        'elimination_mode': None,
     }
     defaults.update(kwargs)
     return Tournament(**defaults)

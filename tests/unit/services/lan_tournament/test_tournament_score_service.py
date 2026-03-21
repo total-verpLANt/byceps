@@ -23,8 +23,9 @@ from byceps.services.lan_tournament.models.tournament import (
 from byceps.services.lan_tournament.models.score_ordering import (
     ScoreOrdering,
 )
-from byceps.services.lan_tournament.models.tournament_mode import (
-    TournamentMode,
+from byceps.services.lan_tournament.models.game_format import GameFormat
+from byceps.services.lan_tournament.models.elimination_mode import (
+    EliminationMode,
 )
 from byceps.services.lan_tournament.models.tournament_participant import (
     TournamentParticipant,
@@ -66,7 +67,8 @@ def _create_tournament(**kwargs) -> Tournament:
         'max_players_in_team': None,
         'contestant_type': None,
         'tournament_status': None,
-        'tournament_mode': TournamentMode.HIGHSCORE,
+        'game_format': GameFormat.HIGHSCORE,
+        'elimination_mode': EliminationMode.NONE,
         'score_ordering': ScoreOrdering.HIGHER_IS_BETTER,
     }
     defaults.update(kwargs)
@@ -345,7 +347,8 @@ def test_delete_scores_for_tournament_calls_repository(
 def test_submit_score_non_highscore_mode_err(mock_repo):
     """Submit score on non-HIGHSCORE tournament returns Err."""
     tournament = _create_tournament(
-        tournament_mode=TournamentMode.SINGLE_ELIMINATION,
+        game_format=GameFormat.ONE_V_ONE,
+        elimination_mode=EliminationMode.SINGLE_ELIMINATION,
     )
     mock_repo.get_tournament.return_value = tournament
     pid = TournamentParticipantID(generate_uuid())
@@ -389,7 +392,8 @@ def test_submit_score_with_team_id(mock_repo):
 def test_get_leaderboard_non_highscore_mode_err(mock_repo):
     """Leaderboard on non-HIGHSCORE tournament returns Err."""
     tournament = _create_tournament(
-        tournament_mode=TournamentMode.ROUND_ROBIN,
+        game_format=GameFormat.ONE_V_ONE,
+        elimination_mode=EliminationMode.ROUND_ROBIN,
     )
     mock_repo.get_tournament.return_value = tournament
 

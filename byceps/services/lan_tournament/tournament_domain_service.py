@@ -1,4 +1,5 @@
 from datetime import datetime, UTC
+from math import ceil
 
 from byceps.services.party.models import PartyID
 from byceps.util.result import Err, Ok, Result
@@ -11,7 +12,8 @@ from .events import (
 from .models.contestant_type import ContestantType
 from .models.tournament import Tournament, TournamentID
 from .models.score_ordering import ScoreOrdering
-from .models.tournament_mode import TournamentMode
+from .models.game_format import GameFormat
+from .models.elimination_mode import EliminationMode
 from .models.round_robin_standing import RoundRobinStanding
 from .models.tournament_match_to_contestant import (
     TournamentMatchToContestant,
@@ -64,8 +66,14 @@ def create_tournament(
     max_players_in_team: int | None = None,
     contestant_type: ContestantType | None = None,
     tournament_status: TournamentStatus | None = None,
-    tournament_mode: TournamentMode | None = None,
+    game_format: GameFormat | None = None,
+    elimination_mode: EliminationMode | None = None,
     score_ordering: ScoreOrdering | None = None,
+    point_table: list[int] | None = None,
+    advancement_count: int | None = None,
+    group_size_min: int | None = None,
+    group_size_max: int | None = None,
+    points_carry_to_losers: bool | None = None,
 ) -> tuple[Tournament, TournamentCreatedEvent]:
     """Create a new tournament."""
     tournament_id = TournamentID(generate_uuid7())
@@ -89,8 +97,14 @@ def create_tournament(
         max_players_in_team=max_players_in_team,
         contestant_type=contestant_type,
         tournament_status=tournament_status,
-        tournament_mode=tournament_mode,
+        game_format=game_format,
+        elimination_mode=elimination_mode,
         score_ordering=score_ordering,
+        point_table=point_table,
+        advancement_count=advancement_count,
+        group_size_min=group_size_min,
+        group_size_max=group_size_max,
+        points_carry_to_losers=points_carry_to_losers,
     )
 
     event = TournamentCreatedEvent(
@@ -223,7 +237,7 @@ def generate_round_robin_schedule(
     return schedule
 
 
-def _contestant_id(
+def contestant_id(
     c: TournamentMatchToContestant,
 ) -> str:
     """Return the effective contestant ID as a string."""
@@ -269,8 +283,8 @@ def compute_round_robin_standings(
             continue
 
         c1, c2 = contestants
-        cid1 = _contestant_id(c1)
-        cid2 = _contestant_id(c2)
+        cid1 = contestant_id(c1)
+        cid2 = contestant_id(c2)
 
         s1 = _ensure(cid1)
         s2 = _ensure(cid2)
@@ -296,7 +310,7 @@ def compute_round_robin_standings(
             s2['draws'] += 1
             s2['points'] += 1
         else:
-            winner_id = _contestant_id(winner)
+            winner_id = contestant_id(winner)
             if winner_id == cid1:
                 s1['wins'] += 1
                 s1['points'] += 3
@@ -346,4 +360,106 @@ def _standard_seed_order(bracket_size: int) -> list[int]:
     for seed in prev:
         result.append(seed)
         result.append(bracket_size - 1 - seed)
+    return result
+
+
+# -------------------------------------------------------------------- #
+# FFA domain logic
+# -------------------------------------------------------------------- #
+
+
+def snake_seed_groups(
+    contestant_ids: list[str],
+    group_size_min: int,
+    group_size_max: int,
+) -> Result[list[list[str]], str]:
+    """Distribute contestants into groups using serpentine/snake ordering.
+
+    Groups are as equal as possible (sizes differ by at most 1).
+    Returns ``Err`` when the input is empty or any resulting group
+    would be smaller than *group_size_min*.
+    """
+    if not contestant_ids:
+        return Err('No contestants to distribute.')
+
+    num_groups = ceil(len(contestant_ids) / group_size_max)
+    groups: list[list[str]] = [[] for _ in range(num_groups)]
+
+    for row_idx, cid in enumerate(contestant_ids):
+        group_in_row = row_idx % num_groups
+        row_number = row_idx // num_groups
+        # Even rows go L->R, odd rows go R->L (serpentine).
+        if row_number % 2 == 0:
+            target = group_in_row
+        else:
+            target = num_groups - 1 - group_in_row
+        groups[target].append(cid)
+
+    # Validate minimum group size.
+    for idx, group in enumerate(groups):
+        if len(group) < group_size_min:
+            return Err(
+                f'Group {idx} has {len(group)} contestants,'
+                f' below the minimum of {group_size_min}.'
+            )
+
+    return Ok(groups)
+
+
+def map_placement_to_points(placement: int, point_table: list[int]) -> int:
+    """Map a 1-indexed placement to points from the given table.
+
+    Returns ``0`` for placements beyond the table length.
+    """
+    idx = placement - 1
+    if 0 <= idx < len(point_table):
+        return point_table[idx]
+    return 0
+
+
+def compute_ffa_round_standings(
+    matches: list[list[TournamentMatchToContestant]],
+) -> list[tuple[str, int]]:
+    """Compute per-player standings from a single FFA round.
+
+    *matches* is a list of groups, where each group is a list of
+    ``TournamentMatchToContestant`` entries with ``placement`` and
+    ``points`` already set.
+
+    Returns a list of ``(contestant_id, points)`` tuples sorted by
+    points descending.
+    """
+    standings: dict[str, int] = {}
+
+    for group in matches:
+        for contestant in group:
+            cid = contestant_id(contestant)
+            pts = contestant.points if contestant.points is not None else 0
+            standings[cid] = standings.get(cid, 0) + pts
+
+    result = sorted(standings.items(), key=lambda item: item[1], reverse=True)
+    return result
+
+
+def compute_ffa_cumulative_standings(
+    all_round_matches: list[list[list[TournamentMatchToContestant]]],
+) -> list[tuple[str, int]]:
+    """Aggregate FFA standings across all rounds.
+
+    *all_round_matches* is a list of rounds, where each round is
+    structured as in :func:`compute_ffa_round_standings`.
+
+    Returns a list of ``(contestant_id, total_points)`` tuples sorted
+    by total points descending.
+    """
+    cumulative: dict[str, int] = {}
+
+    for round_matches in all_round_matches:
+        round_standings = compute_ffa_round_standings(round_matches)
+        for cid, pts in round_standings:
+            cumulative[cid] = cumulative.get(cid, 0) + pts
+
+    result = sorted(
+        cumulative.items(), key=lambda item: item[1], reverse=True
+    )
     return result

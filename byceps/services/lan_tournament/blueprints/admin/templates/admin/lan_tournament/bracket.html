@@ -1,6 +1,7 @@
 {% extends 'layout/admin/lan_tournament.html' %}
 {% from 'macros/admin.html' import render_backlink %}
-{% from 'macros/lan_tournament.html' import bracket_all_styles, render_bracket, render_de_bracket, render_round_robin_standings, render_simple_bracket_list, render_simple_de_bracket_list %}
+{% from 'macros/icons.html' import render_icon %}
+{% from 'macros/lan_tournament.html' import bracket_all_styles, render_bracket, render_de_bracket, render_ffa_standings, render_round_robin_standings, render_simple_bracket_list, render_simple_de_bracket_list %}
 {% set current_page_party = party %}
 {% set current_tab = 'tournaments' %}
 {% set page_title = [_('Bracket'), tournament.name, party.title] %}
@@ -12,6 +13,26 @@
 .bracket-contestant.bracket-rank-2 { background-color: #f5f5f5 !important; }
 .bracket-contestant.bracket-rank-3 { background-color: #fff3e0 !important; }
 .bracket-trophy-icon { margin-right: 0.35em; vertical-align: middle; }
+
+/* FFA-DE pool tabs */
+.ffa-de-tabs { display: flex; gap: 0; border-bottom: 2px solid #dee2e6; margin-bottom: 1.5rem; }
+.ffa-de-tab { padding: 0.6rem 1.2rem; cursor: pointer; border: 1px solid transparent; border-bottom: none; margin-bottom: -2px; border-radius: 4px 4px 0 0; color: #555; font-weight: 500; background: transparent; transition: background 0.15s, color 0.15s; }
+.ffa-de-tab:hover { background: #f8f9fa; color: #333; }
+.ffa-de-tab.is-active { background: var(--color-background, #fff); border-color: #dee2e6; border-bottom-color: var(--color-background, #fff); color: #111; font-weight: 600; }
+.ffa-de-tab-panel { display: none; }
+.ffa-de-tab-panel.is-active { display: block; }
+
+/* DE pool status badges */
+.ffa-de-pool-status { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
+.ffa-de-badge { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.3rem 0.7rem; border-radius: 4px; font-size: 0.85rem; font-weight: 600; }
+.ffa-de-badge--wb { background: #d4edda; color: #155724; }
+.ffa-de-badge--lb { background: #fff3cd; color: #856404; }
+.ffa-de-badge--elim { background: #f8d7da; color: #721c24; }
+.ffa-de-badge--gf { background: #cce5ff; color: #004085; }
+
+/* Grand Final highlight */
+.ffa-gf-section { border: 2px solid #ffc107; border-radius: 6px; padding: 1.25rem; background: #fffdf5; margin-top: 1rem; }
+.ffa-gf-section h3 { margin-top: 0; color: #856404; }
 </style>
 {% endblock %}
 
@@ -22,18 +43,186 @@
 
 {% block body %}
 
-  <h1 class='title'>{{ _('Tournament Bracket') }}</h1>
+  {% if tournament.game_format and tournament.game_format.name == 'FREE_FOR_ALL' and tournament.elimination_mode and tournament.elimination_mode.name == 'DOUBLE_ELIMINATION' %}
 
-  {% if tournament.tournament_mode and tournament.tournament_mode.name == 'ROUND_ROBIN' %}
+    {# ═══════════════════════════════════════════════════════════════ #}
+    {# FFA + Double Elimination — tabbed pool management             #}
+    {# ═══════════════════════════════════════════════════════════════ #}
+
+    <h1 class='title'>{{ _('FFA Double Elimination') }}</h1>
+
+    {# DE pool status badges #}
+    {%- if ffa_de_pool_status %}
+    <div class='ffa-de-pool-status'>
+      <span class='ffa-de-badge ffa-de-badge--wb'>{{ render_icon('arrow-up') }} {{ _('WB') }}: {{ ffa_de_pool_status.wb_count }}</span>
+      <span class='ffa-de-badge ffa-de-badge--lb'>{{ render_icon('arrow-down') }} {{ _('LB') }}: {{ ffa_de_pool_status.lb_count }}</span>
+      <span class='ffa-de-badge ffa-de-badge--elim'>{{ render_icon('disabled') }} {{ _('Eliminated') }}: {{ ffa_de_pool_status.eliminated_count }}</span>
+      {%- if ffa_gf_exists %}
+      <span class='ffa-de-badge ffa-de-badge--gf'>{{ render_icon('trophy') }} {{ _('Grand Final') }}: {{ ffa_de_pool_status.gf_count }}</span>
+      {%- endif %}
+    </div>
+    {%- endif %}
+
+    {# Tab navigation #}
+    <div class='ffa-de-tabs' role='tablist'>
+      <button class='ffa-de-tab is-active' role='tab' data-tab='wb' aria-selected='true'>{{ _('Winners Pool') }}</button>
+      <button class='ffa-de-tab' role='tab' data-tab='lb' aria-selected='false'>{{ _('Losers Pool') }}</button>
+      <button class='ffa-de-tab' role='tab' data-tab='overall' aria-selected='false'>{{ _('Overall') }}</button>
+      {%- if ffa_gf_exists %}
+      <button class='ffa-de-tab' role='tab' data-tab='gf' aria-selected='false'>{{ _('Grand Final') }}</button>
+      {%- endif %}
+    </div>
+
+    {# ── Winners Pool tab ── #}
+    <div id='ffa-de-panel-wb' class='ffa-de-tab-panel is-active' role='tabpanel'>
+      <h2>{{ _('Winners Pool Standings') }}</h2>
+      {%- if ffa_wb_standings %}
+        {{ render_ffa_standings(ffa_wb_standings, round_standings=ffa_wb_round_standings, teams_by_id=teams_by_id, participants_by_id=participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id, profile_url_endpoint='user_admin.view') }}
+      {%- else %}
+        <p class='dimmed'>{{ _('No Winners Pool rounds have been played yet.') }}</p>
+      {%- endif %}
+
+      {%- if has_current_user_permission('lan_tournament.administrate') and tournament.tournament_status and tournament.tournament_status.name in ('ONGOING', 'REGISTRATION_CLOSED') %}
+      <div class='button-row block' style='margin-top: 1.5rem;'>
+        {%- if ffa_wb_latest_round is none %}
+          <form action='{{ url_for('.generate_ffa_round_action', tournament_id=tournament.id) }}' method='post'>
+            <button type='submit' class='button color-success'>
+              {{ render_icon('arrange') }} {{ _('Generate First WB Round') }}
+            </button>
+          </form>
+        {%- elif ffa_wb_all_confirmed %}
+          <form action='{{ url_for('.advance_ffa_round_action', tournament_id=tournament.id) }}' method='post'>
+            <input type='hidden' name='pool' value='WB'>
+            <button type='submit' class='button color-success'>
+              {{ render_icon('arrange') }} {{ _('Advance WB Round') }}
+            </button>
+          </form>
+        {%- else %}
+          <span class='dimmed'>{{ _('Confirm all WB groups in the current round before advancing.') }}</span>
+        {%- endif %}
+      </div>
+      {%- endif %}
+    </div>
+
+    {# ── Losers Pool tab ── #}
+    <div id='ffa-de-panel-lb' class='ffa-de-tab-panel' role='tabpanel'>
+      <h2>{{ _('Losers Pool Standings') }}</h2>
+      {%- if ffa_lb_standings %}
+        {{ render_ffa_standings(ffa_lb_standings, round_standings=ffa_lb_round_standings, teams_by_id=teams_by_id, participants_by_id=participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id, profile_url_endpoint='user_admin.view') }}
+      {%- else %}
+        <p class='dimmed'>{{ _('No Losers Pool rounds have been played yet.') }}</p>
+      {%- endif %}
+
+      {%- if has_current_user_permission('lan_tournament.administrate') and tournament.tournament_status and tournament.tournament_status.name in ('ONGOING', 'REGISTRATION_CLOSED') %}
+      <div class='button-row block' style='margin-top: 1.5rem;'>
+        {%- if ffa_lb_standings and ffa_lb_all_confirmed %}
+          <form action='{{ url_for('.advance_ffa_round_action', tournament_id=tournament.id) }}' method='post'>
+            <input type='hidden' name='pool' value='LB'>
+            <button type='submit' class='button color-success'>
+              {{ render_icon('arrange') }} {{ _('Advance LB Round') }}
+            </button>
+          </form>
+        {%- elif ffa_lb_standings %}
+          <span class='dimmed'>{{ _('Confirm all LB groups in the current round before advancing.') }}</span>
+        {%- else %}
+          <span class='dimmed'>{{ _('Losers pool rounds are generated when WB round advancement drops players.') }}</span>
+        {%- endif %}
+      </div>
+      {%- endif %}
+    </div>
+
+    {# ── Overall tab ── #}
+    <div id='ffa-de-panel-overall' class='ffa-de-tab-panel' role='tabpanel'>
+      <h2>{{ _('Overall Standings') }}</h2>
+      {%- if ffa_standings %}
+        {{ render_ffa_standings(ffa_standings, round_standings=ffa_round_standings, teams_by_id=teams_by_id, participants_by_id=participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id, profile_url_endpoint='user_admin.view') }}
+      {%- else %}
+        <p class='dimmed'>{{ _('No FFA rounds have been played yet.') }}</p>
+      {%- endif %}
+    </div>
+
+    {# ── Grand Final tab ── #}
+    {%- if ffa_gf_exists %}
+    <div id='ffa-de-panel-gf' class='ffa-de-tab-panel' role='tabpanel'>
+      <div class='ffa-gf-section'>
+        <h3>{{ render_icon('trophy') }} {{ _('Grand Final') }}</h3>
+        {%- if ffa_gf_standings %}
+          {{ render_ffa_standings(ffa_gf_standings, teams_by_id=teams_by_id, participants_by_id=participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id, profile_url_endpoint='user_admin.view') }}
+        {%- else %}
+          <p class='dimmed'>{{ _('Grand Final placements not yet recorded.') }}</p>
+        {%- endif %}
+      </div>
+    </div>
+    {%- endif %}
+
+    {# Generate Grand Final button — outside tabs, always visible when eligible #}
+    {%- if has_current_user_permission('lan_tournament.administrate') and tournament.tournament_status and tournament.tournament_status.name in ('ONGOING', 'REGISTRATION_CLOSED') and not ffa_gf_exists %}
+    <div class='button-row block' style='margin-top: 1.5rem;'>
+      {%- if ffa_wb_all_confirmed and ffa_lb_all_confirmed and ffa_wb_standings and ffa_lb_standings %}
+        <form action='{{ url_for('.generate_ffa_grand_final_action', tournament_id=tournament.id) }}' method='post'>
+          <button type='submit' class='button color-warning' style='font-weight: 600;'>
+            {{ render_icon('trophy') }} {{ _('Generate Grand Final') }}
+          </button>
+        </form>
+      {%- endif %}
+    </div>
+    {%- endif %}
+
+  {% elif tournament.game_format and tournament.game_format.name == 'FREE_FOR_ALL' %}
+
+    {# ═══════════════════════════════════════════════════════════════ #}
+    {# FFA single-track (non-DE)                                     #}
+    {# ═══════════════════════════════════════════════════════════════ #}
+
+    <h1 class='title'>{{ _('FFA Standings') }}</h1>
+
+    {%- if ffa_standings %}
+      {{ render_ffa_standings(ffa_standings, round_standings=ffa_round_standings, teams_by_id=teams_by_id, participants_by_id=participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id, profile_url_endpoint='user_admin.view') }}
+    {%- else %}
+      <p class='dimmed'>{{ _('No FFA rounds have been played yet.') }}</p>
+    {%- endif %}
+
+    {# FFA round management buttons #}
+    {%- if has_current_user_permission('lan_tournament.administrate') and tournament.tournament_status and tournament.tournament_status.name in ('ONGOING', 'REGISTRATION_CLOSED') %}
+    <div class='button-row block' style='margin-top: 1.5rem;'>
+      {%- if ffa_latest_round is none %}
+        {# No rounds yet — generate the first round #}
+        <form action='{{ url_for('.generate_ffa_round_action', tournament_id=tournament.id) }}' method='post'>
+          <button type='submit' class='button color-success'>
+            {{ render_icon('arrange') }} {{ _('Generate First Round') }}
+          </button>
+        </form>
+      {%- elif ffa_all_confirmed %}
+        {# All groups in current round confirmed — offer advancement #}
+        <form action='{{ url_for('.advance_ffa_round_action', tournament_id=tournament.id) }}' method='post'>
+          <button type='submit' class='button color-success'>
+            {{ render_icon('arrange') }} {{ _('Advance Round') }}
+          </button>
+        </form>
+      {%- else %}
+        <span class='dimmed'>{{ _('Confirm all groups in the current round before advancing.') }}</span>
+      {%- endif %}
+    </div>
+    {%- endif %}
+
+  {% elif tournament.elimination_mode and tournament.elimination_mode.name == 'ROUND_ROBIN' %}
+
+    <h1 class='title'>{{ _('Tournament Bracket') }}</h1>
     {{ render_round_robin_standings(standings, tournament, teams_by_id=teams_by_id, participants_by_id=participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id, profile_url_endpoint='user_admin.view') }}
-  {% elif tournament.tournament_mode and tournament.tournament_mode.name == 'DOUBLE_ELIMINATION' %}
+
+  {% elif tournament.elimination_mode and tournament.elimination_mode.name == 'DOUBLE_ELIMINATION' %}
+
+    <h1 class='title'>{{ _('Tournament Bracket') }}</h1>
     <div class='bracket-desktop'>
       {{ render_de_bracket(match_data, tournament, teams_by_id, participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id, bracket_id='de-' ~ tournament.id, match_url_endpoint='lan_tournament_admin.view_match', profile_url_endpoint='user_admin.view') }}
     </div>
     <div class='bracket-mobile'>
       {{ render_simple_de_bracket_list(match_data, teams_by_id, participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id, match_url_endpoint='lan_tournament_admin.view_match', profile_url_endpoint='user_admin.view') }}
     </div>
+
   {% else %}
+
+    <h1 class='title'>{{ _('Tournament Bracket') }}</h1>
     <div class='bracket-desktop'>
       {{ render_bracket(match_data, tournament, teams_by_id, participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id, match_url_endpoint='lan_tournament_admin.view_match', profile_url_endpoint='user_admin.view') }}
     </div>
@@ -41,8 +230,10 @@
     <div class='bracket-mobile'>
       {{ render_simple_bracket_list(match_data, teams_by_id, participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id, match_url_endpoint='lan_tournament_admin.view_match', profile_url_endpoint='user_admin.view') }}
     </div>
+
   {% endif %}
 
+  {% if not (tournament.game_format and tournament.game_format.name == 'FREE_FOR_ALL') %}
   <script>
   /* Post-render placement highlighting for admin bracket view.
      Targets .bracket-desktop only (mobile list view is out of scope). */
@@ -133,6 +324,36 @@
     });
   });
   </script>
+  {% endif %}
+
+  {% if tournament.game_format and tournament.game_format.name == 'FREE_FOR_ALL' and tournament.elimination_mode and tournament.elimination_mode.name == 'DOUBLE_ELIMINATION' %}
+  <script>
+  /* FFA-DE tab switching */
+  document.addEventListener('DOMContentLoaded', function () {
+    var tabs = document.querySelectorAll('.ffa-de-tab');
+    tabs.forEach(function (tab) {
+      tab.addEventListener('click', function () {
+        var target = tab.getAttribute('data-tab');
+
+        /* Deactivate all tabs and panels. */
+        tabs.forEach(function (t) {
+          t.classList.remove('is-active');
+          t.setAttribute('aria-selected', 'false');
+        });
+        document.querySelectorAll('.ffa-de-tab-panel').forEach(function (p) {
+          p.classList.remove('is-active');
+        });
+
+        /* Activate selected tab and panel. */
+        tab.classList.add('is-active');
+        tab.setAttribute('aria-selected', 'true');
+        var panel = document.getElementById('ffa-de-panel-' + target);
+        if (panel) panel.classList.add('is-active');
+      });
+    });
+  });
+  </script>
+  {% endif %}
 
   <div style='margin-top: 2rem;'>
     <a href='{{ url_for('.matches_for_tournament',

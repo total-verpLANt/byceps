@@ -22,8 +22,9 @@ from byceps.services.lan_tournament.models.tournament import (
     Tournament,
     TournamentID,
 )
-from byceps.services.lan_tournament.models.tournament_mode import (
-    TournamentMode,
+from byceps.services.lan_tournament.models.game_format import GameFormat
+from byceps.services.lan_tournament.models.elimination_mode import (
+    EliminationMode,
 )
 from byceps.services.lan_tournament.models.tournament_status import (
     TournamentStatus,
@@ -73,7 +74,8 @@ def _make_tournament(
         max_players_in_team=None,
         contestant_type=ContestantType.SOLO,
         tournament_status=status,
-        tournament_mode=TournamentMode.SINGLE_ELIMINATION,
+        game_format=GameFormat.ONE_V_ONE,
+        elimination_mode=EliminationMode.SINGLE_ELIMINATION,
         score_ordering=None,
     )
 
@@ -95,7 +97,8 @@ def _call_update(tournament: Tournament, **overrides):
         min_players_in_team=tournament.min_players_in_team,
         max_players_in_team=tournament.max_players_in_team,
         contestant_type=tournament.contestant_type,
-        tournament_mode=tournament.tournament_mode,
+        game_format=tournament.game_format,
+        elimination_mode=tournament.elimination_mode,
         score_ordering=tournament.score_ordering,
     )
     kwargs.update(overrides)
@@ -149,16 +152,16 @@ def test_update_locked_field_name_when_ongoing():
 
 
 def test_update_locked_field_mode_when_ongoing():
-    """Changing tournament_mode on an ONGOING tournament must be rejected."""
+    """Changing elimination_mode on an ONGOING tournament must be rejected."""
     tournament = _make_tournament(TournamentStatus.ONGOING)
 
     with patch(f'{_REPO}.get_tournament', return_value=tournament):
         result = _call_update(
-            tournament, tournament_mode=TournamentMode.ROUND_ROBIN
+            tournament, elimination_mode=EliminationMode.ROUND_ROBIN
         )
 
     assert result.is_err()
-    assert 'tournament_mode' in result.unwrap_err()
+    assert 'elimination_mode' in result.unwrap_err()
 
 
 def test_update_locked_field_contestant_type_when_ongoing():
@@ -203,7 +206,7 @@ def test_update_all_fields_when_draft():
             tournament,
             name='New Name',
             game='NewGame',
-            tournament_mode=TournamentMode.ROUND_ROBIN,
+            elimination_mode=EliminationMode.ROUND_ROBIN,
         )
 
     assert result.is_ok()

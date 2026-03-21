@@ -29,6 +29,8 @@ from byceps.services.lan_tournament.models.tournament_team import (
     TournamentTeamID,
 )
 from byceps.services.lan_tournament.tournament_domain_service import (
+    compute_ffa_cumulative_standings,
+    compute_ffa_round_standings,
     compute_round_robin_standings,
 )
 from byceps.services.party.models import PartyID
@@ -189,6 +191,68 @@ def build_round_robin_standings(
     return compute_round_robin_standings(confirmed_pairs)
 
 
+def build_ffa_standings(
+    match_data: list[dict],
+) -> list[dict]:
+    """Compute FFA cumulative standings from pre-loaded match data.
+
+    Groups matches by round, delegates to the domain functions, then
+    returns a list of dicts suitable for Jinja2 template rendering:
+
+        {
+            'contestant_id': str,
+            'total_points': int,
+            'rounds_played': int,
+            'avg_points': float,
+            'per_round': list[int],   # points per round, 0 if absent
+        }
+
+    Matches that are not confirmed are excluded.  An empty list is
+    returned when no confirmed FFA matches exist.
+    """
+    # Group confirmed match contestants by round number.
+    rounds_map: dict[int, list[list[TournamentMatchToContestant]]] = {}
+    for data in match_data:
+        if data['match'].confirmed_by is None:
+            continue
+        round_num = data['match'].round or 0
+        rounds_map.setdefault(round_num, []).append(data['contestants'])
+
+    if not rounds_map:
+        return []
+
+    # Sort round numbers so per_round ordering is deterministic.
+    sorted_rounds = sorted(rounds_map.keys())
+
+    # Build the nested structure expected by the domain function.
+    all_round_matches = [rounds_map[r] for r in sorted_rounds]
+
+    # Cumulative standings (sorted by total_points desc).
+    cumulative = compute_ffa_cumulative_standings(all_round_matches)
+
+    # Per-round standings for the breakdown columns.
+    per_round_maps: list[dict[str, int]] = []
+    for r in sorted_rounds:
+        round_standings = compute_ffa_round_standings(rounds_map[r])
+        per_round_maps.append(dict(round_standings))
+
+    # Build template-friendly list.
+    result: list[dict] = []
+    for cid, total_pts in cumulative:
+        per_round = [prm.get(cid, 0) for prm in per_round_maps]
+        rounds_played = sum(1 for prm in per_round_maps if cid in prm)
+        avg = total_pts / rounds_played if rounds_played > 0 else 0.0
+        result.append({
+            'contestant_id': cid,
+            'total_points': total_pts,
+            'rounds_played': rounds_played,
+            'avg_points': round(avg, 1),
+            'per_round': per_round,
+        })
+
+    return result
+
+
 def _resolve_contestant_name(
     contestant: TournamentMatchToContestant,
     teams_by_id: dict[TournamentTeamID, TournamentTeam],
@@ -243,7 +307,8 @@ def serialize_bracket_json(
         'tournament': {
             'id': str(tournament.id),
             'name': tournament.name,
-            'mode': tournament.tournament_mode.name if tournament.tournament_mode else None,
+            'game_format': tournament.game_format.name if tournament.game_format else None,
+            'elimination_mode': tournament.elimination_mode.name if tournament.elimination_mode else None,
             'contestant_type': tournament.contestant_type.name if tournament.contestant_type else 'SOLO',
             'status': tournament.tournament_status.name if tournament.tournament_status else None,
         },

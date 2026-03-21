@@ -310,7 +310,8 @@ def test_admin_remove_participant_clears_winner_before_hard_delete(
         max_players_in_team=None,
         contestant_type=ContestantType.SOLO,
         tournament_status=TournamentStatus.COMPLETED,
-        tournament_mode=None,
+        game_format=None,
+        elimination_mode=None,
     )
     mock_repository.get_tournament_for_update.return_value = mock_tournament
 
@@ -397,7 +398,8 @@ def test_leave_team_auto_delete_clears_winner_reference(
         max_players_in_team=None,
         contestant_type=None,
         tournament_status=TournamentStatus.REGISTRATION_OPEN,
-        tournament_mode=None,
+        game_format=None,
+        elimination_mode=None,
     )
     mock_repository.get_tournament.return_value = mock_tournament
 

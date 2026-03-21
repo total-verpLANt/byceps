@@ -41,8 +41,9 @@ from byceps.services.lan_tournament.models.score_submission import (
     ScoreSubmission,
     ScoreSubmissionID,
 )
-from byceps.services.lan_tournament.models.tournament_mode import (
-    TournamentMode,
+from byceps.services.lan_tournament.models.game_format import GameFormat
+from byceps.services.lan_tournament.models.elimination_mode import (
+    EliminationMode,
 )
 from byceps.services.lan_tournament.models.tournament_participant import (
     TournamentParticipant,
@@ -88,7 +89,8 @@ def test_tournament_creation_with_all_fields():
         max_players_in_team=5,
         contestant_type=ContestantType.TEAM,
         tournament_status=TournamentStatus.DRAFT,
-        tournament_mode=TournamentMode.SINGLE_ELIMINATION,
+        game_format=GameFormat.ONE_V_ONE,
+        elimination_mode=EliminationMode.SINGLE_ELIMINATION,
     )
 
     assert tournament.id == tournament_id
@@ -108,7 +110,8 @@ def test_tournament_creation_with_all_fields():
     assert tournament.max_players_in_team == 5
     assert tournament.contestant_type == ContestantType.TEAM
     assert tournament.tournament_status == TournamentStatus.DRAFT
-    assert tournament.tournament_mode == TournamentMode.SINGLE_ELIMINATION
+    assert tournament.game_format == GameFormat.ONE_V_ONE
+    assert tournament.elimination_mode == EliminationMode.SINGLE_ELIMINATION
 
 
 def test_tournament_creation_with_none_optional_fields():
@@ -130,7 +133,8 @@ def test_tournament_creation_with_none_optional_fields():
         max_players_in_team=None,
         contestant_type=None,
         tournament_status=None,
-        tournament_mode=None,
+        game_format=None,
+        elimination_mode=None,
     )
 
     assert tournament.game is None
@@ -146,7 +150,8 @@ def test_tournament_creation_with_none_optional_fields():
     assert tournament.max_players_in_team is None
     assert tournament.contestant_type is None
     assert tournament.tournament_status is None
-    assert tournament.tournament_mode is None
+    assert tournament.game_format is None
+    assert tournament.elimination_mode is None
 
 
 def test_tournament_is_frozen():
@@ -621,7 +626,8 @@ def _create_tournament(**kwargs) -> Tournament:
         'max_players_in_team': None,
         'contestant_type': None,
         'tournament_status': None,
-        'tournament_mode': None,
+        'game_format': None,
+        'elimination_mode': None,
     }
     defaults.update(kwargs)
     return Tournament(**defaults)

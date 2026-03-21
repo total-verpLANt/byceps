@@ -24,8 +24,9 @@ from byceps.services.lan_tournament.models.tournament_match_to_contestant import
     TournamentMatchToContestant,
     TournamentMatchToContestantID,
 )
-from byceps.services.lan_tournament.models.tournament_mode import (
-    TournamentMode,
+from byceps.services.lan_tournament.models.game_format import GameFormat
+from byceps.services.lan_tournament.models.elimination_mode import (
+    EliminationMode,
 )
 from byceps.services.lan_tournament.models.tournament_participant import (
     TournamentParticipantID,
@@ -59,7 +60,8 @@ TOURNAMENT_ID = TournamentID(generate_uuid())
 
 def _make_tournament(
     *,
-    mode: TournamentMode = TournamentMode.SINGLE_ELIMINATION,
+    game_format: GameFormat = GameFormat.ONE_V_ONE,
+    elimination_mode: EliminationMode = EliminationMode.SINGLE_ELIMINATION,
     contestant_type: ContestantType = ContestantType.SOLO,
     status: TournamentStatus = TournamentStatus.ONGOING,
 ) -> Tournament:
@@ -81,7 +83,8 @@ def _make_tournament(
         max_players_in_team=None,
         contestant_type=contestant_type,
         tournament_status=status,
-        tournament_mode=mode,
+        game_format=game_format,
+        elimination_mode=elimination_mode,
     )
 
 
@@ -221,7 +224,7 @@ def test_resolve_contestant_name_solo_no_screen_name():
 
 def test_serialize_bracket_json_single_elimination():
     """SE tournament with 4 matches produces expected JSON structure."""
-    tournament = _make_tournament(mode=TournamentMode.SINGLE_ELIMINATION)
+    tournament = _make_tournament(game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.SINGLE_ELIMINATION)
 
     # Build a mini SE bracket: 2 semis -> 1 final
     final_id = TournamentMatchID(generate_uuid())
@@ -282,7 +285,8 @@ def test_serialize_bracket_json_single_elimination():
     # Tournament metadata
     assert result['tournament']['id'] == str(TOURNAMENT_ID)
     assert result['tournament']['name'] == 'Test Cup'
-    assert result['tournament']['mode'] == 'SINGLE_ELIMINATION'
+    assert result['tournament']['game_format'] == 'ONE_V_ONE'
+    assert result['tournament']['elimination_mode'] == 'SINGLE_ELIMINATION'
     assert result['tournament']['contestant_type'] == 'SOLO'
     assert result['tournament']['status'] == 'ONGOING'
 
@@ -321,7 +325,7 @@ def test_serialize_bracket_json_single_elimination():
 
 def test_serialize_bracket_json_double_elimination():
     """DE tournament produces WB/LB/GF grouped matches."""
-    tournament = _make_tournament(mode=TournamentMode.DOUBLE_ELIMINATION)
+    tournament = _make_tournament(game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.DOUBLE_ELIMINATION)
 
     gf_id = TournamentMatchID(generate_uuid())
     lb_final_id = TournamentMatchID(generate_uuid())
@@ -369,7 +373,8 @@ def test_serialize_bracket_json_double_elimination():
         tournament, match_data, {}, participants_by_id, {}, {}
     )
 
-    assert result['tournament']['mode'] == 'DOUBLE_ELIMINATION'
+    assert result['tournament']['game_format'] == 'ONE_V_ONE'
+    assert result['tournament']['elimination_mode'] == 'DOUBLE_ELIMINATION'
     assert len(result['matches']) == 3
 
     # Verify bracket values
@@ -524,8 +529,8 @@ def test_serialize_bracket_json_url_builder_receives_match_object():
 # -------------------------------------------------------------------- #
 
 
-def test_serialize_bracket_json_tournament_mode_none():
-    """Tournament with mode=None serializes mode as None."""
+def test_serialize_bracket_json_game_format_none():
+    """Tournament with game_format=None serializes game_format as None."""
     tournament = Tournament(
         id=TOURNAMENT_ID,
         party_id=PARTY_ID,
@@ -544,7 +549,8 @@ def test_serialize_bracket_json_tournament_mode_none():
         max_players_in_team=None,
         contestant_type=None,
         tournament_status=None,
-        tournament_mode=None,
+        game_format=None,
+        elimination_mode=None,
     )
 
     match_data = [
@@ -553,7 +559,8 @@ def test_serialize_bracket_json_tournament_mode_none():
 
     result = serialize_bracket_json(tournament, match_data, {}, {}, {}, {})
 
-    assert result['tournament']['mode'] is None
+    assert result['tournament']['game_format'] is None
+    assert result['tournament']['elimination_mode'] is None
     assert result['tournament']['contestant_type'] == 'SOLO'  # default fallback
     assert result['tournament']['status'] is None
 

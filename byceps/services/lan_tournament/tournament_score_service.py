@@ -17,8 +17,8 @@ from byceps.services.lan_tournament.models.tournament import (
 from byceps.services.lan_tournament.models.contestant_type import (
     ContestantType,
 )
-from byceps.services.lan_tournament.models.tournament_mode import (
-    TournamentMode,
+from byceps.services.lan_tournament.models.game_format import (
+    GameFormat,
 )
 from byceps.services.lan_tournament.models.tournament_participant import (
     TournamentParticipantID,
@@ -52,7 +52,7 @@ def submit_score(
     if score < 0:
         return Err('Score must not be negative.')
 
-    if tournament.tournament_mode != TournamentMode.HIGHSCORE:
+    if tournament.game_format != GameFormat.HIGHSCORE:
         return Err('Tournament mode must be HIGHSCORE to submit scores.')
 
     now = datetime.now(UTC)
@@ -121,7 +121,7 @@ def get_leaderboard(
     """Get the leaderboard for a highscore tournament."""
     tournament = tournament_repository.get_tournament(tournament_id)
 
-    if tournament.tournament_mode != TournamentMode.HIGHSCORE:
+    if tournament.game_format != GameFormat.HIGHSCORE:
         return Err('Tournament mode must be HIGHSCORE to view leaderboard.')
 
     if tournament.score_ordering is None:

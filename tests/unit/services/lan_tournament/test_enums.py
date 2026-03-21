@@ -9,8 +9,9 @@ tests.unit.services.lan_tournament.test_enums
 from byceps.services.lan_tournament.models.contestant_type import (
     ContestantType,
 )
-from byceps.services.lan_tournament.models.tournament_mode import (
-    TournamentMode,
+from byceps.services.lan_tournament.models.game_format import GameFormat
+from byceps.services.lan_tournament.models.elimination_mode import (
+    EliminationMode,
 )
 from byceps.services.lan_tournament.models.tournament_status import (
     TournamentStatus,
@@ -30,24 +31,34 @@ def test_contestant_type_has_no_not_set():
     assert 'NOT_SET' not in ContestantType.__members__
 
 
-def test_tournament_mode_has_expected_members():
-    assert set(TournamentMode.__members__) == {
-        'SINGLE_ELIMINATION',
-        'DOUBLE_ELIMINATION',
-        'ROUND_ROBIN',
+def test_game_format_has_expected_members():
+    assert set(GameFormat.__members__) == {
+        'ONE_V_ONE',
+        'FREE_FOR_ALL',
         'HIGHSCORE',
     }
 
 
-def test_tournament_mode_values():
-    assert TournamentMode.SINGLE_ELIMINATION.value == 1
-    assert TournamentMode.DOUBLE_ELIMINATION.value == 2
-    assert TournamentMode.ROUND_ROBIN.value == 3
-    assert TournamentMode.HIGHSCORE.value == 4
+def test_game_format_values():
+    assert GameFormat.ONE_V_ONE.value == 'ONE_V_ONE'
+    assert GameFormat.FREE_FOR_ALL.value == 'FREE_FOR_ALL'
+    assert GameFormat.HIGHSCORE.value == 'HIGHSCORE'
 
 
-def test_tournament_mode_has_no_not_set():
-    assert 'NOT_SET' not in TournamentMode.__members__
+def test_elimination_mode_has_expected_members():
+    assert set(EliminationMode.__members__) == {
+        'SINGLE_ELIMINATION',
+        'DOUBLE_ELIMINATION',
+        'ROUND_ROBIN',
+        'NONE',
+    }
+
+
+def test_elimination_mode_values():
+    assert EliminationMode.SINGLE_ELIMINATION.value == 'SINGLE_ELIMINATION'
+    assert EliminationMode.DOUBLE_ELIMINATION.value == 'DOUBLE_ELIMINATION'
+    assert EliminationMode.ROUND_ROBIN.value == 'ROUND_ROBIN'
+    assert EliminationMode.NONE.value == 'NONE'
 
 
 def test_tournament_status_has_expected_members():
