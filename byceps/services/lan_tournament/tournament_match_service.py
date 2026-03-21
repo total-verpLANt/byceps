@@ -21,6 +21,7 @@ from .events import (
 from .models.tournament import Tournament, TournamentID
 from .models.bracket import Bracket
 from .models.tournament_match import (
+    MatchUserRole,
     TournamentMatch,
     TournamentMatchID,
 )
@@ -63,13 +64,6 @@ class DefwinResult(NamedTuple):
     advanced: list[ContestantAdvancedEvent]
     confirmed: list[MatchConfirmedEvent]
     completed: list[TournamentCompletedEvent]
-
-
-class MatchUserRole(NamedTuple):
-    contestant: TournamentMatchToContestant | None
-    is_loser: bool
-    can_confirm: bool
-    can_submit: bool
 
 
 def set_seed(
@@ -1119,13 +1113,13 @@ def get_user_match_role(
 ) -> MatchUserRole:
     """Determine a user's role in a match for UI display."""
     if match_confirmed:
-        return MatchUserRole(None, False, False, False)
+        return MatchUserRole(contestant=None, is_loser=False, can_confirm=False, can_submit=False)
 
     contestant = _resolve_initiator_contestant(
         tournament_id, user_id, contestants
     )
     if contestant is None:
-        return MatchUserRole(None, False, False, False)
+        return MatchUserRole(contestant=None, is_loser=False, can_confirm=False, can_submit=False)
 
     # DEFWIN: fewer than 2 real contestants — match needs no score
     # submission; the bracket generator has already auto-advanced
@@ -1135,27 +1129,27 @@ def get_user_match_role(
         if c.participant_id is not None or c.team_id is not None
     ]
     if len(real_contestants) < 2:
-        return MatchUserRole(contestant, False, False, False)
+        return MatchUserRole(contestant=contestant, is_loser=False, can_confirm=False, can_submit=False)
 
     all_have_scores = all(c.score is not None for c in real_contestants)
     if not all_have_scores:
-        return MatchUserRole(contestant, False, False, True)
+        return MatchUserRole(contestant=contestant, is_loser=False, can_confirm=False, can_submit=True)
 
     winner_result = determine_match_winner(contestants)
     if winner_result.is_err():
-        return MatchUserRole(contestant, False, False, False)
+        return MatchUserRole(contestant=contestant, is_loser=False, can_confirm=False, can_submit=False)
 
     winner = winner_result.unwrap()
     if winner is None:
         # Draw — any participant may confirm; both may submit revised
         # scores until confirmation.
-        return MatchUserRole(contestant, False, True, True)
+        return MatchUserRole(contestant=contestant, is_loser=False, can_confirm=True, can_submit=True)
     elif winner.id != contestant.id:
         # This user is the loser.
-        return MatchUserRole(contestant, True, True, True)
+        return MatchUserRole(contestant=contestant, is_loser=True, can_confirm=True, can_submit=True)
     else:
         # This user is the winner — no action needed.
-        return MatchUserRole(contestant, False, False, False)
+        return MatchUserRole(contestant=contestant, is_loser=False, can_confirm=False, can_submit=False)
 
 
 def set_score_by_participant(
