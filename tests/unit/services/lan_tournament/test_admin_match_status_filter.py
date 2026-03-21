@@ -17,7 +17,7 @@ predicates in ``admin/views.py``.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
@@ -44,7 +44,7 @@ def _make_match(*, confirmed: bool = False) -> TournamentMatch:
         round=1,
         next_match_id=None,
         confirmed_by=UserID(uuid4()) if confirmed else None,
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(UTC),
     )
 
 
