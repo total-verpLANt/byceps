@@ -82,7 +82,7 @@
         <p class='dimmed'>{{ _('No Winners Pool rounds have been played yet.') }}</p>
       {%- endif %}
 
-      {%- if has_current_user_permission('lan_tournament.administrate') and tournament.tournament_status and tournament.tournament_status.name in ('ONGOING', 'REGISTRATION_CLOSED') %}
+      {%- if g.user.has_permission('lan_tournament.administrate') and tournament.tournament_status and tournament.tournament_status.name in ('ONGOING', 'REGISTRATION_CLOSED') %}
       <div class='button-row block' style='margin-top: 1.5rem;'>
         {%- if ffa_wb_latest_round is none %}
           <form action='{{ url_for('.generate_ffa_round_action', tournament_id=tournament.id) }}' method='post'>
@@ -113,7 +113,7 @@
         <p class='dimmed'>{{ _('No Losers Pool rounds have been played yet.') }}</p>
       {%- endif %}
 
-      {%- if has_current_user_permission('lan_tournament.administrate') and tournament.tournament_status and tournament.tournament_status.name in ('ONGOING', 'REGISTRATION_CLOSED') %}
+      {%- if g.user.has_permission('lan_tournament.administrate') and tournament.tournament_status and tournament.tournament_status.name in ('ONGOING', 'REGISTRATION_CLOSED') %}
       <div class='button-row block' style='margin-top: 1.5rem;'>
         {%- if ffa_lb_standings and ffa_lb_all_confirmed %}
           <form action='{{ url_for('.advance_ffa_round_action', tournament_id=tournament.id) }}' method='post'>
@@ -156,7 +156,7 @@
     {%- endif %}
 
     {# Generate Grand Final button — outside tabs, always visible when eligible #}
-    {%- if has_current_user_permission('lan_tournament.administrate') and tournament.tournament_status and tournament.tournament_status.name in ('ONGOING', 'REGISTRATION_CLOSED') and not ffa_gf_exists %}
+    {%- if g.user.has_permission('lan_tournament.administrate') and tournament.tournament_status and tournament.tournament_status.name in ('ONGOING', 'REGISTRATION_CLOSED') and not ffa_gf_exists %}
     <div class='button-row block' style='margin-top: 1.5rem;'>
       {%- if ffa_wb_all_confirmed and ffa_lb_all_confirmed and ffa_wb_standings and ffa_lb_standings %}
         <form action='{{ url_for('.generate_ffa_grand_final_action', tournament_id=tournament.id) }}' method='post'>
@@ -183,7 +183,7 @@
     {%- endif %}
 
     {# FFA round management buttons #}
-    {%- if has_current_user_permission('lan_tournament.administrate') and tournament.tournament_status and tournament.tournament_status.name in ('ONGOING', 'REGISTRATION_CLOSED') %}
+    {%- if g.user.has_permission('lan_tournament.administrate') and tournament.tournament_status and tournament.tournament_status.name in ('ONGOING', 'REGISTRATION_CLOSED') %}
     <div class='button-row block' style='margin-top: 1.5rem;'>
       {%- if ffa_latest_round is none %}
         {# No rounds yet — generate the first round #}

@@ -19,7 +19,7 @@
       <h1 class="title">{{ team.name }}{% if team.tag %} <span class="dimmed">[{{ team.tag }}]</span>{% endif %}</h1>
     </div>
     <div>
-      {%- if has_current_user_permission('lan_tournament.update') %}
+      {%- if g.user.has_permission('lan_tournament.update') %}
       <div class="button-row is-right-aligned">
         <a class="button" href="{{ url_for('.update_team_form', team_id=team.id) }}">{{ render_icon('edit') }} <span>{{ _('Edit') }}</span></a>
       </div>
@@ -93,7 +93,7 @@
         <td>{{ seats_by_user_id.get(member.user_id, '–') }}</td>
         <td>{{ member.created_at|dateformat }}</td>
         <td class="bared">
-          {%- if has_current_user_permission('lan_tournament.administrate') %}
+          {%- if g.user.has_permission('lan_tournament.administrate') %}
           <div class="button-row is-compact is-right-aligned">
             {%- if member.user_id != team.captain_user_id %}
             <form action="{{ url_for('.admin_remove_team_member', team_id=team.id, user_id=member.user_id) }}" method="post" class="inline">
@@ -114,7 +114,7 @@
   {%- endif %}
 
   {# Add member #}
-  {%- if has_current_user_permission('lan_tournament.administrate') %}
+  {%- if g.user.has_permission('lan_tournament.administrate') %}
   <h2>{{ _('Add member') }}</h2>
   <div class="box block">
     <form action="{{ url_for('.admin_add_team_member', team_id=team.id) }}" method="post">
@@ -132,7 +132,7 @@
   {%- endif %}
 
   {# Transfer captain #}
-  {%- if has_current_user_permission('lan_tournament.administrate') and transfer_form.new_captain.choices %}
+  {%- if g.user.has_permission('lan_tournament.administrate') and transfer_form.new_captain.choices %}
   <h2>{{ _('Transfer captain') }}</h2>
   <div class="box block">
     <form action="{{ url_for('.transfer_captain', team_id=team.id) }}" method="post">

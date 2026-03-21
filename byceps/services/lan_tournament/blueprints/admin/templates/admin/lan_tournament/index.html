@@ -13,7 +13,7 @@
       <h1 class="title">{{ _('LAN Tournaments') }} {{ render_extra_in_heading(tournaments|length) }}</h1>
     </div>
     <div>
-      {%- if has_current_user_permission('lan_tournament.create') %}
+      {%- if g.user.has_permission('lan_tournament.create') %}
       <div class="button-row is-right-aligned">
         <a class="button" href="{{ url_for('.create_form', party_id=party.id) }}">{{ render_icon('add') }} <span>{{ _('Create tournament') }}</span></a>
       </div>

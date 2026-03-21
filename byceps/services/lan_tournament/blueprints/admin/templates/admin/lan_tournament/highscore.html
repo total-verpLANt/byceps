@@ -20,7 +20,7 @@
   {{ render_highscore_leaderboard(leaderboard, tournament, teams_by_id=teams_by_id, participants_by_id=participants_by_id) }}
 
   {# Submit score form (admin-only) #}
-  {%- if has_current_user_permission('lan_tournament.administrate') %}
+  {%- if g.user.has_permission('lan_tournament.administrate') %}
   <h2>{{ _('Submit Score') }}</h2>
   <form action='{{ url_for('.highscore_submit', tournament_id=tournament.id) }}' method='post'>
     <div class='form-row'>

@@ -61,7 +61,7 @@
       <h1 class="title">{{ tournament.name }}</h1>
     </div>
     <div>
-      {%- if has_current_user_permission('lan_tournament.update') %}
+      {%- if g.user.has_permission('lan_tournament.update') %}
       <div class="button-row is-right-aligned">
         <a class="button" href="{{ url_for('.update_form', tournament_id=tournament.id) }}">{{ render_icon('edit') }} <span>{{ _('Edit') }}</span></a>
       </div>
@@ -368,7 +368,7 @@
         {{ render_icon('disabled') }} {{ _('Eliminated') }}: {{ ffa_de_pool_status.eliminated_count }}
       </span>
     </div>
-    {%- if ffa_gf_eligible and has_current_user_permission('lan_tournament.administrate') %}
+    {%- if ffa_gf_eligible and g.user.has_permission('lan_tournament.administrate') %}
     <div style="margin-top: 1rem;">
       <form action="{{ url_for('.generate_ffa_grand_final_action', tournament_id=tournament.id) }}" method="post" style="display: inline;">
         <button type="submit" class="button color-warning" style="font-weight: 600;">
@@ -389,7 +389,7 @@
   {%- endif %}
 
   {# Status transition buttons #}
-  {%- if has_current_user_permission('lan_tournament.administrate') and tournament.tournament_status %}
+  {%- if g.user.has_permission('lan_tournament.administrate') and tournament.tournament_status %}
   <h2>{{ _('Actions') }}</h2>
   <div class="button-row block">
     {%- if tournament.tournament_status.name == 'DRAFT' %}
