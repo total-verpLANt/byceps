@@ -8,10 +8,13 @@ from byceps.util.result import Err, Ok, Result
 from . import (
     signals,
     tournament_domain_service,
+    tournament_match_service,
     tournament_participant_service,
     tournament_repository,
+    tournament_score_service,
     tournament_team_service,
 )
+from .models.bracket import Bracket
 from .events import (
     TournamentCreatedEvent,
     TournamentDeletedEvent,
@@ -407,3 +410,249 @@ def resolve_winner_display_name(tournament: Tournament) -> str | None:
             return user.screen_name
 
     return None
+
+
+def resolve_podium_display_names(
+    tournament: Tournament,
+) -> dict[str, str | None]:
+    """Return runner-up and bronze display names for a completed tournament.
+
+    Returns a dict with keys ``'runner_up'`` and ``'bronze'``.  Values
+    are ``None`` when the tournament is not completed or the position
+    cannot be determined.
+
+    The champion is intentionally **not** included — callers should use
+    :func:`resolve_winner_display_name` for that to avoid redundant
+    look-ups.
+    """
+    empty: dict[str, str | None] = {
+        'runner_up': None,
+        'bronze': None,
+    }
+
+    if tournament.tournament_status != TournamentStatus.COMPLETED:
+        return empty
+
+    mode = tournament.tournament_mode
+    if mode in (TournamentMode.SINGLE_ELIMINATION, TournamentMode.DOUBLE_ELIMINATION):
+        runner_up, bronze = _resolve_bracket_podium(tournament)
+    elif mode == TournamentMode.ROUND_ROBIN:
+        runner_up, bronze = _resolve_rr_podium(tournament)
+    elif mode == TournamentMode.HIGHSCORE:
+        runner_up, bronze = _resolve_hs_podium(tournament)
+    else:
+        runner_up, bronze = None, None
+
+    return {
+        'runner_up': runner_up,
+        'bronze': bronze,
+    }
+
+
+# -- Private helpers for podium resolution -----------------------------------
+
+
+def _resolve_bracket_podium(
+    tournament: Tournament,
+) -> tuple[str | None, str | None]:
+    """Derive 2nd and 3rd place from SE or DE bracket matches."""
+    matches = tournament_match_service.get_matches_for_tournament(tournament.id)
+    if not matches:
+        return None, None
+
+    mode = tournament.tournament_mode
+    runner_up_name: str | None = None
+    bronze_name: str | None = None
+
+    if mode == TournamentMode.DOUBLE_ELIMINATION:
+        # 2nd place: loser of the LAST Grand Final match (highest round
+        # handles bracket-reset scenario).
+        gf_matches = [m for m in matches if m.bracket == Bracket.GRAND_FINAL]
+        if gf_matches:
+            last_gf = max(gf_matches, key=lambda m: (m.round or 0))
+            loser_id = _get_match_loser_contestant_id(last_gf)
+            if loser_id is not None:
+                runner_up_name = _resolve_contestant_name(tournament, loser_id)
+
+        # 3rd place: loser of the LB Final (highest-round LB match).
+        lb_matches = [m for m in matches if m.bracket == Bracket.LOSERS]
+        if lb_matches:
+            lb_final = max(lb_matches, key=lambda m: (m.round or 0))
+            loser_id = _get_match_loser_contestant_id(lb_final)
+            if loser_id is not None:
+                bronze_name = _resolve_contestant_name(tournament, loser_id)
+
+    else:
+        # Single Elimination
+        # 2nd place: loser of the final (highest-round WB/None match).
+        wb_matches = [
+            m for m in matches
+            if m.bracket in (None, Bracket.WINNERS)
+        ]
+        if wb_matches:
+            final = max(wb_matches, key=lambda m: (m.round or 0))
+            loser_id = _get_match_loser_contestant_id(final)
+            if loser_id is not None:
+                runner_up_name = _resolve_contestant_name(tournament, loser_id)
+
+        # 3rd place: winner of the P3 match.
+        p3_matches = [m for m in matches if m.bracket == Bracket.THIRD_PLACE]
+        if p3_matches:
+            p3_match = p3_matches[0]
+            winner_id = _get_match_winner_contestant_id(p3_match)
+            if winner_id is not None:
+                bronze_name = _resolve_contestant_name(tournament, winner_id)
+
+    return runner_up_name, bronze_name
+
+
+def _resolve_rr_podium(
+    tournament: Tournament,
+) -> tuple[str | None, str | None]:
+    """Derive 2nd and 3rd place from round-robin standings."""
+    matches = tournament_match_service.get_matches_for_tournament(tournament.id)
+    contestants_by_match = tournament_match_service.get_contestants_for_tournament(
+        tournament.id
+    )
+
+    # Build confirmed match pairs for standings computation.
+    confirmed_pairs: list[list] = []
+    for match in matches:
+        if match.confirmed_by is None:
+            continue
+        pair = contestants_by_match.get(match.id, [])
+        if len(pair) == 2:
+            confirmed_pairs.append(pair)
+
+    standings = tournament_domain_service.compute_round_robin_standings(
+        confirmed_pairs
+    )
+
+    runner_up: str | None = None
+    bronze: str | None = None
+
+    if len(standings) > 1:
+        runner_up = _resolve_contestant_name(
+            tournament, standings[1].contestant_id
+        )
+    if len(standings) > 2:
+        bronze = _resolve_contestant_name(
+            tournament, standings[2].contestant_id
+        )
+
+    return runner_up, bronze
+
+
+def _resolve_hs_podium(
+    tournament: Tournament,
+) -> tuple[str | None, str | None]:
+    """Derive 2nd and 3rd place from highscore leaderboard."""
+    result = tournament_score_service.get_leaderboard(tournament.id)
+    if result.is_err():
+        return None, None
+
+    leaderboard = result.unwrap()
+
+    runner_up: str | None = None
+    bronze: str | None = None
+
+    if len(leaderboard) > 1:
+        runner_up = _resolve_score_entry_name(tournament, leaderboard[1])
+    if len(leaderboard) > 2:
+        bronze = _resolve_score_entry_name(tournament, leaderboard[2])
+
+    return runner_up, bronze
+
+
+def _get_match_loser_contestant_id(
+    match: 'TournamentMatch',
+) -> str | None:
+    """Return the loser's contestant ID for a confirmed match.
+
+    Uses score comparison: the contestant with the lower score is the
+    loser.  Returns ``None`` if the match has no contestants, is
+    unconfirmed, or is a draw.
+    """
+    contestants = tournament_match_service.get_contestants_for_match(match.id)
+    if len(contestants) < 2:
+        return None
+
+    # Both must have scores.
+    if any(c.score is None for c in contestants):
+        return None
+
+    sorted_by_score = sorted(contestants, key=lambda c: c.score, reverse=True)
+    # Draw — no loser.
+    if sorted_by_score[0].score == sorted_by_score[1].score:
+        return None
+
+    loser = sorted_by_score[-1]
+    if loser.participant_id is None and loser.team_id is None:
+        return None
+    return str(loser.participant_id if loser.participant_id is not None else loser.team_id)
+
+
+def _get_match_winner_contestant_id(
+    match: 'TournamentMatch',
+) -> str | None:
+    """Return the winner's contestant ID for a confirmed match.
+
+    Returns ``None`` if the match has no contestants, is unconfirmed,
+    or is a draw.
+    """
+    contestants = tournament_match_service.get_contestants_for_match(match.id)
+    if len(contestants) < 2:
+        return None
+
+    if any(c.score is None for c in contestants):
+        return None
+
+    sorted_by_score = sorted(contestants, key=lambda c: c.score, reverse=True)
+    if sorted_by_score[0].score == sorted_by_score[1].score:
+        return None
+
+    winner = sorted_by_score[0]
+    if winner.participant_id is None and winner.team_id is None:
+        return None
+    return str(winner.participant_id if winner.participant_id is not None else winner.team_id)
+
+
+def _resolve_contestant_name(
+    tournament: Tournament,
+    contestant_id: str,
+) -> str | None:
+    """Resolve a contestant UUID string to a display name.
+
+    Works for both team-based and participant-based tournaments.
+    """
+    from uuid import UUID
+
+    if tournament.contestant_type == ContestantType.TEAM:
+        from .models.tournament_team import TournamentTeamID
+
+        team = tournament_team_service.find_team(
+            TournamentTeamID(UUID(contestant_id))
+        )
+        return team.name if team is not None else None
+    else:
+        from byceps.services.user import user_service
+        from .models.tournament_participant import TournamentParticipantID
+
+        participant = tournament_participant_service.find_participant(
+            TournamentParticipantID(UUID(contestant_id))
+        )
+        if participant is None:
+            return None
+        user = user_service.get_user(participant.user_id)
+        return user.screen_name
+
+
+def _resolve_score_entry_name(
+    tournament: Tournament,
+    entry: 'ScoreSubmission',
+) -> str | None:
+    """Resolve a highscore leaderboard entry to a display name."""
+    contestant_id = entry.team_id if entry.team_id is not None else entry.participant_id
+    if contestant_id is None:
+        return None
+    return _resolve_contestant_name(tournament, str(contestant_id))

@@ -53,6 +53,7 @@ from byceps.services.lan_tournament.models.tournament_status import (
 )
 from byceps.services.lan_tournament.tournament_service import (
     EDIT_LOCKED_STATUSES,
+    resolve_podium_display_names,
     resolve_winner_display_name,
 )
 from byceps.services.lan_tournament.lan_tournament_view_helpers import (
@@ -187,6 +188,9 @@ def view(tournament_id):
         )
 
     winner_name = resolve_winner_display_name(tournament)
+    podium = resolve_podium_display_names(tournament)
+    runner_up_name = podium.get('runner_up')
+    bronze_name = podium.get('bronze')
 
     return {
         'party': party,
@@ -200,6 +204,8 @@ def view(tournament_id):
         'member_counts': member_counts,
         'teams_below_minimum': teams_below_minimum,
         'winner_name': winner_name,
+        'runner_up_name': runner_up_name,
+        'bronze_name': bronze_name,
         'active_tab': 'overview',
     }
 
