@@ -58,6 +58,8 @@
     function applyRankToContestants(roundEl, rankWinner, rankLoser) {
       var matches = roundEl.querySelectorAll('.bracket-match');
       matches.forEach(function (match) {
+        /* Skip pending/unresolved matches — no placement yet. */
+        if (match.querySelector('.badge-pending')) return;
         var contestants = match.querySelectorAll('.bracket-contestant');
         contestants.forEach(function (c) {
           if (c.classList.contains('winner')) {
@@ -103,15 +105,18 @@
         var gfMatches = section.querySelectorAll('.bracket-match');
         if (gfMatches.length > 0) {
           var decisiveMatch = gfMatches[gfMatches.length - 1];
-          var contestants = decisiveMatch.querySelectorAll('.bracket-contestant');
-          contestants.forEach(function (c) {
-            if (c.classList.contains('winner')) {
-              c.classList.add('bracket-rank-1');
-              injectTrophy(c);
-            } else {
-              c.classList.add('bracket-rank-2');
-            }
-          });
+          /* Skip pending GF — no placement yet. */
+          if (!decisiveMatch.querySelector('.badge-pending')) {
+            var contestants = decisiveMatch.querySelectorAll('.bracket-contestant');
+            contestants.forEach(function (c) {
+              if (c.classList.contains('winner')) {
+                c.classList.add('bracket-rank-1');
+                injectTrophy(c);
+              } else {
+                c.classList.add('bracket-rank-2');
+              }
+            });
+          }
         }
       }
     });
