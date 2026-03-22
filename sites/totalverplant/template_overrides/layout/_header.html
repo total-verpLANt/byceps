@@ -1,13 +1,13 @@
 <nav class="header-nav">
   <div class="container">
-    <div class="logo-container">
+    <a href="/" class="logo-container" aria-label="Zur Startseite">
       <img src="{{ url_for_site_file('style/eule_logo.png') }}" alt="Eule Logo"
            class="logo-img">
       <div class="logo-text">
         <h1>genial verpLANt</h1>
-        <p>total verpLANt e.V. präsentiert die größte LAN-Party in der Wesermarsch</p>
+        <p>total verpLANt e.V. präsentiert:<br>Die größte LAN-Party in der Wesermarsch</p>
       </div>
-    </div>
+    </a>
 
     <ul id="nav-links" class="nav-links">
       {%- for item in get_nav_menu_items('main') %}
