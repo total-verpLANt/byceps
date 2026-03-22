@@ -553,6 +553,8 @@ def resolve_podium_display_names(
         runner_up, bronze = _resolve_rr_podium(tournament)
     elif gf == GameFormat.HIGHSCORE:
         runner_up, bronze = _resolve_hs_podium(tournament)
+    elif gf == GameFormat.FREE_FOR_ALL:
+        runner_up, bronze = _resolve_ffa_podium(tournament)
     else:
         runner_up, bronze = None, None
 
@@ -675,6 +677,47 @@ def _resolve_hs_podium(
         bronze = _resolve_score_entry_name(tournament, leaderboard[2])
 
     return runner_up, bronze
+
+
+def _resolve_ffa_podium(
+    tournament: Tournament,
+) -> tuple[str | None, str | None]:
+    """Derive 2nd and 3rd place from FFA match placements.
+
+    Looks at all confirmed FFA matches in the tournament and finds
+    the overall 2nd and 3rd place from the final round's placements.
+    """
+    matches = tournament_match_service.get_matches_for_tournament(tournament.id)
+    if not matches:
+        return None, None
+
+    confirmed = [m for m in matches if m.confirmed_by is not None]
+    if not confirmed:
+        return None, None
+
+    max_round = max((m.round or 0) for m in confirmed)
+    final_matches = [m for m in confirmed if (m.round or 0) == max_round]
+
+    runner_up_name: str | None = None
+    bronze_name: str | None = None
+
+    for match in final_matches:
+        contestants = tournament_match_service.get_contestants_for_match(match.id)
+        for c in contestants:
+            if c.placement == 2:
+                cid = c.team_id or c.participant_id
+                if cid is not None:
+                    runner_up_name = _resolve_contestant_name(
+                        tournament, str(cid)
+                    )
+            elif c.placement == 3:
+                cid = c.team_id or c.participant_id
+                if cid is not None:
+                    bronze_name = _resolve_contestant_name(
+                        tournament, str(cid)
+                    )
+
+    return runner_up_name, bronze_name
 
 
 def _get_match_loser_contestant_id(

@@ -1534,6 +1534,168 @@ a.lt-hover-name-link:hover {
 
 
 /* ------------------------------------------------------------
+   FFA Match View + Unified Podium Layout
+   ------------------------------------------------------------ */
+
+/* -- Podium (FFA confirmed -- 2nd | 1st | 3rd) -- */
+.podium {
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  gap: 0.75rem;
+  margin-bottom: 1.2rem;
+  padding-bottom: 1.2rem;
+  border-bottom: 1px solid var(--lt-border);
+}
+
+.podium__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 0.9rem 0.8rem;
+  border-radius: var(--lt-radius-sm);
+  border: 1px solid var(--lt-line);
+  position: relative;
+  overflow: hidden;
+  flex: 0 1 175px;
+}
+
+.podium__card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0.12;
+  z-index: 0;
+}
+
+.podium__card--1st {
+  flex: 0 1 210px;
+  padding: 1.3rem 1rem;
+  border-color: rgba(255, 215, 0, 0.35);
+}
+.podium__card--1st::before {
+  background: linear-gradient(135deg, #ffd700, transparent 70%);
+}
+
+.podium__card--2nd { border-color: rgba(192, 192, 192, 0.3); }
+.podium__card--2nd::before {
+  background: linear-gradient(135deg, #c0c0c0, transparent 70%);
+}
+
+.podium__card--3rd { border-color: rgba(205, 127, 50, 0.3); }
+.podium__card--3rd::before {
+  background: linear-gradient(135deg, #cd7f32, transparent 70%);
+}
+
+.podium__card--empty {
+  border-style: dashed;
+  opacity: 0.4;
+}
+
+.podium__medal { font-size: 1.8rem; position: relative; z-index: 1; margin-bottom: 0.2rem; }
+.podium__card--1st .podium__medal { font-size: 2.4rem; }
+.podium__rank { font-size: 0.7rem; font-weight: 700; color: var(--lt-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.35rem; position: relative; z-index: 1; }
+.podium__name { font-size: 0.95rem; font-weight: 700; color: var(--lt-text); position: relative; z-index: 1; }
+.podium__card--1st .podium__name { font-size: 1.1rem; }
+.podium__points { font-size: 0.82rem; font-weight: 700; color: var(--lt-brand-orange); margin-top: 0.25rem; position: relative; z-index: 1; }
+.podium__score { font-size: 1.6rem; font-weight: 800; color: var(--lt-text); margin-top: 0.25rem; position: relative; z-index: 1; }
+
+/* -- Variant C (1v1 confirmed -- side by side, winner glows) -- */
+.match-result-1v1 {
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
+  gap: 1rem;
+}
+
+.match-result-1v1__card {
+  flex: 0 1 220px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 1rem;
+  border-radius: var(--lt-radius-sm);
+  border: 1px solid var(--lt-line);
+  position: relative;
+  overflow: hidden;
+}
+
+.match-result-1v1__card--winner {
+  border-color: rgba(255, 215, 0, 0.35);
+}
+.match-result-1v1__card--winner::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0.12;
+  z-index: 0;
+  background: linear-gradient(135deg, #ffd700, transparent 70%);
+}
+
+.match-result-1v1__card--loser {
+  background: var(--lt-card);
+  opacity: 0.7;
+}
+
+.match-result-1v1__vs {
+  display: flex;
+  align-items: center;
+  color: var(--lt-muted);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+}
+
+/* -- FFA Unconfirmed contestant list -- */
+.ffa-unconfirmed-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--lt-border);
+  transition: background 120ms;
+}
+
+.ffa-unconfirmed-row:last-child { border-bottom: none; }
+.ffa-unconfirmed-row:hover { background: rgba(255, 255, 255, 0.03); }
+
+.ffa-unconfirmed-row__bullet {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--lt-muted); flex-shrink: 0;
+}
+
+.ffa-unconfirmed-row__name { font-weight: 700; color: var(--lt-text); }
+
+/* -- FFA match container -- */
+.ffa-match-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  background: var(--lt-card);
+  border: 1px solid var(--lt-border);
+  border-radius: var(--lt-radius);
+  padding: 1.2rem;
+  margin-bottom: 1rem;
+}
+
+/* -- Remainder label -- */
+.podium-remainder-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--lt-muted);
+  margin-bottom: 0.4rem;
+  margin-top: 0.4rem;
+  font-weight: 600;
+}
+
+
+/* ------------------------------------------------------------
    15. FFA Point Table Editor (admin forms)
    ------------------------------------------------------------ */
 

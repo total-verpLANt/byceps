@@ -54,30 +54,25 @@
   {%- endif %}
 
   {%- if tournament.tournament_status and tournament.tournament_status.name == 'COMPLETED' and winner_name %}
-  <div class="winner-banner block">
-    <div class="winner-banner-inner">
-      {{ render_icon('trophy', color='#FFD700') }}
-      <span class="winner-banner-label">{{ _('Champion') }}</span>
-      <span class="winner-banner-name">{{ winner_name }}</span>
-    </div>
-    {%- if runner_up_name or bronze_name %}
-    <div class="podium-runners">
-      {%- if runner_up_name %}
-      <div class="podium-entry podium-silver">
-        {{ render_icon('trophy', color='#C0C0C0') }}
-        <span class="podium-rank">{{ _('2nd') }}</span>
-        <span class="podium-name">{{ runner_up_name }}</span>
+  {%- set is_ffa = tournament.game_format and tournament.game_format.name == 'FREE_FOR_ALL' %}
+  <div class="ffa-match-box">
+    <div class="podium">
+      <div class="podium__card podium__card--2nd">
+        <span class="podium__medal">🥈</span>
+        <span class="podium__rank">{{ _('2nd Place') if is_ffa else _('Runner-up') }}</span>
+        <span class="podium__name">{{ runner_up_name or '–' }}</span>
       </div>
-      {%- endif %}
-      {%- if bronze_name %}
-      <div class="podium-entry podium-bronze">
-        {{ render_icon('trophy', color='#CD7F32') }}
-        <span class="podium-rank">{{ _('3rd') }}</span>
-        <span class="podium-name">{{ bronze_name }}</span>
+      <div class="podium__card podium__card--1st">
+        <span class="podium__medal">🥇</span>
+        <span class="podium__rank">{{ _('Champion') }}</span>
+        <span class="podium__name">{{ winner_name }}</span>
       </div>
-      {%- endif %}
+      <div class="podium__card podium__card--3rd{{ ' podium__card--empty' if not bronze_name }}">
+        <span class="podium__medal">🥉</span>
+        <span class="podium__rank">{{ _('3rd Place') }}</span>
+        <span class="podium__name">{{ bronze_name or '–' }}</span>
+      </div>
     </div>
-    {%- endif %}
   </div>
   {%- endif %}
 
