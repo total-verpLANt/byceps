@@ -1,5 +1,7 @@
 from collections.abc import Callable
 
+from flask_babel import gettext
+
 from byceps.services.lan_tournament import (
     tournament_participant_service,
     tournament_team_service,
@@ -349,5 +351,78 @@ def serialize_bracket_json(
                 str(tid): members
                 for tid, members in team_members_by_team_id.items()
             },
+        },
+        # Pre-translated strings for the client-side bracket renderer.
+        # The JS reads these via _t(key, fallback) — every key has an
+        # English fallback so the bracket works even without this dict.
+        'strings': {
+            # Status labels
+            'statusDone': gettext('Done'),
+            'statusDefwin': gettext('DEFWIN'),
+            'statusOpen': gettext('Open'),
+            'statusPending': gettext('Pending'),
+            # Round / match labels
+            'round': gettext('Round'),
+            'matchSingular': gettext('Match'),
+            'matchPlural': gettext('Matches'),
+            'grandFinal': gettext('Grand Final'),
+            'bracketReset': gettext('Bracket Reset'),
+            'thirdPlace': gettext('3rd Place'),
+            # Section headers
+            'winnersBracket': gettext('Winners Bracket (WB)'),
+            'bracket': gettext('Bracket'),
+            'losersBracket': gettext('Losers Bracket (LB)'),
+            'additionalMatches': gettext('Additional Matches'),
+            'thirdPlaceMatch': gettext('3rd Place Match'),
+            # Section subtitles
+            'wbWinnerVsLbWinner': gettext('WB Winner vs LB Winner'),
+            'grandFinalDecisive': gettext('Grand Final \u2013 Decisive Game'),
+            'slotField': gettext('-slot field'),
+            'optionalResetGame': gettext('Optional reset game and additional matches'),
+            'semifinalLosersCompete': gettext('Semifinal losers compete for third place'),
+            'playedOnlyIfLbWinner': gettext('Played only if the losers-bracket winner takes Grand Final Game 1.'),
+            'trueFinal': gettext('True final: both players enter 1\u20131 in the series'),
+            'sourceLabelsCrossBracket': gettext('Source labels on cross-bracket entries with jump navigation'),
+            # Stats bar
+            'sectionStatistics': gettext('Section statistics'),
+            'totalMatches': gettext('Total matches'),
+            'matchCountSingular': gettext('match'),
+            'matchCountPlural': gettext('matches'),
+            'completionPercentage': gettext('Completion percentage'),
+            'pctComplete': gettext('complete'),
+            'uniqueContestants': gettext('Unique contestants'),
+            'contestantSingular': gettext('contestant'),
+            'contestantPlural': gettext('contestants'),
+            # Source labels / references
+            'winner': gettext('Winner'),
+            'loser': gettext('Loser'),
+            'lbWinner': gettext('LB Winner'),
+            'of': gettext('of'),
+            'grandFinalGame': gettext('Grand Final \u2013 Game'),
+            'thirdPlaceGame': gettext('3rd Place \u2013 Game'),
+            'game': gettext('Game'),
+            # Compact abbreviations
+            'gfG': gettext('GF G'),
+            'thirdM': gettext('3rd M'),
+            'rAbbrev': gettext('R'),
+            'mAbbrev': gettext('M'),
+            # Filter dropdown
+            'view': gettext('View'),
+            'filterBracketView': gettext('Filter bracket view'),
+            'allBrackets': gettext('All brackets'),
+            'winnersOnly': gettext('Winners only'),
+            'losersOnly': gettext('Losers only'),
+            'top8': gettext('Top 8'),
+            # Misc
+            'secondPlace': gettext('2nd Place'),
+            'tbd': gettext('TBD'),
+            'status': gettext('Status'),
+            'noBracketData': gettext('No bracket data available.'),
+            'vs': gettext('vs'),
+            'clickToJump': gettext('click to jump to source match'),
+            'jumpTo': gettext('jump to'),
+            'grandFinalBracketReset': gettext('Grand Final \u2013 Bracket Reset'),
+            'loserSfVsLoserSf': gettext('Loser SF 1 vs Loser SF 2'),
+            'openMatch': gettext('Open'),
         },
     }

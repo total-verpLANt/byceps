@@ -10760,7 +10760,7 @@ msgid "Ruleset"
 msgstr "Regelwerk"
 
 msgid "Runner-up"
-msgstr "Zweitplatzierter"
+msgstr "2. Platz"
 
 msgid "Save Scores"
 msgstr "Ergebnisse speichern"
@@ -11041,5 +11041,137 @@ msgstr "."
 msgid "th"
 msgstr "."
 
+
+msgid "complete"
+msgstr "abgeschlossen"
+
+msgid "-slot field"
+msgstr "-Teilnehmerfeld"
+
+msgid "3rd M"
+msgstr "3. P"
+
+msgid "3rd Place Match"
+msgstr "Spiel um Platz 3"
+
+msgid "3rd Place – Game"
+msgstr "Platz 3 – Spiel"
+
+msgid "Additional Matches"
+msgstr "Zusätzliche Partien"
+
+msgid "All brackets"
+msgstr "Alle Seiten"
+
+msgid "Bracket Reset"
+msgstr "Entscheidungsspiel"
+
+msgid "Completion percentage"
+msgstr "Fortschritt"
+
+msgid "Done"
+msgstr "Abgeschlossen"
+
+msgid "Filter bracket view"
+msgstr "Turnierbaum-Ansicht filtern"
+
+msgid "GF G"
+msgstr "GF S"
+
+msgid "Grand Final – Bracket Reset"
+msgstr "Großes Finale – Entscheidungsspiel"
+
+msgid "Grand Final – Decisive Game"
+msgstr "Großes Finale – Entscheidungsspiel"
+
+msgid "Grand Final – Game"
+msgstr "Großes Finale – Spiel"
+
+msgid "LB Winner"
+msgstr "LB-Sieger"
+
+msgid "Loser"
+msgstr "Verlierer"
+
+msgid "Loser SF 1 vs Loser SF 2"
+msgstr "Verlierer HF 1 gegen Verlierer HF 2"
+
+msgid "Losers Bracket (LB)"
+msgstr "Verliererseite (LB)"
+
+msgid "Losers only"
+msgstr "Nur Verliererseite"
+
+msgid "M"
+msgstr "P"
+
+msgid "No bracket data available."
+msgstr "Keine Turnierbaumdaten vorhanden."
+
+msgid "Optional reset game and additional matches"
+msgstr "Optionales Entscheidungsspiel und zusätzliche Partien"
+
+msgid "Played only if the losers-bracket winner takes Grand Final Game 1."
+msgstr "Wird nur gespielt, wenn der Verliererseiten-Sieger das erste Große Finale gewinnt."
+
+msgid "R"
+msgstr "R"
+
+msgid "Round"
+msgstr "Runde"
+
+msgid "Section statistics"
+msgstr "Abschnittsstatistiken"
+
+msgid "Semifinal losers compete for third place"
+msgstr "Halbfinalverlierer spielen um den dritten Platz"
+
+msgid "Source labels on cross-bracket entries with jump navigation"
+msgstr "Herkunftsanzeigen bei seitenübergreifenden Einträgen mit Sprungnavigation"
+
+msgid "TBD"
+msgstr "TBD"
+
+msgid "Top 8"
+msgstr "Top 8"
+
+msgid "Total matches"
+msgstr "Partien gesamt"
+
+msgid "True final: both players enter 1–1 in the series"
+msgstr "Echtes Finale: beide Spieler starten mit 1–1 in der Serie"
+
+msgid "Unique contestants"
+msgstr "Verschiedene Teilnehmer"
+
+msgid "WB Winner vs LB Winner"
+msgstr "WB-Sieger gegen LB-Sieger"
+
+msgid "Winners Bracket (WB)"
+msgstr "Gewinnerseite (WB)"
+
+msgid "Winners only"
+msgstr "Nur Gewinnerseite"
+
+msgid "click to jump to source match"
+msgstr "Klicken, um zur Quellpartie zu springen"
+
+msgid "contestant"
+msgstr "Teilnehmer"
+
+msgid "contestants"
+msgstr "Teilnehmer"
+
+msgid "jump to"
+msgstr "Sprung zu"
+
+msgid "match"
+msgstr "Partie"
+
+msgid "matches"
+msgstr "Partien"
+
+msgid "vs"
+msgstr "gegen"
 msgid "– select –"
 msgstr "– auswählen –"

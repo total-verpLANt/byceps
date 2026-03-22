@@ -11,6 +11,31 @@
  */
 
 /* ===================================================================
+ *  i18n helpers – translations embedded in bracket JSON by the server
+ * =================================================================== */
+
+/** Module-scoped translation strings, populated from data.strings. */
+var _ltStrings = {};
+
+/**
+ * Look up a translated string by key.
+ * Falls back to the provided fallback (or the key itself) if not found,
+ * so the bracket renders in English even without translations.
+ */
+function _t(key, fallback) {
+  if (_ltStrings && _ltStrings[key] != null) return _ltStrings[key];
+  return (fallback != null) ? fallback : key;
+}
+
+/**
+ * Simple singular/plural helper.
+ * German uses the same 1/many split as English for count-based plurals.
+ */
+function _tp(count, singularKey, pluralKey) {
+  return count === 1 ? _t(singularKey) : _t(pluralKey);
+}
+
+/* ===================================================================
  *  Utility helpers
  * =================================================================== */
 
@@ -114,34 +139,34 @@ function _ltParseMatchRef(ref) {
 function _ltFormatMatchRefDisplay(ref) {
   var parsed = _ltParseMatchRef(ref);
   if (!parsed) return String(ref || '').trim();
-  if (parsed.bracket === 'GF') return 'Grand Final – Game ' + parsed.match;
-  if (parsed.bracket === 'P3') return '3rd Place – Game ' + parsed.match;
+  if (parsed.bracket === 'GF') return _t('grandFinalGame', 'Grand Final \u2013 Game') + ' ' + parsed.match;
+  if (parsed.bracket === 'P3') return _t('thirdPlaceGame', '3rd Place \u2013 Game') + ' ' + parsed.match;
   if (parsed.bracket === 'WB' || parsed.bracket === 'LB') {
-    return parsed.bracket + ' R' + parsed.round + ' – Game ' + parsed.match;
+    return parsed.bracket + ' ' + _t('rAbbrev', 'R') + parsed.round + ' \u2013 ' + _t('game', 'Game') + ' ' + parsed.match;
   }
-  return 'R' + parsed.round + ' – Game ' + parsed.match;
+  return _t('rAbbrev', 'R') + parsed.round + ' \u2013 ' + _t('game', 'Game') + ' ' + parsed.match;
 }
 
 function _ltFormatSourceRefDisplay(ref) {
   var parsed = _ltParseMatchRef(ref);
   if (!parsed) return String(ref || '').trim();
-  if (parsed.bracket === 'GF') return 'GF G' + parsed.match;
-  if (parsed.bracket === 'P3') return '3rd M' + parsed.match;
+  if (parsed.bracket === 'GF') return _t('gfG', 'GF G') + parsed.match;
+  if (parsed.bracket === 'P3') return _t('thirdM', '3rd M') + parsed.match;
   if (parsed.bracket === 'WB' || parsed.bracket === 'LB') {
-    return parsed.bracket + ' R' + parsed.round + ' M' + parsed.match;
+    return parsed.bracket + ' ' + _t('rAbbrev', 'R') + parsed.round + ' ' + _t('mAbbrev', 'M') + parsed.match;
   }
-  return 'R' + parsed.round + ' M' + parsed.match;
+  return _t('rAbbrev', 'R') + parsed.round + ' ' + _t('mAbbrev', 'M') + parsed.match;
 }
 
 function _ltGetSourceLabel(ref, sourceOutcome, currentBracket) {
   var compact = _ltFormatSourceRefDisplay(ref);
   var sourceBracket = ref ? String(ref).split(' ')[0] : '';
-  var outcomeLabel = sourceOutcome === 'loser' ? 'Loser' : 'Winner';
+  var outcomeLabel = sourceOutcome === 'loser' ? _t('loser', 'Loser') : _t('winner', 'Winner');
 
   if (currentBracket === 'WB' && sourceBracket === 'LB' && sourceOutcome === 'winner') {
-    return 'LB Winner ' + compact;
+    return _t('lbWinner', 'LB Winner') + ' ' + compact;
   }
-  return outcomeLabel + ' of ' + compact;
+  return outcomeLabel + ' ' + _t('of', 'of') + ' ' + compact;
 }
 
 /* ===================================================================
@@ -160,14 +185,14 @@ function _ltGetSourceLabel(ref, sourceOutcome, currentBracket) {
  */
 function _ltBuildEntrant(contestant, placeholder) {
   if (!contestant) {
-    return { type: 'placeholder', name: placeholder || 'TBD', label: placeholder || 'TBD', key: '', score: null, id: null };
+    return { type: 'placeholder', name: placeholder || _t('tbd', 'TBD'), label: placeholder || _t('tbd', 'TBD'), key: '', score: null, id: null };
   }
   var hasRealId = !!(contestant.team_id || contestant.participant_id);
   var name = contestant.name || 'TBD';
   var isTBD = name === 'TBD';
 
   if (!hasRealId || isTBD) {
-    return { type: 'placeholder', name: placeholder || 'TBD', label: placeholder || 'TBD', key: '', score: null, id: null };
+    return { type: 'placeholder', name: placeholder || _t('tbd', 'TBD'), label: placeholder || _t('tbd', 'TBD'), key: '', score: null, id: null };
   }
 
   var display = name;
@@ -187,11 +212,11 @@ function _ltBuildEntrant(contestant, placeholder) {
  * Format an entrant for rendering (view model).
  */
 function _ltFormatEntrantForView(entrant) {
-  if (!entrant) return { text: 'TBD', className: 'placeholder', key: '' };
+  if (!entrant) return { text: _t('tbd', 'TBD'), className: 'placeholder', key: '' };
   if (entrant.type === 'placeholder') return { text: entrant.label, className: 'placeholder', key: '' };
   if (entrant.type === 'defwin') return { text: '\u2014', className: 'defwin', key: '' };
   return {
-    text: entrant.label || entrant.name || 'TBD',
+    text: entrant.label || entrant.name || _t('tbd', 'TBD'),
     className: '',
     key: _ltNormalizePlayer(entrant.name)
   };
@@ -210,16 +235,16 @@ function _ltComputeStatus(confirmed, topEntrant, botEntrant) {
   var botReal = botEntrant && botEntrant.type === 'player';
 
   if (confirmed) {
-    return { key: 'done', label: 'Done' };
+    return { key: 'done', label: _t('statusDone', 'Done') };
   }
   // One real contestant, other is defwin or absent -> auto-advance (DEFWIN)
   if ((topReal && !botReal) || (botReal && !topReal)) {
-    return { key: 'auto', label: 'DEFWIN' };
+    return { key: 'auto', label: _t('statusDefwin', 'DEFWIN') };
   }
   if (topReal && botReal) {
-    return { key: 'open', label: 'Open' };
+    return { key: 'open', label: _t('statusOpen', 'Open') };
   }
-  return { key: 'pending', label: 'Pending' };
+  return { key: 'pending', label: _t('statusPending', 'Pending') };
 }
 
 /**
@@ -310,8 +335,8 @@ function parseBracketData(json) {
     topContestant = (m.contestants && m.contestants.length > 0) ? m.contestants[0] : null;
     botContestant = (m.contestants && m.contestants.length > 1) ? m.contestants[1] : null;
 
-    entrantTop = _ltBuildEntrant(topContestant, 'TBD');
-    entrantBot = _ltBuildEntrant(botContestant, 'TBD');
+    entrantTop = _ltBuildEntrant(topContestant, _t('tbd', 'TBD'));
+    entrantBot = _ltBuildEntrant(botContestant, _t('tbd', 'TBD'));
 
     topScore = (topContestant && topContestant.score != null) ? topContestant.score : null;
     botScore = (botContestant && botContestant.score != null) ? botContestant.score : null;
@@ -320,7 +345,7 @@ function parseBracketData(json) {
     // are wired) so that matches waiting for incomplete feeders are not
     // prematurely marked as DEFWIN.  Pass 1 only builds the raw entrants.
     winnerIndex = null;
-    status = { key: 'pending', label: 'Pending' };
+    status = { key: 'pending', label: _t('statusPending', 'Pending') };
 
     topPlayers = (entrantTop.type === 'player') ? [entrantTop.key] : [];
     botPlayers = (entrantBot.type === 'player') ? [entrantBot.key] : [];
@@ -502,8 +527,8 @@ function parseBracketData(json) {
       displayBracket: 'WB',
       roundNo: winnerRounds.length + 1,
       matches: [gfMatches[0]],
-      title: 'Grand Final',
-      subtitle: 'WB Winner vs LB Winner'
+      title: _t('grandFinal', 'Grand Final'),
+      subtitle: _t('wbWinnerVsLbWinner', 'WB Winner vs LB Winner')
     });
     // GF M2+ — bracket reset (rendered as next column to the right).
     // displayBracket stays 'GF' so that the source-label system treats
@@ -514,8 +539,8 @@ function parseBracketData(json) {
         displayBracket: 'GF',
         roundNo: winnerRounds.length + 1,
         matches: [gfMatches[i]],
-        title: 'Bracket Reset',
-        subtitle: 'Grand Final \u2013 Decisive Game'
+        title: _t('bracketReset', 'Bracket Reset'),
+        subtitle: _t('grandFinalDecisive', 'Grand Final \u2013 Decisive Game')
       });
     }
   } else {
@@ -714,8 +739,8 @@ function _ltDecorateRounds(rounds) {
     round = rounds[i];
     if (round.title) continue;  // already decorated (e.g. GF)
     matchCount = round.matches.length;
-    title = 'Round ' + (i + 1);
-    subtitle = matchCount + (matchCount === 1 ? ' Match' : ' Matches');
+    title = _t('round', 'Round') + ' ' + (i + 1);
+    subtitle = matchCount + ' ' + _tp(matchCount, 'matchSingular', 'matchPlural');
     round.title = title;
     round.subtitle = subtitle;
   }
@@ -774,11 +799,11 @@ function shouldShowExternalSource(sourceRef, currentBracket) {
  */
 function _ltGetMatchStatusFromMap(ref, matchMap) {
   var m = matchMap[ref];
-  if (!m) return { key: 'pending', label: 'Pending' };
-  if (m.isAutoAdvanced) return { key: 'auto', label: 'DEFWIN' };
-  if (m.isComplete) return { key: 'done', label: 'Done' };
-  if (m.isReadyToPlay) return { key: 'open', label: 'Open' };
-  return { key: 'pending', label: 'Pending' };
+  if (!m) return { key: 'pending', label: _t('statusPending', 'Pending') };
+  if (m.isAutoAdvanced) return { key: 'auto', label: _t('statusDefwin', 'DEFWIN') };
+  if (m.isComplete) return { key: 'done', label: _t('statusDone', 'Done') };
+  if (m.isReadyToPlay) return { key: 'open', label: _t('statusOpen', 'Open') };
+  return { key: 'pending', label: _t('statusPending', 'Pending') };
 }
 
 /**
@@ -792,11 +817,11 @@ function _ltGetMatchStatusText(ref, matchMap) {
  * Get the status metadata directly from a match object.
  */
 function _ltGetMatchStatusMetaFromMatch(match) {
-  if (!match) return { key: 'pending', label: 'Pending' };
-  if (match.isAutoAdvanced) return { key: 'auto', label: 'DEFWIN' };
-  if (match.isComplete) return { key: 'done', label: 'Done' };
-  if (match.isReadyToPlay) return { key: 'open', label: 'Open' };
-  return { key: 'pending', label: 'Pending' };
+  if (!match) return { key: 'pending', label: _t('statusPending', 'Pending') };
+  if (match.isAutoAdvanced) return { key: 'auto', label: _t('statusDefwin', 'DEFWIN') };
+  if (match.isComplete) return { key: 'done', label: _t('statusDone', 'Done') };
+  if (match.isReadyToPlay) return { key: 'open', label: _t('statusOpen', 'Open') };
+  return { key: 'pending', label: _t('statusPending', 'Pending') };
 }
 
 /**
@@ -1186,7 +1211,7 @@ function buildTeamRow(entrant, isWinner, score, dims, matchRef, hoverData, place
 
   // Trophy icon SVG for 1st / 2nd / 3rd place
   var trophyColors = { 1: '#FFD700', 2: '#C0C0C0', 3: '#CD7F32' };
-  var trophyLabels = { 1: 'Winner', 2: '2nd Place', 3: '3rd Place' };
+  var trophyLabels = { 1: _t('winner', 'Winner'), 2: _t('secondPlace', '2nd Place'), 3: _t('thirdPlace', '3rd Place') };
   var trophyHtml = (trophyMatch && placement && trophyColors[placement])
     ? '<span class="lt-trophy-icon" aria-label="' + trophyLabels[placement] + '">' +
       '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="' + trophyColors[placement] + '" aria-hidden="true">' +
@@ -1240,14 +1265,14 @@ function createMatchEl(match, dims, options, matchUrls) {
 
   // Build descriptive ARIA label with contestant names
   var topName = (match.topResolved && match.topResolved.entrant && match.topResolved.entrant.type === 'player')
-    ? match.topResolved.entrant.label : 'TBD';
+    ? match.topResolved.entrant.label : _t('tbd', 'TBD');
   var botName = (match.bottomResolved && match.bottomResolved.entrant && match.bottomResolved.entrant.type === 'player')
-    ? match.bottomResolved.entrant.label : 'TBD';
-  el.setAttribute('aria-label', matchRefDisplay + ': ' + topName + ' vs ' + botName + ' (' + statusMeta.label + ')');
+    ? match.bottomResolved.entrant.label : _t('tbd', 'TBD');
+  el.setAttribute('aria-label', matchRefDisplay + ': ' + topName + ' ' + _t('vs', 'vs') + ' ' + botName + ' (' + statusMeta.label + ')');
 
   if (url) {
     el.href = url;
-    el.setAttribute('aria-label', 'Open ' + matchRefDisplay);
+    el.setAttribute('aria-label', _t('openMatch', 'Open') + ' ' + matchRefDisplay);
   }
 
   if (statusMeta.key === 'open') el.className += ' match-open';
@@ -1259,7 +1284,7 @@ function createMatchEl(match, dims, options, matchUrls) {
   var stageText = options.stageText
     ? '<span class="lt-match-stage" title="' + _ltEscapeHtml(options.stageText) + '">' + _ltEscapeHtml(options.stageText) + '</span>'
     : '';
-  var statusTag = '<span class="lt-match-status lt-match-status--' + _ltEscapeHtml(statusMeta.key) + '" title="Status: ' + _ltEscapeHtml(statusMeta.label) + '">' + _ltEscapeHtml(statusMeta.label) + '</span>';
+  var statusTag = '<span class="lt-match-status lt-match-status--' + _ltEscapeHtml(statusMeta.key) + '" title="' + _t('status', 'Status') + ': ' + _ltEscapeHtml(statusMeta.label) + '">' + _ltEscapeHtml(statusMeta.label) + '</span>';
 
   el.innerHTML =
     '<div class="lt-match-label" style="font-size:' + (0.72 * dims.fontScale) + 'rem">' +
@@ -1311,11 +1336,11 @@ function createExternalSourceBadge(options) {
   badge.setAttribute('data-target-ref', options.targetRef);
   badge.setAttribute('role', 'button');
   badge.tabIndex = 0;
-  badge.title = (options.sourceOutcome === 'loser' ? 'Loser of ' : 'Winner of ') +
+  badge.title = (options.sourceOutcome === 'loser' ? _t('loser', 'Loser') + ' ' + _t('of', 'of') + ' ' : _t('winner', 'Winner') + ' ' + _t('of', 'of') + ' ') +
     _ltFormatMatchRefDisplay(options.sourceRef) +
     (statusText ? ' - ' + statusText : '') +
-    ' – click to jump to source match';
-  badge.setAttribute('aria-label', labelText + (statusText ? ' ' + statusText : '') + ' – jump to ' + _ltFormatMatchRefDisplay(options.sourceRef));
+    ' \u2013 ' + _t('clickToJump', 'click to jump to source match');
+  badge.setAttribute('aria-label', labelText + (statusText ? ' ' + statusText : '') + ' \u2013 ' + _t('jumpTo', 'jump to') + ' ' + _ltFormatMatchRefDisplay(options.sourceRef));
 
   var dotHtml = statusMeta
     ? '<span class="lt-incoming-pill-state-dot lt-incoming-pill-dot--' + _ltEscapeHtml(statusMeta.key) + '" aria-hidden="true"></span>'
@@ -1517,15 +1542,15 @@ function computeSectionStats(rounds) {
  * @returns {string}  HTML string for the stats bar.
  */
 function _ltBuildStatsBarHtml(stats) {
-  return '<div class="lt-stats-bar" role="status" aria-label="Section statistics">' +
-    '<span class="lt-stats-chip" title="Total matches">' +
-      _ltEscapeHtml(stats.matchCount) + (stats.matchCount === 1 ? ' match' : ' matches') +
+  return '<div class="lt-stats-bar" role="status" aria-label="' + _t('sectionStatistics', 'Section statistics') + '">' +
+    '<span class="lt-stats-chip" title="' + _t('totalMatches', 'Total matches') + '">' +
+      _ltEscapeHtml(stats.matchCount) + ' ' + _tp(stats.matchCount, 'matchCountSingular', 'matchCountPlural') +
     '</span>' +
-    '<span class="lt-stats-chip" title="Completion percentage">' +
-      _ltEscapeHtml(stats.completionPct) + '% complete' +
+    '<span class="lt-stats-chip" title="' + _t('completionPercentage', 'Completion percentage') + '">' +
+      _ltEscapeHtml(stats.completionPct) + '% ' + _t('pctComplete', 'complete') +
     '</span>' +
-    '<span class="lt-stats-chip" title="Unique contestants">' +
-      _ltEscapeHtml(stats.contestantCount) + (stats.contestantCount === 1 ? ' contestant' : ' contestants') +
+    '<span class="lt-stats-chip" title="' + _t('uniqueContestants', 'Unique contestants') + '">' +
+      _ltEscapeHtml(stats.contestantCount) + ' ' + _tp(stats.contestantCount, 'contestantSingular', 'contestantPlural') +
     '</span>' +
   '</div>';
 }
@@ -1552,17 +1577,17 @@ function _ltCreateViewSelect(rootEl, currentMode) {
 
   var label = document.createElement('label');
   label.className = 'lt-view-select-label';
-  label.textContent = 'View';
+  label.textContent = _t('view', 'View');
 
   var select = document.createElement('select');
   select.className = 'view-select';
-  select.setAttribute('aria-label', 'Filter bracket view');
+  select.setAttribute('aria-label', _t('filterBracketView', 'Filter bracket view'));
 
   var options = [
-    { value: 'full', text: 'All brackets' },
-    { value: 'winners', text: 'Winners only' },
-    { value: 'losers', text: 'Losers only' },
-    { value: 'top8', text: 'Top 8' }
+    { value: 'full', text: _t('allBrackets', 'All brackets') },
+    { value: 'winners', text: _t('winnersOnly', 'Winners only') },
+    { value: 'losers', text: _t('losersOnly', 'Losers only') },
+    { value: 'top8', text: _t('top8', 'Top 8') }
   ];
 
   var i, opt;
@@ -1683,7 +1708,7 @@ function renderBracketSection(options) {
   for (i = 0; i < inlineP3Matches.length; i++) {
     match = inlineP3Matches[i];
     appendExternalSources(canvas, svg, match, dims, 'P3', options.matchMap, options.settings);
-    var p3El = createMatchEl(match, dims, { stageText: '3rd Place', hoverData: options.hoverData }, options.matchUrls);
+    var p3El = createMatchEl(match, dims, { stageText: _t('thirdPlace', '3rd Place'), hoverData: options.hoverData }, options.matchUrls);
     p3El.className += ' lt-p3-inline';
     canvas.appendChild(p3El);
   }
@@ -1709,9 +1734,9 @@ function renderFinalsSection(finalMatches, matchMap, settings, matchUrls, appEl,
   section.className = 'lt-bracket-section';
   section.innerHTML =
     '<div class="lt-bracket-section-head">' +
-    '<h2>Additional Matches</h2>' +
+    '<h2>' + _t('additionalMatches', 'Additional Matches') + '</h2>' +
     finalsStatsBarHtml +
-    '<span>Optional reset game and additional matches</span>' +
+    '<span>' + _t('optionalResetGame', 'Optional reset game and additional matches') + '</span>' +
     '</div>' +
     '<div class="lt-bracket-section-body">' +
     '<div class="lt-finals-grid"></div>' +
@@ -1771,9 +1796,9 @@ function renderThirdPlaceSection(thirdPlaceMatches, matchMap, settings, matchUrl
   section.setAttribute('data-bracket-view', 'third-place');
   section.innerHTML =
     '<div class="lt-bracket-section-head">' +
-    '<h2>3rd Place Match</h2>' +
+    '<h2>' + _t('thirdPlaceMatch', '3rd Place Match') + '</h2>' +
     p3StatsBarHtml +
-    '<span>Semifinal losers compete for third place</span>' +
+    '<span>' + _t('semifinalLosersCompete', 'Semifinal losers compete for third place') + '</span>' +
     '</div>' +
     '<div class="lt-bracket-section-body">' +
     '<div class="lt-finals-grid"></div>' +
@@ -1787,7 +1812,7 @@ function renderThirdPlaceSection(thirdPlaceMatches, matchMap, settings, matchUrl
     card.className = 'lt-final-card lt-p3-card';
 
     var titleText = match.title || _ltFormatMatchRefDisplay(match.ref);
-    var subtitleText = match.subtitle || 'Loser SF 1 vs Loser SF 2';
+    var subtitleText = match.subtitle || _t('loserSfVsLoserSf', 'Loser SF 1 vs Loser SF 2');
 
     card.innerHTML =
       '<h3>' + _ltEscapeHtml(titleText) + '</h3>' +
@@ -2150,13 +2175,13 @@ function _ltRenderBracketResetSection(match, matchMap, settings, matchUrls, appE
   var gfM1 = matchMap[gfM1Ref] || null;
   var conditionNote = gfM1 && gfM1.isComplete && gfM1.winnerIndex
     ? ''
-    : 'Played only if the losers-bracket winner takes Grand Final Game 1.';
+    : _t('playedOnlyIfLbWinner', 'Played only if the losers-bracket winner takes Grand Final Game 1.');
 
   section.innerHTML =
     '<div class="lt-bracket-section-head">' +
-    '<h2>Bracket Reset</h2>' +
+    '<h2>' + _t('bracketReset', 'Bracket Reset') + '</h2>' +
     resetStatsBarHtml +
-    '<span>' + _ltEscapeHtml(conditionNote || 'Grand Final \u2013 Decisive Game') + '</span>' +
+    '<span>' + _ltEscapeHtml(conditionNote || _t('grandFinalDecisive', 'Grand Final \u2013 Decisive Game')) + '</span>' +
     '</div>' +
     '<div class="lt-bracket-section-body">' +
     '<div class="lt-finals-grid"></div>' +
@@ -2166,8 +2191,8 @@ function _ltRenderBracketResetSection(match, matchMap, settings, matchUrls, appE
   var card = document.createElement('div');
   card.className = 'lt-final-card lt-final-card--reset';
 
-  var titleText = 'Grand Final \u2013 Bracket Reset';
-  var subtitleText = 'True final: both players enter 1\u20131 in the series';
+  var titleText = _t('grandFinalBracketReset', 'Grand Final \u2013 Bracket Reset');
+  var subtitleText = _t('trueFinal', 'True final: both players enter 1\u20131 in the series');
 
   card.innerHTML =
     '<h3>' + _ltEscapeHtml(titleText) + '</h3>' +
@@ -2286,7 +2311,7 @@ function createBracketInstance(config) {
     rootEl.innerHTML = '';
 
     if (!p.winnerRounds.length && !p.loserRounds.length && !p.finalMatches.length && !p.thirdPlaceMatches.length) {
-      rootEl.innerHTML = '<div class="lt-empty-state">No bracket data available.</div>';
+      rootEl.innerHTML = '<div class="lt-empty-state">' + _t('noBracketData', 'No bracket data available.') + '</div>';
       return;
     }
 
@@ -2317,8 +2342,8 @@ function createBracketInstance(config) {
     // Render winners bracket
     if (showWB && wbRounds.length > 0) {
       rootEl.appendChild(renderBracketSection({
-        title: isDE ? 'Winners Bracket (WB)' : 'Bracket',
-        subtitle: fieldSize + '-slot field',
+        title: isDE ? _t('winnersBracket', 'Winners Bracket (WB)') : _t('bracket', 'Bracket'),
+        subtitle: fieldSize + _t('slotField', '-slot field'),
         rounds: wbRounds,
         fieldSize: fieldSize,
         matchMap: p.matchMap,
@@ -2335,8 +2360,8 @@ function createBracketInstance(config) {
     // Render losers bracket
     if (showLB && lbRounds.length > 0) {
       rootEl.appendChild(renderBracketSection({
-        title: 'Losers Bracket (LB)',
-        subtitle: 'Source labels on cross-bracket entries with jump navigation',
+        title: _t('losersBracket', 'Losers Bracket (LB)'),
+        subtitle: _t('sourceLabelsCrossBracket', 'Source labels on cross-bracket entries with jump navigation'),
         rounds: lbRounds,
         fieldSize: fieldSize,
         matchMap: p.matchMap,
@@ -2459,6 +2484,11 @@ document.addEventListener('DOMContentLoaded', function() {
       console.error('[lan_tournament_bracket] Failed to parse bracket data:', e);
     }
     return;
+  }
+
+  // Populate i18n strings from server-embedded translations
+  if (data.strings) {
+    _ltStrings = data.strings;
   }
 
   var rootEl = document.getElementById('bracket-app');
