@@ -3,7 +3,7 @@ import logging
 from datetime import datetime
 from typing import TypeVar
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 
 from byceps.database import db
 from byceps.services.party.models import PartyID
@@ -1672,3 +1672,29 @@ def _db_score_submission_to_score_submission(
         is_official=db_sub.is_official,
         note=db_sub.note,
     )
+
+
+def get_ready_unconfirmed_match_ids(
+    tournament_id: TournamentID,
+) -> list[TournamentMatchID]:
+    """Return IDs of matches that are ready (>= 2 contestants)
+    and not yet confirmed."""
+    ready_match_ids_subq = (
+        select(DbTournamentMatchToContestant.tournament_match_id)
+        .group_by(DbTournamentMatchToContestant.tournament_match_id)
+        .having(func.count() >= 2)
+        .subquery()
+    )
+    match_ids = (
+        db.session.execute(
+            select(DbTournamentMatch.id)
+            .where(
+                DbTournamentMatch.tournament_id == tournament_id,
+                DbTournamentMatch.confirmed_by.is_(None),
+                DbTournamentMatch.id.in_(select(ready_match_ids_subq)),
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return list(match_ids)
