@@ -1,0 +1,25 @@
+{% extends 'layout/admin/base.html' %}
+{% from 'macros/admin.html' import render_backlink %}
+{% from 'macros/forms.html' import form_buttons, form_field %}
+{% set current_page = 'pizza_delivery_admin' %}
+{% set current_page_party = party %}
+{% set page_title = _('Edit Delivery') %}
+
+{% block before_body %}
+{{ render_backlink(url_for('.index_for_party', party_id=party.id), _('Pizza Deliveries')) }}
+{%- endblock %}
+
+{% block body %}
+
+  <h1 class="title">{{ page_title }} — #{{ entry.number }}</h1>
+
+  <form action="{{ url_for('.update', entry_id=entry.id) }}" method="post">
+    <div class="box">
+      {{ form_field(form.username, placeholder=_('Username (optional)'), autofocus=true) }}
+      <p class="form-caption dimmed">{{ _('If a username is provided, the user will be notified when their delivery is ready.') }}</p>
+    </div>
+
+    {{ form_buttons(_('Save')) }}
+  </form>
+
+{%- endblock %}

@@ -80,4 +80,14 @@ def register_site_blueprints(
             'is not importable; skipping site blueprints for lan_tournament'
         )
 
+    if importlib_util.find_spec('byceps.services.pizza_delivery.blueprints.site'):
+        blueprints.append(
+            ('services.pizza_delivery.blueprints.site', '/pizza')
+        )
+    else:
+        log.warning(
+            'Module byceps.services.pizza_delivery.blueprints.site '
+            'is not importable; skipping site blueprints for pizza_delivery'
+        )
+
     register_blueprints(app, blueprints)

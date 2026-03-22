@@ -11444,3 +11444,141 @@ msgstr "Du musst in einem Team sein, um ein Ergebnis einzureichen."
 
 msgid "You must have a valid ticket for this party to join."
 msgstr "Du benötigst ein gültiges Ticket für diese Party, um teilzunehmen."
+# --- Pizza Delivery ---
+#
+
+#: byceps/services/pizza_delivery/blueprints/site/templates/site/pizza_delivery/board.html
+#: byceps/services/pizza_delivery/blueprints/site/templates/site/pizza_delivery/my_status.html
+#: byceps/services/pizza_delivery/blueprints/admin/templates/admin/pizza_delivery/create_form.html
+#: byceps/services/pizza_delivery/blueprints/admin/templates/admin/pizza_delivery/index_for_party.html
+#: byceps/services/pizza_delivery/blueprints/admin/views.py
+#: byceps/services/pizza_delivery/blueprints/site/views.py
+
+msgid "Back to Board"
+msgstr "Zurück zur Übersicht"
+
+msgid "Claim"
+msgstr "Beanspruchen"
+
+msgid "Claim a Pizza Number"
+msgstr "Pizzanummer beanspruchen"
+
+msgid "Could not mark entry as delivered."
+msgstr "Eintrag konnte nicht als zugestellt markiert werden."
+
+msgid "Delete this entry?"
+msgstr "Diesen Eintrag löschen?"
+
+msgid "Delivered"
+msgstr "Zugestellt"
+
+msgid "Delivery number \"%(number)s\" already exists for this party."
+msgstr "Liefernummer „%(number)s“ existiert bereits für diese Party."
+
+msgid "Delivery number \"%(number)s\" has been registered."
+msgstr "Liefernummer „%(number)s“ wurde registriert."
+
+msgid "Email templates for pizza delivery notifications have not been set up yet."
+msgstr "E-Mail-Vorlagen für Pizzalieferungsbenachrichtigungen wurden noch nicht eingerichtet."
+
+msgid "Enter your pizza number below to track your order."
+msgstr "Gib unten deine Pizzanummer ein, um deine Bestellung zu verfolgen."
+
+msgid "Entry has been deleted."
+msgstr "Eintrag wurde gelöscht."
+
+msgid "If a username is provided, the user will be notified when their delivery is ready."
+msgstr "Wenn ein Benutzername angegeben wird, wird der Benutzer benachrichtigt, wenn seine Lieferung bereit ist."
+
+msgid "Linked User"
+msgstr "Verknüpfter Benutzer"
+
+msgid "Mark as delivered"
+msgstr "Als zugestellt markieren"
+
+msgid "Mark this entry as delivered?"
+msgstr "Diesen Eintrag als zugestellt markieren?"
+
+msgid "My Pizza Delivery Status"
+msgstr "Mein Pizzalieferungsstatus"
+
+msgid "My Status"
+msgstr "Mein Status"
+
+msgid "No deliveries have been called yet."
+msgstr "Es wurden noch keine Lieferungen aufgerufen."
+
+msgid "No deliveries registered yet."
+msgstr "Noch keine Lieferungen registriert."
+
+msgid "No delivery linked to your account yet"
+msgstr "Noch keine Lieferung mit deinem Konto verknüpft"
+
+msgid "Number"
+msgstr "Nummer"
+
+msgid "Order number: %(number)s"
+msgstr "Bestellnummer: %(number)s"
+
+msgid "Pizza #%(number)s claimed."
+msgstr "Pizza #%(number)s beansprucht."
+
+msgid "Pizza #%(number)s marked as delivered."
+msgstr "Pizza #%(number)s als zugestellt markiert."
+
+msgid "Pizza Deliveries"
+msgstr "Pizzalieferungen"
+
+msgid "Pizza Delivery"
+msgstr "Pizzalieferung"
+
+msgid "Pizza Delivery Board"
+msgstr "Pizzalieferungs-Übersicht"
+
+msgid "Pizza delivery email templates already exist."
+msgstr "E-Mail-Vorlagen für Pizzalieferung sind bereits vorhanden."
+
+msgid "Pizza delivery email templates created."
+msgstr "E-Mail-Vorlagen für Pizzalieferung erstellt."
+
+msgid "Pizza number"
+msgstr "Pizzanummer"
+
+msgid "Pizza number already claimed."
+msgstr "Pizzanummer bereits beansprucht."
+
+msgid "Pizza number is too long."
+msgstr "Pizzanummer ist zu lang."
+
+msgid "Pizza number not found."
+msgstr "Pizzanummer nicht gefunden."
+
+msgid "Please enter a pizza number."
+msgstr "Bitte gib eine Pizzanummer ein."
+
+msgid "Register"
+msgstr "Registrieren"
+
+msgid "Register Delivery"
+msgstr "Lieferung registrieren"
+
+msgid "Registered"
+msgstr "Registriert"
+
+msgid "Setup email templates"
+msgstr "E-Mail-Vorlagen einrichten"
+
+msgid "This page auto-refreshes every 30 seconds."
+msgstr "Diese Seite aktualisiert sich alle 30 Sekunden automatisch."
+
+msgid "User \"%(username)s\" not found."
+msgstr "Benutzer „%(username)s“ nicht gefunden."
+
+msgid "Username (optional)"
+msgstr "Benutzername (optional)"
+
+msgid "Your number has been called!"
+msgstr "Deine Nummer wurde aufgerufen!"
+
+msgid "not linked"
+msgstr "nicht verknüpft"

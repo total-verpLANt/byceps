@@ -7,6 +7,7 @@ byceps.application
 """
 
 from datetime import timedelta
+from importlib import util as importlib_util
 from typing import Any
 
 from flask_babel import Babel
@@ -150,6 +151,10 @@ def _create_app(
 
     from byceps.services.lan_tournament.notification_handlers import enable_match_notifications
     enable_match_notifications()
+
+    if importlib_util.find_spec('byceps.services.pizza_delivery.notification_handlers'):
+        from byceps.services.pizza_delivery.notification_handlers import enable_pizza_delivery_notifications
+        enable_pizza_delivery_notifications()
 
     debug_toolbar_enabled = (
         byceps_config.development.toolbar_enabled

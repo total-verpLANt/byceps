@@ -1,0 +1,253 @@
+{% extends 'layout/base.html' %}
+{% set current_page = 'pizza_delivery' %}
+{% set page_title = _('Pizza Delivery Board') %}
+
+{% block head %}
+  {{ super() }}
+  <meta http-equiv="refresh" content="30">
+{% endblock %}
+
+{% block body %}
+
+<div class="pizza-board">
+
+  <div class="pizza-board-header">
+    <h1 class="pizza-board-title">{{ page_title }}</h1>
+    {%- if g.user.authenticated %}
+    <a class="pizza-board-status-link" href="{{ url_for('.my_status') }}">{{ _('My Status') }} &rarr;</a>
+    {%- endif %}
+  </div>
+
+  {%- if current_user_entry %}
+  <div class="pizza-notification">
+    <div class="pizza-notification-icon">&#127829;</div>
+    <div class="pizza-notification-text">
+      <strong>{{ _('Your number has been called!') }}</strong>
+      <span>{{ _('Order number: %(number)s', number=current_user_entry.number) }}</span>
+    </div>
+  </div>
+  {%- endif %}
+
+  {%- if entries %}
+  <div class="pizza-grid">
+    {%- for entry in entries %}
+    <div class="pizza-tile{% if current_user_entry and entry.id == current_user_entry.id %} is-yours{% endif %}">
+      <div class="pizza-number">{{ entry.number }}</div>
+      <div class="pizza-time">{{ entry.updated_at|timeformat }}</div>
+    </div>
+    {%- endfor %}
+  </div>
+  {%- else %}
+  <div class="pizza-empty">
+    <div class="pizza-empty-icon">&#127829;</div>
+    <p>{{ _('No deliveries have been called yet.') }}</p>
+  </div>
+  {%- endif %}
+
+  <div class="pizza-refresh-hint">
+    {{ _('This page auto-refreshes every 30 seconds.') }}
+  </div>
+
+</div>
+
+<style>
+  .pizza-board {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 1rem;
+  }
+
+  .pizza-board-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+
+  .pizza-board-title {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: #ffffff;
+    margin: 0;
+  }
+
+  .pizza-board-status-link {
+    display: inline-block;
+    padding: 0.5rem 1rem;
+    background: rgba(249, 115, 22, 0.15);
+    border: 1px solid rgba(249, 115, 22, 0.4);
+    border-radius: 8px;
+    color: #f97316;
+    font-size: 0.9rem;
+    font-weight: 500;
+    text-decoration: none;
+    transition: background 0.2s ease, border-color 0.2s ease;
+  }
+
+  .pizza-board-status-link:hover {
+    background: rgba(249, 115, 22, 0.25);
+    border-color: #f97316;
+    color: #f97316;
+    text-decoration: none;
+  }
+
+  .pizza-notification {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem 1.25rem;
+    background: rgba(249, 115, 22, 0.1);
+    border: 1px solid rgba(249, 115, 22, 0.5);
+    border-left: 4px solid #f97316;
+    border-radius: 12px;
+    margin-bottom: 1.5rem;
+  }
+
+  .pizza-notification-icon {
+    font-size: 2rem;
+    flex-shrink: 0;
+  }
+
+  .pizza-notification-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    color: #ffffff;
+  }
+
+  .pizza-notification-text strong {
+    font-size: 1.05rem;
+    color: #f97316;
+  }
+
+  .pizza-notification-text span {
+    font-size: 0.9rem;
+    color: #d1d5db;
+  }
+
+  .pizza-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .pizza-tile {
+    background: rgba(15, 23, 42, 0.9);
+    border: 1px solid rgba(148, 163, 184, 0.1);
+    border-radius: 12px;
+    padding: 1.5rem 1rem;
+    text-align: center;
+    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+
+  .pizza-tile:hover {
+    border-color: rgba(249, 115, 22, 0.6);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(249, 115, 22, 0.1);
+  }
+
+  .pizza-tile.is-yours {
+    border-color: #f97316;
+    box-shadow: 0 0 20px rgba(249, 115, 22, 0.15);
+  }
+
+  .pizza-number {
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: #ffffff;
+    line-height: 1.1;
+  }
+
+  .pizza-tile.is-yours .pizza-number {
+    color: #f97316;
+  }
+
+  .pizza-time {
+    font-size: 0.85rem;
+    color: #9ca3af;
+    margin-top: 0.5rem;
+  }
+
+  .pizza-empty {
+    background: rgba(15, 23, 42, 0.9);
+    border: 1px solid rgba(148, 163, 184, 0.1);
+    border-radius: 16px;
+    padding: 3rem 2rem;
+    text-align: center;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    margin-bottom: 1.5rem;
+  }
+
+  .pizza-empty-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: 0.5;
+  }
+
+  .pizza-empty p {
+    color: #9ca3af;
+    font-size: 1rem;
+    margin: 0;
+  }
+
+  .pizza-refresh-hint {
+    text-align: center;
+    font-size: 0.8rem;
+    color: #6b7280;
+  }
+
+  /* Responsive: Tablet */
+  @media (max-width: 768px) {
+    .pizza-grid {
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 0.75rem;
+    }
+
+    .pizza-number {
+      font-size: 2rem;
+    }
+
+    .pizza-tile {
+      padding: 1.25rem 0.75rem;
+    }
+  }
+
+  /* Responsive: Mobile */
+  @media (max-width: 480px) {
+    .pizza-board {
+      padding: 0.75rem;
+    }
+
+    .pizza-board-title {
+      font-size: 1.35rem;
+    }
+
+    .pizza-grid {
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.625rem;
+    }
+
+    .pizza-number {
+      font-size: 1.75rem;
+    }
+
+    .pizza-tile {
+      padding: 1rem 0.5rem;
+      border-radius: 10px;
+    }
+
+    .pizza-notification {
+      flex-direction: column;
+      text-align: center;
+      gap: 0.5rem;
+    }
+  }
+</style>
+
+{%- endblock %}
