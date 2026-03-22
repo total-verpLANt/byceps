@@ -93,6 +93,21 @@
     </div>
   </div>
 
+  {# Email template setup #}
+  {%- if g.user.has_permission('lan_tournament.administrate') and not email_templates_configured %}
+  <div class="box block" style="border-left: 3px solid var(--color-info, #1b7fcc); padding: 0.75rem 1rem;">
+    <div class="row row--space-between" style="align-items: center;">
+      <div>
+        <strong>{{ _('Setup') }}</strong><br>
+        <span class="dimmed">{{ _('Email templates for match notifications have not been set up yet.') }}</span>
+      </div>
+      <form action="{{ url_for('.setup_email_templates_for_party', party_id=party.id) }}" method="post">
+        <button type="submit" class="button">{{ render_icon('email') }} {{ _('Setup email templates') }}</button>
+      </form>
+    </div>
+  </div>
+  {%- endif %}
+
   {# Tournament list #}
   {%- if tournaments %}
   <h2>{{ _('Tournaments') }} {{ render_extra_in_heading(tournaments|length) }}</h2>
