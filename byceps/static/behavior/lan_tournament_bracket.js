@@ -577,6 +577,7 @@ function _ltComputePlacements(parsed) {
     for (i = 0; i < finalRound.matches.length; i++) {
       match = finalRound.matches[i];
       if (!match.isComplete) continue;
+      match.trophyMatch = true;
       if (match.winnerIndex === 1) {
         match.topPlacement = 1;
         match.bottomPlacement = 2;
@@ -607,6 +608,7 @@ function _ltComputePlacements(parsed) {
       }
       // If GF M2 is complete, it determines rank 1 and rank 2
       if (gfResetMatch.isComplete) {
+        gfResetMatch.trophyMatch = true;
         if (gfResetMatch.winnerIndex === 1) {
           gfResetMatch.topPlacement = 1;
           gfResetMatch.bottomPlacement = 2;
@@ -640,6 +642,7 @@ function _ltComputePlacements(parsed) {
       for (i = 0; i < lbFinalRound.matches.length; i++) {
         match = lbFinalRound.matches[i];
         if (!match.isComplete) continue;
+        match.trophyMatch = true;
         if (match.winnerIndex === 1) {
           match.bottomPlacement = 3;
         } else if (match.winnerIndex === 2) {
@@ -653,6 +656,7 @@ function _ltComputePlacements(parsed) {
   for (i = 0; i < thirdPlaceMatches.length; i++) {
     match = thirdPlaceMatches[i];
     if (!match.isComplete) continue;
+    match.trophyMatch = true;
     if (match.winnerIndex === 1) {
       match.topPlacement = 3;
     } else if (match.winnerIndex === 2) {
@@ -1142,8 +1146,9 @@ function createRoundTitle(round, dims) {
  * @param {string}  matchRef   Match reference string.
  * @param {Object}  hoverData  Hover/tooltip data.
  * @param {number|null} placement  Rank placement (1, 2, 3) or null.
+ * @param {boolean}    trophyMatch Whether this match is a trophy-worthy match (final/GF/3rd-place).
  */
-function buildTeamRow(entrant, isWinner, score, dims, matchRef, hoverData, placement) {
+function buildTeamRow(entrant, isWinner, score, dims, matchRef, hoverData, placement, trophyMatch) {
   var team = _ltFormatEntrantForView(entrant);
   var classes = ['lt-team'];
   if (team.className) classes.push(team.className);
@@ -1179,10 +1184,12 @@ function buildTeamRow(entrant, isWinner, score, dims, matchRef, hoverData, place
     }
   }
 
-  // Trophy icon SVG for 1st place
-  var trophyHtml = (placement === 1)
-    ? '<span class="lt-trophy-icon" aria-label="Winner">' +
-      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="#FFD700" aria-hidden="true">' +
+  // Trophy icon SVG for 1st / 2nd / 3rd place
+  var trophyColors = { 1: '#FFD700', 2: '#C0C0C0', 3: '#CD7F32' };
+  var trophyLabels = { 1: 'Winner', 2: '2nd Place', 3: '3rd Place' };
+  var trophyHtml = (trophyMatch && placement && trophyColors[placement])
+    ? '<span class="lt-trophy-icon" aria-label="' + trophyLabels[placement] + '">' +
+      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="' + trophyColors[placement] + '" aria-hidden="true">' +
       '<path d="M19 5h-2V3H7v2H5c-1.1 0-2 .9-2 2v1c0 2.55 1.92 4.63 4.39 4.94A5.01 5.01 0 0 0 11 15.9V19H7v2h10v-2h-4v-3.1a5.01 5.01 0 0 0 3.61-2.96C19.08 12.63 21 10.55 21 8V7c0-1.1-.9-2-2-2zM5 8V7h2v3.82C5.84 10.4 5 9.3 5 8zm14 0c0 1.3-.84 2.4-2 2.82V7h2v1z"/>' +
       '</svg></span>'
     : '';
@@ -1262,8 +1269,8 @@ function createMatchEl(match, dims, options, matchUrls) {
     '</span>' +
     '<span class="lt-match-meta">' + stageText + statusTag + '</span>' +
     '</div>' +
-    buildTeamRow(match.topResolved.entrant, match.winnerIndex === 1, match.scores[0], dims, match.ref, options.hoverData, match.topPlacement || null) +
-    buildTeamRow(match.bottomResolved.entrant, match.winnerIndex === 2, match.scores[1], dims, match.ref, options.hoverData, match.bottomPlacement || null);
+    buildTeamRow(match.topResolved.entrant, match.winnerIndex === 1, match.scores[0], dims, match.ref, options.hoverData, match.topPlacement || null, match.trophyMatch) +
+    buildTeamRow(match.bottomResolved.entrant, match.winnerIndex === 2, match.scores[1], dims, match.ref, options.hoverData, match.bottomPlacement || null, match.trophyMatch);
 
   return el;
 }
