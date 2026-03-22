@@ -238,12 +238,17 @@
   /* Post-render placement highlighting for admin bracket view.
      Targets .bracket-desktop only (mobile list view is out of scope). */
   document.addEventListener('DOMContentLoaded', function () {
-    var TROPHY_SVG = '<svg class="bracket-trophy-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="#d4a017" stroke="#b8860b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3"/><path d="M18 9h3a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1h-3"/><path d="M6 4h12v6a6 6 0 0 1-12 0V4z"/><path d="M9 17v2a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-2"/><rect x="8" y="17" width="8" height="2" rx="1"/></svg>';
+    var TROPHY_SVGS = {
+      1: '<svg class="bracket-trophy-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="#d4a017" stroke="#b8860b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3"/><path d="M18 9h3a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1h-3"/><path d="M6 4h12v6a6 6 0 0 1-12 0V4z"/><path d="M9 17v2a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-2"/><rect x="8" y="17" width="8" height="2" rx="1"/></svg>',
+      2: '<svg class="bracket-trophy-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="#a0a0a0" stroke="#808080" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3"/><path d="M18 9h3a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1h-3"/><path d="M6 4h12v6a6 6 0 0 1-12 0V4z"/><path d="M9 17v2a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-2"/><rect x="8" y="17" width="8" height="2" rx="1"/></svg>',
+      3: '<svg class="bracket-trophy-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="#b87333" stroke="#8b5a2b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3"/><path d="M18 9h3a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1h-3"/><path d="M6 4h12v6a6 6 0 0 1-12 0V4z"/><path d="M9 17v2a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-2"/><rect x="8" y="17" width="8" height="2" rx="1"/></svg>'
+    };
 
-    function injectTrophy(contestantEl) {
+    function injectTrophy(contestantEl, rank) {
       var nameEl = contestantEl.querySelector('.bracket-contestant-name');
       if (!nameEl || nameEl.querySelector('.bracket-trophy-icon')) return;
-      nameEl.insertAdjacentHTML('afterbegin', TROPHY_SVG);
+      var svg = TROPHY_SVGS[rank || 1];
+      if (svg) nameEl.insertAdjacentHTML('afterbegin', svg);
     }
 
     function applyRankToContestants(roundEl, rankWinner, rankLoser) {
@@ -273,9 +278,9 @@
 
         if (text === 'Final') {
           applyRankToContestants(round, 'bracket-rank-1', 'bracket-rank-2');
-          /* Trophy for winner */
-          var winners = round.querySelectorAll('.bracket-contestant.winner');
-          winners.forEach(function (w) { injectTrophy(w); });
+          /* Trophies for 1st and 2nd */
+          round.querySelectorAll('.bracket-contestant.winner').forEach(function (w) { injectTrophy(w, 1); });
+          round.querySelectorAll('.bracket-contestant.bracket-rank-2').forEach(function (w) { injectTrophy(w, 2); });
         } else if (text === 'Semi-Finals') {
           applyRankToContestants(round, null, 'bracket-rank-3');
         }
@@ -302,9 +307,10 @@
             contestants.forEach(function (c) {
               if (c.classList.contains('winner')) {
                 c.classList.add('bracket-rank-1');
-                injectTrophy(c);
+                injectTrophy(c, 1);
               } else {
                 c.classList.add('bracket-rank-2');
+                injectTrophy(c, 2);
               }
             });
           }
@@ -320,6 +326,8 @@
       if (lbRounds.length > 0) {
         var lastLbRound = lbRounds[lbRounds.length - 1];
         applyRankToContestants(lastLbRound, null, 'bracket-rank-3');
+        /* Trophies for 3rd */
+        lastLbRound.querySelectorAll('.bracket-contestant.bracket-rank-3').forEach(function (w) { injectTrophy(w, 3); });
       }
     });
   });
