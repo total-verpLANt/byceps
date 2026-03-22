@@ -5,6 +5,26 @@
 {% set page_title = [_('Match'), tournament.name] %}
 {% set is_ffa = tournament.game_format and tournament.game_format.name == 'FREE_FOR_ALL' %}
 
+{%- macro render_contestant_name(contestant) -%}
+  {%- if contestant.team_id -%}
+    {%- set _team = teams_by_id.get(contestant.team_id) -%}
+    {%- if _team -%}
+      {{ render_hover_name(_team.name, team_id=_team.id, team_members_by_team_id=team_members_by_team_id) }}
+    {%- else -%}
+      {{ contestant.team_id|string }}
+    {%- endif -%}
+  {%- elif contestant.participant_id -%}
+    {%- set _user = participants_by_id.get(contestant.participant_id) -%}
+    {%- if _user -%}
+      {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted, seats_by_user_id=seats_by_user_id) }}
+    {%- else -%}
+      {{ contestant.participant_id|string }}
+    {%- endif -%}
+  {%- else -%}
+    {{ _('defwin') }}
+  {%- endif -%}
+{%- endmacro %}
+
 {% block body %}
 
   <nav class='breadcrumbs'>
@@ -40,10 +60,55 @@
     {# ── FFA Placement Display ─────────────────────────────────── #}
     {%- set placed_contestants = contestants|selectattr('placement')|sort(attribute='placement')|list %}
     {%- if match.confirmed_by and placed_contestants %}
-    <div class='contestants-box'>
+    <div class='ffa-match-box'>
       <h2 class="title">{{ _('Placements') }}</h2>
+      {# -- Podium: 2nd | 1st | 3rd -- #}
+      {%- set p1 = placed_contestants|selectattr('placement', 'equalto', 1)|first %}
+      {%- set p2 = placed_contestants|selectattr('placement', 'equalto', 2)|first %}
+      {%- set p3 = placed_contestants|selectattr('placement', 'equalto', 3)|first %}
+      <div class="podium">
+        {# 2nd place -- LEFT #}
+        <div class="podium__card podium__card--2nd">
+          {%- if p2 %}
+          <span class="podium__medal">🥈</span>
+          <span class="podium__rank">{{ _('2nd Place') }}</span>
+          <span class="podium__name">{{ render_contestant_name(p2) }}</span>
+          <span class="podium__points">{{ p2.points if p2.points is not none else '–' }} {{ _('pts') }}</span>
+          {%- else %}
+          <span class="podium__medal">🥈</span>
+          <span class="podium__rank">{{ _('2nd Place') }}</span>
+          <span class="podium__name">–</span>
+          {%- endif %}
+        </div>
+        {# 1st place -- CENTER (bigger) #}
+        <div class="podium__card podium__card--1st">
+          {%- if p1 %}
+          <span class="podium__medal">🥇</span>
+          <span class="podium__rank">{{ _('1st Place') }}</span>
+          <span class="podium__name">{{ render_contestant_name(p1) }}</span>
+          <span class="podium__points">{{ p1.points if p1.points is not none else '–' }} {{ _('pts') }}</span>
+          {%- endif %}
+        </div>
+        {# 3rd place -- RIGHT (always rendered, may be empty) #}
+        <div class="podium__card podium__card--3rd{{ ' podium__card--empty' if not p3 }}">
+          {%- if p3 %}
+          <span class="podium__medal">🥉</span>
+          <span class="podium__rank">{{ _('3rd Place') }}</span>
+          <span class="podium__name">{{ render_contestant_name(p3) }}</span>
+          <span class="podium__points">{{ p3.points if p3.points is not none else '–' }} {{ _('pts') }}</span>
+          {%- else %}
+          <span class="podium__medal">🥉</span>
+          <span class="podium__rank">{{ _('3rd Place') }}</span>
+          <span class="podium__name">–</span>
+          {%- endif %}
+        </div>
+      </div>
+      {# -- Remainder: 4th+ -- #}
+      {%- set remainder = placed_contestants|selectattr('placement', 'greaterthan', 3)|list %}
+      {%- if remainder %}
+      <div class="podium-remainder-label">{{ _('Remaining Placements') }}</div>
       <div class="ffa-ranking-list ffa-ranking-list--readonly">
-        {%- for contestant in placed_contestants %}
+        {%- for contestant in remainder %}
         <div class="ffa-ranking-card" data-rank="{{ contestant.placement }}">
           <span class="ffa-ranking-card__ordinal">
             {%- set _p = contestant.placement -%}
@@ -53,23 +118,7 @@
             {%- if contestant.placement == 1 %}&#x1F947;{% elif contestant.placement == 2 %}&#x1F948;{% elif contestant.placement == 3 %}&#x1F949;{% endif -%}
           </span>
           <span class="ffa-ranking-card__name">
-            {%- if contestant.team_id %}
-              {%- set _team = teams_by_id.get(contestant.team_id) -%}
-              {%- if _team -%}
-                {{ render_hover_name(_team.name, team_id=_team.id, team_members_by_team_id=team_members_by_team_id) }}
-              {%- else -%}
-                {{ contestant.team_id|string }}
-              {%- endif -%}
-            {%- elif contestant.participant_id %}
-              {%- set _user = participants_by_id.get(contestant.participant_id) -%}
-              {%- if _user -%}
-                {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted, seats_by_user_id=seats_by_user_id) }}
-              {%- else -%}
-                {{ contestant.participant_id|string }}
-              {%- endif -%}
-            {%- else %}
-              {{ _('defwin') }}
-            {%- endif %}
+            {{ render_contestant_name(contestant) }}
           </span>
           <span class="ffa-ranking-card__points">
             {{- contestant.points if contestant.points is not none else '–' -}}
@@ -77,32 +126,18 @@
         </div>
         {%- endfor %}
       </div>
+      {%- endif %}
     </div>
     {%- else %}
     {# FFA match not yet confirmed or no placements — show simple contestant list #}
-    <div class='contestants-box'>
+    <div class='ffa-match-box'>
       <h2 class="title">{{ _('Contestants') }}</h2>
       {%- for contestant in contestants %}
-      <div class='contestant'>
-        <div class='contestant-name'>
-          {%- if contestant.team_id %}
-            {%- set _team = teams_by_id.get(contestant.team_id) -%}
-            {%- if _team -%}
-              {{ render_hover_name(_team.name, team_id=_team.id, team_members_by_team_id=team_members_by_team_id) }}
-            {%- else -%}
-              {{ contestant.team_id|string }}
-            {%- endif -%}
-          {%- elif contestant.participant_id %}
-            {%- set _user = participants_by_id.get(contestant.participant_id) -%}
-            {%- if _user -%}
-              {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted, seats_by_user_id=seats_by_user_id) }}
-            {%- else -%}
-              {{ contestant.participant_id|string }}
-            {%- endif -%}
-          {%- else %}
-            {{ _('defwin') }}
-          {%- endif %}
-        </div>
+      <div class="ffa-unconfirmed-row">
+        <span class="ffa-unconfirmed-row__bullet"></span>
+        <span class="ffa-unconfirmed-row__name">
+          {{ render_contestant_name(contestant) }}
+        </span>
       </div>
       {%- endfor %}
     </div>
@@ -110,6 +145,52 @@
 
     {%- else %}
     {# ── Standard 1v1 Display ──────────────────────────────────── #}
+    {%- if match.confirmed_by and contestants|length == 2 %}
+    {# Confirmed 1v1 -- Variant C: side-by-side, winner glows #}
+    {%- set c1 = contestants[0] %}
+    {%- set c2 = contestants[1] %}
+    {%- set s1 = c1.score if c1.score is not none else 0 %}
+    {%- set s2 = c2.score if c2.score is not none else 0 %}
+    {%- set winner_score = [s1, s2]|max %}
+    <div class='ffa-match-box'>
+      <div class="match-result-1v1">
+        <div class="match-result-1v1__card {{ 'match-result-1v1__card--winner' if s1 == winner_score and s1 != s2 else 'match-result-1v1__card--loser' if s1 != winner_score else '' }}">
+          {%- if s1 == winner_score and s1 != s2 %}
+          <span class="podium__medal" style="font-size:1.8rem;position:relative;z-index:1">🥇</span>
+          <span class="podium__rank" style="position:relative;z-index:1">{{ _('Winner') }}</span>
+          {%- elif s1 == s2 %}
+          <span class="podium__medal" style="font-size:1.8rem">🤝</span>
+          <span class="podium__rank">{{ _('Draw') }}</span>
+          {%- else %}
+          <span class="podium__medal" style="font-size:1.8rem">🎮</span>
+          <span class="podium__rank">{{ _('Defeated') }}</span>
+          {%- endif %}
+          <span class="podium__name" style="position:relative;z-index:1">
+            {{ render_contestant_name(c1) }}
+          </span>
+          <span class="podium__score">{{ c1.score if c1.score is not none else '–' }}</span>
+        </div>
+        <span class="match-result-1v1__vs">vs</span>
+        <div class="match-result-1v1__card {{ 'match-result-1v1__card--winner' if s2 == winner_score and s1 != s2 else 'match-result-1v1__card--loser' if s2 != winner_score else '' }}">
+          {%- if s2 == winner_score and s1 != s2 %}
+          <span class="podium__medal" style="font-size:1.8rem;position:relative;z-index:1">🥇</span>
+          <span class="podium__rank" style="position:relative;z-index:1">{{ _('Winner') }}</span>
+          {%- elif s1 == s2 %}
+          <span class="podium__medal" style="font-size:1.8rem">🤝</span>
+          <span class="podium__rank">{{ _('Draw') }}</span>
+          {%- else %}
+          <span class="podium__medal" style="font-size:1.8rem">🎮</span>
+          <span class="podium__rank">{{ _('Defeated') }}</span>
+          {%- endif %}
+          <span class="podium__name" style="position:relative;z-index:1">
+            {{ render_contestant_name(c2) }}
+          </span>
+          <span class="podium__score">{{ c2.score if c2.score is not none else '–' }}</span>
+        </div>
+      </div>
+    </div>
+    {%- else %}
+    {# Pending 1v1 -- unchanged existing grid #}
     <div class='contestants-box'>
       {%- for contestant in contestants %}
       <div class='contestant'>
@@ -141,6 +222,7 @@
       {%- endif %}
       {%- endfor %}
     </div>
+    {%- endif %}
 
     {# Score entry — visible only when user may submit (participant, not confirmed, not winner, not DEFWIN) #}
     {% if current_user_can_submit %}
