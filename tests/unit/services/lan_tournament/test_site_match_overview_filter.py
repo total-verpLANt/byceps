@@ -354,18 +354,14 @@ class TestTabFilters:
         assert len(all_data) == 4
 
     def test_non_participant_gets_all_ready_matches(self):
-        """Non-participant fallback: all ready matches (2+ contestants, unconfirmed)."""
+        """Non-participant/anonymous default: all ready matches tournament-wide."""
         all_data, *_ = self._build_match_data()
-        result = [
-            e for e in all_data
-            if len(e['contestants']) >= 2
-            and e['match'].confirmed_by is None
-        ]
+        result = [e for e in all_data if _is_match_ready(e)]
         # ready_mine (2 contestants, unconfirmed), ready_other (2 contestants, unconfirmed)
         assert len(result) == 2
 
     def test_match_quantities_computed_correctly(self):
-        """Verify match_quantities dict counts for each tab."""
+        """Verify match_quantities dict counts for each tab (participant-scoped ready)."""
         all_data, participant, *_ = self._build_match_data()
         ready_user_count = sum(
             1 for e in all_data
@@ -377,3 +373,48 @@ class TestTabFilters:
         assert ready_user_count == 1  # ready_mine only (defwin_mine is confirmed)
         assert open_count == 3        # ready_mine + ready_other + open_match
         assert total_count == 4       # all
+
+    # -- Anonymous / non-participant filter tests ------------------------------
+
+    def test_anonymous_ready_tab_shows_all_ready_matches(self):
+        """Anonymous ready tab shows all ready matches tournament-wide (not personal-scoped)."""
+        all_data, participant, ready_mine, ready_other, open_match, defwin_mine = (
+            self._build_match_data()
+        )
+        # Anonymous: no participant, so ready is tournament-wide
+        result = [e for e in all_data if _is_match_ready(e)]
+        assert ready_mine in result
+        assert ready_other in result     # included (tournament-wide, not personal)
+        assert open_match not in result  # only 1 contestant → not ready
+        assert defwin_mine not in result # confirmed → not ready
+        assert len(result) == 2
+
+    def test_anonymous_open_tab_shows_open_matches(self):
+        """Anonymous open tab shows same tournament-wide open matches as participant."""
+        all_data, participant, ready_mine, ready_other, open_match, defwin_mine = (
+            self._build_match_data()
+        )
+        result = [e for e in all_data if _is_match_open(e)]
+        assert open_match in result
+        assert ready_mine in result      # ready is a subset of open
+        assert ready_other in result     # ready is a subset of open
+        assert defwin_mine not in result # confirmed → not open
+        assert len(result) == 3
+
+    def test_anonymous_all_tab_returns_everything(self):
+        """Anonymous all tab returns all matches without filtering."""
+        all_data, *_ = self._build_match_data()
+        # 'all' → no filter applied
+        assert len(all_data) == 4
+
+    def test_anonymous_match_quantities_computed_correctly(self):
+        """Verify anonymous match_quantities has tournament-wide ready count."""
+        all_data, *_ = self._build_match_data()
+        # Anonymous: no participant, ready count is tournament-wide
+        ready_count = sum(1 for e in all_data if _is_match_ready(e))
+        open_count = sum(1 for e in all_data if _is_match_open(e))
+        total_count = len(all_data)
+
+        assert ready_count == 2  # ready_mine + ready_other (tournament-wide, not 1)
+        assert open_count == 3   # ready_mine + ready_other + open_match
+        assert total_count == 4  # all
