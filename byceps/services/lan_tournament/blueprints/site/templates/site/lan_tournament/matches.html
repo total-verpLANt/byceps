@@ -17,7 +17,7 @@
 
   {{ render_tournament_subnav(tournament, active_tab) }}
 
-  {%- if current_user_participant and match_quantities %}
+  {%- if match_quantities %}
   <div class='match-filter-bar'>
     <a href='{{ url_for('.matches', tournament_id=tournament.id, only='ready') }}'
        class='button secondary{{ ' active' if only == 'ready' else '' }}'>
@@ -35,7 +35,7 @@
       <span class='dimmed' style='margin-left: 0.3rem;'>{{ match_quantities.all }}</span>
     </a>
 
-    {%- if match_data %}
+    {%- if current_user_participant and match_data %}
     <button type='button' id='match-filter-mine' class='button secondary'
             aria-pressed='false'
             data-user-team-id='{{ current_user_participant.team_id or "" }}'
@@ -103,7 +103,11 @@
   {%- else %}
   <p class='dimmed'>
     {%- if only == 'ready' %}
-      {{ _('No matches are ready for you yet.') }}
+      {%- if current_user_participant %}
+        {{ _('No matches are ready for you yet.') }}
+      {%- else %}
+        {{ _('No ready matches.') }}
+      {%- endif %}
     {%- elif only == 'open' %}
       {{ _('No open matches.') }}
     {%- else %}

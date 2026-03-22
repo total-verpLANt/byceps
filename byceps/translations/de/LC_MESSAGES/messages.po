@@ -10549,6 +10549,9 @@ msgstr "Noch keine bestätigten Runden."
 msgid "No matches are ready for you yet."
 msgstr "Es sind noch keine Partien für dich bereit."
 
+msgid "No ready matches."
+msgstr "Keine bereiten Partien."
+
 msgid "No matches have been created yet."
 msgstr "Es wurden noch keine Partien erstellt."
 

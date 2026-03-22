@@ -911,40 +911,38 @@ def matches(tournament_id):
                 current_user_participant = p
                 break
 
-    # Apply status filter based on ?only= param (participants only).
-    if current_user_participant:
-        only = request.args.get('only', 'ready')
+    # Apply status filter based on ?only= param (all users).
+    only = request.args.get('only', 'ready')
 
-        ready_user_count = sum(
+    if current_user_participant:
+        # Participant: ready count is personal-scoped (my matches only).
+        ready_count = sum(
             1 for e in match_data
             if _is_match_ready(e) and _is_user_match(e, current_user_participant)
         )
-        open_count = sum(1 for e in match_data if _is_match_open(e))
-        total_count = len(match_data)
-        match_quantities = {
-            'ready': ready_user_count,
-            'open': open_count,
-            'all': total_count,
-        }
+    else:
+        # Anonymous / non-participant: ready count is tournament-wide.
+        ready_count = sum(1 for e in match_data if _is_match_ready(e))
 
-        if only == 'ready':
+    open_count = sum(1 for e in match_data if _is_match_open(e))
+    total_count = len(match_data)
+    match_quantities = {
+        'ready': ready_count,
+        'open': open_count,
+        'all': total_count,
+    }
+
+    if only == 'ready':
+        if current_user_participant:
             match_data = [
                 e for e in match_data
                 if _is_match_ready(e) and _is_user_match(e, current_user_participant)
             ]
-        elif only == 'open':
-            match_data = [e for e in match_data if _is_match_open(e)]
-        # 'all' → no filtering
-    else:
-        only = None
-        match_quantities = None
-        # Non-participants: show ready matches only (2+ contestants, not confirmed).
-        match_data = [
-            entry
-            for entry in match_data
-            if len(entry['contestants']) >= 2
-            and entry['match'].confirmed_by is None
-        ]
+        else:
+            match_data = [e for e in match_data if _is_match_ready(e)]
+    elif only == 'open':
+        match_data = [e for e in match_data if _is_match_open(e)]
+    # 'all' → no filtering
 
     teams_by_id, participants_by_id = build_contestant_name_lookups(
         tournament.id, all_contestants, participants=participants
