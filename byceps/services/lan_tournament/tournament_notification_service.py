@@ -299,11 +299,19 @@ def create_match_ready_email_snippets(
         (
             'en',
             (
-                'Your match in "{tournament_name}" (round {match_round}) is ready!\n'
+                '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n'
+                '\U0001f3c1 MATCH READY\n'
+                '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n'
                 '\n'
-                'Opponent: {opponent_name}\n'
-                'Opponent seat: {opponent_seat}\n'
-                'Your seat: {your_seat}\n'
+                'Your match in {tournament_name} is ready.\n'
+                '\n'
+                'Round: {match_round}\n'
+                '\n'
+                '\U0001f464 Opponent: {opponent_name}\n'
+                '\U0001fa91 Your seat: {your_seat}\n'
+                '\U0001f4cd Opponent\'s seat: {opponent_seat}\n'
+                '\n'
+                'Coordinate with your opponent and contact the tournament staff if you run into any problems.\n'
                 '\n'
                 '{footer}'
             ),
@@ -311,11 +319,19 @@ def create_match_ready_email_snippets(
         (
             'de',
             (
-                'Dein Match im Turnier "{tournament_name}" (Runde {match_round}) ist bereit!\n'
+                '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n'
+                '\U0001f3c1 MATCH BEREIT\n'
+                '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n'
                 '\n'
-                'Gegner: {opponent_name}\n'
-                'Gegner-Sitzplatz: {opponent_seat}\n'
-                'Dein Sitzplatz: {your_seat}\n'
+                'Dein Match in {tournament_name} ist jetzt bereit.\n'
+                '\n'
+                'Runde: {match_round}\n'
+                '\n'
+                '\U0001f464 Gegner: {opponent_name}\n'
+                '\U0001fa91 Dein Platz: {your_seat}\n'
+                '\U0001f4cd Platz deines Gegners: {opponent_seat}\n'
+                '\n'
+                'Stimme dich mit deinem Gegner ab und wende dich bei Problemen an die Turnier-Orga.\n'
                 '\n'
                 '{footer}'
             ),
@@ -325,11 +341,11 @@ def create_match_ready_email_snippets(
     language_codes_and_subjects = [
         (
             'en',
-            '[{tournament_name}] Your match (round {match_round}) is ready!',
+            '[{tournament_name}] Your match (round {match_round}) is ready! \U0001f3c1',
         ),
         (
             'de',
-            '[{tournament_name}] Dein Match (Runde {match_round}) ist bereit!',
+            '[{tournament_name}] Dein Match (Runde {match_round}) ist bereit! \U0001f3c1',
         ),
     ]
 
@@ -356,3 +372,12 @@ def create_match_ready_email_snippets(
             created_any = True
 
     return created_any
+
+
+def email_templates_exist(brand: Brand) -> bool:
+    """Check whether match-ready email snippets exist for the brand."""
+    scope = SnippetScope.for_brand(brand.id)
+    existing = snippet_service.find_current_version_of_snippet_with_name(
+        scope, SNIPPET_NAME_BODY, 'en'
+    )
+    return existing is not None

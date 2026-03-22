@@ -132,11 +132,15 @@ def overview(party_id):
         tournaments, participant_counts
     )
 
+    brand = brand_service.get_brand(party.brand_id)
+    email_templates_configured = tournament_notification_service.email_templates_exist(brand)
+
     return {
         'party': party,
         'tournaments': tournaments,
         'stats': stats,
         'participant_counts': participant_counts,
+        'email_templates_configured': email_templates_configured,
     }
 
 
@@ -922,12 +926,11 @@ def generate_bracket(tournament_id):
     return redirect_to('.view', tournament_id=tournament.id)
 
 
-@blueprint.post('/tournaments/<tournament_id>/setup_email_templates')
+@blueprint.post('/for_party/<party_id>/setup_email_templates')
 @permission_required('lan_tournament.administrate')
-def setup_email_templates(tournament_id):
-    """Create default match-ready email snippets for the tournament's brand."""
-    tournament = _get_tournament_or_404(tournament_id)
-    party = party_service.get_party(tournament.party_id)
+def setup_email_templates_for_party(party_id):
+    """Create default match-ready email snippets for the party's brand."""
+    party = _get_party_or_404(party_id)
     brand = brand_service.get_brand(party.brand_id)
     current_user = g.user
 
@@ -943,7 +946,7 @@ def setup_email_templates(tournament_id):
             gettext('Match notification email templates already exist.')
         )
 
-    return redirect_to('.view', tournament_id=tournament.id)
+    return redirect_to('.overview', party_id=party.id)
 
 
 # -------------------------------------------------------------------- #
