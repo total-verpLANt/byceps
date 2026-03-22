@@ -126,9 +126,9 @@
         <div class="data-label">{{ _('Tournament mode') }}</div>
         <div class="data-value">
           {%- if tournament.game_format and tournament.elimination_mode %}
-            {{ tournament.game_format.name|replace('_', ' ')|title }} / {{ tournament.elimination_mode.name|replace('_', ' ')|title }}
+            {{ tournament.game_format.label }} / {{ tournament.elimination_mode.name|replace('_', ' ')|title }}
           {%- elif tournament.game_format %}
-            {{ tournament.game_format.name|replace('_', ' ')|title }}
+            {{ tournament.game_format.label }}
           {%- else %}
             {{ _('not set') }}
           {%- endif %}

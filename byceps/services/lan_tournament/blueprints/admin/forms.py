@@ -39,9 +39,9 @@ def _get_contestant_type_choices() -> list[tuple[str, str]]:
 def _get_game_format_choices() -> list[tuple[str, str]]:
     return [
         ('', lazy_gettext('– select –')),
-        (GameFormat.ONE_V_ONE.name, lazy_gettext('1 vs 1')),
-        (GameFormat.FREE_FOR_ALL.name, lazy_gettext('Free-for-All')),
-        (GameFormat.HIGHSCORE.name, lazy_gettext('Highscore')),
+        (GameFormat.ONE_V_ONE.name, GameFormat.ONE_V_ONE.label),
+        (GameFormat.FREE_FOR_ALL.name, GameFormat.FREE_FOR_ALL.label),
+        (GameFormat.HIGHSCORE.name, GameFormat.HIGHSCORE.label),
     ]
 
 
