@@ -102,4 +102,14 @@ def register_admin_blueprints(
             'is not importable; skipping admin blueprints for lan_tournament'
         )
 
+    if importlib_util.find_spec('byceps.services.pizza_delivery.blueprints.admin'):
+        blueprints.append(
+            ('services.pizza_delivery.blueprints.admin', '/pizza-deliveries')
+        )
+    else:
+        log.warning(
+            'Module byceps.services.pizza_delivery.blueprints.admin '
+            'is not importable; skipping admin blueprints for pizza_delivery'
+        )
+
     register_blueprints(app, blueprints)

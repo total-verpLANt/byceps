@@ -1,0 +1,250 @@
+{% extends 'layout/base.html' %}
+{% set current_page = 'pizza_delivery' %}
+{% set page_title = _('My Pizza Delivery Status') %}
+
+{% block body %}
+
+<div class="pizza-status">
+
+  <div class="pizza-status-header">
+    <a class="pizza-status-back" href="{{ url_for('.board') }}">&larr; {{ _('Back to Board') }}</a>
+    <h1 class="pizza-status-title">{{ page_title }}</h1>
+  </div>
+
+  {%- if entries %}
+  <div class="pizza-status-cards">
+    {%- for entry in entries %}
+    <div class="pizza-status-card">
+      <div class="pizza-status-card-number">{{ entry.number }}</div>
+      {%- if entry.status == 'delivered' %}
+      <div class="pizza-status-card-badge is-delivered">{{ _('Delivered') }}</div>
+      {%- else %}
+      <div class="pizza-status-card-badge is-pending">{{ _('Pending') }}</div>
+      {%- endif %}
+      <div class="pizza-status-card-meta">
+        <span class="pizza-status-card-time">{{ entry.updated_at|dateformat }} {{ entry.updated_at|timeformat }}</span>
+        <span class="pizza-status-card-party">{{ party.title }}</span>
+      </div>
+    </div>
+    {%- endfor %}
+  </div>
+  {%- else %}
+  <div class="pizza-status-empty">
+    <div class="pizza-status-empty-icon">&#127829;</div>
+    <p class="pizza-status-empty-heading">{{ _('No delivery linked to your account yet') }}</p>
+    <p class="pizza-status-empty-hint">{{ _('Enter your pizza number below to track your order.') }}</p>
+  </div>
+  {%- endif %}
+
+  <div class="pizza-claim-form">
+    <h2 class="pizza-claim-title">{{ _('Claim a Pizza Number') }}</h2>
+    <form method="post" action="{{ url_for('pizza_delivery.claim') }}">
+      <div class="pizza-claim-input-group">
+        <input type="text" name="number" placeholder="{{ _('Pizza number') }}" maxlength="20" required class="pizza-claim-input">
+        <button type="submit" class="button pizza-claim-button">{{ _('Claim') }}</button>
+      </div>
+    </form>
+  </div>
+
+</div>
+
+<style>
+  .pizza-status {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 1rem;
+  }
+
+  .pizza-status-header {
+    margin-bottom: 1.5rem;
+  }
+
+  .pizza-status-back {
+    display: inline-block;
+    font-size: 0.875rem;
+    color: #9ca3af;
+    text-decoration: none;
+    margin-bottom: 0.75rem;
+    transition: color 0.2s ease;
+  }
+
+  .pizza-status-back:hover {
+    color: #f97316;
+    text-decoration: none;
+  }
+
+  .pizza-status-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #ffffff;
+    margin: 0;
+  }
+
+  .pizza-status-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .pizza-status-card {
+    background: rgba(15, 23, 42, 0.9);
+    border: 1px solid rgba(148, 163, 184, 0.1);
+    border-radius: 16px;
+    padding: 1.75rem;
+    text-align: center;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    transition: border-color 0.2s ease;
+  }
+
+  .pizza-status-card:hover {
+    border-color: rgba(249, 115, 22, 0.4);
+  }
+
+  .pizza-status-card-number {
+    font-size: 3rem;
+    font-weight: 700;
+    color: #f97316;
+    line-height: 1.1;
+    margin-bottom: 0.75rem;
+  }
+
+  .pizza-status-card-badge {
+    display: inline-block;
+    padding: 0.375rem 1rem;
+    background: rgba(34, 197, 94, 0.15);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    border-radius: 20px;
+    color: #22c55e;
+    font-size: 0.875rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+  }
+
+  .pizza-status-card-meta {
+    display: flex;
+    justify-content: center;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+  }
+
+  .pizza-status-card-time,
+  .pizza-status-card-party {
+    font-size: 0.85rem;
+    color: #9ca3af;
+  }
+
+  .pizza-status-empty {
+    background: rgba(15, 23, 42, 0.9);
+    border: 1px solid rgba(148, 163, 184, 0.1);
+    border-radius: 16px;
+    padding: 3rem 2rem;
+    text-align: center;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+
+  .pizza-status-empty-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: 0.5;
+  }
+
+  .pizza-status-empty-heading {
+    color: #ffffff;
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin: 0 0 0.5rem 0;
+  }
+
+  .pizza-status-empty-hint {
+    color: #9ca3af;
+    font-size: 0.9rem;
+    margin: 0;
+  }
+
+  .pizza-claim-form {
+    margin-top: 2rem;
+    background: rgba(15, 23, 42, 0.9);
+    border: 1px solid rgba(148, 163, 184, 0.1);
+    border-radius: 16px;
+    padding: 1.75rem;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+
+  .pizza-claim-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #ffffff;
+    margin: 0 0 1rem 0;
+  }
+
+  .pizza-claim-input-group {
+    display: flex;
+    gap: 0.75rem;
+  }
+
+  .pizza-claim-input {
+    flex: 1;
+    padding: 0.625rem 1rem;
+    background: rgba(30, 41, 59, 0.8);
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    border-radius: 8px;
+    color: #ffffff;
+    font-size: 1rem;
+  }
+
+  .pizza-claim-input::placeholder {
+    color: #6b7280;
+  }
+
+  .pizza-claim-input:focus {
+    outline: none;
+    border-color: #f97316;
+    box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.2);
+  }
+
+  .pizza-claim-button {
+    white-space: nowrap;
+  }
+
+  .pizza-status-card-badge.is-pending {
+    background: rgba(234, 179, 8, 0.15);
+    border-color: rgba(234, 179, 8, 0.3);
+    color: #eab308;
+  }
+
+  .pizza-status-card-badge.is-delivered {
+    background: rgba(34, 197, 94, 0.15);
+    border-color: rgba(34, 197, 94, 0.3);
+    color: #22c55e;
+  }
+
+  /* Responsive: Mobile */
+  @media (max-width: 480px) {
+    .pizza-status {
+      padding: 0.75rem;
+    }
+
+    .pizza-status-title {
+      font-size: 1.25rem;
+    }
+
+    .pizza-status-card {
+      padding: 1.25rem;
+      border-radius: 12px;
+    }
+
+    .pizza-status-card-number {
+      font-size: 2.25rem;
+    }
+
+    .pizza-status-card-meta {
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+  }
+</style>
+
+{%- endblock %}

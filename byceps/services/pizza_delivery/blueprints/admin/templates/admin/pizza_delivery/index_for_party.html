@@ -1,0 +1,99 @@
+{% extends 'layout/admin/base.html' %}
+{% from 'macros/admin.html' import render_extra_in_heading %}
+{% from 'macros/icons.html' import render_icon %}
+{% from 'macros/misc.html' import render_tag %}
+{% set current_page = 'pizza_delivery_admin' %}
+{% set current_page_party = party %}
+{% set page_title = _('Pizza Deliveries') %}
+
+{% block body %}
+
+  <div class="block row row--space-between">
+    <div>
+      <h1 class="title">{{ page_title }} {{ render_extra_in_heading(entries|length) }}</h1>
+    </div>
+  {%- if g.user.has_permission('ticketing.checkin') %}
+    <div>
+      <div class="button-row is-right-aligned">
+        <a class="button" href="{{ url_for('.create_form', party_id=party.id) }}">{{ render_icon('add') }} <span>{{ _('Add') }}</span></a>
+      </div>
+    </div>
+  {%- endif %}
+  </div>
+
+  {%- if not email_templates_configured %}
+  <div class="box">
+    <div class="block">
+      <span class="dimmed">{{ _('Email templates for pizza delivery notifications have not been set up yet.') }}</span>
+    </div>
+    <form action="{{ url_for('.setup_email_templates', party_id=party.id) }}" method="post">
+      <button type="submit" class="button">{{ render_icon('email') }} {{ _('Setup email templates') }}</button>
+    </form>
+  </div>
+  {%- endif %}
+
+  {%- if entries %}
+  <table class="itemlist is-wide is-vcentered">
+    <thead>
+      <tr>
+        <th>{{ _('Number') }}</th>
+        <th>{{ _('Linked User') }}</th>
+        <th>{{ _('Status') }}</th>
+        <th>{{ _('Last changed') }}</th>
+        <th>{{ _('Created by') }}</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {%- for entry in entries %}
+      <tr>
+        <td><strong>{{ entry.number }}</strong></td>
+        <td>
+          {%- if entry.user_id and entry.user_id in users_by_id %}
+            {{ render_tag(users_by_id[entry.user_id].screen_name, class='color-success', icon='user') }}
+          {%- else %}
+            {{ render_tag(_('not linked'), class='color-disabled') }}
+          {%- endif %}
+        </td>
+        <td>
+          {%- if entry.status == 'delivered' %}
+            {{ render_tag(_('Delivered'), class='color-success') }}
+          {%- else %}
+            {{ render_tag(_('Registered'), class='color-info') }}
+          {%- endif %}
+        </td>
+        <td>{{ entry.updated_at|dateformat }} {{ entry.updated_at|timeformat }}</td>
+        <td>
+          {%- if entry.created_by_id in users_by_id %}
+            {{ users_by_id[entry.created_by_id].screen_name }}
+          {%- endif %}
+        </td>
+        <td>
+          {%- if g.user.has_permission('ticketing.checkin') %}
+          <div class="button-row is-compact is-right-aligned">
+            <a class="button is-compact" href="{{ url_for('.edit_form', entry_id=entry.id) }}" title="{{ _('Edit') }}">{{ render_icon('edit') }}</a>
+            {%- if entry.status == 'registered' %}
+            <a class="button is-compact" href="{{ url_for('.deliver', entry_id=entry.id) }}" data-action="pizza-delivery-deliver" title="{{ _('Mark as delivered') }}">{{ render_icon('enabled') }}</a>
+            {%- endif %}
+            <a class="button is-compact" href="{{ url_for('.delete', entry_id=entry.id) }}" data-action="pizza-delivery-delete">{{ render_icon('delete') }}</a>
+          </div>
+          {%- endif %}
+        </td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+  {%- else %}
+  <div class="box no-data-message">{{ _('No deliveries registered yet.') }}</div>
+  {%- endif %}
+
+{%- endblock %}
+
+{% block scripts %}
+<script>
+onDomReady(() => {
+  confirmed_post_on_click_then_reload('[data-action="pizza-delivery-deliver"]', '{{ _('Mark this entry as delivered?') }}');
+  confirmed_delete_on_click_then_reload('[data-action="pizza-delivery-delete"]', '{{ _('Delete this entry?') }}');
+});
+</script>
+{% endblock %}
