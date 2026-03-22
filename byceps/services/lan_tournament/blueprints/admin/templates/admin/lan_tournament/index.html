@@ -45,9 +45,9 @@
         <td>{{ tournament.game|default('', true) }}</td>
         <td>
           {%- if tournament.game_format and tournament.elimination_mode %}
-            {{ tournament.game_format.name|replace('_', ' ')|title }} / {{ tournament.elimination_mode.name|replace('_', ' ')|title }}
+            {{ tournament.game_format.label }} / {{ tournament.elimination_mode.name|replace('_', ' ')|title }}
           {%- elif tournament.game_format %}
-            {{ tournament.game_format.name|replace('_', ' ')|title }}
+            {{ tournament.game_format.label }}
           {%- endif %}
         </td>
         <td>

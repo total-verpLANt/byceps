@@ -8,6 +8,16 @@ class GameFormat(Enum):
     HIGHSCORE = 'HIGHSCORE'        # No matches — solo score submissions
 
     @property
+    def label(self) -> str:
+        """Return a human-readable label (not translated)."""
+        labels = {
+            GameFormat.ONE_V_ONE: '1v1',
+            GameFormat.FREE_FOR_ALL: 'Free-for-All',
+            GameFormat.HIGHSCORE: 'Highscore',
+        }
+        return labels[self]
+
+    @property
     def has_match_structure(self) -> bool:
         """Whether the tournament uses matches at all."""
         return self != GameFormat.HIGHSCORE
