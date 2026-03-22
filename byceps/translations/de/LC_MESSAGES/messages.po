@@ -10039,11 +10039,20 @@ msgstr "%(name)s wurde dem Team hinzugefügt."
 msgid "-- select --"
 msgstr "-- auswählen --"
 
+msgid "1st Place"
+msgstr "1. Platz"
+
 msgid "2nd"
 msgstr "2."
 
+msgid "2nd Place"
+msgstr "2. Platz"
+
 msgid "3rd"
 msgstr "3."
+
+msgid "3rd Place"
+msgstr "3. Platz"
 
 msgid "Add Comment"
 msgstr "Kommentar hinzufügen"
@@ -10237,6 +10246,9 @@ msgstr "DEFWIN"
 msgid "Danger Zone"
 msgstr "Gefahrenbereich"
 
+msgid "Defeated"
+msgstr "Besiegt"
+
 msgid "Delete LAN tournaments"
 msgstr "LAN-Turniere löschen"
 
@@ -10254,6 +10266,9 @@ msgstr "Doppelte Elimination"
 
 msgid "Double Elimination Pool Status"
 msgstr "Doppelte-Elimination-Pool-Status"
+
+msgid "Draw"
+msgstr "Unentschieden"
 
 msgid "Edit LAN tournaments"
 msgstr "LAN-Turniere bearbeiten"
@@ -10684,6 +10699,9 @@ msgstr "Pkt."
 msgid "Ready"
 msgstr "Bereit"
 
+msgid "Remaining Placements"
+msgstr "Weitere Platzierungen"
+
 msgid "Regenerate bracket"
 msgstr "Turnierbaum neu generieren"
 
@@ -10698,6 +10716,12 @@ msgstr "Die Anmeldung ist nicht geöffnet."
 
 msgid "Registrations"
 msgstr "Anmeldungen"
+
+msgid "Remove %(count)s participants without tickets?"
+msgstr "%(count)s Teilnehmer ohne Tickets entfernen?"
+
+msgid "Remove %(count)s ticketless participants and transfer captain roles?"
+msgstr "%(count)s Teilnehmer ohne Tickets entfernen und Kapitänsrollen übertragen?"
 
 msgid "Remove All Without Tickets"
 msgstr "Alle ohne Tickets entfernen"
@@ -10717,6 +10741,9 @@ msgstr "Anmeldung wieder öffnen"
 msgid "Resume"
 msgstr "Fortsetzen"
 
+msgid "Round %(num)s"
+msgstr "Runde %(num)s"
+
 msgid "Round Robin"
 msgstr "Round Robin"
 
@@ -10731,6 +10758,9 @@ msgstr "Gespielte Runden"
 
 msgid "Ruleset"
 msgstr "Regelwerk"
+
+msgid "Runner-up"
+msgstr "Zweitplatzierter"
 
 msgid "Save Scores"
 msgstr "Ergebnisse speichern"
@@ -10930,6 +10960,9 @@ msgstr "Alle anzeigen"
 msgid "WB"
 msgstr "WB"
 
+msgid "Winner"
+msgstr "Sieger"
+
 msgid "Winners Pool"
 msgstr "Gewinner-Pool"
 
@@ -10944,6 +10977,9 @@ msgstr "Ja"
 
 msgid "Yes, cancel tournament"
 msgstr "Ja, Turnier abbrechen"
+
+msgid "You are about to cancel the tournament \"%(name)s\"."
+msgstr "Du bist dabei, das Turnier „%(name)s" abzubrechen."
 
 msgid "You are a member of this team."
 msgstr "Du bist Mitglied dieses Teams."
@@ -10992,6 +11028,9 @@ msgstr "."
 
 msgid "not set"
 msgstr "nicht gesetzt"
+
+msgid "pts"
+msgstr "Pkt."
 
 msgid "rd"
 msgstr "."
