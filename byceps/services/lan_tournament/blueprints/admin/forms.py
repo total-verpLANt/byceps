@@ -73,13 +73,13 @@ class _BaseForm(LocalizedForm):
     name = StringField(lazy_gettext('Name'), [InputRequired(), Length(max=80)])
     game = StringField(lazy_gettext('Game'), [Optional(), Length(max=80)])
     description = TextAreaField(
-        lazy_gettext('Description'), [Optional(), Length(max=4000)]
+        lazy_gettext('Description'), [Optional(), Length(max=10000)]
     )
     image_url = StringField(
         lazy_gettext('Image URL'), [Optional(), Length(max=256)]
     )
     ruleset = TextAreaField(
-        lazy_gettext('Ruleset'), [Optional(), Length(max=4000)]
+        lazy_gettext('Ruleset'), [Optional(), Length(max=10000)]
     )
     start_time = DateTimeLocalField(
         lazy_gettext('Start time'), validators=[Optional()]
