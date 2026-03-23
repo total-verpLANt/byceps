@@ -45,6 +45,9 @@
 
   {% if tournament.game_format and tournament.game_format.name == 'FREE_FOR_ALL' and tournament.elimination_mode and tournament.elimination_mode.name == 'DOUBLE_ELIMINATION' %}
 
+    {# True when Grand Final is the next action (both pools confirmed, GF not yet generated) #}
+    {% set ffa_gf_ready = ffa_wb_all_confirmed and ffa_lb_all_confirmed and ffa_wb_standings and ffa_lb_standings and not ffa_gf_exists %}
+
     {# ═══════════════════════════════════════════════════════════════ #}
     {# FFA + Double Elimination — tabbed pool management             #}
     {# ═══════════════════════════════════════════════════════════════ #}
@@ -90,13 +93,15 @@
               {{ render_icon('arrange') }} {{ _('Generate First WB Round') }}
             </button>
           </form>
-        {%- elif ffa_wb_all_confirmed %}
+        {%- elif ffa_wb_all_confirmed and not ffa_gf_ready %}
           <form action='{{ url_for('.advance_ffa_round_action', tournament_id=tournament.id) }}' method='post'>
             <input type='hidden' name='pool' value='WB'>
             <button type='submit' class='button color-success'>
               {{ render_icon('arrange') }} {{ _('Advance WB Round') }}
             </button>
           </form>
+        {%- elif ffa_gf_ready %}
+          <span class='dimmed'>{{ _('Grand Final is ready to be generated.') }}</span>
         {%- else %}
           <span class='dimmed'>{{ _('Confirm all WB groups in the current round before advancing.') }}</span>
         {%- endif %}
@@ -115,13 +120,15 @@
 
       {%- if g.user.has_permission('lan_tournament.administrate') and tournament.tournament_status and tournament.tournament_status.name in ('ONGOING', 'REGISTRATION_CLOSED') %}
       <div class='button-row block' style='margin-top: 1.5rem;'>
-        {%- if ffa_lb_standings and ffa_lb_all_confirmed %}
+        {%- if ffa_lb_standings and ffa_lb_all_confirmed and not ffa_gf_ready %}
           <form action='{{ url_for('.advance_ffa_round_action', tournament_id=tournament.id) }}' method='post'>
             <input type='hidden' name='pool' value='LB'>
             <button type='submit' class='button color-success'>
               {{ render_icon('arrange') }} {{ _('Advance LB Round') }}
             </button>
           </form>
+        {%- elif ffa_gf_ready %}
+          <span class='dimmed'>{{ _('Grand Final is ready to be generated.') }}</span>
         {%- elif ffa_lb_standings %}
           <span class='dimmed'>{{ _('Confirm all LB groups in the current round before advancing.') }}</span>
         {%- else %}
