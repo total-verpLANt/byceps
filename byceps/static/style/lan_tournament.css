@@ -279,7 +279,23 @@
 
 .lt-dark .button.secondary {
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.06));
+  border-color: var(--lt-border);
   box-shadow: none;
+}
+
+.lt-dark .button.color-primary {
+  background-color: var(--lt-brand-blue);
+  border-color: var(--lt-brand-blue);
+  color: #fff;
+}
+
+.lt-dark .button.color-primary:hover,
+.lt-dark .button.color-primary:focus-visible {
+  filter: brightness(1.15);
+}
+
+.lt-dark .button.is-outlined {
+  border-color: var(--lt-border);
 }
 
 
