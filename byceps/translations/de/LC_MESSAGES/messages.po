@@ -11466,6 +11466,9 @@ msgstr "Pizzanummer beanspruchen"
 msgid "Could not mark entry as delivered."
 msgstr "Eintrag konnte nicht als zugestellt markiert werden."
 
+msgid "Could not revert entry."
+msgstr "Eintrag konnte nicht zurückgesetzt werden."
+
 msgid "Delete this entry?"
 msgstr "Diesen Eintrag löschen?"
 
@@ -11526,6 +11529,9 @@ msgstr "Pizza #%(number)s beansprucht."
 msgid "Pizza #%(number)s marked as delivered."
 msgstr "Pizza #%(number)s als zugestellt markiert."
 
+msgid "Pizza #%(number)s reverted to pending."
+msgstr "Pizza #%(number)s auf ausstehend zurückgesetzt."
+
 msgid "Pizza Deliveries"
 msgstr "Pizzalieferungen"
 
@@ -11564,6 +11570,12 @@ msgstr "Lieferung registrieren"
 
 msgid "Registered"
 msgstr "Registriert"
+
+msgid "Revert this entry to pending?"
+msgstr "Diesen Eintrag auf ausstehend zurücksetzen?"
+
+msgid "Revert to pending"
+msgstr "Auf ausstehend zurücksetzen"
 
 msgid "Setup email templates"
 msgstr "E-Mail-Vorlagen einrichten"
