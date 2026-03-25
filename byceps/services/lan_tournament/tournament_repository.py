@@ -1368,6 +1368,21 @@ def update_contestant_scores(
     db.session.flush()
 
 
+def clear_contestant_scores(match_id: TournamentMatchID) -> None:
+    """Clear all contestant scores for a match.
+
+    Caller is responsible for committing the session.
+    """
+    contestants = (
+        db.session.query(DbTournamentMatchToContestant)
+        .filter_by(tournament_match_id=match_id)
+        .all()
+    )
+    for contestant in contestants:
+        contestant.score = None
+    db.session.flush()
+
+
 def update_contestant_placement_and_points(
     updates: dict[TournamentMatchToContestantID, tuple[int, int]],
 ) -> None:

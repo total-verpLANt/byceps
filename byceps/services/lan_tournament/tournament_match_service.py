@@ -1227,7 +1227,7 @@ def set_match_scores(
     proposed_contestants: list[TournamentMatchToContestant] = []
     for contestant in real_contestants:
         # Match by participant_id or team_id.
-        key = contestant.participant_id or contestant.team_id
+        key = contestant.team_id or contestant.participant_id
         if key not in scores:
             return Err(
                 f'Missing score for contestant "{key}".'
@@ -1262,6 +1262,68 @@ def set_match_scores(
         return Err(confirm_result.unwrap_err())
     return Ok(None)
 
+
+def admin_set_and_confirm_match(
+    match_id: TournamentMatchID,
+    admin_id: UserID,
+    scores: dict[TournamentParticipantID | TournamentTeamID, int],
+) -> Result[None, str]:
+    """Set all contestant scores and confirm a match atomically.
+
+    Admin-only variant: no loser-only enforcement, no participant
+    check.  The admin supplies scores for every real contestant and
+    the match is confirmed in one operation.
+
+    Post-rollback note: when this function returns ``Err``, the
+    database session has been rolled back.  Any ORM-managed objects
+    fetched before this call may be expired or detached.  Callers
+    must NOT access attributes on those objects after receiving an
+    ``Err`` result.
+    """
+    match = tournament_repository.get_match_for_update(match_id)
+    if match.confirmed_by is not None:
+        return Err('Match is already confirmed.')
+
+    contestants = tournament_repository.get_contestants_for_match(
+        match_id
+    )
+
+    # Exclude DEFWIN slots (no participant or team assigned).
+    real_contestants = [
+        c for c in contestants
+        if c.participant_id is not None or c.team_id is not None
+    ]
+
+    if len(scores) != len(real_contestants):
+        return Err(
+            'All contestants in the match must have scores submitted.'
+        )
+
+    # Resolve each submitted key to a contestant and validate scores.
+    id_to_score: dict[TournamentMatchToContestantID, int] = {}
+    for contestant in real_contestants:
+        key = contestant.team_id or contestant.participant_id
+        if key not in scores:
+            return Err(f'Missing score for contestant "{key}".')
+        score = scores[key]
+        if score < 0:
+            return Err('Score cannot be negative.')
+        if score > MAX_MATCH_SCORE:
+            return Err(f'Score cannot exceed {MAX_MATCH_SCORE:,}.')
+        id_to_score[contestant.id] = score
+
+    # Atomic write — all scores flushed together.
+    tournament_repository.update_contestant_scores(id_to_score)
+
+    # Auto-confirm: admin submitted scores → match is resolved.
+    # confirm_match() will see the flushed scores and commit everything.
+    confirm_result = confirm_match(match_id, admin_id)
+    if confirm_result.is_err():
+        # Scores were flushed but confirm failed (e.g. draw in SE mode).
+        # Roll back so we don't persist partial state.
+        tournament_repository.rollback_session()
+        return Err(confirm_result.unwrap_err())
+    return Ok(None)
 
 
 def _validate_match_confirmable(
@@ -1982,6 +2044,8 @@ def _unconfirm_match_impl(
             tournament_was_uncompleted = True
 
     tournament_repository.unconfirm_match(match_id)
+    # Clear scores to prevent stale data from being re-confirmed.
+    tournament_repository.clear_contestant_scores(match_id)
 
     now = datetime.now(UTC)
     collected_events.append(

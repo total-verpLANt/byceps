@@ -40,6 +40,9 @@ from byceps.services.lan_tournament.models.tournament_team import (
     TournamentTeam,
     TournamentTeamID,
 )
+from byceps.services.lan_tournament.models.tournament_participant import (
+    TournamentParticipantID,
+)
 from byceps.services.lan_tournament.models.tournament_match import (
     TournamentMatch,
     TournamentMatchID,
@@ -1647,67 +1650,40 @@ def view_match(match_id):
     }
 
 
-@blueprint.post('/matches/<match_id>/set_score')
-@permission_required('lan_tournament.update')
-def set_match_score(match_id):
-    """Set score for a contestant in a match."""
+@blueprint.post('/matches/<match_id>/confirm_with_scores')
+@permission_required('lan_tournament.administrate')
+def confirm_match_with_scores(match_id):
+    """Set scores for all contestants and confirm the match."""
     match_id_obj = TournamentMatchID(match_id)
-    match = tournament_match_service.get_match(match_id_obj)
+    match_obj = tournament_match_service.get_match(match_id_obj)
+    tournament = _get_tournament_or_404(match_obj.tournament_id)
 
-    contestant_id = request.form.get('contestant_id', '').strip()
-    score = request.form.get('score', '').strip()
-
-    if not contestant_id or not score:
-        flash_error(gettext('Contestant ID and score are required.'))
-        return redirect_to('.view_match', match_id=match_id)
-
-    try:
-        score_int = int(score)
-        from uuid import UUID
-
-        from byceps.services.lan_tournament.models.tournament_participant import (
-            TournamentParticipantID,
-        )
-        from byceps.services.lan_tournament.models.tournament_team import (
-            TournamentTeamID,
-        )
-
-        contestant_uuid = UUID(contestant_id)
-
-        # Determine if it's a participant or team based on tournament type
-        tournament = _get_tournament_or_404(match.tournament_id)
+    contestants = tournament_match_service.get_contestants_for_match(
+        match_id_obj
+    )
+    scores = {}
+    for contestant in contestants:
+        key = contestant.team_id or contestant.participant_id
+        if key is None:
+            continue  # DEFWIN slot
+        raw = request.form.get(f'score_{key}', '').strip()
+        if not raw:
+            flash_error(gettext('All contestants must have scores.'))
+            return redirect_to('.view_match', match_id=match_id)
+        try:
+            score_int = int(raw)
+        except ValueError:
+            flash_error(gettext('Invalid score value.'))
+            return redirect_to('.view_match', match_id=match_id)
 
         if tournament.contestant_type == ContestantType.TEAM:
-            contestant_id_obj = TournamentTeamID(contestant_uuid)
+            scores[TournamentTeamID(key)] = score_int
         else:
-            contestant_id_obj = TournamentParticipantID(contestant_uuid)
-    except ValueError as e:
-        flash_error(gettext('Error setting score: %(error)s', error=str(e)))
-        return redirect_to('.view_match', match_id=match_id)
+            scores[TournamentParticipantID(key)] = score_int
 
-    match tournament_match_service.set_score(
-        match_id_obj, contestant_id_obj, score_int
+    match tournament_match_service.admin_set_and_confirm_match(
+        match_id_obj, g.user.id, scores
     ):
-        case Ok(_):
-            flash_success(gettext('Score has been set.'))
-        case Err(error_message):
-            flash_error(
-                gettext(
-                    'Error setting score: %(error)s',
-                    error=error_message,
-                )
-            )
-
-    return redirect_to('.view_match', match_id=match_id)
-
-
-@blueprint.post('/matches/<match_id>/confirm')
-@permission_required('lan_tournament.administrate')
-def confirm_match(match_id):
-    """Confirm a match result."""
-    match_id_obj = TournamentMatchID(match_id)
-
-    match tournament_match_service.confirm_match(match_id_obj, g.user.id):
         case Ok(_):
             flash_success(gettext('Match has been confirmed.'))
         case Err(error_message):
