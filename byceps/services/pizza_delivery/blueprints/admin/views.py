@@ -248,6 +248,28 @@ def deliver(entry_id):
     )
 
 
+@blueprint.post('/entries/<uuid:entry_id>/undeliver')
+@permission_required('ticketing.checkin')
+@respond_no_content
+def undeliver(entry_id):
+    """Revert a pizza delivery entry to pending."""
+    result = pizza_delivery_service.undeliver_entry(
+        PizzaDeliveryEntryID(entry_id), initiator=g.user
+    )
+
+    if result.is_err():
+        flash_error(gettext('Could not revert entry.'))
+        return
+
+    entry = result.unwrap()
+    flash_success(
+        gettext(
+            'Pizza #%(number)s reverted to pending.',
+            number=entry.number,
+        )
+    )
+
+
 @blueprint.post('/parties/<party_id>/setup_email_templates')
 @permission_required('ticketing.checkin')
 def setup_email_templates(party_id):

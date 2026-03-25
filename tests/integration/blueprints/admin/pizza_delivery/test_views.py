@@ -76,7 +76,7 @@ def test_deliver_entry_via_admin(
     )
     assert result.is_ok()
     entry = result.unwrap()
-    assert entry.status == PizzaDeliveryStatus.REGISTERED
+    assert entry.status == PizzaDeliveryStatus.PENDING
 
     url = f'{BASE_URL}/pizza-deliveries/entries/{entry.id}/deliver'
     response = pizza_admin_client.post(url)

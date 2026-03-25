@@ -21,7 +21,7 @@ PizzaDeliveryEntryID = NewType('PizzaDeliveryEntryID', UUID)
 
 
 class PizzaDeliveryStatus:
-    REGISTERED = 'registered'
+    PENDING = 'pending'
     DELIVERED = 'delivered'
 
 

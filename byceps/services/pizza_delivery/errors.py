@@ -31,6 +31,11 @@ class PizzaDeliveryEntryAlreadyDeliveredError:
 
 
 @dataclass(frozen=True)
+class PizzaDeliveryEntryNotDeliveredError:
+    entry_id: PizzaDeliveryEntryID
+
+
+@dataclass(frozen=True)
 class PizzaDeliveryEntryAlreadyClaimedError:
     entry_id: PizzaDeliveryEntryID
     claimed_by_id: UserID

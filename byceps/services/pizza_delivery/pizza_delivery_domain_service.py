@@ -30,7 +30,7 @@ def create_entry(
         party_id=party_id,
         number=number,
         user_id=user_id,
-        status=PizzaDeliveryStatus.REGISTERED,
+        status=PizzaDeliveryStatus.PENDING,
         created_at=now,
         updated_at=now,
         created_by_id=created_by_id,

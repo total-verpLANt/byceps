@@ -59,7 +59,7 @@
           {%- if entry.status == 'delivered' %}
             {{ render_tag(_('Delivered'), class='color-success') }}
           {%- else %}
-            {{ render_tag(_('Registered'), class='color-info') }}
+            {{ render_tag(_('Pending'), class='color-info') }}
           {%- endif %}
         </td>
         <td>{{ entry.updated_at|dateformat }} {{ entry.updated_at|timeformat }}</td>
@@ -72,8 +72,11 @@
           {%- if g.user.has_permission('ticketing.checkin') %}
           <div class="button-row is-compact is-right-aligned">
             <a class="button is-compact" href="{{ url_for('.edit_form', entry_id=entry.id) }}" title="{{ _('Edit') }}">{{ render_icon('edit') }}</a>
-            {%- if entry.status == 'registered' %}
+            {%- if entry.status == 'pending' %}
             <a class="button is-compact" href="{{ url_for('.deliver', entry_id=entry.id) }}" data-action="pizza-delivery-deliver" title="{{ _('Mark as delivered') }}">{{ render_icon('enabled') }}</a>
+            {%- endif %}
+            {%- if entry.status == 'delivered' %}
+            <a class="button is-compact" href="{{ url_for('.undeliver', entry_id=entry.id) }}" data-action="pizza-delivery-undeliver" title="{{ _('Revert to pending') }}">{{ render_icon('disabled') }}</a>
             {%- endif %}
             <a class="button is-compact" href="{{ url_for('.delete', entry_id=entry.id) }}" data-action="pizza-delivery-delete">{{ render_icon('delete') }}</a>
           </div>
@@ -93,6 +96,7 @@
 <script>
 onDomReady(() => {
   confirmed_post_on_click_then_reload('[data-action="pizza-delivery-deliver"]', '{{ _('Mark this entry as delivered?') }}');
+  confirmed_post_on_click_then_reload('[data-action="pizza-delivery-undeliver"]', '{{ _('Revert this entry to pending?') }}');
   confirmed_delete_on_click_then_reload('[data-action="pizza-delivery-delete"]', '{{ _('Delete this entry?') }}');
 });
 </script>

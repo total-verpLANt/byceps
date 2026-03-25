@@ -41,6 +41,13 @@ class PizzaDeliveryEntryDeliveredEvent(_BasePizzaDeliveryEvent):
 
 
 @dataclass(frozen=True, kw_only=True)
+class PizzaDeliveryEntryUndeliveredEvent(_BasePizzaDeliveryEvent):
+    entry_id: PizzaDeliveryEntryID
+    number: str
+    user_id: UserID | None
+
+
+@dataclass(frozen=True, kw_only=True)
 class PizzaDeliveryEntryUpdatedEvent(_BasePizzaDeliveryEvent):
     entry_id: PizzaDeliveryEntryID
     number: str

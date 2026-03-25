@@ -11,6 +11,7 @@ from byceps.services.pizza_delivery.errors import (
     DuplicateDeliveryNumberError,
     PizzaDeliveryEntryAlreadyClaimedError,
     PizzaDeliveryEntryAlreadyDeliveredError,
+    PizzaDeliveryEntryNotDeliveredError,
     PizzaDeliveryEntryNotFoundError,
     PizzaDeliveryNumberNotFoundError,
 )
@@ -147,7 +148,7 @@ def test_deliver_entry(admin_app, party: Party, user: User) -> None:
     )
     assert result.is_ok()
     entry = result.unwrap()
-    assert entry.status == PizzaDeliveryStatus.REGISTERED
+    assert entry.status == PizzaDeliveryStatus.PENDING
 
     deliver_result = pizza_delivery_service.deliver_entry(entry.id)
     assert deliver_result.is_ok()
@@ -283,7 +284,7 @@ def test_get_entries_for_party_with_status_filter(
         party.id, status=PizzaDeliveryStatus.DELIVERED
     )
     registered = pizza_delivery_service.get_entries_for_party(
-        party.id, status=PizzaDeliveryStatus.REGISTERED
+        party.id, status=PizzaDeliveryStatus.PENDING
     )
 
     delivered_ids = {e.id for e in delivered}
@@ -328,3 +329,96 @@ def test_get_claimed_entries_for_user(
     # Clean up.
     pizza_delivery_service.delete_entry(e1.id)
     pizza_delivery_service.delete_entry(e2.id)
+
+
+def test_undeliver_entry(admin_app, party: Party, user: User) -> None:
+    """Create → deliver → undeliver → verify status reverts to PENDING."""
+    result = pizza_delivery_service.create_entry(
+        party.id, 'UNDEL-001', None, user.id
+    )
+    assert result.is_ok()
+    entry = result.unwrap()
+    assert entry.status == PizzaDeliveryStatus.PENDING
+
+    deliver_result = pizza_delivery_service.deliver_entry(entry.id)
+    assert deliver_result.is_ok()
+    assert deliver_result.unwrap().status == PizzaDeliveryStatus.DELIVERED
+
+    undeliver_result = pizza_delivery_service.undeliver_entry(entry.id)
+    assert undeliver_result.is_ok()
+    undelivered = undeliver_result.unwrap()
+    assert undelivered.status == PizzaDeliveryStatus.PENDING
+
+    # Verify persisted.
+    found = pizza_delivery_service.find_entry(entry.id)
+    assert found is not None
+    assert found.status == PizzaDeliveryStatus.PENDING
+
+    # Clean up.
+    pizza_delivery_service.delete_entry(entry.id)
+
+
+def test_undeliver_not_delivered_fails(
+    admin_app, party: Party, user: User
+) -> None:
+    """Undelivering a pending entry returns NotDeliveredError."""
+    result = pizza_delivery_service.create_entry(
+        party.id, 'UNDEL-002', None, user.id
+    )
+    assert result.is_ok()
+    entry = result.unwrap()
+    assert entry.status == PizzaDeliveryStatus.PENDING
+
+    undeliver_result = pizza_delivery_service.undeliver_entry(entry.id)
+    assert undeliver_result.is_err()
+    error = undeliver_result.unwrap_err()
+    assert isinstance(error, PizzaDeliveryEntryNotDeliveredError)
+    assert error.entry_id == entry.id
+
+    # Clean up.
+    pizza_delivery_service.delete_entry(entry.id)
+
+
+def test_undeliver_nonexistent_entry_fails(admin_app) -> None:
+    """Undelivering a bogus ID returns NotFoundError."""
+    fake_id = PizzaDeliveryEntryID(generate_uuid7())
+    result = pizza_delivery_service.undeliver_entry(fake_id)
+    assert result.is_err()
+    error = result.unwrap_err()
+    assert isinstance(error, PizzaDeliveryEntryNotFoundError)
+    assert error.entry_id == fake_id
+
+
+def test_deliver_then_undeliver_then_deliver_again(
+    admin_app, party: Party, user: User
+) -> None:
+    """Full round-trip: pending → delivered → pending → delivered."""
+    result = pizza_delivery_service.create_entry(
+        party.id, 'UNDEL-003', None, user.id
+    )
+    assert result.is_ok()
+    entry = result.unwrap()
+    assert entry.status == PizzaDeliveryStatus.PENDING
+
+    # First deliver.
+    deliver_result1 = pizza_delivery_service.deliver_entry(entry.id)
+    assert deliver_result1.is_ok()
+    assert deliver_result1.unwrap().status == PizzaDeliveryStatus.DELIVERED
+
+    # Undeliver back to pending.
+    undeliver_result = pizza_delivery_service.undeliver_entry(entry.id)
+    assert undeliver_result.is_ok()
+    assert undeliver_result.unwrap().status == PizzaDeliveryStatus.PENDING
+
+    # Re-deliver.
+    deliver_result2 = pizza_delivery_service.deliver_entry(entry.id)
+    assert deliver_result2.is_ok()
+    assert deliver_result2.unwrap().status == PizzaDeliveryStatus.DELIVERED
+
+    # Verify final persisted state.
+    found = pizza_delivery_service.find_entry(entry.id)
+    assert found is not None
+    assert found.status == PizzaDeliveryStatus.DELIVERED
+
+    # Clean up.
+    pizza_delivery_service.delete_entry(entry.id)

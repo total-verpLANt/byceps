@@ -22,6 +22,7 @@ from .errors import (
     DuplicateDeliveryNumberError,
     PizzaDeliveryEntryAlreadyClaimedError,
     PizzaDeliveryEntryAlreadyDeliveredError,
+    PizzaDeliveryEntryNotDeliveredError,
     PizzaDeliveryEntryNotFoundError,
     PizzaDeliveryNumberNotFoundError,
 )
@@ -30,6 +31,7 @@ from .events import (
     PizzaDeliveryEntryCreatedEvent,
     PizzaDeliveryEntryDeletedEvent,
     PizzaDeliveryEntryDeliveredEvent,
+    PizzaDeliveryEntryUndeliveredEvent,
     PizzaDeliveryEntryUpdatedEvent,
 )
 from .models import PizzaDeliveryEntry, PizzaDeliveryEntryID, PizzaDeliveryStatus
@@ -199,6 +201,41 @@ def deliver_entry(
         user_id=entry.user_id,
     )
     signals.entry_delivered.send(None, event=event)
+
+    return Ok(entry)
+
+
+def undeliver_entry(
+    entry_id: PizzaDeliveryEntryID,
+    *,
+    initiator: User | None = None,
+) -> Result[
+    PizzaDeliveryEntry,
+    PizzaDeliveryEntryNotFoundError | PizzaDeliveryEntryNotDeliveredError,
+]:
+    """Revert a pizza delivery entry from delivered back to pending."""
+    db_entry = db.session.get(DbPizzaDeliveryEntry, entry_id)
+    if db_entry is None:
+        return Err(PizzaDeliveryEntryNotFoundError(entry_id=entry_id))
+
+    if db_entry.status != PizzaDeliveryStatus.DELIVERED:
+        return Err(PizzaDeliveryEntryNotDeliveredError(entry_id=entry_id))
+
+    db_entry.status = PizzaDeliveryStatus.PENDING
+    db_entry.updated_at = datetime.now(timezone.utc)
+    db.session.commit()
+
+    entry = _db_entity_to_entry(db_entry)
+
+    event = PizzaDeliveryEntryUndeliveredEvent(
+        occurred_at=datetime.now(timezone.utc),
+        initiator=initiator,
+        party_id=entry.party_id,
+        entry_id=entry.id,
+        number=entry.number,
+        user_id=entry.user_id,
+    )
+    signals.entry_undelivered.send(None, event=event)
 
     return Ok(entry)
 

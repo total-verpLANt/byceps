@@ -35,7 +35,7 @@ class DbPizzaDeliveryEntry(db.Model):
     user_id: Mapped[UserID | None] = mapped_column(
         db.Uuid, db.ForeignKey('users.id'), nullable=True
     )
-    status: Mapped[str] = mapped_column(db.UnicodeText, default=PizzaDeliveryStatus.REGISTERED)
+    status: Mapped[str] = mapped_column(db.UnicodeText, default=PizzaDeliveryStatus.PENDING)
     created_at: Mapped[datetime]
     updated_at: Mapped[datetime]
     created_by_id: Mapped[UserID] = mapped_column(
@@ -51,7 +51,7 @@ class DbPizzaDeliveryEntry(db.Model):
         created_at: datetime,
         updated_at: datetime,
         created_by_id: UserID,
-        status: str = PizzaDeliveryStatus.REGISTERED,
+        status: str = PizzaDeliveryStatus.PENDING,
     ) -> None:
         self.id = entry_id
         self.party_id = party_id
