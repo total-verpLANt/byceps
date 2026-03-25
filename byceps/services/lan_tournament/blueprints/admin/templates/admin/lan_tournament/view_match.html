@@ -254,6 +254,12 @@
   <div class='box block'>
     <h2>{{ _('Contestants') }}</h2>
 
+    {%- if not match.confirmed_by and
+           g.user.has_permission('lan_tournament.administrate') %}
+    <form action='{{ url_for('.confirm_match_with_scores', match_id=match.id) }}'
+          method='post'>
+    {%- endif %}
+
     {%- for contestant in contestants %}
     <div class='row row--space-between' style='margin-bottom: 1rem; flex-wrap: nowrap;'>
       <div style='flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;'>
@@ -280,41 +286,29 @@
         </strong>
       </div>
       <div style='flex: 0 0 auto; min-width: 100px; text-align: right;'>
+        {%- if not match.confirmed_by and
+               g.user.has_permission('lan_tournament.administrate') %}
+        <input type='number' name='score_{{ contestant.team_id or contestant.participant_id }}'
+               min='0' value='{{ contestant.score or 0 }}'
+               style='width: 80px;' required>
+        {%- else %}
         <strong>{{ _('Score') }}:</strong>
         {{ contestant.score if contestant.score is not none else '–' }}
-      </div>
-      <div style='flex: 0 0 auto;'>
-        {%- if not match.confirmed_by and
-               g.user.has_permission('lan_tournament.update') %}
-        <form action='{{ url_for('.set_match_score', match_id=match.id) }}'
-              method='post' style='display: inline;'>
-          <input type='hidden' name='contestant_id'
-                 value='{{ contestant.team_id or contestant.participant_id }}'>
-          <input type='number' name='score' min='0'
-                 value='{{ contestant.score or 0 }}'
-                 style='width: 80px;' required>
-          <button type='submit' class='button button--compact'>
-            {{ _('Set Score') }}
-          </button>
-        </form>
         {%- endif %}
       </div>
     </div>
     {%- endfor %}
-  </div>
 
-  {# Confirm button #}
-  {%- if not match.confirmed_by and
-         g.user.has_permission('lan_tournament.administrate') %}
-  <div class='block'>
-    <form action='{{ url_for('.confirm_match', match_id=match.id) }}'
-          method='post'>
+    {%- if not match.confirmed_by and
+           g.user.has_permission('lan_tournament.administrate') %}
+    <div style='margin-top: 1rem; text-align: right;'>
       <button type='submit' class='button color-success'>
         {{ render_icon('success') }} {{ _('Confirm Match') }}
       </button>
+    </div>
     </form>
+    {%- endif %}
   </div>
-  {%- endif %}
 
   {%- if match.confirmed_by and
          g.user.has_permission('lan_tournament.administrate') %}
