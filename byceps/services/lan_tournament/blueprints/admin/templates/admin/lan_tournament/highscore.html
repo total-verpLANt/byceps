@@ -17,7 +17,7 @@
 
   <h1 class='title'>{{ _('Highscore Leaderboard') }}</h1>
 
-  {{ render_highscore_leaderboard(leaderboard, tournament, teams_by_id=teams_by_id, participants_by_id=participants_by_id) }}
+  {{ render_highscore_leaderboard(leaderboard, tournament, teams_by_id=teams_by_id, participants_by_id=participants_by_id, profile_url_endpoint='user_admin.view') }}
 
   {# Submit score form (admin-only) #}
   {%- if g.user.has_permission('lan_tournament.administrate') %}
