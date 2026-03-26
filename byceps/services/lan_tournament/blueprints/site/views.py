@@ -1103,7 +1103,7 @@ def set_score(match_id):
         # set_match_scores rolls back the session on Err.  Only use
         # `match_id` (the URL string) for the redirect — do NOT access
         # attributes on the ORM objects fetched above.
-        flash_error(result.unwrap_err())
+        flash_error(gettext(result.unwrap_err()))
     else:
         flash_success(gettext('Match result submitted.'))
     return redirect_to('.view_match', match_id=match_id)
@@ -1149,7 +1149,7 @@ def add_comment(match_id):
         match_id_obj, g.user.id, form.comment.data.strip()
     )
     if result.is_err():
-        flash_error(result.unwrap_err())
+        flash_error(gettext(result.unwrap_err()))
     else:
         flash_success(gettext('Comment added.'))
     return redirect_to('.view_match', match_id=match_id)
@@ -1294,7 +1294,7 @@ def highscore(tournament_id, erroneous_form=None):
         case Ok(entries):
             leaderboard = entries
         case Err(e):
-            flash_error(e)
+            flash_error(gettext(e))
 
     # Build name lookups for contestants.
     teams_by_id = {}
@@ -1358,5 +1358,5 @@ def highscore_submit(tournament_id):
         case Ok(_):
             flash_success(gettext('Score submitted.'))
         case Err(error_message):
-            flash_error(error_message)
+            flash_error(gettext(error_message))
     return redirect_to('.highscore', tournament_id=tournament_id)

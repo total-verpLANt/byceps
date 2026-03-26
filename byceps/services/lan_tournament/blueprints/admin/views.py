@@ -424,7 +424,7 @@ def create(party_id):
         points_carry_to_losers=points_carry_to_losers,
     )
     if result.is_err():
-        flash_error(result.unwrap_err())
+        flash_error(gettext(result.unwrap_err()))
         return create_form(party.id, form)
 
     tournament, _event = result.unwrap()
@@ -743,7 +743,7 @@ def update(tournament_id):
         points_carry_to_losers=points_carry_to_losers,
     )
     if result.is_err():
-        flash_error(result.unwrap_err())
+        flash_error(gettext(result.unwrap_err()))
         return update_form(tournament.id, form)
 
     tournament = result.unwrap()
@@ -1048,7 +1048,7 @@ def transfer_captain(team_id):
                 )
             )
         case Err(error):
-            flash_error(error)
+            flash_error(gettext(error))
 
     return redirect_to('.view_team', team_id=team.id)
 
@@ -1076,7 +1076,7 @@ def admin_add_team_member(team_id):
                 )
             )
         case Err(error):
-            flash_error(error)
+            flash_error(gettext(error))
 
     return redirect_to('.view_team', team_id=team.id)
 
@@ -1099,7 +1099,7 @@ def admin_remove_team_member(team_id, user_id):
         case Ok(_):
             flash_success(gettext('Member removed from the team.'))
         case Err(error):
-            flash_error(error)
+            flash_error(gettext(error))
 
     return redirect_to('.view_team', team_id=team.id)
 
@@ -1223,7 +1223,7 @@ def update_team(team_id):
         join_code=join_code,
     )
     if result.is_err():
-        flash_error(result.unwrap_err())
+        flash_error(gettext(result.unwrap_err()))
         return update_team_form(team.id, form)
 
     updated_team = result.unwrap()
@@ -1963,7 +1963,7 @@ def highscore(tournament_id):
         case Ok(entries):
             leaderboard = entries
         case Err(e):
-            flash_error(e)
+            flash_error(gettext(e))
 
     form = HighscoreSubmitForm()
     teams_by_id, participants_by_id = _populate_highscore_form_choices(
@@ -2036,7 +2036,7 @@ def highscore_submit(tournament_id):
         case Ok(_):
             flash_success(gettext('Score has been submitted.'))
         case Err(error_message):
-            flash_error(error_message)
+            flash_error(gettext(error_message))
 
     return redirect_to('.highscore', tournament_id=tournament.id)
 
@@ -2057,7 +2057,7 @@ def highscore_delete_all(tournament_id):
         case Ok(_):
             flash_success(gettext('All scores have been deleted.'))
         case Err(error_message):
-            flash_error(error_message)
+            flash_error(gettext(error_message))
 
     return redirect_to('.highscore', tournament_id=tournament.id)
 
