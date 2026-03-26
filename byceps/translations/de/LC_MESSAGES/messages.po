@@ -11006,10 +11006,10 @@ msgid "Yes, complete tournament"
 msgstr "Ja, Turnier abschließen"
 
 msgid "You are about to cancel the tournament \"%(name)s\"."
-msgstr "Du bist dabei, das Turnier „%(name)s" abzubrechen."
+msgstr "Du bist dabei, das Turnier „%(name)s“ abzubrechen."
 
 msgid "You are about to complete the tournament \"%(name)s\"."
-msgstr "Du bist dabei, das Turnier „%(name)s" abzuschließen."
+msgstr "Du bist dabei, das Turnier „%(name)s“ abzuschließen."
 
 msgid "You are a member of this team."
 msgstr "Du bist Mitglied dieses Teams."
