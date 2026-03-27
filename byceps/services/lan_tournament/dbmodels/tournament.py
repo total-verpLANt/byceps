@@ -54,6 +54,9 @@ class DbTournament(db.Model):
     group_size_min: Mapped[int | None]
     group_size_max: Mapped[int | None]
     points_carry_to_losers: Mapped[bool | None]
+    position: Mapped[int] = mapped_column(
+        db.Integer, nullable=False, default=0, server_default='0',
+    )
     use_bracket_reset: Mapped[bool] = mapped_column(
         db.Boolean, server_default=db.text('true'),
     )

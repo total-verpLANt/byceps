@@ -45,6 +45,7 @@ class Tournament:
     group_size_min: int | None = None
     group_size_max: int | None = None
     points_carry_to_losers: bool | None = None
+    position: int = 0
     use_bracket_reset: bool = True
     winner_team_id: 'TournamentTeamID | None' = None
     winner_participant_id: 'TournamentParticipantID | None' = None
