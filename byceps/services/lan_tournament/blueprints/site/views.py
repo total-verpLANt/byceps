@@ -1,5 +1,4 @@
 import uuid
-from datetime import datetime
 from flask import abort, g, request
 from flask_babel import gettext
 
@@ -53,9 +52,6 @@ from .forms import (
 blueprint = create_blueprint('lan_tournament', __name__)
 
 
-_EPOCH = datetime.min
-
-
 @blueprint.get('/')
 @templated
 def index():
@@ -71,14 +67,9 @@ def index():
         if t.tournament_status and t.tournament_status != TournamentStatus.DRAFT
     ]
 
-    # Sort: registration open first, then by start time.
-    def _sort_key(t: Tournament) -> tuple:
-        is_registration_open = (
-            t.tournament_status == TournamentStatus.REGISTRATION_OPEN
-        )
-        return (not is_registration_open, t.start_time or _EPOCH)
-
-    visible_tournaments.sort(key=_sort_key)
+    # Sort by admin-defined position (data arrives pre-sorted from
+    # get_tournaments_for_party, but re-sort the visible subset).
+    visible_tournaments.sort(key=lambda t: t.position)
 
     tournament_ids = [t.id for t in visible_tournaments]
     participant_counts = tournament_service.get_participant_counts_for_tournaments(tournament_ids)

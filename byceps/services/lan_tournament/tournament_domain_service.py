@@ -74,6 +74,7 @@ def create_tournament(
     group_size_min: int | None = None,
     group_size_max: int | None = None,
     points_carry_to_losers: bool | None = None,
+    position: int = 0,
 ) -> tuple[Tournament, TournamentCreatedEvent]:
     """Create a new tournament."""
     tournament_id = TournamentID(generate_uuid7())
@@ -105,6 +106,7 @@ def create_tournament(
         group_size_min=group_size_min,
         group_size_max=group_size_max,
         points_carry_to_losers=points_carry_to_losers,
+        position=position,
     )
 
     event = TournamentCreatedEvent(

@@ -118,12 +118,17 @@ def create_tournament(
     group_size_min: int | None = None,
     group_size_max: int | None = None,
     points_carry_to_losers: bool | None = None,
+    position: int | None = None,
 ) -> Result[tuple[Tournament, TournamentCreatedEvent], str]:
     """Create a tournament.
 
     SECURITY NOTE: Authorization must be checked at blueprint layer before
     calling this function (requires 'lan_tournament.create' permission).
     """
+    # Auto-assign position if not explicitly provided.
+    if position is None:
+        position = tournament_repository.get_max_position_for_party(party_id) + 1
+
     # Validate name length
     if len(name.strip()) > 80:
         return Err('Tournament name must not exceed 80 characters.')
@@ -173,6 +178,7 @@ def create_tournament(
         group_size_min=group_size_min,
         group_size_max=group_size_max,
         points_carry_to_losers=points_carry_to_losers,
+        position=position,
     )
 
     tournament_repository.create_tournament(tournament)
@@ -402,6 +408,32 @@ def find_tournament(
 ) -> Tournament | None:
     """Return the tournament, or `None` if not found."""
     return tournament_repository.find_tournament(tournament_id)
+
+
+def reorder_tournaments(
+    party_id: PartyID, tournament_ids: list[str]
+) -> None:
+    """Reorder tournaments by updating positions to match the given order.
+
+    Validates that every supplied tournament ID belongs to the given
+    party, that the list is complete (covers all tournaments), and
+    contains no duplicates.  Raises ``ValueError`` on any violation.
+    """
+    party_tournaments = tournament_repository.get_tournaments_for_party(
+        party_id
+    )
+    valid_ids = {str(t.id) for t in party_tournaments}
+
+    if len(tournament_ids) != len(set(tournament_ids)):
+        raise ValueError('Duplicate tournament IDs in reorder list')
+
+    if set(tournament_ids) != valid_ids:
+        raise ValueError(
+            'Tournament ID list must contain exactly all tournaments '
+            f'for party {party_id}'
+        )
+
+    tournament_repository.reorder_tournaments(tournament_ids)
 
 
 def get_tournaments_for_party(

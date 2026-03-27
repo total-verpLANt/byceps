@@ -128,6 +128,8 @@ def create_tournament(tournament: Tournament) -> None:
         points_carry_to_losers=tournament.points_carry_to_losers,
     )
 
+    db_tournament.position = tournament.position
+
     db.session.add(db_tournament)
     db.session.commit()
 
@@ -178,6 +180,7 @@ def update_tournament(tournament: Tournament) -> None:
     db_tournament.group_size_min = tournament.group_size_min
     db_tournament.group_size_max = tournament.group_size_max
     db_tournament.points_carry_to_losers = tournament.points_carry_to_losers
+    db_tournament.position = tournament.position
     db_tournament.winner_team_id = tournament.winner_team_id
     db_tournament.winner_participant_id = tournament.winner_participant_id
     db_tournament.updated_at = tournament.updated_at
@@ -292,11 +295,40 @@ def get_tournaments_for_party(
 ) -> list[Tournament]:
     """Return all tournaments for that party."""
     db_tournaments = (
-        db.session.execute(select(DbTournament).filter_by(party_id=party_id))
+        db.session.execute(
+            select(DbTournament)
+            .filter_by(party_id=party_id)
+            .order_by(DbTournament.position)
+        )
         .scalars()
         .all()
     )
     return [_db_tournament_to_tournament(t) for t in db_tournaments]
+
+
+def get_max_position_for_party(party_id: PartyID) -> int:
+    """Return the maximum position value among tournaments for the party.
+
+    Returns 0 if no tournaments exist for the party.
+    """
+    result = db.session.execute(
+        select(func.max(DbTournament.position)).filter_by(party_id=party_id)
+    ).scalar_one()
+    return result if result is not None else 0
+
+
+def reorder_tournaments(tournament_ids: list[str]) -> None:
+    """Update each tournament's position to its index in the list.
+
+    Performs a bulk update in a single transaction.
+    """
+    for index, tid in enumerate(tournament_ids):
+        db.session.execute(
+            update(DbTournament)
+            .where(DbTournament.id == tid)
+            .values(position=index)
+        )
+    db.session.commit()
 
 
 def set_tournament_winner(
@@ -383,6 +415,7 @@ def _db_tournament_to_tournament(
         group_size_min=db_tournament.group_size_min,
         group_size_max=db_tournament.group_size_max,
         points_carry_to_losers=db_tournament.points_carry_to_losers,
+        position=db_tournament.position,
         use_bracket_reset=db_tournament.use_bracket_reset,
         winner_team_id=db_tournament.winner_team_id,
         winner_participant_id=db_tournament.winner_participant_id,

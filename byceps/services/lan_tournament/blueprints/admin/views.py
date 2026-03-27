@@ -17,7 +17,7 @@ from byceps.util.framework.flash import (
 )
 from byceps.util.framework.templating import templated
 from byceps.util.result import Err, Ok
-from byceps.util.views import permission_required, redirect_to
+from byceps.util.views import permission_required, redirect_to, respond_no_content
 
 from byceps.services.lan_tournament import (
     tournament_domain_service,
@@ -166,6 +166,30 @@ def index(party_id):
         'participant_counts': participant_counts,
         'team_counts': team_counts,
     }
+
+
+@blueprint.post('/for_party/<party_id>/sort')
+@permission_required('lan_tournament.update')
+@respond_no_content
+def sort_tournaments(party_id):
+    """Reorder tournaments for that party."""
+    _get_party_or_404(party_id)
+
+    data = request.get_json(silent=True)
+    if data is None or 'tournament_ids' not in data:
+        abort(400)
+
+    tournament_ids = data['tournament_ids']
+    if not isinstance(tournament_ids, list):
+        abort(400)
+
+    if not all(isinstance(tid, str) for tid in tournament_ids):
+        abort(400)
+
+    try:
+        tournament_service.reorder_tournaments(party_id, tournament_ids)
+    except ValueError:
+        abort(400)
 
 
 @blueprint.get('/tournaments/<tournament_id>')

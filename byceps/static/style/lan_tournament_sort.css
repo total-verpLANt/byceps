@@ -1,0 +1,19 @@
+.drag-handle {
+  cursor: grab;
+  user-select: none;
+  text-align: center;
+  color: #999;
+  width: 2em;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.sortable-ghost {
+  opacity: 0.4;
+}
+
+.sortable-chosen {
+  background-color: rgba(59, 130, 246, 0.08);
+}

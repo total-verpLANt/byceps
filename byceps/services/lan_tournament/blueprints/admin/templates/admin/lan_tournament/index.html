@@ -6,6 +6,10 @@
 {% set current_tab = 'tournaments' %}
 {% set page_title = [_('LAN Tournaments'), party.title] %}
 
+{% block head %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_sort.css') }}">
+{%- endblock %}
+
 {% block body %}
 
   <div class="row row--space-between block">
@@ -25,6 +29,9 @@
   <table class="itemlist is-vcentered is-wide">
     <thead>
       <tr>
+        {%- if g.user.has_permission('lan_tournament.update') %}
+        <th></th>
+        {%- endif %}
         <th>{{ _('Name') }}</th>
         <th>{{ _('Game') }}</th>
         <th>{{ _('Mode') }}</th>
@@ -34,9 +41,12 @@
         <th>{{ _('Status') }}</th>
       </tr>
     </thead>
-    <tbody>
-    {%- for tournament in tournaments|sort(attribute='name') %}
-      <tr>
+    <tbody id="tournament-list">
+    {%- for tournament in tournaments %}
+      <tr data-tournament-id="{{ tournament.id }}">
+        {%- if g.user.has_permission('lan_tournament.update') %}
+        <td class="drag-handle">&#9776;</td>
+        {%- endif %}
         <td>
           <a href="{{ url_for('.view', tournament_id=tournament.id) }}" class="disguised">
             <strong>{{ tournament.name }}</strong>
@@ -97,3 +107,10 @@
   {%- endif %}
 
 {%- endblock %}
+
+{% block scripts %}
+{%- if tournaments and g.user.has_permission('lan_tournament.update') %}
+<script src="{{ url_for('static', filename='behavior/sortable.min.js') }}"></script>
+<script src="{{ url_for('static', filename='behavior/lan_tournament_sort.js') }}" data-sort-url="{{ url_for('.sort_tournaments', party_id=party.id) }}"></script>
+{%- endif %}
+{% endblock %}
