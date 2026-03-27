@@ -46,6 +46,8 @@ def create_entry(
     initiator: User | None = None,
 ) -> Result[PizzaDeliveryEntry, DuplicateDeliveryNumberError]:
     """Create a pizza delivery entry."""
+    number = number.upper()
+
     # Check uniqueness.
     existing = (
         db.session.execute(
@@ -278,6 +280,8 @@ def claim_entry_by_number(
     initiator: User | None = None,
 ) -> Result[PizzaDeliveryEntry, PizzaDeliveryNumberNotFoundError | PizzaDeliveryEntryAlreadyClaimedError]:
     """Claim a pizza delivery entry by its number."""
+    number = number.upper()
+
     db_entry = (
         db.session.execute(
             select(DbPizzaDeliveryEntry)
