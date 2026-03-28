@@ -6,11 +6,14 @@ tests.integration.services.lan_tournament.test_tournament_match_service
 :License: Revised BSD (see `LICENSE` file for details)
 """
 
+import dataclasses
+
 import pytest
 
 from byceps.services.lan_tournament import (
     tournament_match_service,
     tournament_participant_service,
+    tournament_repository,
     tournament_service,
     tournament_team_service,
 )
@@ -355,8 +358,8 @@ def test_team_tournament_bracket_workflow(party, user1, user2, user3, user4):
     team2, _ = result2.unwrap()
 
     # Add members to teams
-    tournament_team_service.add_member_to_team(team1.id, user2.id)
-    tournament_team_service.add_member_to_team(team2.id, user4.id)
+    tournament_team_service.admin_add_member(team1.id, user2.id)
+    tournament_team_service.admin_add_member(team2.id, user4.id)
 
     # Start tournament
     tournament_service.start_tournament(tournament.id)
@@ -450,3 +453,65 @@ def test_reset_match(party, user1, user2):
         tournament.id
     )
     assert len(remaining_matches) == 0
+
+
+def test_bracket_generation_rejects_empty_team(party, user1, user2, user3):
+    """Test that bracket generation rejects teams with no members."""
+    tournament, _ = tournament_service.create_tournament(
+        PARTY_ID,
+        'Empty Team Reject Test',
+        tournament_mode=TournamentMode.SINGLE_ELIMINATION,
+        contestant_type=ContestantType.TEAM,
+        max_teams=4,
+        min_players_in_team=1,
+        max_players_in_team=2,
+    )
+
+    # Open registration and join participants
+    tournament_service.change_status(
+        tournament.id, TournamentStatus.REGISTRATION_OPEN
+    )
+    result1 = tournament_participant_service.join_tournament(
+        tournament.id, user1.id
+    )
+    result2 = tournament_participant_service.join_tournament(
+        tournament.id, user2.id
+    )
+    result3 = tournament_participant_service.join_tournament(
+        tournament.id, user3.id
+    )
+    assert result1.is_ok()
+    assert result2.is_ok()
+    assert result3.is_ok()
+    participant2, _ = result2.unwrap()
+
+    # Create two teams (captains are auto-assigned as members)
+    team1_result = tournament_team_service.create_team(
+        tournament.id, 'Full Team', user1.id
+    )
+    team2_result = tournament_team_service.create_team(
+        tournament.id, 'Ghost Team', user2.id
+    )
+    assert team1_result.is_ok()
+    assert team2_result.is_ok()
+
+    # Add an extra member to team1 so it clearly has members
+    team1, _ = team1_result.unwrap()
+    tournament_team_service.admin_add_member(team1.id, user3.id)
+
+    # Make team2 empty by un-assigning its captain
+    updated_participant = dataclasses.replace(participant2, team_id=None)
+    tournament_repository.update_participant(updated_participant)
+
+    # Start tournament
+    tournament_service.start_tournament(tournament.id)
+
+    # Attempt bracket generation -- should fail with Err
+    result = tournament_match_service.generate_single_elimination_bracket(
+        tournament.id
+    )
+
+    assert result.is_err()
+    error_msg = result.unwrap_err()
+    assert 'Ghost Team' in error_msg
+    assert 'no members' in error_msg
