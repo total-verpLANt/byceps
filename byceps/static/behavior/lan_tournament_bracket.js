@@ -2315,12 +2315,23 @@ function createBracketInstance(config) {
       return;
     }
 
-    // Compute field size from the ORIGINAL (unfiltered) first WB round
+    // Compute field size from the round with the most matches.
+    // Standard brackets have max matches in R1, but play-in brackets
+    // can have more matches in later rounds (e.g., 2 R1 play-ins
+    // feeding into 4 R2 quarterfinals for a 9-contestant field).
     var fieldSize = 2;
     if (p.winnerRounds.length > 0) {
-      fieldSize = p.winnerRounds[0].matches.length * 2;
+      var maxMatches = 0;
+      for (var fi = 0; fi < p.winnerRounds.length; fi++) {
+        if (p.winnerRounds[fi].matches.length > maxMatches) {
+          maxMatches = p.winnerRounds[fi].matches.length;
+        }
+      }
+      fieldSize = maxMatches * 2;
       if (fieldSize < 2) fieldSize = 2;
     }
+    // Ensure power-of-2 for connector alignment
+    fieldSize = Math.pow(2, Math.ceil(Math.log2(fieldSize)));
 
     // Apply view-mode round filtering
     var wbRounds = p.winnerRounds;
