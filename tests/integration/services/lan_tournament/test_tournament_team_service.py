@@ -10,6 +10,7 @@ import pytest
 
 from byceps.services.lan_tournament import (
     tournament_participant_service,
+    tournament_repository,
     tournament_service,
     tournament_team_service,
 )
@@ -413,3 +414,122 @@ def test_get_teams_for_tournament(party, captain1, captain2):
     team_ids = [t.id for t in teams]
     assert team1.id in team_ids
     assert team2.id in team_ids
+
+
+def test_remove_team_member_auto_deletes_empty_team(party, captain1, member1):
+    """Removing the last member from a ghost-state team (captain already
+    unassigned) via remove_team_member should auto-delete the team."""
+    tournament, _ = tournament_service.create_tournament(
+        PARTY_ID,
+        'Auto Delete Empty Team Test',
+        tournament_mode=TournamentMode.TEAMS,
+        contestant_type=ContestantType.TEAM,
+        max_teams=8,
+        min_players_in_team=1,
+        max_players_in_team=5,
+    )
+
+    tournament_service.change_status(
+        tournament.id, TournamentStatus.REGISTRATION_OPEN
+    )
+
+    # Captain1 creates the team
+    team_result = tournament_team_service.create_team(
+        tournament.id,
+        'Ghost Team',
+        captain1.id,
+        join_code='ghost',
+    )
+    team, _ = team_result.unwrap()
+    team_id = team.id
+
+    # Member1 joins
+    participant_result = tournament_participant_service.join_tournament(
+        tournament.id, member1.id
+    )
+    participant, _ = participant_result.unwrap()
+    tournament_team_service.join_team(participant.id, team.id, 'ghost')
+
+    # Transfer captain to member1 so captain1 becomes a regular member
+    tournament_team_service.transfer_captain(team.id, member1.id)
+
+    # Simulate ghost state: directly unassign the new captain (member1)
+    # from the team at the participant level, leaving captain1 as the
+    # sole team member (non-captain).
+    import dataclasses
+    updated_p = dataclasses.replace(participant, team_id=None)
+    tournament_repository.update_participant(updated_p)
+
+    # Verify team still exists with 1 member (captain1)
+    teams = tournament_team_service.get_teams_for_tournament(tournament.id)
+    assert any(t.id == team_id for t in teams)
+    assert len(tournament_team_service.get_team_members(team_id)) == 1
+
+    # Remove captain1 (now a non-captain member) — team becomes empty
+    remove_result = tournament_team_service.remove_team_member(
+        team.id, captain1.id
+    )
+    assert remove_result.is_ok()
+
+    # Team should have been auto-deleted
+    teams = tournament_team_service.get_teams_for_tournament(tournament.id)
+    assert not any(t.id == team_id for t in teams)
+
+
+def test_remove_team_member_does_not_delete_nonempty_team(
+    party, captain1, member1, member2,
+):
+    """Removing one member from a team with multiple members should NOT
+    auto-delete the team."""
+    tournament, _ = tournament_service.create_tournament(
+        PARTY_ID,
+        'No Delete Nonempty Team Test',
+        tournament_mode=TournamentMode.TEAMS,
+        contestant_type=ContestantType.TEAM,
+        max_teams=8,
+        min_players_in_team=1,
+        max_players_in_team=5,
+    )
+
+    tournament_service.change_status(
+        tournament.id, TournamentStatus.REGISTRATION_OPEN
+    )
+
+    # Captain1 creates the team
+    team_result = tournament_team_service.create_team(
+        tournament.id,
+        'Sturdy Team',
+        captain1.id,
+        join_code='sturdy',
+    )
+    team, _ = team_result.unwrap()
+    team_id = team.id
+
+    # Member1 joins
+    p1_result = tournament_participant_service.join_tournament(
+        tournament.id, member1.id
+    )
+    p1, _ = p1_result.unwrap()
+    tournament_team_service.join_team(p1.id, team.id, 'sturdy')
+
+    # Member2 joins
+    p2_result = tournament_participant_service.join_tournament(
+        tournament.id, member2.id
+    )
+    p2, _ = p2_result.unwrap()
+    tournament_team_service.join_team(p2.id, team.id, 'sturdy')
+
+    # Team now has: captain1 (captain), member1, member2 = 3 members
+
+    # Remove member2 (non-captain)
+    remove_result = tournament_team_service.remove_team_member(
+        team.id, member2.id
+    )
+    assert remove_result.is_ok()
+
+    # Team should still exist with 2 remaining members
+    teams = tournament_team_service.get_teams_for_tournament(tournament.id)
+    assert any(t.id == team_id for t in teams)
+
+    remaining = tournament_team_service.get_team_members(team_id)
+    assert len(remaining) == 2

@@ -558,6 +558,39 @@ def remove_team_member(
     )
     signals.team_member_left.send(None, event=event)
 
+    # Auto-delete empty team
+    remaining_members = tournament_repository.get_participants_for_team(team_id)
+    if len(remaining_members) == 0:
+        tournament = tournament_repository.get_tournament(team.tournament_id)
+        bracket_is_active = tournament.tournament_status in (
+            TournamentStatus.ONGOING,
+            TournamentStatus.PAUSED,
+        )
+
+        if bracket_is_active:
+            # Defwin: advance opponents past the now-empty team
+            from . import tournament_match_service
+
+            tournament_match_service.handle_defwin_for_removed_team(
+                team.tournament_id, team_id,
+            )
+            tournament_repository.remove_team_from_participants_flush(team_id)
+            tournament_repository.soft_delete_team_flush(team_id, now)
+            db.session.commit()
+        else:
+            tournament_repository.remove_team_from_participants(team_id)
+            tournament_repository.remove_team_from_contestants(team_id)
+            tournament_repository.clear_winner_team_reference(team_id)
+            tournament_repository.delete_team(team_id)
+
+        team_deleted_event = TeamDeletedEvent(
+            occurred_at=now,
+            initiator=None,
+            tournament_id=team.tournament_id,
+            team_id=team_id,
+        )
+        signals.team_deleted.send(None, event=team_deleted_event)
+
     return Ok(event)
 
 
