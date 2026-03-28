@@ -7,7 +7,7 @@ tests.unit.services.lan_tournament.test_tournament_match_service
 """
 
 from datetime import datetime, UTC
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 import pytest
 
@@ -3110,55 +3110,64 @@ def test_propagate_dead_lb_all_dead(mock_repo):
 
 
 @patch(
-    'byceps.services.lan_tournament'
-    '.tournament_match_service.delete_match'
+    'byceps.services.lan_tournament.signals'
 )
 @patch(
     'byceps.services.lan_tournament'
     '.tournament_match_service.tournament_repository'
 )
-def test_clear_bracket_deletes_all_matches(mock_repo, mock_delete):
-    """3 matches deleted, commit called."""
+def test_clear_bracket_deletes_all_matches(mock_repo, mock_signals):
+    """3 matches: FK nulling + per-match child/match deletion, commit called."""
     match_ids = [TournamentMatchID(generate_uuid()) for _ in range(3)]
     matches = [_create_match(match_id=mid) for mid in match_ids]
     mock_repo.get_matches_for_tournament.return_value = matches
 
     tournament_match_service.clear_bracket(TOURNAMENT_ID)
 
-    assert mock_delete.call_count == 3
-    mock_delete.assert_any_call(match_ids[0])
-    mock_delete.assert_any_call(match_ids[1])
-    mock_delete.assert_any_call(match_ids[2])
-    mock_repo.commit_session.assert_called_once()
+    # Verify exact call ordering: FK nulling → per-match children/match
+    # deletion → commit.  Order matters for PostgreSQL FK integrity.
+    expected_repo_calls = [
+        call.get_matches_for_tournament(TOURNAMENT_ID),
+        call.null_self_referential_fks(TOURNAMENT_ID),
+    ]
+    for mid in match_ids:
+        expected_repo_calls += [
+            call.delete_comments_for_match_flush(mid),
+            call.delete_contestants_for_match_flush(mid),
+            call.delete_match_flush(mid),
+        ]
+    expected_repo_calls.append(call.commit_session())
+
+    assert mock_repo.mock_calls == expected_repo_calls
+    assert mock_signals.match_deleted.send.call_count == 3
 
 
 @patch(
-    'byceps.services.lan_tournament'
-    '.tournament_match_service.delete_match'
+    'byceps.services.lan_tournament.signals'
 )
 @patch(
     'byceps.services.lan_tournament'
     '.tournament_match_service.tournament_repository'
 )
-def test_clear_bracket_empty_tournament(mock_repo, mock_delete):
-    """No matches, commit still called."""
+def test_clear_bracket_empty_tournament(mock_repo, _mock_signals):
+    """No matches, early return without commit."""
     mock_repo.get_matches_for_tournament.return_value = []
 
     tournament_match_service.clear_bracket(TOURNAMENT_ID)
 
-    mock_delete.assert_not_called()
-    mock_repo.commit_session.assert_called_once()
+    mock_repo.null_self_referential_fks.assert_not_called()
+    mock_repo.delete_match_flush.assert_not_called()
+    mock_repo.commit_session.assert_not_called()
 
 
 @patch(
-    'byceps.services.lan_tournament'
-    '.tournament_match_service.delete_match'
+    'byceps.services.lan_tournament.signals'
 )
 @patch(
     'byceps.services.lan_tournament'
     '.tournament_match_service.tournament_repository'
 )
-def test_clear_bracket_returns_ok(mock_repo, mock_delete):
+def test_clear_bracket_returns_ok(mock_repo, _mock_signals):
     """Result is Ok(None)."""
     mock_repo.get_matches_for_tournament.return_value = []
 

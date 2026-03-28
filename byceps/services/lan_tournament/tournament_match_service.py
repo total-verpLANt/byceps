@@ -189,12 +189,42 @@ def has_matches(tournament_id: TournamentID) -> bool:
 
 def clear_bracket(tournament_id: TournamentID) -> Result[None, str]:
     """Clear all matches from a tournament bracket."""
-    matches = tournament_repository.get_matches_for_tournament(tournament_id)
+    from . import signals
+    from .events import MatchDeletedEvent
 
-    for match in matches:
-        delete_match(match.id)
+    matches = tournament_repository.get_matches_for_tournament(tournament_id)
+    if not matches:
+        return Ok(None)
+
+    now = datetime.now(UTC)
+
+    # Collect event data before deletion (IDs won't be accessible after).
+    match_ids = [m.id for m in matches]
+
+    # NULL out self-referential FKs first to avoid IntegrityError
+    # on PostgreSQL (next_match_id / loser_next_match_id point to
+    # sibling rows in the same table).
+    tournament_repository.null_self_referential_fks(tournament_id)
+
+    # Delete children (comments, contestants) then matches.
+    for match_id in match_ids:
+        tournament_repository.delete_comments_for_match_flush(match_id)
+        tournament_repository.delete_contestants_for_match_flush(match_id)
+        tournament_repository.delete_match_flush(match_id)
 
     tournament_repository.commit_session()
+
+    # Dispatch events post-commit.
+    for match_id in match_ids:
+        signals.match_deleted.send(
+            None,
+            event=MatchDeletedEvent(
+                occurred_at=now,
+                initiator=None,
+                tournament_id=tournament_id,
+                match_id=match_id,
+            ),
+        )
 
     return Ok(None)
 
