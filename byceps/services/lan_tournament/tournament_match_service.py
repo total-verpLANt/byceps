@@ -272,6 +272,14 @@ def _prepare_bracket_generation(
     # Get contestants (participants or teams).
     if tournament.contestant_type == ContestantType.TEAM:
         teams = tournament_repository.get_teams_for_tournament(tournament_id)
+        member_counts = tournament_repository.get_team_member_counts(tournament_id)
+        empty_teams = [t for t in teams if member_counts.get(t.id, 0) == 0]
+        if empty_teams:
+            names = ', '.join(t.name for t in empty_teams)
+            return Err(
+                f'Cannot generate bracket: the following teams have no'
+                f' members: {names}. Remove or fill them first.'
+            )
         contestant_ids = [str(team.id) for team in teams]
     else:
         participants = tournament_repository.get_participants_for_tournament(
