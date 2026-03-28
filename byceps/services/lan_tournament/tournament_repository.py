@@ -988,16 +988,24 @@ def delete_match_flush(match_id: TournamentMatchID) -> None:
     db.session.flush()
 
 
-def delete_matches_for_tournament(
-    tournament_id: TournamentID, *, commit: bool = True
-) -> None:
-    """Delete all matches for a tournament."""
-    # NULL out self-referential FKs first
+
+def null_self_referential_fks(tournament_id: TournamentID) -> None:
+    """NULL out next_match_id and loser_next_match_id for all matches
+    in the tournament, removing self-referential FK constraints that
+    would block individual match deletion."""
     db.session.execute(
         db.update(DbTournamentMatch)
         .filter_by(tournament_id=tournament_id)
         .values(next_match_id=None, loser_next_match_id=None)
     )
+    db.session.flush()
+
+
+def delete_matches_for_tournament(
+    tournament_id: TournamentID, *, commit: bool = True
+) -> None:
+    """Delete all matches for a tournament."""
+    null_self_referential_fks(tournament_id)
     db.session.execute(
         delete(DbTournamentMatch).filter_by(tournament_id=tournament_id)
     )
