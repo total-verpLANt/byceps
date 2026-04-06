@@ -1,0 +1,1496 @@
+{%- macro render_hover_name(
+    display_name,
+    user_id=None,
+    team_id=None,
+    seats_by_user_id={},
+    team_members_by_team_id={},
+    truncate_len=0,
+    user_deleted=False,
+    link_profiles=True,
+    profile_url_endpoint=None
+) -%}
+{%- set has_hover_data = (
+    (team_id and team_id in team_members_by_team_id)
+    or (user_id and user_id in seats_by_user_id)
+) -%}
+<span class="lt-hover-wrap" tabindex="0">
+  {%- if user_id and not user_deleted and link_profiles -%}
+    {%- set _profile_endpoint = profile_url_endpoint or 'user_profile.view' -%}
+    <a href="{{ url_for(_profile_endpoint, user_id=user_id) }}" class="lt-hover-name-link">
+    {%- if truncate_len > 0 -%}
+      {{ display_name|truncate(truncate_len) }}
+    {%- else -%}
+      {{ display_name }}
+    {%- endif -%}
+    </a>
+  {%- else -%}
+    {%- if truncate_len > 0 -%}
+      {{ display_name|truncate(truncate_len) }}
+    {%- else -%}
+      {{ display_name }}
+    {%- endif -%}
+  {%- endif -%}
+  {%- if has_hover_data %}
+  <span class="lt-hover-card">
+    {%- if team_id and team_id in team_members_by_team_id -%}
+      {%- for name, seat in team_members_by_team_id[team_id] %}
+    <span class="lt-hover-member">{{ name }}{% if seat %} [{{ seat }}]{% endif %}</span>
+      {%- endfor -%}
+    {%- elif user_id and user_id in seats_by_user_id -%}
+    <span class="lt-hover-seat">{{ seats_by_user_id[user_id] }}</span>
+    {%- endif %}
+  </span>
+  {%- endif %}
+</span>
+{%- endmacro -%}
+
+
+{# ── Tournament sub-navigation ────────────────────────────── #}
+
+{% macro render_tournament_subnav(tournament, active_tab='') -%}
+{%- set is_team = tournament.contestant_type and tournament.contestant_type.name == 'TEAM' -%}
+<div class="button-row subnav block">
+  <a class="button{% if active_tab == 'overview' %} button--current{% else %} secondary{% endif %}" href="{{ url_for('lan_tournament.view', tournament_id=tournament.id) }}">{{ _('Overview') }}</a>
+  {%- if is_team %}
+  <a class="button{% if active_tab == 'teams' %} button--current{% else %} secondary{% endif %}" href="{{ url_for('lan_tournament.teams', tournament_id=tournament.id) }}">{{ _('Teams') }}</a>
+  {%- endif %}
+  <a class="button{% if active_tab == 'matches' %} button--current{% else %} secondary{% endif %}" href="{{ url_for('lan_tournament.matches', tournament_id=tournament.id) }}">{{ _('Matches') }}</a>
+  {% if tournament.game_format and tournament.game_format.name == 'HIGHSCORE' %}
+  <a class="button{% if active_tab == 'highscore' %} button--current{% else %} secondary{% endif %}" href="{{ url_for('lan_tournament.highscore', tournament_id=tournament.id) }}">{{ _('Leaderboard') }}</a>
+  {% else %}
+  <a class="button{% if active_tab == 'bracket' %} button--current{% else %} secondary{% endif %}" href="{{ url_for('lan_tournament.bracket', tournament_id=tournament.id) }}">
+    {%- if tournament.game_format and tournament.game_format.name == 'FREE_FOR_ALL' -%}
+      {{ _('Standings') }}
+    {%- elif tournament.elimination_mode and tournament.elimination_mode.name == 'ROUND_ROBIN' -%}
+      {{ _('Standings') }}
+    {%- else -%}
+      {{ _('Bracket') }}
+    {%- endif -%}
+  </a>
+  {% endif %}
+</div>
+{%- endmacro %}
+
+
+{%- macro hover_card_styles() -%}
+<style>
+.lt-hover-wrap {
+  position: relative;
+  cursor: help;
+  display: inline-block;
+  text-decoration: underline dotted;
+}
+.lt-hover-card {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  background: var(--bg-card, #ffffff);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--border-color, #ccc);
+  border-radius: var(--radius-md, var(--border-radius, 0.25rem));
+  padding: 0.4rem 0.6rem;
+  white-space: nowrap;
+  z-index: 999;
+  font-size: 0.8125rem;
+  box-shadow: var(--shadow-soft, 0 2px 8px rgba(0, 0, 0, 0.15));
+  margin-bottom: 4px;
+  transition: opacity 0.15s ease, visibility 0.15s ease;
+}
+.lt-hover-wrap:hover .lt-hover-card,
+.lt-hover-wrap:focus-within .lt-hover-card {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+}
+.lt-hover-member {
+  display: block;
+  line-height: 1.6;
+}
+.lt-hover-seat {
+  font-weight: bold;
+}
+</style>
+{%- endmacro -%}
+
+
+{%- macro render_match_ref(match) -%}
+{%- set r = (match.round or 0) + 1 -%}
+{%- set m = (match.match_order or 0) + 1 -%}
+{%- if match.bracket and match.bracket.value == 'GF' -%}
+GF M{{ m }}
+{%- elif match.bracket and match.bracket.value == 'P3' -%}
+P3 M{{ m }}
+{%- elif match.bracket and match.bracket.value == 'WB' -%}
+WB R{{ r }} M{{ m }}
+{%- elif match.bracket and match.bracket.value == 'LB' -%}
+LB R{{ r }} M{{ m }}
+{%- else -%}
+R{{ r }} M{{ m }}
+{%- endif -%}
+{%- endmacro -%}
+
+
+{%- macro bracket_all_styles(bracket_id='de') -%}
+<style>
+/* --- Hover card --- */
+.lt-hover-wrap {
+  position: relative;
+  cursor: help;
+  display: inline-block;
+  text-decoration: underline dotted;
+}
+.lt-hover-card {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  background: var(--bg-card, #ffffff);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--border-color, #ccc);
+  border-radius: var(--radius-md, var(--border-radius, 0.25rem));
+  padding: 0.4rem 0.6rem;
+  white-space: nowrap;
+  z-index: 999;
+  font-size: 0.8125rem;
+  box-shadow: var(--shadow-soft, 0 2px 8px rgba(0, 0, 0, 0.15));
+  margin-bottom: 4px;
+  transition: opacity 0.15s ease, visibility 0.15s ease;
+}
+.lt-hover-wrap:hover .lt-hover-card,
+.lt-hover-wrap:focus-within .lt-hover-card {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+}
+.lt-hover-member {
+  display: block;
+  line-height: 1.6;
+}
+.lt-hover-seat {
+  font-weight: bold;
+}
+
+/* --- Single-elimination bracket --- */
+.bracket-container {
+  overflow-x: auto;
+  padding: 2rem 0;
+}
+.bracket {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-around;
+  min-width: 800px;
+}
+.bracket-round {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  margin: 0 1rem;
+}
+.bracket-match {
+  position: relative;
+  margin: 1rem 0;
+  min-width: 200px;
+}
+.bracket-match-card {
+  background-color: #fff;
+  border: 2px solid #ccc;
+  border-radius: 4px;
+  padding: 0.5rem;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+.bracket-match-card.confirmed {
+  border-color: #28a745;
+}
+.bracket-match-header {
+  font-size: 0.75rem;
+  color: #666;
+  margin-bottom: 0.5rem;
+  text-align: center;
+  font-weight: bold;
+}
+.bracket-contestant {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem;
+  margin: 0.25rem 0;
+  background-color: #f5f5f5;
+  border-radius: 3px;
+}
+.bracket-contestant.winner {
+  background-color: #d4edda;
+  font-weight: bold;
+}
+.bracket-contestant-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bracket-contestant-score {
+  font-weight: bold;
+  margin-left: 0.5rem;
+  min-width: 30px;
+  text-align: right;
+}
+.bracket-connector {
+  position: absolute;
+  border-right: 2px solid #ccc;
+  border-top: 2px solid #ccc;
+  border-bottom: 2px solid #ccc;
+  right: -20px;
+  width: 20px;
+}
+.bracket-connector-group {
+  position: relative;
+}
+.bracket-round-label {
+  text-align: center;
+  font-weight: bold;
+  margin-bottom: 1rem;
+  color: #333;
+}
+.bracket-slot.defwin {
+  border-left: 4px solid #17a2b8;
+  background-color: #e7f5f7;
+}
+.badge-defwin {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.7rem;
+  font-weight: bold;
+  color: #fff;
+  background-color: #17a2b8;
+  border-radius: 3px;
+  margin-left: 0.5rem;
+}
+.badge-pending {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.7rem;
+  font-weight: bold;
+  color: #fff;
+  background-color: #6c757d;
+  border-radius: 3px;
+  margin-left: 0.5rem;
+}
+
+/* --- Simple bracket list --- */
+.bracket-list {
+  max-width: 600px;
+  margin: 0 auto;
+}
+.bracket-list-item {
+  background-color: #f5f5f5;
+  border-radius: 4px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+.bracket-list-header {
+  margin-bottom: 0.5rem;
+}
+.bracket-list-matchup {
+  padding-left: 1rem;
+}
+
+/* --- Double-elimination bracket --- */
+.de-bracket-section {
+  margin-bottom: 2rem;
+}
+.de-bracket-section-label {
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  border-left: 4px solid #ccc;
+}
+.de-bracket-section-label.wb {
+  border-left-color: #007bff;
+  color: #007bff;
+}
+.de-bracket-section-label.lb {
+  border-left-color: #dc3545;
+  color: #dc3545;
+}
+.de-bracket-section-label.gf {
+  border-left-color: #ffc107;
+  color: #856404;
+}
+.bracket-container > input[type='checkbox'] {
+  display: none;
+}
+.de-filter-bar {
+  display: inline-flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  font-size: 0.85rem;
+}
+.de-filter-bar label {
+  cursor: pointer;
+  user-select: none;
+  display: inline-block;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+}
+.de-filter-bar label.wb-label {
+  border-color: #007bff;
+  color: #007bff;
+}
+.de-filter-bar label.lb-label {
+  border-color: #dc3545;
+  color: #dc3545;
+}
+#{{ bracket_id }}-toggle-wb:checked ~ .de-filter-bar .wb-label {
+  background-color: #007bff;
+  color: #fff;
+}
+#{{ bracket_id }}-toggle-lb:checked ~ .de-filter-bar .lb-label {
+  background-color: #dc3545;
+  color: #fff;
+}
+#{{ bracket_id }}-toggle-wb:not(:checked) ~ .de-sections
+    .de-bracket-section.wb-only {
+  display: none;
+}
+#{{ bracket_id }}-toggle-lb:not(:checked) ~ .de-sections
+    .de-bracket-section.lb-only {
+  display: none;
+}
+
+/* --- Responsive breakpoints --- */
+@media (max-width: 840px) {
+  .bracket-desktop { display: none; }
+  .bracket-mobile { display: block; }
+}
+@media (min-width: 841px) {
+  .bracket-desktop { display: block; }
+  .bracket-mobile { display: none; }
+}
+
+/* --- Round-robin standings --- */
+.rr-standings {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+}
+.rr-standings th,
+.rr-standings td {
+  padding: 0.5rem 0.75rem;
+  text-align: center;
+  border-bottom: 1px solid #dee2e6;
+}
+.rr-standings th {
+  background-color: #f8f9fa;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #495057;
+}
+.rr-standings td:first-child,
+.rr-standings th:first-child {
+  text-align: center;
+  width: 3rem;
+}
+.rr-standings td:nth-child(2),
+.rr-standings th:nth-child(2) {
+  text-align: left;
+}
+.rr-standings .rr-rank-1 {
+  background-color: #fff8e1;
+}
+.rr-standings .rr-rank-2 {
+  background-color: #f5f5f5;
+}
+.rr-standings .rr-rank-3 {
+  background-color: #fff3e0;
+}
+.rr-standings .rr-pts {
+  font-weight: bold;
+}
+.bracket-match-link {
+  text-decoration: none;
+  color: inherit;
+  display: block;
+}
+.bracket-match-link:hover .bracket-match-card,
+.bracket-match-link:hover .bracket-list-item {
+  outline: 2px solid rgba(0, 123, 255, 0.5);
+  box-shadow: 0 0 4px rgba(0, 123, 255, 0.25);
+}
+</style>
+{%- endmacro -%}
+
+{% macro render_bracket(match_data, tournament, teams_by_id={}, participants_by_id={}, seats_by_user_id={}, team_members_by_team_id={}, match_url_endpoint=None, profile_url_endpoint=None) %}
+{#
+  Renders a tournament bracket visualization.
+
+  Args:
+    match_data: List of dicts with 'match' and 'contestants' keys
+    tournament: Tournament object
+#}
+
+<div class='bracket-container'>
+  {%- if match_data %}
+  <div class='bracket'>
+    {# Group matches by round (using match_order as proxy) #}
+    {%- set rounds = {} %}
+    {%- for data in match_data %}
+      {%- set match = data.match %}
+      {%- set round_num = match.round if match.round is not none else 0 %}
+      {%- if round_num not in rounds %}
+        {%- set _ = rounds.update({round_num: []}) %}
+      {%- endif %}
+      {%- set _ = rounds[round_num].append(data) %}
+    {%- endfor %}
+
+    {# Render each round #}
+    {%- for round_num in rounds.keys()|sort %}
+    <div class='bracket-round'>
+      <div class='bracket-round-label'>
+        {%- if rounds|length == 1 %}
+          {{ _('Final') }}
+        {%- elif round_num == (rounds|length - 1) %}
+          {{ _('Final') }}
+        {%- elif round_num == (rounds|length - 2) %}
+          {{ _('Semi-Finals') }}
+        {%- elif round_num == (rounds|length - 3) %}
+          {{ _('Quarter-Finals') }}
+        {%- else %}
+          {{ _('Round') }} {{ round_num + 1 }}
+        {%- endif %}
+      </div>
+
+      {%- set round_matches = rounds[round_num] %}
+      {%- for data in round_matches %}
+      {%- set match = data.match %}
+      {%- set contestants = data.contestants %}
+      {%- set is_even_index = loop.index0 % 2 == 0 %}
+      {%- set is_last_in_pair = loop.index0 % 2 == 1 %}
+      {%- if is_even_index %}<div class='bracket-connector-group' style='position: relative;'>{%- endif %}
+      {%- set _match_url = url_for(match_url_endpoint, match_id=match.id) if match_url_endpoint else None %}
+      <div class='bracket-match'>
+        {%- if _match_url %}<a href="{{ _match_url }}" class="bracket-match-link">{%- endif %}
+        <div class='bracket-match-card {% if match.confirmed_by %}confirmed{% endif %} {% if contestants|length == 1 and not data.get('has_pending_feeder') %}defwin{% endif %}'>
+          <div class='bracket-match-header'>
+            {{ render_match_ref(match) }}
+            {%- if contestants|length == 1 and not data.get('has_pending_feeder') %}
+              <span class='badge-defwin' title='{{ _("Free Win - Opponent advanced automatically") }}'>
+                {{ _('defwin') }}
+              </span>
+            {%- elif data.get('has_pending_feeder') %}
+              <span class='badge-pending' title='{{ _("Waiting for opponent") }}'>
+                {{ _('Pending') }}
+              </span>
+            {%- endif %}
+          </div>
+
+          {%- for contestant in contestants %}
+          {%- set is_winner = false %}
+          {%- if match.confirmed_by and contestants|length == 2 %}
+            {# Determine winner if match is confirmed #}
+            {%- set other_contestant = contestants[1 if loop.index0 == 0 else 0] %}
+            {%- if contestant.score is not none and other_contestant.score is not none %}
+              {%- set is_winner = contestant.score > other_contestant.score %}
+            {%- endif %}
+          {%- endif %}
+
+          <div class='bracket-contestant {% if is_winner %}winner{% endif %}'>
+            <div class='bracket-contestant-name'>
+              {%- if contestant.team_id %}
+                {%- set _team = teams_by_id.get(contestant.team_id) -%}
+                {%- if _team -%}
+                  {{ render_hover_name(_team.name, team_id=_team.id, team_members_by_team_id=team_members_by_team_id, truncate_len=15, profile_url_endpoint=profile_url_endpoint) }}
+                {%- else -%}
+                  {{ contestant.team_id|string }}
+                {%- endif -%}
+              {%- elif contestant.participant_id %}
+                {%- set _user = participants_by_id.get(contestant.participant_id) -%}
+                {%- if _user -%}
+                  {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted, seats_by_user_id=seats_by_user_id, truncate_len=15, profile_url_endpoint=profile_url_endpoint) }}
+                {%- else -%}
+                  {{ contestant.participant_id|string }}
+                {%- endif -%}
+              {%- else %}
+                {{ _('defwin') }}
+              {%- endif %}
+            </div>
+            <div class='bracket-contestant-score'>
+              {{ contestant.score if contestant.score is not none else '–' }}
+            </div>
+          </div>
+          {%- endfor %}
+          {%- if not contestants %}
+          <div class='bracket-contestant'>
+            <div class='bracket-contestant-name' style='color: #999;'>
+              {{ _('TBD') }}
+            </div>
+            <div class='bracket-contestant-score'>–</div>
+          </div>
+          <div class='bracket-contestant'>
+            <div class='bracket-contestant-name' style='color: #999;'>
+              {{ _('TBD') }}
+            </div>
+            <div class='bracket-contestant-score'>–</div>
+          </div>
+          {%- endif %}
+        </div>
+        {%- if _match_url %}</a>{%- endif %}
+      </div>
+      {%- if is_last_in_pair or loop.last %}<div class='bracket-connector'></div></div>{%- endif %}
+      {%- endfor %}
+    </div>
+    {%- endfor %}
+  </div>
+  {%- else %}
+  <p class='dimmed' style='text-align: center;'>
+    {{ _('Bracket not yet generated.') }}
+  </p>
+  {%- endif %}
+</div>
+
+{%- endmacro %}
+
+
+{% macro render_simple_bracket_list(match_data, teams_by_id={}, participants_by_id={}, seats_by_user_id={}, team_members_by_team_id={}, match_url_endpoint=None, profile_url_endpoint=None) %}
+{#
+  Simpler list-based bracket view for small screens or fallback.
+
+  Args:
+    match_data: List of dicts with 'match' and 'contestants' keys
+#}
+
+<div class='bracket-list'>
+  {%- for data in match_data %}
+  {%- set match = data.match %}
+  {%- set contestants = data.contestants %}
+  {%- set _match_url = url_for(match_url_endpoint, match_id=match.id) if match_url_endpoint else None %}
+  {%- if _match_url %}<a href="{{ _match_url }}" class="bracket-match-link">{%- endif %}
+  <div class='bracket-list-item'>
+    <div class='bracket-list-header'>
+      <strong>{{ render_match_ref(match) }}</strong>
+      {%- if match.confirmed_by %}
+        <span style='color: #28a745; margin-left: 0.5rem;'>✓</span>
+      {%- endif %}
+    </div>
+    <div class='bracket-list-matchup'>
+      {%- if contestants|length == 1 and not data.get('has_pending_feeder') %}
+        {# Defwin match #}
+        {%- set contestant = contestants[0] %}
+        <div style='padding: 0.25rem 0;'>
+          {%- if contestant.team_id %}
+            {%- set _team = teams_by_id.get(contestant.team_id) -%}
+            {%- if _team -%}
+              {{ render_hover_name(_team.name, team_id=_team.id, team_members_by_team_id=team_members_by_team_id, profile_url_endpoint=profile_url_endpoint) }}
+            {%- else -%}
+              {{ contestant.team_id|string }}
+            {%- endif -%}
+          {%- elif contestant.participant_id %}
+            {%- set _user = participants_by_id.get(contestant.participant_id) -%}
+            {%- if _user -%}
+              {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted, seats_by_user_id=seats_by_user_id, profile_url_endpoint=profile_url_endpoint) }}
+            {%- else -%}
+              {{ contestant.participant_id|string }}
+            {%- endif -%}
+          {%- else %}
+            {{ _('defwin') }}
+          {%- endif %}
+          <strong>{{ contestant.score if contestant.score is not none else '–' }}</strong>
+          <span class='badge-defwin' title='{{ _("Free Win") }}'>{{ _('defwin') }}</span>
+        </div>
+      {%- elif data.get('has_pending_feeder') and contestants|length == 1 %}
+        {# Pending match — waiting on feeder #}
+        {%- set contestant = contestants[0] %}
+        <div style='padding: 0.25rem 0;'>
+          {%- if contestant.team_id %}
+            {%- set _team = teams_by_id.get(contestant.team_id) -%}
+            {%- if _team -%}
+              {{ render_hover_name(_team.name, team_id=_team.id, team_members_by_team_id=team_members_by_team_id, profile_url_endpoint=profile_url_endpoint) }}
+            {%- else -%}
+              {{ contestant.team_id|string }}
+            {%- endif -%}
+          {%- elif contestant.participant_id %}
+            {%- set _user = participants_by_id.get(contestant.participant_id) -%}
+            {%- if _user -%}
+              {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted, seats_by_user_id=seats_by_user_id, profile_url_endpoint=profile_url_endpoint) }}
+            {%- else -%}
+              {{ contestant.participant_id|string }}
+            {%- endif -%}
+          {%- else %}
+            TBD
+          {%- endif %}
+          <span class='badge-pending' title='{{ _("Waiting for opponent") }}'>{{ _('Pending') }}</span>
+        </div>
+      {%- else %}
+        {# Normal match #}
+        {%- for contestant in contestants %}
+          <div style='padding: 0.25rem 0;'>
+            {%- if contestant.team_id %}
+              {%- set _team = teams_by_id.get(contestant.team_id) -%}
+              {%- if _team -%}
+                {{ render_hover_name(_team.name, team_id=_team.id, team_members_by_team_id=team_members_by_team_id, profile_url_endpoint=profile_url_endpoint) }}
+              {%- else -%}
+                {{ contestant.team_id|string }}
+              {%- endif -%}
+            {%- elif contestant.participant_id %}
+              {%- set _user = participants_by_id.get(contestant.participant_id) -%}
+              {%- if _user -%}
+                {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted, seats_by_user_id=seats_by_user_id, profile_url_endpoint=profile_url_endpoint) }}
+              {%- else -%}
+                {{ contestant.participant_id|string }}
+              {%- endif -%}
+            {%- else %}
+              {{ _('defwin') }}
+            {%- endif %}
+            <strong>{{ contestant.score if contestant.score is not none else '–' }}</strong>
+          </div>
+          {%- if not loop.last %}
+          <div style='text-align: center; color: #999;'>vs</div>
+          {%- endif %}
+        {%- endfor %}
+      {%- endif %}
+    </div>
+  </div>
+  {%- if _match_url %}</a>{%- endif %}
+  {%- endfor %}
+</div>
+
+{%- endmacro %}
+
+
+{% macro render_de_bracket(
+    match_data, tournament, teams_by_id={},
+    participants_by_id={}, seats_by_user_id={},
+    team_members_by_team_id={},
+    bracket_id='de',
+    match_url_endpoint=None,
+    profile_url_endpoint=None
+) %}
+{#
+  Renders a double-elimination bracket visualization.
+  Groups matches by bracket section (WB, LB, GF), then by round.
+
+  Args:
+    match_data: List of dicts with 'match' and 'contestants' keys
+    tournament: Tournament object
+#}
+
+<div class='bracket-container'>
+  {%- if match_data %}
+
+  {# Group matches by bracket section #}
+  {%- set wb_data = [] %}
+  {%- set lb_data = [] %}
+  {%- set gf_data = [] %}
+  {%- for data in match_data %}
+    {%- set b = data.match.bracket %}
+    {%- if b and b.value == 'LB' %}
+      {%- set _ = lb_data.append(data) %}
+    {%- elif b and b.value == 'GF' %}
+      {%- set _ = gf_data.append(data) %}
+    {%- else %}
+      {%- set _ = wb_data.append(data) %}
+    {%- endif %}
+  {%- endfor %}
+
+  <input type='checkbox' id='{{ bracket_id }}-toggle-wb' checked>
+  <input type='checkbox' id='{{ bracket_id }}-toggle-lb' checked>
+  <span class='de-filter-bar'>
+    <label for='{{ bracket_id }}-toggle-wb' class='wb-label'>
+      {{ _('Winners Bracket') }}
+    </label>
+    <label for='{{ bracket_id }}-toggle-lb' class='lb-label'>
+      {{ _('Losers Bracket') }}
+    </label>
+  </span>
+
+  <div class='de-sections'>
+
+  {# --- Winners Bracket --- #}
+  {%- if wb_data %}
+  <div class='de-bracket-section wb-only'>
+    <div class='de-bracket-section-label wb'>
+      {{ _('Winners Bracket') }}
+    </div>
+    <div class='bracket'>
+      {%- set rounds = {} %}
+      {%- for data in wb_data %}
+        {%- set rn = data.match.round
+            if data.match.round is not none else 0 %}
+        {%- if rn not in rounds %}
+          {%- set _ = rounds.update({rn: []}) %}
+        {%- endif %}
+        {%- set _ = rounds[rn].append(data) %}
+      {%- endfor %}
+      {%- for round_num in rounds.keys()|sort %}
+      <div class='bracket-round'>
+        <div class='bracket-round-label'>
+          {{ _('Round') }} {{ round_num + 1 }}
+        </div>
+        {{ _render_de_round_matches(
+            rounds[round_num], teams_by_id,
+            participants_by_id, seats_by_user_id,
+            team_members_by_team_id,
+            match_url_endpoint=match_url_endpoint,
+            profile_url_endpoint=profile_url_endpoint
+        ) }}
+      </div>
+      {%- endfor %}
+    </div>
+  </div>
+  {%- endif %}
+
+  {# --- Losers Bracket --- #}
+  {%- if lb_data %}
+  <div class='de-bracket-section lb-only'>
+    <div class='de-bracket-section-label lb'>
+      {{ _('Losers Bracket') }}
+    </div>
+    <div class='bracket'>
+      {%- set rounds = {} %}
+      {%- for data in lb_data %}
+        {%- set rn = data.match.round
+            if data.match.round is not none else 0 %}
+        {%- if rn not in rounds %}
+          {%- set _ = rounds.update({rn: []}) %}
+        {%- endif %}
+        {%- set _ = rounds[rn].append(data) %}
+      {%- endfor %}
+      {%- for round_num in rounds.keys()|sort %}
+      <div class='bracket-round'>
+        <div class='bracket-round-label'>
+          {{ _('Round') }} {{ round_num + 1 }}
+        </div>
+        {{ _render_de_round_matches(
+            rounds[round_num], teams_by_id,
+            participants_by_id, seats_by_user_id,
+            team_members_by_team_id,
+            match_url_endpoint=match_url_endpoint,
+            profile_url_endpoint=profile_url_endpoint
+        ) }}
+      </div>
+      {%- endfor %}
+    </div>
+  </div>
+  {%- endif %}
+
+  {# --- Grand Final --- #}
+  {%- if gf_data %}
+  <div class='de-bracket-section'>
+    <div class='de-bracket-section-label gf'>
+      {{ _('Grand Final') }}
+    </div>
+    <div class='bracket'>
+      <div class='bracket-round'>
+        {{ _render_de_round_matches(
+            gf_data, teams_by_id,
+            participants_by_id, seats_by_user_id,
+            team_members_by_team_id,
+            match_url_endpoint=match_url_endpoint,
+            profile_url_endpoint=profile_url_endpoint
+        ) }}
+      </div>
+    </div>
+  </div>
+  {%- endif %}
+
+  </div>{# /.de-sections #}
+
+  {%- else %}
+  <p class='dimmed' style='text-align: center;'>
+    {{ _('Bracket not yet generated.') }}
+  </p>
+  {%- endif %}
+</div>
+
+{%- endmacro %}
+
+
+{# Helper macro for rendering matches within a DE round #}
+{% macro _render_de_round_matches(
+    round_matches, teams_by_id,
+    participants_by_id, seats_by_user_id,
+    team_members_by_team_id,
+    match_url_endpoint=None,
+    profile_url_endpoint=None
+) %}
+  {%- for data in round_matches %}
+  {%- set match = data.match %}
+  {%- set contestants = data.contestants %}
+  {%- set _match_url = url_for(match_url_endpoint, match_id=match.id) if match_url_endpoint else None %}
+  <div class='bracket-match'>
+    {%- if _match_url %}<a href="{{ _match_url }}" class="bracket-match-link">{%- endif %}
+    <div class='bracket-match-card {% if match.confirmed_by %}confirmed{% endif %} {% if contestants|length == 1 and not data.get('has_pending_feeder') %}defwin{% endif %}'>
+      <div class='bracket-match-header'>
+        {{ render_match_ref(match) }}
+        {%- if contestants|length == 1 and not data.get('has_pending_feeder') %}
+          <span class='badge-defwin'
+                title='{{ _("Free Win") }}'>
+            {{ _('defwin') }}
+          </span>
+        {%- elif data.get('has_pending_feeder') %}
+          <span class='badge-pending'
+                title='{{ _("Waiting for opponent") }}'>
+            {{ _('Pending') }}
+          </span>
+        {%- endif %}
+      </div>
+
+      {%- for contestant in contestants %}
+      {%- set is_winner = false %}
+      {%- if match.confirmed_by
+          and contestants|length == 2 %}
+        {%- set other = contestants[
+            1 if loop.index0 == 0 else 0
+        ] %}
+        {%- if contestant.score is not none
+            and other.score is not none %}
+          {%- set is_winner =
+              contestant.score > other.score %}
+        {%- endif %}
+      {%- endif %}
+
+      <div class='bracket-contestant {% if is_winner %}winner{% endif %}'>
+        <div class='bracket-contestant-name'>
+          {%- if contestant.team_id %}
+            {%- set _team = teams_by_id.get(
+                contestant.team_id) -%}
+            {%- if _team -%}
+              {{ render_hover_name(
+                  _team.name, team_id=_team.id,
+                  team_members_by_team_id=team_members_by_team_id,
+                  truncate_len=15,
+                  profile_url_endpoint=profile_url_endpoint
+              ) }}
+            {%- else -%}
+              {{ contestant.team_id|string }}
+            {%- endif -%}
+          {%- elif contestant.participant_id %}
+            {%- set _user = participants_by_id.get(
+                contestant.participant_id) -%}
+            {%- if _user -%}
+              {{ render_hover_name(
+                  _user.screen_name, user_id=_user.id,
+                  user_deleted=_user.deleted,
+                  seats_by_user_id=seats_by_user_id,
+                  truncate_len=15,
+                  profile_url_endpoint=profile_url_endpoint
+              ) }}
+            {%- else -%}
+              {{ contestant.participant_id|string }}
+            {%- endif -%}
+          {%- else %}
+            {{ _('defwin') }}
+          {%- endif %}
+        </div>
+        <div class='bracket-contestant-score'>
+          {{ contestant.score if contestant.score is not none else '–' }}
+        </div>
+      </div>
+      {%- endfor %}
+      {%- if not contestants %}
+      <div class='bracket-contestant'>
+        <div class='bracket-contestant-name'
+             style='color: #999;'>{{ _('TBD') }}</div>
+        <div class='bracket-contestant-score'>–</div>
+      </div>
+      <div class='bracket-contestant'>
+        <div class='bracket-contestant-name'
+             style='color: #999;'>{{ _('TBD') }}</div>
+        <div class='bracket-contestant-score'>–</div>
+      </div>
+      {%- endif %}
+    </div>
+    {%- if _match_url %}</a>{%- endif %}
+  </div>
+  {%- endfor %}
+{%- endmacro %}
+
+
+{% macro render_simple_de_bracket_list(
+    match_data, teams_by_id={},
+    participants_by_id={}, seats_by_user_id={},
+    team_members_by_team_id={},
+    match_url_endpoint=None,
+    profile_url_endpoint=None
+) %}
+{#
+  List-based DE bracket view for small screens.
+  Groups matches by bracket section (WB, LB, GF).
+#}
+
+{%- set wb_data = [] %}
+{%- set lb_data = [] %}
+{%- set gf_data = [] %}
+{%- for data in match_data %}
+  {%- set b = data.match.bracket %}
+  {%- if b and b.value == 'LB' %}
+    {%- set _ = lb_data.append(data) %}
+  {%- elif b and b.value == 'GF' %}
+    {%- set _ = gf_data.append(data) %}
+  {%- else %}
+    {%- set _ = wb_data.append(data) %}
+  {%- endif %}
+{%- endfor %}
+
+<div class='bracket-list'>
+  {%- if wb_data %}
+  <h3 style='color: #007bff;'>
+    {{ _('Winners Bracket') }}
+  </h3>
+  {{ _render_de_list_section(
+      wb_data, teams_by_id, participants_by_id,
+      seats_by_user_id, team_members_by_team_id,
+      match_url_endpoint=match_url_endpoint,
+      profile_url_endpoint=profile_url_endpoint
+  ) }}
+  {%- endif %}
+
+  {%- if lb_data %}
+  <h3 style='color: #dc3545;'>
+    {{ _('Losers Bracket') }}
+  </h3>
+  {{ _render_de_list_section(
+      lb_data, teams_by_id, participants_by_id,
+      seats_by_user_id, team_members_by_team_id,
+      match_url_endpoint=match_url_endpoint,
+      profile_url_endpoint=profile_url_endpoint
+  ) }}
+  {%- endif %}
+
+  {%- if gf_data %}
+  <h3 style='color: #856404;'>
+    {{ _('Grand Final') }}
+  </h3>
+  {{ _render_de_list_section(
+      gf_data, teams_by_id, participants_by_id,
+      seats_by_user_id, team_members_by_team_id,
+      match_url_endpoint=match_url_endpoint,
+      profile_url_endpoint=profile_url_endpoint
+  ) }}
+  {%- endif %}
+</div>
+
+{%- endmacro %}
+
+
+{# Helper for rendering a section in the DE list view #}
+{% macro _render_de_list_section(
+    section_data, teams_by_id,
+    participants_by_id, seats_by_user_id,
+    team_members_by_team_id,
+    match_url_endpoint=None,
+    profile_url_endpoint=None
+) %}
+  {%- for data in section_data %}
+  {%- set match = data.match %}
+  {%- set contestants = data.contestants %}
+  {%- set _match_url = url_for(match_url_endpoint, match_id=match.id) if match_url_endpoint else None %}
+  {%- if _match_url %}<a href="{{ _match_url }}" class="bracket-match-link">{%- endif %}
+  <div class='bracket-list-item'>
+    <div class='bracket-list-header'>
+      <strong>{{ render_match_ref(match) }}</strong>
+      {%- if match.confirmed_by %}
+        <span style='color: #28a745; margin-left: 0.5rem;'>
+          ✓
+        </span>
+      {%- endif %}
+    </div>
+    <div class='bracket-list-matchup'>
+      {%- if contestants|length == 1 and not data.get('has_pending_feeder') %}
+        {%- set contestant = contestants[0] %}
+        <div style='padding: 0.25rem 0;'>
+          {%- if contestant.team_id %}
+            {%- set _team = teams_by_id.get(
+                contestant.team_id) -%}
+            {%- if _team -%}
+              {{ render_hover_name(
+                  _team.name, team_id=_team.id,
+                  team_members_by_team_id=team_members_by_team_id,
+                  profile_url_endpoint=profile_url_endpoint
+              ) }}
+            {%- else -%}
+              {{ contestant.team_id|string }}
+            {%- endif -%}
+          {%- elif contestant.participant_id %}
+            {%- set _user = participants_by_id.get(
+                contestant.participant_id) -%}
+            {%- if _user -%}
+              {{ render_hover_name(
+                  _user.screen_name, user_id=_user.id,
+                  user_deleted=_user.deleted,
+                  seats_by_user_id=seats_by_user_id,
+                  profile_url_endpoint=profile_url_endpoint
+              ) }}
+            {%- else -%}
+              {{ contestant.participant_id|string }}
+            {%- endif -%}
+          {%- else %}
+            {{ _('defwin') }}
+          {%- endif %}
+          <strong>
+            {{ contestant.score if contestant.score is not none else '–' }}
+          </strong>
+          <span class='badge-defwin'
+                title='{{ _("Free Win") }}'>
+            {{ _('defwin') }}
+          </span>
+        </div>
+      {%- elif data.get('has_pending_feeder') and contestants|length == 1 %}
+        {# Pending match — waiting on feeder #}
+        {%- set contestant = contestants[0] %}
+        <div style='padding: 0.25rem 0;'>
+          {%- if contestant.team_id %}
+            {%- set _team = teams_by_id.get(
+                contestant.team_id) -%}
+            {%- if _team -%}
+              {{ render_hover_name(
+                  _team.name, team_id=_team.id,
+                  team_members_by_team_id=team_members_by_team_id,
+                  profile_url_endpoint=profile_url_endpoint
+              ) }}
+            {%- else -%}
+              {{ contestant.team_id|string }}
+            {%- endif -%}
+          {%- elif contestant.participant_id %}
+            {%- set _user = participants_by_id.get(
+                contestant.participant_id) -%}
+            {%- if _user -%}
+              {{ render_hover_name(
+                  _user.screen_name, user_id=_user.id,
+                  user_deleted=_user.deleted,
+                  seats_by_user_id=seats_by_user_id,
+                  profile_url_endpoint=profile_url_endpoint
+              ) }}
+            {%- else -%}
+              {{ contestant.participant_id|string }}
+            {%- endif -%}
+          {%- else %}
+            TBD
+          {%- endif %}
+          <span class='badge-pending'
+                title='{{ _("Waiting for opponent") }}'>
+            {{ _('Pending') }}
+          </span>
+        </div>
+      {%- else %}
+        {%- for contestant in contestants %}
+          <div style='padding: 0.25rem 0;'>
+            {%- if contestant.team_id %}
+              {%- set _team = teams_by_id.get(
+                  contestant.team_id) -%}
+              {%- if _team -%}
+                {{ render_hover_name(
+                    _team.name, team_id=_team.id,
+                    team_members_by_team_id=team_members_by_team_id,
+                    profile_url_endpoint=profile_url_endpoint
+                ) }}
+              {%- else -%}
+                {{ contestant.team_id|string }}
+              {%- endif -%}
+            {%- elif contestant.participant_id %}
+              {%- set _user = participants_by_id.get(
+                  contestant.participant_id) -%}
+              {%- if _user -%}
+                {{ render_hover_name(
+                    _user.screen_name, user_id=_user.id,
+                    user_deleted=_user.deleted,
+                    seats_by_user_id=seats_by_user_id,
+                    profile_url_endpoint=profile_url_endpoint
+                ) }}
+              {%- else -%}
+                {{ contestant.participant_id|string }}
+              {%- endif -%}
+            {%- else %}
+              {{ _('defwin') }}
+            {%- endif %}
+            <strong>
+              {{ contestant.score if contestant.score is not none else '–' }}
+            </strong>
+          </div>
+          {%- if not loop.last %}
+          <div style='text-align: center; color: #999;'>
+            vs
+          </div>
+          {%- endif %}
+        {%- endfor %}
+      {%- endif %}
+    </div>
+  </div>
+  {%- if _match_url %}</a>{%- endif %}
+  {%- endfor %}
+{%- endmacro %}
+
+
+{% macro render_bracket_responsive_styles() %}<style>
+  @media (max-width: 840px) {
+    .bracket-desktop { display: none; }
+    .bracket-mobile { display: block; }
+  }
+  @media (min-width: 841px) {
+    .bracket-desktop { display: block; }
+    .bracket-mobile { display: none; }
+  }
+</style>{%- endmacro %}
+
+
+{% macro render_highscore_leaderboard(
+    leaderboard, tournament, teams_by_id={},
+    participants_by_id={},
+    profile_url_endpoint=None
+) %}
+{#
+  Renders a highscore leaderboard table.
+
+  Args:
+    leaderboard: list[ScoreSubmission] sorted by rank
+    tournament: Tournament object
+    teams_by_id: dict mapping team ID to TournamentTeam
+    participants_by_id: dict mapping participant ID to User
+#}
+
+<style>
+  .hs-leaderboard {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+  }
+  .hs-leaderboard th,
+  .hs-leaderboard td {
+    padding: 0.5rem 0.75rem;
+    text-align: center;
+    border-bottom: 1px solid #dee2e6;
+  }
+  .hs-leaderboard th {
+    background-color: #f8f9fa;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #495057;
+  }
+  .hs-leaderboard td:first-child,
+  .hs-leaderboard th:first-child {
+    text-align: center;
+    width: 3rem;
+  }
+  .hs-leaderboard td:nth-child(2),
+  .hs-leaderboard th:nth-child(2) {
+    text-align: left;
+  }
+  .hs-leaderboard .hs-rank-1 {
+    background-color: #fff8e1;
+  }
+  .hs-leaderboard .hs-rank-2 {
+    background-color: #f5f5f5;
+  }
+  .hs-leaderboard .hs-rank-3 {
+    background-color: #fff3e0;
+  }
+  .hs-leaderboard .hs-score {
+    font-weight: bold;
+  }
+  .hs-ordering-hint {
+    font-size: 0.8rem;
+    color: #6c757d;
+    margin-bottom: 0.5rem;
+  }
+</style>
+
+{%- if tournament.score_ordering %}
+<p class='hs-ordering-hint'>
+  {%- if tournament.score_ordering.name == 'HIGHER_IS_BETTER' -%}
+    {{ _('Higher score is better') }}
+  {%- else -%}
+    {{ _('Lower score is better') }}
+  {%- endif -%}
+</p>
+{%- endif %}
+
+<table class='hs-leaderboard'>
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>{{ _('Name') }}</th>
+      <th>{{ _('Score') }}</th>
+      <th>{{ _('Submitted') }}</th>
+    </tr>
+  </thead>
+  <tbody>
+    {%- for entry in leaderboard %}
+    {%- set rank = loop.index %}
+    <tr class='{% if rank == 1 %}hs-rank-1{% elif rank == 2 %}hs-rank-2{% elif rank == 3 %}hs-rank-3{% endif %}'>
+      <td>{{ rank }}</td>
+      <td>
+        {%- if entry.team_id -%}
+          {%- set _team = teams_by_id.get(entry.team_id) -%}
+          {%- if _team -%}
+            {{ render_hover_name(_team.name, team_id=_team.id, profile_url_endpoint=profile_url_endpoint) }}
+          {%- else -%}
+            {{ entry.team_id|string }}
+          {%- endif -%}
+        {%- elif entry.participant_id -%}
+          {%- set _user = participants_by_id.get(entry.participant_id) -%}
+          {%- if _user -%}
+            {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted, profile_url_endpoint=profile_url_endpoint) }}
+          {%- else -%}
+            {{ entry.participant_id|string }}
+          {%- endif -%}
+        {%- endif -%}
+      </td>
+      <td class='hs-score'>{{ entry.score }}</td>
+      <td>{{ entry.submitted_at|dateformat }}</td>
+    </tr>
+    {%- endfor %}
+  </tbody>
+</table>
+
+{%- if not leaderboard %}
+<p class='dimmed' style='text-align: center;'>
+  {{ _('No scores submitted yet.') }}
+</p>
+{%- endif %}
+
+{%- endmacro %}
+
+
+{% macro render_round_robin_standings(
+    standings, tournament, teams_by_id={},
+    participants_by_id={}, seats_by_user_id={},
+    team_members_by_team_id={},
+    profile_url_endpoint=None
+) %}
+{#
+  Renders a round-robin standings table.
+
+  Args:
+    standings: list[RoundRobinStanding] sorted by rank
+    tournament: Tournament object
+    teams_by_id: dict mapping team ID to TournamentTeam
+    participants_by_id: dict mapping participant ID to User
+#}
+
+<table class='rr-standings'>
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>{{ _('Name') }}</th>
+      <th title='{{ _("Played") }}'>{{ _('P') }}</th>
+      <th title='{{ _("Wins") }}'>{{ _('W') }}</th>
+      <th title='{{ _("Draws") }}'>{{ _('D') }}</th>
+      <th title='{{ _("Losses") }}'>{{ _('L') }}</th>
+      <th title='{{ _("Score For") }}'>{{ _('SF') }}</th>
+      <th title='{{ _("Score Against") }}'>{{ _('SA') }}</th>
+      <th title='{{ _("Score Difference") }}'>{{ _('SD') }}</th>
+      <th title='{{ _("Points") }}'>{{ _('Pts') }}</th>
+    </tr>
+  </thead>
+  <tbody>
+    {%- for s in standings %}
+    {%- set rank = loop.index %}
+    <tr class='{% if rank == 1 %}rr-rank-1{% elif rank == 2 %}rr-rank-2{% elif rank == 3 %}rr-rank-3{% endif %}'>
+      <td>{{ rank }}</td>
+      <td>
+        {%- set cid = s.contestant_id -%}
+        {%- set ns = namespace(found=false) -%}
+        {%- for tid, team in teams_by_id.items() if tid|string == cid -%}
+          {%- set ns.found = true -%}
+          {{ render_hover_name(team.name, team_id=tid, team_members_by_team_id=team_members_by_team_id, profile_url_endpoint=profile_url_endpoint) }}
+        {%- endfor -%}
+        {%- if not ns.found -%}
+          {%- for pid, user in participants_by_id.items() if pid|string == cid -%}
+            {%- set ns.found = true -%}
+            {{ render_hover_name(user.screen_name, user_id=user.id, user_deleted=user.deleted, seats_by_user_id=seats_by_user_id, profile_url_endpoint=profile_url_endpoint) }}
+          {%- endfor -%}
+        {%- endif -%}
+        {%- if not ns.found -%}
+          {{ cid }}
+        {%- endif -%}
+      </td>
+      <td>{{ s.wins + s.draws + s.losses }}</td>
+      <td>{{ s.wins }}</td>
+      <td>{{ s.draws }}</td>
+      <td>{{ s.losses }}</td>
+      <td>{{ s.score_for }}</td>
+      <td>{{ s.score_against }}</td>
+      <td>{{ s.score_diff }}</td>
+      <td class='rr-pts'>{{ s.points }}</td>
+    </tr>
+    {%- endfor %}
+  </tbody>
+</table>
+
+{%- if not standings %}
+<p class='dimmed' style='text-align: center;'>
+  {{ _('No confirmed matches yet.') }}
+</p>
+{%- endif %}
+
+{%- endmacro %}
+
+
+{# ── FFA Standings Table ───────────────────────────────────────────── #}
+
+{% macro render_ffa_standings(
+    standings,
+    round_standings=None,
+    teams_by_id={},
+    participants_by_id={},
+    seats_by_user_id={},
+    team_members_by_team_id={},
+    profile_url_endpoint=None,
+    show_round_breakdown=True
+) %}
+{#
+  Renders an FFA cumulative standings table.
+
+  Args:
+    standings: list of (contestant_id, total_points) tuples sorted desc
+    round_standings: optional list of dicts with 'round_num' and 'standings'
+                     (each being a list of (contestant_id, points) tuples)
+    teams_by_id: team lookup dict
+    participants_by_id: participant lookup dict (participant_id -> User)
+#}
+
+<table class='rr-standings'>
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>{{ _('Contestant') }}</th>
+      <th>{{ _('Total Points') }}</th>
+      <th>{{ _('Rounds') }}</th>
+    </tr>
+  </thead>
+  <tbody>
+    {%- for cid, total_pts in standings %}
+    {%- set rank = loop.index %}
+    <tr class='{% if rank == 1 %}rr-rank-1{% elif rank == 2 %}rr-rank-2{% elif rank == 3 %}rr-rank-3{% endif %}'>
+      <td>{{ rank }}</td>
+      <td style='text-align: left;'>
+        {{ _render_ffa_contestant_name(cid, teams_by_id, participants_by_id, seats_by_user_id, team_members_by_team_id, profile_url_endpoint) }}
+      </td>
+      <td class='rr-pts'>{{ total_pts }}</td>
+      <td>
+        {%- if round_standings %}
+          {%- set round_count = namespace(value=0) %}
+          {%- for rs in round_standings %}
+            {%- for rc_id, _pts in rs.standings %}
+              {%- if rc_id == cid %}
+                {%- set round_count.value = round_count.value + 1 %}
+              {%- endif %}
+            {%- endfor %}
+          {%- endfor %}
+          {{ round_count.value }}
+        {%- else %}
+          –
+        {%- endif %}
+      </td>
+    </tr>
+    {%- endfor %}
+  </tbody>
+</table>
+
+{%- if not standings %}
+<p class='dimmed' style='text-align: center;'>
+  {{ _('No FFA results yet.') }}
+</p>
+{%- endif %}
+
+{%- if show_round_breakdown and round_standings %}
+<details style='margin-top: 1rem;'>
+  <summary style='cursor: pointer; font-weight: bold;'>{{ _('Per-round breakdown') }}</summary>
+  {%- for rs in round_standings %}
+  <div style='margin-top: 0.75rem;'>
+    <h4 style='margin-bottom: 0.25rem;'>{{ _('Round') }} {{ rs.round_num + 1 }}</h4>
+    <table class='rr-standings' style='font-size: 0.9rem;'>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>{{ _('Contestant') }}</th>
+          <th>{{ _('Points') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {%- for cid, pts in rs.standings %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td style='text-align: left;'>
+            {{ _render_ffa_contestant_name(cid, teams_by_id, participants_by_id, seats_by_user_id, team_members_by_team_id, profile_url_endpoint) }}
+          </td>
+          <td class='rr-pts'>{{ pts }}</td>
+        </tr>
+        {%- endfor %}
+      </tbody>
+    </table>
+  </div>
+  {%- endfor %}
+</details>
+{%- endif %}
+
+{%- endmacro %}
+
+
+{# ── FFA Match Result Display ──────────────────────────────────────── #}
+
+{% macro render_ffa_match_result(
+    contestants,
+    teams_by_id={},
+    participants_by_id={},
+    seats_by_user_id={},
+    team_members_by_team_id={},
+    profile_url_endpoint=None
+) %}
+{#
+  Renders an FFA match result as a placement list.
+
+  Args:
+    contestants: list of TournamentMatchToContestant objects (with placement/points set)
+#}
+{%- set sorted_contestants = contestants|sort(attribute='placement') %}
+<div class='ffa-match-result'>
+  {%- for c in sorted_contestants %}
+  <div class='row row--space-between' style='padding: 0.35rem 0.5rem; {% if c.placement == 1 %}background-color: #fff8e1;{% elif c.placement == 2 %}background-color: #f5f5f5;{% elif c.placement == 3 %}background-color: #fff3e0;{% endif %} border-radius: 3px; margin-bottom: 2px;'>
+    <div>
+      <strong>{{ c.placement|default('–', true) }}.</strong>
+      {%- set cid = (c.team_id|string) if c.team_id else (c.participant_id|string) %}
+      {{ _render_ffa_contestant_name(cid, teams_by_id, participants_by_id, seats_by_user_id, team_members_by_team_id, profile_url_endpoint) }}
+    </div>
+    <div>
+      <strong>{{ c.points if c.points is not none else '–' }}</strong> {{ _('pts') }}
+    </div>
+  </div>
+  {%- endfor %}
+</div>
+{%- endmacro %}
+
+
+{# ── FFA Contestant Name Helper ────────────────────────────────────── #}
+
+{% macro _render_ffa_contestant_name(cid, teams_by_id, participants_by_id, seats_by_user_id, team_members_by_team_id, profile_url_endpoint) %}
+{#
+  Resolves and renders a contestant name from a string ID.
+  Checks teams_by_id first, then participants_by_id.
+#}
+{%- set found = namespace(rendered=false) %}
+{%- for tid, team in teams_by_id.items() %}
+  {%- if tid|string == cid|string and not found.rendered %}
+    {{ render_hover_name(team.name, team_id=tid, team_members_by_team_id=team_members_by_team_id, profile_url_endpoint=profile_url_endpoint) }}
+    {%- set found.rendered = true %}
+  {%- endif %}
+{%- endfor %}
+{%- if not found.rendered %}
+  {%- for pid, user in participants_by_id.items() %}
+    {%- if pid|string == cid|string and not found.rendered %}
+      {{ render_hover_name(user.screen_name, user_id=user.id, user_deleted=user.deleted, seats_by_user_id=seats_by_user_id, profile_url_endpoint=profile_url_endpoint) }}
+      {%- set found.rendered = true %}
+    {%- endif %}
+  {%- endfor %}
+{%- endif %}
+{%- if not found.rendered %}
+  {{ cid }}
+{%- endif %}
+{%- endmacro %}
