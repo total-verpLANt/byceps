@@ -7,7 +7,7 @@ byceps.services.lan_tournament.blueprints.site.forms
 """
 
 from flask_babel import lazy_gettext
-from wtforms import IntegerField, StringField, TextAreaField
+from wtforms import BooleanField, IntegerField, StringField, TextAreaField
 from wtforms.validators import InputRequired, Length, NumberRange, Optional
 
 from byceps.util.l10n import LocalizedForm
@@ -37,6 +37,7 @@ class SiteTeamUpdateForm(LocalizedForm):
     join_code = StringField(
         lazy_gettext('Join code'), [Optional(), Length(max=80)]
     )
+    clear_join_code = BooleanField(lazy_gettext('Remove join code'))
 
 
 class HighscoreSubmitForm(LocalizedForm):

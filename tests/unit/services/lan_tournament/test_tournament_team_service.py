@@ -84,6 +84,39 @@ def test_create_team_normalizes_tag(
 @patch(f'{MOCK_PREFIX}.signals')
 @patch(f'{MOCK_PREFIX}.tournament_repository')
 @patch(f'{MOCK_PREFIX}.tournament_domain_service')
+def test_create_team_hashes_join_code(
+    mock_domain,
+    mock_repo,
+    mock_signals,
+):
+    tournament = _create_tournament()
+    captain_id = UserID(generate_uuid())
+
+    mock_repo.get_tournament_for_update.return_value = tournament
+    mock_repo.get_teams_for_tournament.return_value = []
+    mock_domain.validate_team_count.return_value = Ok(None)
+    mock_repo.find_active_team_by_name.return_value = None
+    mock_repo.find_active_team_by_tag.return_value = None
+    mock_repo.find_participant_by_user.return_value = (
+        _create_participant(user_id=captain_id)
+    )
+
+    result = tournament_team_service.create_team(
+        TOURNAMENT_ID,
+        'Team Alpha',
+        captain_id,
+        join_code='secret123',
+    )
+
+    assert result.is_ok()
+    team, _event = result.unwrap()
+    assert team.join_code != 'secret123'
+    assert team.join_code.startswith('scrypt:32768:8:1$')
+
+
+@patch(f'{MOCK_PREFIX}.signals')
+@patch(f'{MOCK_PREFIX}.tournament_repository')
+@patch(f'{MOCK_PREFIX}.tournament_domain_service')
 def test_create_team_empty_tag_skips_duplicate_check(
     mock_domain,
     mock_repo,
@@ -152,6 +185,75 @@ def test_update_team_normalizes_tag(
     assert result.is_ok()
     updated = result.unwrap()
     assert updated.tag == expected_tag
+
+
+@patch(f'{MOCK_PREFIX}.tournament_repository')
+def test_update_team_without_join_code_keeps_existing_code(mock_repo):
+    team = _create_team(join_code='scrypt:32768:8:1$storedhash')
+    mock_repo.get_team.return_value = team
+    mock_repo.lock_tournament_for_update.return_value = None
+    mock_repo.find_active_team_by_name.return_value = None
+    mock_repo.find_active_team_by_tag.return_value = None
+
+    result = tournament_team_service.update_team(
+        team.id,
+        name=team.name,
+        tag=team.tag,
+        description=None,
+        image_url=None,
+        join_code=None,
+    )
+
+    assert result.is_ok()
+    updated = result.unwrap()
+    assert updated.join_code == team.join_code
+
+
+@patch(f'{MOCK_PREFIX}.tournament_repository')
+def test_update_team_hashes_new_join_code(mock_repo):
+    team = _create_team(join_code='scrypt:32768:8:1$storedhash')
+    mock_repo.get_team.return_value = team
+    mock_repo.lock_tournament_for_update.return_value = None
+    mock_repo.find_active_team_by_name.return_value = None
+    mock_repo.find_active_team_by_tag.return_value = None
+
+    result = tournament_team_service.update_team(
+        team.id,
+        name=team.name,
+        tag=team.tag,
+        description=None,
+        image_url=None,
+        join_code='freshsecret',
+    )
+
+    assert result.is_ok()
+    updated = result.unwrap()
+    assert updated.join_code != 'freshsecret'
+    assert updated.join_code != team.join_code
+    assert updated.join_code.startswith('scrypt:32768:8:1$')
+
+
+@patch(f'{MOCK_PREFIX}.tournament_repository')
+def test_update_team_clear_join_code_removes_code(mock_repo):
+    team = _create_team(join_code='scrypt:32768:8:1$storedhash')
+    mock_repo.get_team.return_value = team
+    mock_repo.lock_tournament_for_update.return_value = None
+    mock_repo.find_active_team_by_name.return_value = None
+    mock_repo.find_active_team_by_tag.return_value = None
+
+    result = tournament_team_service.update_team(
+        team.id,
+        name=team.name,
+        tag=team.tag,
+        description=None,
+        image_url=None,
+        join_code=None,
+        clear_join_code=True,
+    )
+
+    assert result.is_ok()
+    updated = result.unwrap()
+    assert updated.join_code is None
 
 
 # -------------------------------------------------------------------- #
@@ -592,6 +694,36 @@ def test_update_team_unchanged_name_skips_name_duplicate_check(
 
     assert result.is_ok()
     mock_repo.find_active_team_by_name.assert_not_called()
+
+
+@patch(f'{MOCK_PREFIX}.signals')
+@patch(f'{MOCK_PREFIX}.tournament_repository')
+def test_join_team_migrates_legacy_plaintext_join_code(
+    mock_repo,
+    mock_signals,
+):
+    legacy_join_code = 'legacy123'
+    team = _create_team(join_code=legacy_join_code)
+    participant = _create_participant()
+    tournament = _create_tournament(max_players_in_team=5)
+
+    mock_repo.get_team_for_update.return_value = team
+    mock_repo.find_participant.return_value = participant
+    mock_repo.get_tournament_for_update.return_value = tournament
+    mock_repo.get_participants_for_team.return_value = []
+
+    result = tournament_team_service.join_team(
+        participant.id,
+        team.id,
+        join_code=legacy_join_code,
+    )
+
+    assert result.is_ok()
+    mock_repo.update_team_join_code_flush.assert_called_once()
+    args = mock_repo.update_team_join_code_flush.call_args.args
+    assert args[0] == team.id
+    assert args[1] != legacy_join_code
+    assert args[1].startswith('scrypt:32768:8:1$')
 
 
 # -------------------------------------------------------------------- #

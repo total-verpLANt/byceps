@@ -1183,8 +1183,15 @@ def update_team_form(team_id, erroneous_form=None):
     if erroneous_form:
         form = erroneous_form
     else:
-        data = dataclasses.asdict(team)
-        form = TeamUpdateForm(data=data)
+        form = TeamUpdateForm(
+            data={
+                'name': team.name,
+                'tag': team.tag,
+                'description': team.description,
+                'image_url': team.image_url,
+                'clear_join_code': False,
+            }
+        )
 
     return {
         'party': party,
@@ -1213,6 +1220,7 @@ def update_team(team_id):
     )
     image_url = form.image_url.data.strip() if form.image_url.data else None
     join_code = form.join_code.data.strip() if form.join_code.data else None
+    clear_join_code = form.clear_join_code.data
 
     result = tournament_team_service.update_team(
         team.id,
@@ -1221,6 +1229,7 @@ def update_team(team_id):
         description=description,
         image_url=image_url,
         join_code=join_code,
+        clear_join_code=clear_join_code,
     )
     if result.is_err():
         flash_error(gettext(result.unwrap_err()))

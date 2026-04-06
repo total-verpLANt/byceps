@@ -426,6 +426,22 @@ def update_team(team: TournamentTeam) -> None:
     db.session.commit()
 
 
+def update_team_join_code_flush(
+    team_id: TournamentTeamID,
+    join_code: str,
+    updated_at: datetime,
+) -> None:
+    """Update only the team's join code and flush the session."""
+    db_team = db.session.get(DbTournamentTeam, team_id)
+    if db_team is None:
+        raise ValueError(f'Unknown team ID "{team_id}"')
+
+    db_team.join_code = join_code
+    db_team.updated_at = updated_at
+
+    db.session.flush()
+
+
 def update_team_captain(
     team_id: TournamentTeamID,
     new_captain_user_id: UserID,

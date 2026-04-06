@@ -596,6 +596,20 @@ def _get_team_member_user_ids(
     return {m.user_id for m in members}
 
 
+def _create_site_team_update_form(team, erroneous_form=None):
+    if erroneous_form:
+        return erroneous_form
+
+    return SiteTeamUpdateForm(
+        data={
+            'name': team.name,
+            'tag': team.tag,
+            'description': team.description,
+            'clear_join_code': False,
+        }
+    )
+
+
 # -------------------------------------------------------------------- #
 # captain management routes
 # -------------------------------------------------------------------- #
@@ -616,7 +630,7 @@ def update_team_form(tournament_id, team_id, erroneous_form=None):
 
     _require_team_captain(tournament, team)
 
-    form = erroneous_form if erroneous_form else SiteTeamUpdateForm(obj=team)
+    form = _create_site_team_update_form(team, erroneous_form)
 
     return {
         'tournament': tournament,
@@ -647,6 +661,7 @@ def update_team(tournament_id, team_id):
     tag = form.tag.data.strip() if form.tag.data else None
     description = form.description.data.strip() if form.description.data else None
     join_code = form.join_code.data.strip() if form.join_code.data else None
+    clear_join_code = form.clear_join_code.data
 
     match tournament_team_service.update_team(
         team.id,
@@ -655,6 +670,7 @@ def update_team(tournament_id, team_id):
         description=description,
         image_url=team.image_url,
         join_code=join_code,
+        clear_join_code=clear_join_code,
         current_user_id=g.user.id,
     ):
         case Ok(updated_team):

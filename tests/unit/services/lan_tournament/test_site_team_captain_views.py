@@ -680,6 +680,7 @@ def test_site_team_update_form_has_expected_fields(app):
     # tag and join_code were intentionally added to the update form.
     assert hasattr(form, 'tag'), 'Missing field: tag'
     assert hasattr(form, 'join_code'), 'Missing field: join_code'
+    assert hasattr(form, 'clear_join_code'), 'Missing field: clear_join_code'
 
 
 def test_site_team_create_form_has_expected_fields(app):
@@ -961,14 +962,16 @@ def test_update_team_valid_form_calls_service_and_redirects(app):
 def test_update_team_form_get_returns_form_context(app):
     """GET update_team_form returns a context dict containing a form object.
 
-    The form should be pre-populated from the team's current data via
-    ``SiteTeamUpdateForm(obj=team)``.
+    The form should be pre-populated from the team's current data without
+    exposing the stored join code back to the browser.
     """
     with _patched_captain_view(
         app,
         tournament_status=TournamentStatus.REGISTRATION_OPEN,
     ) as mocks:
         from byceps.services.lan_tournament.blueprints.site import views
+
+        mocks['team'].join_code = 'scrypt:32768:8:1$storedhash'
 
         # update_team_form is wrapped with @login_required and @templated.
         # __wrapped__.__wrapped__ strips both decorators so we get the
@@ -985,6 +988,8 @@ def test_update_team_form_get_returns_form_context(app):
     assert 'team' in result
     # Form should have the team's current name pre-filled.
     assert result['form'].name.data == mocks['team'].name
+    assert result['form'].join_code.data in (None, '')
+    assert result['form'].clear_join_code.data is False
 
 
 # ------------------------------------------------------------------ #

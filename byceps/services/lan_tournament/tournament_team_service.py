@@ -1,9 +1,13 @@
 import dataclasses
 from datetime import datetime, UTC
+from hmac import compare_digest
 from urllib.parse import urlparse
 
-
 from sqlalchemy.exc import IntegrityError
+from werkzeug.security import (
+    check_password_hash,
+    generate_password_hash,
+)
 
 from byceps.database import db
 from byceps.services.user.models import UserID
@@ -31,6 +35,10 @@ from .models.tournament_status import TournamentStatus
 from .models.tournament_team import TournamentTeam, TournamentTeamID
 
 
+_JOIN_CODE_HASH_METHOD = 'scrypt:32768:8:1'  # noqa: S105
+_JOIN_CODE_HASH_PREFIXES = ('scrypt:', 'pbkdf2:')
+
+
 def _validate_image_url(image_url: str | None) -> Result[None, str]:
     """Validate image URL to prevent XSS/SSRF attacks."""
     if image_url is None or image_url == '':
@@ -46,6 +54,45 @@ def _validate_image_url(image_url: str | None) -> Result[None, str]:
         return Err('Invalid image URL format.')
 
     return Ok(None)
+
+
+def _hash_join_code(join_code: str) -> str:
+    """Hash a team join code for storage."""
+    return generate_password_hash(join_code, method=_JOIN_CODE_HASH_METHOD)
+
+
+def _join_code_is_hashed(join_code: str) -> bool:
+    return join_code.startswith(_JOIN_CODE_HASH_PREFIXES)
+
+
+def _verify_stored_join_code(stored_join_code: str, candidate: str) -> bool:
+    """Verify a join code against either hashed or legacy plaintext data."""
+    if _join_code_is_hashed(stored_join_code):
+        return check_password_hash(stored_join_code, candidate)
+
+    return compare_digest(stored_join_code, candidate)
+
+
+def _verify_team_join_code_for_locked_team(
+    team: TournamentTeam,
+    join_code: str,
+) -> bool:
+    """Verify a join code and upgrade legacy plaintext values in place."""
+    if team.join_code is None:
+        return False
+
+    if not _verify_stored_join_code(team.join_code, join_code):
+        return False
+
+    if _join_code_is_hashed(team.join_code):
+        return True
+
+    tournament_repository.update_team_join_code_flush(
+        team.id,
+        _hash_join_code(join_code),
+        datetime.now(UTC),
+    )
+    return True
 
 
 def create_team(
@@ -114,6 +161,9 @@ def create_team(
 
     now = datetime.now(UTC)
     team_id = TournamentTeamID(generate_uuid7())
+    hashed_join_code = (
+        _hash_join_code(join_code) if join_code is not None else None
+    )
 
     team = TournamentTeam(
         id=team_id,
@@ -123,7 +173,7 @@ def create_team(
         description=description,
         image_url=image_url,
         captain_user_id=captain_user_id,
-        join_code=join_code,
+        join_code=hashed_join_code,
         created_at=now,
     )
 
@@ -169,6 +219,7 @@ def update_team(
     description: str | None,
     image_url: str | None,
     join_code: str | None,
+    clear_join_code: bool = False,
     current_user_id: UserID | None = None,
 ) -> Result[TournamentTeam, str]:
     """Update a team.
@@ -214,13 +265,19 @@ def update_team(
                 'A team with this tag already exists in this tournament.'
             )
 
+    updated_join_code = team.join_code
+    if clear_join_code:
+        updated_join_code = None
+    elif join_code is not None:
+        updated_join_code = _hash_join_code(join_code)
+
     updated = dataclasses.replace(
         team,
         name=name,
         tag=tag,
         description=description,
         image_url=image_url,
-        join_code=join_code,
+        join_code=updated_join_code,
         updated_at=datetime.now(UTC),
     )
 
@@ -350,7 +407,7 @@ def join_team(
     if team.join_code is not None:
         if join_code is None:
             return Err('Join code required.')
-        if not verify_team_join_code(team_id, join_code):
+        if not _verify_team_join_code_for_locked_team(team, join_code):
             return Err('Invalid join code.')
 
     # Get tournament to check team capacity limits (with lock)
@@ -573,4 +630,4 @@ def verify_team_join_code(
     if team.join_code is None:
         return False
 
-    return team.join_code == join_code
+    return _verify_stored_join_code(team.join_code, join_code)

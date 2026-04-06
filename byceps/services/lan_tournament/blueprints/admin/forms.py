@@ -224,6 +224,7 @@ class TeamUpdateForm(LocalizedForm):
     join_code = StringField(
         lazy_gettext('Join code'), [Optional(), Length(max=80)]
     )
+    clear_join_code = BooleanField(lazy_gettext('Remove join code'))
 
 
 class TransferCaptainForm(LocalizedForm):

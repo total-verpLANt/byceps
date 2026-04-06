@@ -20,7 +20,8 @@
       {{ form_field(form.name, maxlength=80, autofocus='autofocus') }}
       {{ form_field(form.tag, maxlength=20) }}
       {{ form_field(form.description) }}
-      {{ form_field(form.join_code, maxlength=80, caption=_('Optional code to restrict team joins. Leave empty to remove.')) }}
+      {{ form_field(form.join_code, type='password', maxlength=80, caption=_('Optional new code to restrict team joins. Leave empty to keep the current code.')) }}
+      {{ form_field(form.clear_join_code, caption=_('Tick to remove the current join code.')) }}
     </div>
 
     {{ form_buttons(_('Save'), cancel_url=url_for('.view_team', team_id=team.id)) }}

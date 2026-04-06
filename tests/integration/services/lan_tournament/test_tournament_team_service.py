@@ -8,11 +8,13 @@ tests.integration.services.lan_tournament.test_tournament_team_service
 
 import pytest
 
+from byceps.database import db
 from byceps.services.lan_tournament import (
     tournament_participant_service,
     tournament_service,
     tournament_team_service,
 )
+from byceps.services.lan_tournament.dbmodels.team import DbTournamentTeam
 from byceps.services.lan_tournament.models import (
     ContestantType,
     TournamentMode,
@@ -114,9 +116,10 @@ def test_create_team_hashes_join_code(party, captain1):
 
     assert result.is_ok()
     team, _ = result.unwrap()
+    assert team.join_code != join_code
+    assert team.join_code.startswith('scrypt:32768:8:1$')
 
     # Verify join code was hashed (should not be plaintext)
-    # We can't directly access the hash, but we can verify with verify function
     assert (
         tournament_team_service.verify_team_join_code(team.id, join_code)
         is True
@@ -153,7 +156,7 @@ def test_update_team(party, captain1):
     new_name = 'Updated Team Title'
     new_join_code = 'newcode456'
 
-    updated = tournament_team_service.update_team(
+    update_result = tournament_team_service.update_team(
         team.id,
         name=new_name,
         tag=None,
@@ -161,6 +164,8 @@ def test_update_team(party, captain1):
         image_url=None,
         join_code=new_join_code,
     )
+    assert update_result.is_ok()
+    updated = update_result.unwrap()
 
     assert updated.id == team.id
     assert updated.name == new_name
@@ -214,6 +219,88 @@ def test_join_team(party, captain1, member1):
     assert join_result.is_ok()
 
 
+def test_update_team_without_new_join_code_keeps_existing_code(party, captain1):
+    tournament, _ = tournament_service.create_tournament(
+        PARTY_ID,
+        'Team Preserve Join Code Test',
+        tournament_mode=TournamentMode.TEAMS,
+        contestant_type=ContestantType.TEAM,
+        max_teams=8,
+        min_players_in_team=2,
+        max_players_in_team=5,
+    )
+
+    tournament_service.change_status(
+        tournament.id, TournamentStatus.REGISTRATION_OPEN
+    )
+
+    result = tournament_team_service.create_team(
+        tournament.id,
+        'Preserve Team',
+        captain1.id,
+        join_code='keepme123',
+    )
+    team, _ = result.unwrap()
+
+    update_result = tournament_team_service.update_team(
+        team.id,
+        name='Preserve Team Renamed',
+        tag=None,
+        description='Still protected',
+        image_url=None,
+        join_code=None,
+    )
+
+    assert update_result.is_ok()
+    assert tournament_team_service.verify_team_join_code(team.id, 'keepme123') is True
+
+
+def test_update_team_can_clear_join_code(party, captain1, member3):
+    tournament, _ = tournament_service.create_tournament(
+        PARTY_ID,
+        'Team Clear Join Code Test',
+        tournament_mode=TournamentMode.TEAMS,
+        contestant_type=ContestantType.TEAM,
+        max_teams=8,
+        min_players_in_team=2,
+        max_players_in_team=5,
+    )
+
+    tournament_service.change_status(
+        tournament.id, TournamentStatus.REGISTRATION_OPEN
+    )
+
+    team_result = tournament_team_service.create_team(
+        tournament.id,
+        'Clearable Team',
+        captain1.id,
+        join_code='clearme123',
+    )
+    team, _ = team_result.unwrap()
+
+    update_result = tournament_team_service.update_team(
+        team.id,
+        name=team.name,
+        tag=None,
+        description=None,
+        image_url=None,
+        join_code=None,
+        clear_join_code=True,
+    )
+
+    assert update_result.is_ok()
+
+    participant_result = tournament_participant_service.join_tournament(
+        tournament.id, member3.id
+    )
+    participant, _ = participant_result.unwrap()
+
+    join_result = tournament_team_service.join_team(
+        participant.id, team.id, join_code=None
+    )
+    assert join_result.is_ok()
+
+
 def test_join_team_wrong_code_fails(party, captain1, member2):
     tournament, _ = tournament_service.create_tournament(
         PARTY_ID,
@@ -250,6 +337,53 @@ def test_join_team_wrong_code_fails(party, captain1, member2):
     )
     assert join_result.is_err()
     assert 'Invalid join code' in join_result.unwrap_err()
+
+
+def test_join_team_migrates_legacy_plaintext_join_code(
+    party, captain1, member2
+):
+    tournament, _ = tournament_service.create_tournament(
+        PARTY_ID,
+        'Legacy Join Code Migration Test',
+        tournament_mode=TournamentMode.TEAMS,
+        contestant_type=ContestantType.TEAM,
+        max_teams=8,
+        min_players_in_team=2,
+        max_players_in_team=5,
+    )
+
+    tournament_service.change_status(
+        tournament.id, TournamentStatus.REGISTRATION_OPEN
+    )
+
+    legacy_join_code = 'legacycode123'
+    team_result = tournament_team_service.create_team(
+        tournament.id,
+        'Legacy Team',
+        captain1.id,
+        join_code=legacy_join_code,
+    )
+    team, _ = team_result.unwrap()
+
+    db_team = db.session.get(DbTournamentTeam, team.id)
+    db_team.join_code = legacy_join_code
+    db.session.commit()
+
+    participant_result = tournament_participant_service.join_tournament(
+        tournament.id, member2.id
+    )
+    participant, _ = participant_result.unwrap()
+
+    join_result = tournament_team_service.join_team(
+        participant.id, team.id, legacy_join_code
+    )
+
+    assert join_result.is_ok()
+
+    db.session.expire_all()
+    db_team = db.session.get(DbTournamentTeam, team.id)
+    assert db_team.join_code != legacy_join_code
+    assert db_team.join_code.startswith('scrypt:32768:8:1$')
 
 
 def test_join_team_when_full_fails(party, captain1, member1, member2):
