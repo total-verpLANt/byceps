@@ -150,7 +150,7 @@ This guide documents all available URLs for the LAN Tournament module, covering 
   - `tag`: Team tag/abbreviation
   - `description`: Team description
   - `image_url`: Team logo URL
-  - `join_code`: Join code for team access (optional, will be hashed)
+  - `join_code`: Optional join code for team access; stored hashed and not shown again
 
 #### Update Team Form
 - **URL**: `/lan-tournaments/teams/<team_id>/update`
@@ -164,7 +164,13 @@ This guide documents all available URLs for the LAN Tournament module, covering 
 - **Method**: POST
 - **Permission**: `lan_tournament.update`
 - **Description**: Processes team update form submission
-- **Form Fields**: Same as create team form
+- **Form Fields**:
+  - `name`: Team name (required)
+  - `tag`: Team tag/abbreviation
+  - `description`: Team description
+  - `image_url`: Team logo URL
+  - `join_code`: Optional new join code; stored hashed if provided. Leave empty to keep the current code.
+  - `clear_join_code`: Optional checkbox/flag to remove the current join code explicitly
 
 #### Delete Team
 - **URL**: `/lan-tournaments/teams/<team_id>/delete`
@@ -328,7 +334,7 @@ This guide documents all available URLs for the LAN Tournament module, covering 
   - `name`: Team name (required)
   - `tag`: Team tag
   - `description`: Team description
-  - `join_code`: Join code for team (optional, will be hashed)
+  - `join_code`: Optional join code for team access; stored hashed and not shown again
 - **Example**: `/lan-tournaments/01234567-89ab-cdef-0123-456789abcdef/teams/create`
 
 #### View Team
