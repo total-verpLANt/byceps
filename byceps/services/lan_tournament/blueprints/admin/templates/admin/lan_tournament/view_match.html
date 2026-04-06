@@ -1,0 +1,397 @@
+{% extends 'layout/admin/lan_tournament.html' %}
+{% from 'macros/admin.html' import render_backlink %}
+{% from 'macros/icons.html' import render_icon %}
+{% from 'macros/misc.html' import render_tag %}
+{% from 'macros/lan_tournament.html' import render_hover_name, render_match_ref, hover_card_styles %}
+{% set current_page_party = party %}
+{% set current_tab = 'tournaments' %}
+{% set page_title = [_('Match'), tournament.name, party.title] %}
+{% set is_ffa = tournament.game_format and tournament.game_format.name == 'FREE_FOR_ALL' %}
+
+{% block head %}{{ super() }}{{ hover_card_styles() }}
+  {%- if is_ffa %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_ffa_admin.css') }}">
+  {%- endif %}
+{%- endblock %}
+
+{% block before_body %}
+{{ render_backlink(url_for('.matches_for_tournament',
+                           tournament_id=tournament.id), _('Matches')) }}
+{%- endblock %}
+
+{% block body %}
+
+  <h1 class='title'>{{ render_match_ref(match) }}</h1>
+
+  {# Match status #}
+  <div class='block'>
+    {%- if match.confirmed_by and contestants|selectattr('team_id')|list|length + contestants|selectattr('participant_id')|list|length < 2 %}
+      {{ render_tag(_('DEFWIN'), class='color-info') }}
+    {%- elif match.confirmed_by %}
+      {{ render_tag(_('Confirmed'), class='color-success') }}
+    {%- else %}
+      {{ render_tag(_('Pending'), class='color-warning') }}
+    {%- endif %}
+    {%- if is_ffa %}
+      {{ render_tag(_('FFA'), class='color-info') }}
+    {%- endif %}
+  </div>
+
+  {%- if is_ffa %}
+  {# ── FFA Placement Entry ───────────────────────────────────── #}
+  <div class='box block'>
+    <h2>{{ _('Contestants & Placements') }}</h2>
+
+    {%- if not match.confirmed_by and g.user.has_permission('lan_tournament.update') %}
+    {# Drag-and-drop placement editor (JS-enhanced) #}
+    <form action='{{ url_for('.set_ffa_placements_action', match_id=match.id) }}'
+          method='post'>
+      <div id="ffa-ranking-list" class="ffa-ranking-list"
+           data-point-table='{{ tournament.point_table|tojson }}'>
+        {#- Contestants WITH saved placements first (sorted ascending) -#}
+        {%- for contestant in contestants|selectattr('placement')|sort(attribute='placement')|list %}
+        {%- set cid = (contestant.team_id|string) if contestant.team_id else (contestant.participant_id|string) %}
+        <div class="ffa-ranking-card" data-contestant-id="{{ cid }}">
+          <span class="ffa-ranking-card__handle" aria-hidden="true">&#8801;</span>
+          <span class="ffa-ranking-card__ordinal"></span>
+          <span class="ffa-ranking-card__medal"></span>
+          <span class="ffa-ranking-card__name">
+            {%- if contestant.team_id %}
+              {%- set _team = teams_by_id.get(contestant.team_id) -%}
+              {%- if _team -%}
+                {{ render_hover_name(_team.name, team_id=_team.id, link_profiles=False, team_members_by_team_id=team_members_by_team_id) }}
+              {%- else -%}
+                {{ contestant.team_id|string }}
+              {%- endif -%}
+            {%- elif contestant.participant_id %}
+              {%- set _user = participants_by_id.get(contestant.participant_id) -%}
+              {%- if _user -%}
+                {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted, link_profiles=False, seats_by_user_id=seats_by_user_id) }}
+              {%- else -%}
+                {{ contestant.participant_id|string }}
+              {%- endif -%}
+            {%- else %}
+              {{ _('defwin') }}
+            {%- endif %}
+          </span>
+          <span class="ffa-ranking-card__points"></span>
+          <input type="hidden" name="placement_{{ cid }}" value="{{ contestant.placement|default(loop.index) }}">
+        </div>
+        {%- endfor %}
+        {#- Contestants WITHOUT saved placements at the bottom -#}
+        {%- for contestant in contestants|rejectattr('placement')|list %}
+        {%- set cid = (contestant.team_id|string) if contestant.team_id else (contestant.participant_id|string) %}
+        <div class="ffa-ranking-card" data-contestant-id="{{ cid }}">
+          <span class="ffa-ranking-card__handle" aria-hidden="true">&#8801;</span>
+          <span class="ffa-ranking-card__ordinal"></span>
+          <span class="ffa-ranking-card__medal"></span>
+          <span class="ffa-ranking-card__name">
+            {%- if contestant.team_id %}
+              {%- set _team = teams_by_id.get(contestant.team_id) -%}
+              {%- if _team -%}
+                {{ render_hover_name(_team.name, team_id=_team.id, link_profiles=False, team_members_by_team_id=team_members_by_team_id) }}
+              {%- else -%}
+                {{ contestant.team_id|string }}
+              {%- endif -%}
+            {%- elif contestant.participant_id %}
+              {%- set _user = participants_by_id.get(contestant.participant_id) -%}
+              {%- if _user -%}
+                {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted, link_profiles=False, seats_by_user_id=seats_by_user_id) }}
+              {%- else -%}
+                {{ contestant.participant_id|string }}
+              {%- endif -%}
+            {%- else %}
+              {{ _('defwin') }}
+            {%- endif %}
+          </span>
+          <span class="ffa-ranking-card__points"></span>
+          <input type="hidden" name="placement_{{ cid }}" value="{{ loop.index + (contestants|selectattr('placement')|list|length) }}">
+        </div>
+        {%- endfor %}
+      </div>
+      <div style='margin-top: 1rem;'>
+        <button type='submit' class='button'>
+          {{ render_icon('save') }} {{ _('Set Placements') }}
+        </button>
+      </div>
+    </form>
+
+    <noscript>
+    {# Fallback: original select-based placement table for non-JS browsers #}
+    <form action='{{ url_for('.set_ffa_placements_action', match_id=match.id) }}'
+          method='post'>
+      <table class='index' style='width: 100%;'>
+        <thead>
+          <tr>
+            <th>{{ _('Contestant') }}</th>
+            <th style='width: 120px; text-align: center;'>{{ _('Placement') }}</th>
+            <th style='width: 80px; text-align: center;'>{{ _('Points') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {%- for contestant in contestants %}
+          {%- set cid = (contestant.team_id|string) if contestant.team_id else (contestant.participant_id|string) %}
+          <tr>
+            <td>
+              <strong>
+                {%- if contestant.team_id %}
+                  {%- set _team = teams_by_id.get(contestant.team_id) -%}
+                  {%- if _team -%}
+                    {{ render_hover_name(_team.name, team_id=_team.id, link_profiles=False, team_members_by_team_id=team_members_by_team_id) }}
+                  {%- else -%}
+                    {{ contestant.team_id|string }}
+                  {%- endif -%}
+                {%- elif contestant.participant_id %}
+                  {%- set _user = participants_by_id.get(contestant.participant_id) -%}
+                  {%- if _user -%}
+                    {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted, link_profiles=False, seats_by_user_id=seats_by_user_id) }}
+                  {%- else -%}
+                    {{ contestant.participant_id|string }}
+                  {%- endif -%}
+                {%- else %}
+                  {{ _('defwin') }}
+                {%- endif %}
+              </strong>
+            </td>
+            <td style='text-align: center;'>
+              <select name='placement_{{ cid }}' style='width: 80px;' required>
+                <option value=''>&#8211;</option>
+                {%- for i in range(1, contestants|length + 1) %}
+                <option value='{{ i }}'
+                  {%- if contestant.placement == i %} selected{% endif %}>
+                  {{ i }}{{ _('th') if (i % 100) in (11, 12, 13) else (_('st') if i % 10 == 1 else (_('nd') if i % 10 == 2 else (_('rd') if i % 10 == 3 else _('th')))) }}
+                </option>
+                {%- endfor %}
+              </select>
+            </td>
+            <td style='text-align: center;'>
+              {{ contestant.points if contestant.points is not none else '&#8211;' }}
+            </td>
+          </tr>
+          {%- endfor %}
+        </tbody>
+      </table>
+      <div style='margin-top: 1rem;'>
+        <button type='submit' class='button'>
+          {{ render_icon('save') }} {{ _('Set Placements') }}
+        </button>
+      </div>
+    </form>
+    </noscript>
+    {%- else %}
+    {# Read-only placement display #}
+    <table class='index' style='width: 100%;'>
+      <thead>
+        <tr>
+          <th style='width: 60px; text-align: center;'>{{ _('Place') }}</th>
+          <th>{{ _('Contestant') }}</th>
+          <th style='width: 80px; text-align: center;'>{{ _('Points') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {%- for contestant in contestants|sort(attribute='placement') %}
+        <tr style='{% if contestant.placement == 1 %}background-color: #fff8e1;{% elif contestant.placement == 2 %}background-color: #f5f5f5;{% elif contestant.placement == 3 %}background-color: #fff3e0;{% endif %}'>
+          <td style='text-align: center; font-weight: bold;'>
+            {{ contestant.placement|default('–', true) }}
+          </td>
+          <td>
+            {%- if contestant.team_id %}
+              {%- set _team = teams_by_id.get(contestant.team_id) -%}
+              {%- if _team -%}
+                {{ render_hover_name(_team.name, team_id=_team.id, link_profiles=False, team_members_by_team_id=team_members_by_team_id) }}
+              {%- else -%}
+                {{ contestant.team_id|string }}
+              {%- endif -%}
+            {%- elif contestant.participant_id %}
+              {%- set _user = participants_by_id.get(contestant.participant_id) -%}
+              {%- if _user -%}
+                {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted, link_profiles=False, seats_by_user_id=seats_by_user_id) }}
+              {%- else -%}
+                {{ contestant.participant_id|string }}
+              {%- endif -%}
+            {%- else %}
+              {{ _('defwin') }}
+            {%- endif %}
+          </td>
+          <td style='text-align: center;'>
+            <strong>{{ contestant.points if contestant.points is not none else '–' }}</strong>
+          </td>
+        </tr>
+        {%- endfor %}
+      </tbody>
+    </table>
+    {%- endif %}
+  </div>
+
+  {# FFA Confirm / Unconfirm buttons #}
+  {%- if not match.confirmed_by and
+         g.user.has_permission('lan_tournament.administrate') %}
+  <div class='block'>
+    <form action='{{ url_for('.confirm_ffa_match_action', match_id=match.id) }}'
+          method='post'>
+      <button type='submit' class='button color-success'>
+        {{ render_icon('success') }} {{ _('Confirm FFA Match') }}
+      </button>
+    </form>
+  </div>
+  {%- endif %}
+
+  {%- if match.confirmed_by and
+         g.user.has_permission('lan_tournament.administrate') %}
+  <div class='block'>
+    <form action='{{ url_for('.unconfirm_match', match_id=match.id) }}'
+          method='post'
+          onsubmit="return confirm('{{ _('This will unconfirm the match. Continue?') }}');">
+      <button type='submit' class='button color-warning'>
+        {{ render_icon('warning') }} {{ _('Unconfirm Match') }}
+      </button>
+    </form>
+  </div>
+  {%- endif %}
+
+  {%- else %}
+  {# ── Standard 1v1 Score Entry ──────────────────────────────── #}
+  <div class='box block'>
+    <h2>{{ _('Contestants') }}</h2>
+
+    {%- if not match.confirmed_by and
+           g.user.has_permission('lan_tournament.administrate') %}
+    <form action='{{ url_for('.confirm_match_with_scores', match_id=match.id) }}'
+          method='post'>
+    {%- endif %}
+
+    {%- for contestant in contestants %}
+    <div class='row row--space-between' style='margin-bottom: 1rem; flex-wrap: nowrap;'>
+      <div style='flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;'>
+        <strong>
+          {%- if contestant.team_id %}
+            {{ _('Team') }}:
+            {%- set _team = teams_by_id.get(contestant.team_id) -%}
+            {%- if _team -%}
+              {{ render_hover_name(_team.name, team_id=_team.id, link_profiles=False, team_members_by_team_id=team_members_by_team_id) }}
+            {%- else -%}
+              {{ contestant.team_id|string }}
+            {%- endif -%}
+          {%- elif contestant.participant_id %}
+            {{ _('Player') }}:
+            {%- set _user = participants_by_id.get(contestant.participant_id) -%}
+            {%- if _user -%}
+              {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted, link_profiles=False, seats_by_user_id=seats_by_user_id) }}
+            {%- else -%}
+              {{ contestant.participant_id|string }}
+            {%- endif -%}
+          {%- else %}
+            {{ _('defwin') }}
+          {%- endif %}
+        </strong>
+      </div>
+      <div style='flex: 0 0 auto; min-width: 100px; text-align: right;'>
+        {%- if not match.confirmed_by and
+               g.user.has_permission('lan_tournament.administrate') %}
+        <input type='number' name='score_{{ contestant.team_id or contestant.participant_id }}'
+               min='0' value='{{ contestant.score or 0 }}'
+               style='width: 80px;' required>
+        {%- else %}
+        <strong>{{ _('Score') }}:</strong>
+        {{ contestant.score if contestant.score is not none else '–' }}
+        {%- endif %}
+      </div>
+    </div>
+    {%- endfor %}
+
+    {%- if not match.confirmed_by and
+           g.user.has_permission('lan_tournament.administrate') %}
+    <div style='margin-top: 1rem; text-align: right;'>
+      <button type='submit' class='button color-success'>
+        {{ render_icon('success') }} {{ _('Confirm Match') }}
+      </button>
+    </div>
+    </form>
+    {%- endif %}
+  </div>
+
+  {%- if match.confirmed_by and
+         g.user.has_permission('lan_tournament.administrate') %}
+  <div class='block'>
+    <form action='{{ url_for('.unconfirm_match', match_id=match.id) }}'
+          method='post'
+          onsubmit="return confirm('{{ _('This will also unconfirm any downstream matches that used this result. Continue?') }}');">
+      <button type='submit' class='button color-warning'>
+        {{ render_icon('warning') }} {{ _('Unconfirm Match') }}
+      </button>
+    </form>
+  </div>
+  {%- endif %}
+
+  {%- endif %}{# end is_ffa/standard branch #}
+
+  {# Comments section #}
+  <div class='block'>
+    <h2>{{ _('Comments') }}</h2>
+
+    {%- if comments %}
+    <div class='main-body-box'>
+      {%- for comment in comments %}
+      <div class='row row--space-between'
+           style='padding: 0.5rem; border-bottom: 1px solid #ccc;'>
+        <div>
+          <div><strong>
+            {%- set _comment_user = comment_users_by_id.get(comment.created_by) -%}
+            {%- if _comment_user -%}
+              {{ render_hover_name(_comment_user.screen_name, user_id=_comment_user.id, user_deleted=_comment_user.deleted, link_profiles=False, seats_by_user_id=seats_by_user_id) }}
+            {%- else -%}
+              {{ comment.created_by|string }}
+            {%- endif -%}
+          </strong></div>
+          <div style='margin-top: 0.25rem;'>{{ comment.comment }}</div>
+          <div class='dimmed' style='margin-top: 0.25rem; font-size: 0.875rem;'>
+            {{ comment.created_at|dateformat }},
+            {{ comment.created_at|timeformat('short') }}
+          </div>
+        </div>
+        <div>
+          {%- if g.user.has_permission('lan_tournament.administrate') %}
+          <form action='{{ url_for('.delete_match_comment',
+                                   match_id=match.id,
+                                   comment_id=comment.id) }}'
+                method='post'>
+            <button type='submit' class='button button--compact color-danger'>
+              {{ render_icon('delete') }}
+            </button>
+          </form>
+          {%- endif %}
+        </div>
+      </div>
+      {%- endfor %}
+    </div>
+    {%- else %}
+    <p class='dimmed'>{{ _('No comments yet.') }}</p>
+    {%- endif %}
+
+    {# Add comment form #}
+    {%- if g.user.has_permission('lan_tournament.update') %}
+    <div style='margin-top: 1rem;'>
+      <form action='{{ url_for('.add_match_comment', match_id=match.id) }}'
+            method='post'>
+        <div class='form-group'>
+          <label for='comment'>{{ _('Add Comment') }}</label>
+          <textarea name='comment' id='comment' rows='3'
+                    maxlength='1000' required
+                    style='width: 100%;'></textarea>
+        </div>
+        <button type='submit' class='button'>
+          {{ _('Add Comment') }}
+        </button>
+      </form>
+    </div>
+    {%- endif %}
+  </div>
+
+{%- endblock %}
+
+{% block scripts %}
+{%- if is_ffa and not match.confirmed_by and g.user.has_permission('lan_tournament.update') %}
+<script src="{{ url_for('static', filename='behavior/sortable.min.js') }}"></script>
+<script src="{{ url_for('static', filename='behavior/lan_tournament_ffa.js') }}"></script>
+{%- endif %}
+{% endblock %}
