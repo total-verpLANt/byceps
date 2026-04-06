@@ -1,0 +1,29 @@
+{% extends 'layout/site/lan_tournament.html' %}
+{% from 'macros/forms.html' import form_buttons, form_field %}
+{% set page_title = [_('Tournament'), tournament.name, _('Team'), team.name, _('Edit')] %}
+
+{% block body %}
+
+  <nav class="breadcrumbs">
+    <ol>
+      <li><a href="{{ url_for('.index') }}">{{ _('Tournaments') }}</a></li>
+      <li><a href="{{ url_for('.view', tournament_id=tournament.id) }}">{{ tournament.name }}</a></li>
+      <li><a href="{{ url_for('.teams', tournament_id=tournament.id) }}">{{ _('Teams') }}</a></li>
+      <li><a href="{{ url_for('.view_team', team_id=team.id) }}">{{ team.name }}</a></li>
+    </ol>
+  </nav>
+
+  <h1 class="title">{{ _('Edit team') }}</h1>
+
+  <form action="{{ url_for('.update_team', tournament_id=tournament.id, team_id=team.id) }}" method="post">
+    <div class="main-body-box">
+      {{ form_field(form.name, maxlength=80, autofocus='autofocus') }}
+      {{ form_field(form.tag, maxlength=20) }}
+      {{ form_field(form.description) }}
+      {{ form_field(form.join_code, maxlength=80, caption=_('Optional code to restrict team joins. Leave empty to remove.')) }}
+    </div>
+
+    {{ form_buttons(_('Save'), cancel_url=url_for('.view_team', team_id=team.id)) }}
+  </form>
+
+{%- endblock %}
