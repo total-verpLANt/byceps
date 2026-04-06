@@ -1,0 +1,633 @@
+"""
+tests.unit.services.lan_tournament.test_tournament_models
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+:Copyright: 2014-2026 Jochen Kupperschmidt
+:License: Revised BSD (see `LICENSE` file for details)
+"""
+
+from dataclasses import FrozenInstanceError
+from datetime import datetime
+
+import pytest
+
+from byceps.services.lan_tournament.models.contestant_type import (
+    ContestantType,
+)
+from byceps.services.lan_tournament.models.tournament import (
+    Tournament,
+    TournamentID,
+)
+from byceps.services.lan_tournament.models.tournament_match import (
+    TournamentMatch,
+    TournamentMatchID,
+)
+from byceps.services.lan_tournament.models.tournament_match_comment import (
+    TournamentMatchComment,
+    TournamentMatchCommentID,
+)
+from byceps.services.lan_tournament.models.tournament_match_to_contestant import (
+    TournamentMatchToContestant,
+    TournamentMatchToContestantID,
+)
+from byceps.services.lan_tournament.models.bracket import Bracket
+from byceps.services.lan_tournament.models.round_robin_standing import (
+    RoundRobinStanding,
+)
+from byceps.services.lan_tournament.models.score_ordering import (
+    ScoreOrdering,
+)
+from byceps.services.lan_tournament.models.score_submission import (
+    ScoreSubmission,
+    ScoreSubmissionID,
+)
+from byceps.services.lan_tournament.models.game_format import GameFormat
+from byceps.services.lan_tournament.models.elimination_mode import (
+    EliminationMode,
+)
+from byceps.services.lan_tournament.models.tournament_participant import (
+    TournamentParticipant,
+    TournamentParticipantID,
+)
+from byceps.services.lan_tournament.models.tournament_seed import (
+    TournamentSeed,
+)
+from byceps.services.lan_tournament.models.tournament_status import (
+    TournamentStatus,
+)
+from byceps.services.lan_tournament.models.tournament_team import (
+    TournamentTeam,
+    TournamentTeamID,
+)
+from byceps.services.party.models import PartyID
+from byceps.services.user.models import UserID
+
+from tests.helpers import generate_uuid
+
+
+NOW = datetime(2025, 6, 15, 14, 0, 0)
+
+
+def test_tournament_creation_with_all_fields():
+    tournament_id = TournamentID(generate_uuid())
+
+    tournament = Tournament(
+        id=tournament_id,
+        party_id=PartyID('lan-party-2025'),
+        name='CS2 Championship',
+        game='Counter-Strike 2',
+        description='Annual CS2 tournament',
+        image_url='https://example.com/banner.png',
+        ruleset='Standard competitive rules',
+        start_time=datetime(2025, 7, 1, 18, 0),
+        created_at=NOW,
+        min_players=2,
+        max_players=64,
+        min_teams=4,
+        max_teams=16,
+        min_players_in_team=5,
+        max_players_in_team=5,
+        contestant_type=ContestantType.TEAM,
+        tournament_status=TournamentStatus.DRAFT,
+        game_format=GameFormat.ONE_V_ONE,
+        elimination_mode=EliminationMode.SINGLE_ELIMINATION,
+    )
+
+    assert tournament.id == tournament_id
+    assert tournament.party_id == PartyID('lan-party-2025')
+    assert tournament.name == 'CS2 Championship'
+    assert tournament.game == 'Counter-Strike 2'
+    assert tournament.description == 'Annual CS2 tournament'
+    assert tournament.image_url == 'https://example.com/banner.png'
+    assert tournament.ruleset == 'Standard competitive rules'
+    assert tournament.start_time == datetime(2025, 7, 1, 18, 0)
+    assert tournament.created_at == NOW
+    assert tournament.min_players == 2
+    assert tournament.max_players == 64
+    assert tournament.min_teams == 4
+    assert tournament.max_teams == 16
+    assert tournament.min_players_in_team == 5
+    assert tournament.max_players_in_team == 5
+    assert tournament.contestant_type == ContestantType.TEAM
+    assert tournament.tournament_status == TournamentStatus.DRAFT
+    assert tournament.game_format == GameFormat.ONE_V_ONE
+    assert tournament.elimination_mode == EliminationMode.SINGLE_ELIMINATION
+
+
+def test_tournament_creation_with_none_optional_fields():
+    tournament = Tournament(
+        id=TournamentID(generate_uuid()),
+        party_id=PartyID('lan-party-2025'),
+        name='Quick Tournament',
+        game=None,
+        description=None,
+        image_url=None,
+        ruleset=None,
+        start_time=None,
+        created_at=NOW,
+        min_players=None,
+        max_players=None,
+        min_teams=None,
+        max_teams=None,
+        min_players_in_team=None,
+        max_players_in_team=None,
+        contestant_type=None,
+        tournament_status=None,
+        game_format=None,
+        elimination_mode=None,
+    )
+
+    assert tournament.game is None
+    assert tournament.description is None
+    assert tournament.image_url is None
+    assert tournament.ruleset is None
+    assert tournament.start_time is None
+    assert tournament.min_players is None
+    assert tournament.max_players is None
+    assert tournament.min_teams is None
+    assert tournament.max_teams is None
+    assert tournament.min_players_in_team is None
+    assert tournament.max_players_in_team is None
+    assert tournament.contestant_type is None
+    assert tournament.tournament_status is None
+    assert tournament.game_format is None
+    assert tournament.elimination_mode is None
+
+
+def test_tournament_is_frozen():
+    tournament = _create_tournament()
+
+    with pytest.raises(FrozenInstanceError):
+        tournament.name = 'New Name'
+
+
+def test_tournament_team_creation():
+    team_id = TournamentTeamID(generate_uuid())
+    tournament_id = TournamentID(generate_uuid())
+    captain_id = UserID(generate_uuid())
+
+    team = TournamentTeam(
+        id=team_id,
+        tournament_id=tournament_id,
+        name='Team Alpha',
+        tag='ALPHA',
+        description='The best team',
+        image_url='https://example.com/team.png',
+        captain_user_id=captain_id,
+        join_code='secret123',
+        created_at=NOW,
+    )
+
+    assert team.id == team_id
+    assert team.tournament_id == tournament_id
+    assert team.name == 'Team Alpha'
+    assert team.tag == 'ALPHA'
+    assert team.description == 'The best team'
+    assert team.captain_user_id == captain_id
+    assert team.join_code == 'secret123'
+    assert team.created_at == NOW
+
+
+def test_tournament_team_is_frozen():
+    team = TournamentTeam(
+        id=TournamentTeamID(generate_uuid()),
+        tournament_id=TournamentID(generate_uuid()),
+        name='Team',
+        tag=None,
+        description=None,
+        image_url=None,
+        captain_user_id=UserID(generate_uuid()),
+        join_code=None,
+        created_at=NOW,
+    )
+
+    with pytest.raises(FrozenInstanceError):
+        team.name = 'New Name'
+
+
+def test_tournament_participant_creation():
+    participant_id = TournamentParticipantID(generate_uuid())
+    user_id = UserID(generate_uuid())
+    tournament_id = TournamentID(generate_uuid())
+    team_id = TournamentTeamID(generate_uuid())
+
+    participant = TournamentParticipant(
+        id=participant_id,
+        user_id=user_id,
+        tournament_id=tournament_id,
+        substitute_player=False,
+        team_id=team_id,
+        created_at=NOW,
+    )
+
+    assert participant.id == participant_id
+    assert participant.user_id == user_id
+    assert participant.tournament_id == tournament_id
+    assert participant.substitute_player is False
+    assert participant.team_id == team_id
+    assert participant.created_at == NOW
+
+
+def test_tournament_participant_without_team():
+    participant = TournamentParticipant(
+        id=TournamentParticipantID(generate_uuid()),
+        user_id=UserID(generate_uuid()),
+        tournament_id=TournamentID(generate_uuid()),
+        substitute_player=True,
+        team_id=None,
+        created_at=NOW,
+    )
+
+    assert participant.team_id is None
+    assert participant.substitute_player is True
+
+
+def test_tournament_participant_is_frozen():
+    participant = TournamentParticipant(
+        id=TournamentParticipantID(generate_uuid()),
+        user_id=UserID(generate_uuid()),
+        tournament_id=TournamentID(generate_uuid()),
+        substitute_player=False,
+        team_id=None,
+        created_at=NOW,
+    )
+
+    with pytest.raises(FrozenInstanceError):
+        participant.substitute_player = True
+
+
+def test_tournament_match_creation():
+    match_id = TournamentMatchID(generate_uuid())
+    tournament_id = TournamentID(generate_uuid())
+    confirmed_by = UserID(generate_uuid())
+
+    match = TournamentMatch(
+        id=match_id,
+        tournament_id=tournament_id,
+        group_order=1,
+        match_order=3,
+        round=0,
+        next_match_id=None,
+        confirmed_by=confirmed_by,
+        created_at=NOW,
+    )
+
+    assert match.id == match_id
+    assert match.tournament_id == tournament_id
+    assert match.group_order == 1
+    assert match.match_order == 3
+    assert match.round == 0
+    assert match.next_match_id is None
+    assert match.confirmed_by == confirmed_by
+    assert match.created_at == NOW
+
+
+def test_tournament_match_unconfirmed():
+    match = TournamentMatch(
+        id=TournamentMatchID(generate_uuid()),
+        tournament_id=TournamentID(generate_uuid()),
+        group_order=None,
+        match_order=None,
+        round=None,
+        next_match_id=None,
+        confirmed_by=None,
+        created_at=NOW,
+    )
+
+    assert match.group_order is None
+    assert match.match_order is None
+    assert match.round is None
+    assert match.next_match_id is None
+    assert match.confirmed_by is None
+
+
+def test_tournament_match_comment_creation():
+    comment_id = TournamentMatchCommentID(generate_uuid())
+    match_id = TournamentMatchID(generate_uuid())
+    user_id = UserID(generate_uuid())
+
+    comment = TournamentMatchComment(
+        id=comment_id,
+        tournament_match_id=match_id,
+        created_by=user_id,
+        comment='Great match!',
+        created_at=NOW,
+    )
+
+    assert comment.id == comment_id
+    assert comment.tournament_match_id == match_id
+    assert comment.created_by == user_id
+    assert comment.comment == 'Great match!'
+    assert comment.created_at == NOW
+
+
+def test_tournament_match_to_contestant_creation():
+    contestant_id = TournamentMatchToContestantID(generate_uuid())
+    match_id = TournamentMatchID(generate_uuid())
+    team_id = TournamentTeamID(generate_uuid())
+
+    contestant = TournamentMatchToContestant(
+        id=contestant_id,
+        tournament_match_id=match_id,
+        team_id=team_id,
+        participant_id=None,
+        score=13,
+        created_at=NOW,
+    )
+
+    assert contestant.id == contestant_id
+    assert contestant.tournament_match_id == match_id
+    assert contestant.team_id == team_id
+    assert contestant.participant_id is None
+    assert contestant.score == 13
+
+
+def test_tournament_match_to_contestant_with_participant():
+    participant_id = TournamentParticipantID(generate_uuid())
+
+    contestant = TournamentMatchToContestant(
+        id=TournamentMatchToContestantID(generate_uuid()),
+        tournament_match_id=TournamentMatchID(generate_uuid()),
+        team_id=None,
+        participant_id=participant_id,
+        score=None,
+        created_at=NOW,
+    )
+
+    assert contestant.team_id is None
+    assert contestant.participant_id == participant_id
+    assert contestant.score is None
+
+
+def test_tournament_seed_creation():
+    seed = TournamentSeed(
+        match_order=1,
+        round=0,
+        entry_a='Team A',
+        entry_b='Team B',
+    )
+
+    assert seed.match_order == 1
+    assert seed.round == 0
+    assert seed.entry_a == 'Team A'
+    assert seed.entry_b == 'Team B'
+
+
+def test_tournament_seed_is_frozen():
+    seed = TournamentSeed(
+        match_order=1,
+        round=0,
+        entry_a='Team A',
+        entry_b='Team B',
+    )
+
+    with pytest.raises(FrozenInstanceError):
+        seed.match_order = 2
+
+
+# -------------------------------------------------------------------- #
+# Bracket enum
+
+
+def test_bracket_enum_values():
+    assert Bracket.WINNERS.value == 'WB'
+    assert Bracket.LOSERS.value == 'LB'
+    assert Bracket.GRAND_FINAL.value == 'GF'
+
+
+def test_bracket_enum_member_count():
+    assert len(Bracket) == 4
+
+
+def test_bracket_enum_by_value():
+    assert Bracket('WB') == Bracket.WINNERS
+    assert Bracket('LB') == Bracket.LOSERS
+    assert Bracket('GF') == Bracket.GRAND_FINAL
+
+
+# -------------------------------------------------------------------- #
+# ScoreOrdering enum
+
+
+def test_score_ordering_enum_members():
+    assert ScoreOrdering.HIGHER_IS_BETTER is not None
+    assert ScoreOrdering.LOWER_IS_BETTER is not None
+    assert len(ScoreOrdering) == 2
+
+
+def test_score_ordering_distinct_values():
+    assert (
+        ScoreOrdering.HIGHER_IS_BETTER
+        != ScoreOrdering.LOWER_IS_BETTER
+    )
+
+
+# -------------------------------------------------------------------- #
+# RoundRobinStanding dataclass
+
+
+def test_round_robin_standing_creation():
+    standing = RoundRobinStanding(
+        contestant_id='abc-123',
+        points=6,
+        wins=2,
+        draws=0,
+        losses=1,
+        score_for=25,
+        score_against=10,
+        score_diff=15,
+    )
+
+    assert standing.contestant_id == 'abc-123'
+    assert standing.points == 6
+    assert standing.wins == 2
+    assert standing.draws == 0
+    assert standing.losses == 1
+    assert standing.score_for == 25
+    assert standing.score_against == 10
+    assert standing.score_diff == 15
+
+
+def test_round_robin_standing_is_frozen():
+    standing = RoundRobinStanding(
+        contestant_id='x',
+        points=0,
+        wins=0,
+        draws=0,
+        losses=0,
+        score_for=0,
+        score_against=0,
+        score_diff=0,
+    )
+    with pytest.raises(FrozenInstanceError):
+        standing.points = 99
+
+
+# -------------------------------------------------------------------- #
+# ScoreSubmission dataclass
+
+
+def test_score_submission_creation_with_participant():
+    sub_id = ScoreSubmissionID(generate_uuid())
+    tid = TournamentID(generate_uuid())
+    pid = TournamentParticipantID(generate_uuid())
+    uid = UserID(generate_uuid())
+
+    sub = ScoreSubmission(
+        id=sub_id,
+        tournament_id=tid,
+        participant_id=pid,
+        team_id=None,
+        score=42,
+        submitted_at=NOW,
+        submitted_by=uid,
+        is_official=True,
+        note='Great run',
+    )
+
+    assert sub.id == sub_id
+    assert sub.tournament_id == tid
+    assert sub.participant_id == pid
+    assert sub.team_id is None
+    assert sub.score == 42
+    assert sub.submitted_at == NOW
+    assert sub.submitted_by == uid
+    assert sub.is_official is True
+    assert sub.note == 'Great run'
+
+
+def test_score_submission_creation_with_team():
+    team_id = TournamentTeamID(generate_uuid())
+
+    sub = ScoreSubmission(
+        id=ScoreSubmissionID(generate_uuid()),
+        tournament_id=TournamentID(generate_uuid()),
+        participant_id=None,
+        team_id=team_id,
+        score=999,
+        submitted_at=NOW,
+        submitted_by=None,
+        is_official=False,
+        note=None,
+    )
+
+    assert sub.participant_id is None
+    assert sub.team_id == team_id
+    assert sub.score == 999
+    assert sub.is_official is False
+    assert sub.note is None
+
+
+def test_score_submission_is_frozen():
+    sub = ScoreSubmission(
+        id=ScoreSubmissionID(generate_uuid()),
+        tournament_id=TournamentID(generate_uuid()),
+        participant_id=None,
+        team_id=None,
+        score=0,
+        submitted_at=NOW,
+        submitted_by=None,
+        is_official=True,
+        note=None,
+    )
+    with pytest.raises(FrozenInstanceError):
+        sub.score = 100
+
+
+# -------------------------------------------------------------------- #
+# TournamentMatch with new DE fields
+
+
+def test_tournament_match_with_bracket_and_loser_next():
+    next_id = TournamentMatchID(generate_uuid())
+    loser_id = TournamentMatchID(generate_uuid())
+
+    match = TournamentMatch(
+        id=TournamentMatchID(generate_uuid()),
+        tournament_id=TournamentID(generate_uuid()),
+        group_order=None,
+        match_order=0,
+        round=0,
+        next_match_id=next_id,
+        confirmed_by=None,
+        created_at=NOW,
+        bracket=Bracket.WINNERS,
+        loser_next_match_id=loser_id,
+    )
+
+    assert match.bracket == Bracket.WINNERS
+    assert match.loser_next_match_id == loser_id
+    assert match.next_match_id == next_id
+
+
+def test_tournament_match_bracket_defaults_to_none():
+    match = TournamentMatch(
+        id=TournamentMatchID(generate_uuid()),
+        tournament_id=TournamentID(generate_uuid()),
+        group_order=None,
+        match_order=0,
+        round=0,
+        next_match_id=None,
+        confirmed_by=None,
+        created_at=NOW,
+    )
+
+    assert match.bracket is None
+    assert match.loser_next_match_id is None
+
+
+# -------------------------------------------------------------------- #
+# Tournament with new winner/score_ordering fields
+
+
+def test_tournament_with_score_ordering_and_winners():
+    pid = TournamentParticipantID(generate_uuid())
+    tid_team = TournamentTeamID(generate_uuid())
+
+    tournament = _create_tournament(
+        score_ordering=ScoreOrdering.LOWER_IS_BETTER,
+        winner_participant_id=pid,
+        winner_team_id=tid_team,
+    )
+
+    assert tournament.score_ordering == ScoreOrdering.LOWER_IS_BETTER
+    assert tournament.winner_participant_id == pid
+    assert tournament.winner_team_id == tid_team
+
+
+def test_tournament_new_fields_default_to_none():
+    tournament = _create_tournament()
+
+    assert tournament.score_ordering is None
+    assert tournament.winner_participant_id is None
+    assert tournament.winner_team_id is None
+
+
+# -------------------------------------------------------------------- #
+# helpers
+
+
+def _create_tournament(**kwargs) -> Tournament:
+    defaults = {
+        'id': TournamentID(generate_uuid()),
+        'party_id': PartyID('test-party'),
+        'name': 'Test Tournament',
+        'game': None,
+        'description': None,
+        'image_url': None,
+        'ruleset': None,
+        'start_time': None,
+        'created_at': NOW,
+        'min_players': None,
+        'max_players': None,
+        'min_teams': None,
+        'max_teams': None,
+        'min_players_in_team': None,
+        'max_players_in_team': None,
+        'contestant_type': None,
+        'tournament_status': None,
+        'game_format': None,
+        'elimination_mode': None,
+    }
+    defaults.update(kwargs)
+    return Tournament(**defaults)
