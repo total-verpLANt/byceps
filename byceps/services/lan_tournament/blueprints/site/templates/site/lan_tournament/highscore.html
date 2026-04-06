@@ -1,0 +1,35 @@
+{% extends 'layout/site/lan_tournament.html' %}
+{% from 'macros/forms.html' import form_buttons, form_field %}
+{% from 'macros/lan_tournament.html' import render_highscore_leaderboard, render_tournament_subnav %}
+{% set page_title = [_('Highscore'), tournament.name] %}
+
+{% block body %}
+
+  <nav class='breadcrumbs'>
+    <ol>
+      <li><a href='{{ url_for('.index') }}'>{{ _('Tournaments') }}</a></li>
+      <li><a href='{{ url_for('.view', tournament_id=tournament.id) }}'>
+        {{ tournament.name }}
+      </a></li>
+    </ol>
+  </nav>
+
+  {{ render_tournament_subnav(tournament, active_tab) }}
+
+  {{ render_highscore_leaderboard(leaderboard, tournament, teams_by_id=teams_by_id, participants_by_id=participants_by_id) }}
+
+  {% if g.user.authenticated %}
+  <div class='score-submit'>
+    <h2>{{ _('Submit Your Score') }}</h2>
+    <form method='post' action='{{ url_for('.highscore_submit', tournament_id=tournament.id) }}'>
+      <div class="main-body-box">
+        {{ form_field(form.score, min=0, max=999999999) }}
+        {{ form_field(form.note, maxlength=200) }}
+      </div>
+
+      {{ form_buttons(_('Submit Score')) }}
+    </form>
+  </div>
+  {% endif %}
+
+{%- endblock %}
