@@ -1,0 +1,310 @@
+{% extends 'layout/site/lan_tournament.html' %}
+{% from 'macros/icons.html' import render_icon %}
+{% from 'macros/misc.html' import render_tag %}
+{% from 'macros/lan_tournament.html' import render_hover_name, render_match_ref, render_tournament_subnav %}
+{% set page_title = [_('Match'), tournament.name] %}
+{% set is_ffa = tournament.game_format and tournament.game_format.name == 'FREE_FOR_ALL' %}
+
+{%- macro render_contestant_name(contestant) -%}
+  {%- if contestant.team_id -%}
+    {%- set _team = teams_by_id.get(contestant.team_id) -%}
+    {%- if _team -%}
+      {{ render_hover_name(_team.name, team_id=_team.id, team_members_by_team_id=team_members_by_team_id) }}
+    {%- else -%}
+      {{ contestant.team_id|string }}
+    {%- endif -%}
+  {%- elif contestant.participant_id -%}
+    {%- set _user = participants_by_id.get(contestant.participant_id) -%}
+    {%- if _user -%}
+      {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted, seats_by_user_id=seats_by_user_id) }}
+    {%- else -%}
+      {{ contestant.participant_id|string }}
+    {%- endif -%}
+  {%- else -%}
+    {{ _('defwin') }}
+  {%- endif -%}
+{%- endmacro %}
+
+{% block body %}
+
+  <nav class='breadcrumbs'>
+    <ol>
+      <li><a href='{{ url_for('.index') }}'>{{ _('Tournaments') }}</a></li>
+      <li><a href='{{ url_for('.view', tournament_id=tournament.id) }}'>
+        {{ tournament.name }}
+      </a></li>
+      <li><a href='{{ url_for('.matches', tournament_id=tournament.id) }}'>
+        {{ _('Matches') }}
+      </a></li>
+    </ol>
+  </nav>
+
+  {{ render_tournament_subnav(tournament, active_tab) }}
+
+  <div class='match-detail'>
+    <div class='match-header'>
+      <h1>{{ render_match_ref(match) }}</h1>
+      {%- if match.confirmed_by and contestants|selectattr('team_id')|list|length + contestants|selectattr('participant_id')|list|length < 2 %}
+        {{ render_tag(_('DEFWIN'), class='color-info') }}
+      {%- elif match.confirmed_by %}
+        {{ render_tag(_('Confirmed'), class='color-success') }}
+      {%- else %}
+        {{ render_tag(_('Pending'), class='color-warning') }}
+      {%- endif %}
+      {%- if is_ffa %}
+        {{ render_tag(_('FFA'), class='color-info') }}
+      {%- endif %}
+    </div>
+
+    {%- if is_ffa %}
+    {# ── FFA Placement Display ─────────────────────────────────── #}
+    {%- set placed_contestants = contestants|selectattr('placement')|sort(attribute='placement')|list %}
+    {%- if match.confirmed_by and placed_contestants %}
+    <div class='ffa-match-box'>
+      <h2 class="title">{{ _('Placements') }}</h2>
+      {# -- Podium: 2nd | 1st | 3rd -- #}
+      {%- set p1 = placed_contestants|selectattr('placement', 'equalto', 1)|first %}
+      {%- set p2 = placed_contestants|selectattr('placement', 'equalto', 2)|first %}
+      {%- set p3 = placed_contestants|selectattr('placement', 'equalto', 3)|first %}
+      <div class="podium">
+        {# 2nd place -- LEFT #}
+        <div class="podium__card podium__card--2nd">
+          {%- if p2 %}
+          <span class="podium__medal">🥈</span>
+          <span class="podium__rank">{{ _('2nd Place') }}</span>
+          <span class="podium__name">{{ render_contestant_name(p2) }}</span>
+          <span class="podium__points">{{ p2.points if p2.points is not none else '–' }} {{ _('pts') }}</span>
+          {%- else %}
+          <span class="podium__medal">🥈</span>
+          <span class="podium__rank">{{ _('2nd Place') }}</span>
+          <span class="podium__name">–</span>
+          {%- endif %}
+        </div>
+        {# 1st place -- CENTER (bigger) #}
+        <div class="podium__card podium__card--1st">
+          {%- if p1 %}
+          <span class="podium__medal">🥇</span>
+          <span class="podium__rank">{{ _('1st Place') }}</span>
+          <span class="podium__name">{{ render_contestant_name(p1) }}</span>
+          <span class="podium__points">{{ p1.points if p1.points is not none else '–' }} {{ _('pts') }}</span>
+          {%- endif %}
+        </div>
+        {# 3rd place -- RIGHT (always rendered, may be empty) #}
+        <div class="podium__card podium__card--3rd{{ ' podium__card--empty' if not p3 }}">
+          {%- if p3 %}
+          <span class="podium__medal">🥉</span>
+          <span class="podium__rank">{{ _('3rd Place') }}</span>
+          <span class="podium__name">{{ render_contestant_name(p3) }}</span>
+          <span class="podium__points">{{ p3.points if p3.points is not none else '–' }} {{ _('pts') }}</span>
+          {%- else %}
+          <span class="podium__medal">🥉</span>
+          <span class="podium__rank">{{ _('3rd Place') }}</span>
+          <span class="podium__name">–</span>
+          {%- endif %}
+        </div>
+      </div>
+      {# -- Remainder: 4th+ -- #}
+      {%- set remainder = placed_contestants|selectattr('placement', 'greaterthan', 3)|list %}
+      {%- if remainder %}
+      <div class="podium-remainder-label">{{ _('Remaining Placements') }}</div>
+      <div class="ffa-ranking-list ffa-ranking-list--readonly">
+        {%- for contestant in remainder %}
+        <div class="ffa-ranking-card" data-rank="{{ contestant.placement }}">
+          <span class="ffa-ranking-card__ordinal">
+            {%- set _p = contestant.placement -%}
+            {{- _p -}}{{ _('th') if (_p % 100) in (11, 12, 13) else (_('st') if _p % 10 == 1 else (_('nd') if _p % 10 == 2 else (_('rd') if _p % 10 == 3 else _('th')))) -}}
+          </span>
+          <span class="ffa-ranking-card__medal">
+            {%- if contestant.placement == 1 %}&#x1F947;{% elif contestant.placement == 2 %}&#x1F948;{% elif contestant.placement == 3 %}&#x1F949;{% endif -%}
+          </span>
+          <span class="ffa-ranking-card__name">
+            {{ render_contestant_name(contestant) }}
+          </span>
+          <span class="ffa-ranking-card__points">
+            {{- contestant.points if contestant.points is not none else '–' -}}
+          </span>
+        </div>
+        {%- endfor %}
+      </div>
+      {%- endif %}
+    </div>
+    {%- else %}
+    {# FFA match not yet confirmed or no placements — show simple contestant list #}
+    <div class='ffa-match-box'>
+      <h2 class="title">{{ _('Contestants') }}</h2>
+      {%- for contestant in contestants %}
+      <div class="ffa-unconfirmed-row">
+        <span class="ffa-unconfirmed-row__bullet"></span>
+        <span class="ffa-unconfirmed-row__name">
+          {{ render_contestant_name(contestant) }}
+        </span>
+      </div>
+      {%- endfor %}
+    </div>
+    {%- endif %}
+
+    {%- else %}
+    {# ── Standard 1v1 Display ──────────────────────────────────── #}
+    {%- if match.confirmed_by and contestants|length == 2 %}
+    {# Confirmed 1v1 -- Variant C: side-by-side, winner glows #}
+    {%- set c1 = contestants[0] %}
+    {%- set c2 = contestants[1] %}
+    {%- set s1 = c1.score if c1.score is not none else 0 %}
+    {%- set s2 = c2.score if c2.score is not none else 0 %}
+    {%- set winner_score = [s1, s2]|max %}
+    <div class='ffa-match-box'>
+      <div class="match-result-1v1">
+        <div class="match-result-1v1__card {{ 'match-result-1v1__card--winner' if s1 == winner_score and s1 != s2 else 'match-result-1v1__card--loser' if s1 != winner_score else '' }}">
+          {%- if s1 == winner_score and s1 != s2 %}
+          <span class="podium__medal" style="font-size:1.8rem;position:relative;z-index:1">🥇</span>
+          <span class="podium__rank" style="position:relative;z-index:1">{{ _('Winner') }}</span>
+          {%- elif s1 == s2 %}
+          <span class="podium__medal" style="font-size:1.8rem">🤝</span>
+          <span class="podium__rank">{{ _('Draw') }}</span>
+          {%- else %}
+          <span class="podium__medal" style="font-size:1.8rem">🎮</span>
+          <span class="podium__rank">{{ _('Defeated') }}</span>
+          {%- endif %}
+          <span class="podium__name" style="position:relative;z-index:1">
+            {{ render_contestant_name(c1) }}
+          </span>
+          <span class="podium__score">{{ c1.score if c1.score is not none else '–' }}</span>
+        </div>
+        <span class="match-result-1v1__vs">vs</span>
+        <div class="match-result-1v1__card {{ 'match-result-1v1__card--winner' if s2 == winner_score and s1 != s2 else 'match-result-1v1__card--loser' if s2 != winner_score else '' }}">
+          {%- if s2 == winner_score and s1 != s2 %}
+          <span class="podium__medal" style="font-size:1.8rem;position:relative;z-index:1">🥇</span>
+          <span class="podium__rank" style="position:relative;z-index:1">{{ _('Winner') }}</span>
+          {%- elif s1 == s2 %}
+          <span class="podium__medal" style="font-size:1.8rem">🤝</span>
+          <span class="podium__rank">{{ _('Draw') }}</span>
+          {%- else %}
+          <span class="podium__medal" style="font-size:1.8rem">🎮</span>
+          <span class="podium__rank">{{ _('Defeated') }}</span>
+          {%- endif %}
+          <span class="podium__name" style="position:relative;z-index:1">
+            {{ render_contestant_name(c2) }}
+          </span>
+          <span class="podium__score">{{ c2.score if c2.score is not none else '–' }}</span>
+        </div>
+      </div>
+    </div>
+    {%- else %}
+    {# Pending 1v1 -- unchanged existing grid #}
+    <div class='contestants-box'>
+      {%- for contestant in contestants %}
+      <div class='contestant'>
+        <div class='contestant-name'>
+          {%- if contestant.team_id %}
+            {%- set _team = teams_by_id.get(contestant.team_id) -%}
+            {%- if _team -%}
+              {{ _('Team') }}<br>{{ render_hover_name(_team.name, team_id=_team.id, team_members_by_team_id=team_members_by_team_id) }}
+            {%- else -%}
+              {{ contestant.team_id|string }}
+            {%- endif -%}
+          {%- elif contestant.participant_id %}
+            {%- set _user = participants_by_id.get(contestant.participant_id) -%}
+            {%- if _user -%}
+              {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted, seats_by_user_id=seats_by_user_id) }}
+            {%- else -%}
+              {{ contestant.participant_id|string }}
+            {%- endif -%}
+          {%- else %}
+            {{ _('defwin') }}
+          {%- endif %}
+        </div>
+        <div class='contestant-score'>
+          {{ contestant.score if contestant.score is not none else '–' }}
+        </div>
+      </div>
+      {%- if not loop.last %}
+      <div class='vs-divider'>vs</div>
+      {%- endif %}
+      {%- endfor %}
+    </div>
+    {%- endif %}
+
+    {# Score entry — visible only when user may submit (participant, not confirmed, not winner, not DEFWIN) #}
+    {% if current_user_can_submit %}
+    <div class="score-submit-card block" data-score-submit-state="editable">
+      <div class="score-submit-head">
+        <h2 class="title score-submit-title">{{ _('Submit Scores') }}</h2>
+        {%- if current_user_is_loser %}
+        <span class="tag">{{ _('Loser submits') }}</span>
+        {%- endif %}
+      </div>
+      <p class="score-submit-copy">
+        {%- if current_user_is_loser -%}
+          {{ _('Enter the final score for this match.') }}
+        {%- else -%}
+          {{ _('The losing side submits the final score.') }}
+        {%- endif -%}
+      </p>
+
+      <form method='post' action='{{ url_for('.set_score', match_id=match.id) }}' class="score-submit-form">
+        <div class="score-submit-grid" role="group" aria-label="{{ _('Match Score') }}">
+          {%- for contestant in contestants if contestant.participant_id or contestant.team_id %}
+          {%- if not loop.first %}
+          <div class="score-submit-versus" aria-hidden="true">:</div>
+          {%- endif %}
+          <div class="score-submit-side">
+            <label class="score-submit-team-label" for="score_{{ loop.index }}">
+              <span class="score-submit-team-name">
+                {%- if contestant.team_id -%}
+                  {{ teams_by_id.get(contestant.team_id).name|default(contestant.team_id|string) }}
+                {%- elif contestant.participant_id -%}
+                  {{ participants_by_id.get(contestant.participant_id).screen_name|default(contestant.participant_id|string) }}
+                {%- endif -%}
+              </span>
+            </label>
+            <input type='hidden' name='contestant_id'
+                   value='{{ contestant.participant_id or contestant.team_id }}'>
+            <input class="score-submit-input" type='number' name='score'
+                   id="score_{{ loop.index }}" min='0' max='999999999'
+                   value='{{ contestant.score if contestant.score is not none else "" }}'
+                   inputmode="numeric" required>
+          </div>
+          {%- endfor %}
+        </div>
+
+        <div class="button-row score-submit-actions">
+          <button type='submit' class='button is-compact secondary'>
+            <i class="fa fa-save" aria-hidden="true"></i> {{ _('Save Scores') }}
+          </button>
+        </div>
+      </form>
+    </div>
+    {% endif %}
+    {%- endif %}{# end is_ffa/standard branch #}
+
+    {# Comments section #}
+    <div class='comments-section'>
+      <h2 class="title">{{ _('Comments') }}</h2>
+
+      {%- if comments %}
+      <div>
+        {%- for comment in comments %}
+        <div class='comment'>
+          <div class='comment-author'>{{ comment_users_by_id.get(comment.created_by, {}).screen_name|default(comment.created_by|string, true) }}</div>
+          <div class='comment-text'>{{ comment.comment }}</div>
+          <div class='comment-timestamp'>
+            {{ comment.created_at|dateformat }},
+            {{ comment.created_at|timeformat('short') }}
+          </div>
+        </div>
+        {%- endfor %}
+      </div>
+      {%- else %}
+      <p class='dimmed'>{{ _('No comments yet.') }}</p>
+      {%- endif %}
+
+      {%- if current_user_can_comment %}
+      <form method='post' action='{{ url_for('.add_comment', match_id=match.id) }}' class='comment-form'>
+        {{ comment_form.comment(class='form-control', rows='3', placeholder=_('Write a comment...'), maxlength='1000') }}
+        <button type='submit' class='btn'>{{ _('Post Comment') }}</button>
+      </form>
+      {%- endif %}
+    </div>
+  </div>
+
+{%- endblock %}

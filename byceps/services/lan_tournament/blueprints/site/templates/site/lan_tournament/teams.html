@@ -1,0 +1,60 @@
+{% extends 'layout/site/lan_tournament.html' %}
+{% from 'macros/icons.html' import render_icon %}
+{% from 'macros/lan_tournament.html' import render_tournament_subnav %}
+{% set page_title = [_('Tournament'), tournament.name, _('Teams')] %}
+
+{% block body %}
+
+  <nav class="breadcrumbs">
+    <ol>
+      <li><a href="{{ url_for('.index') }}">{{ _('Tournaments') }}</a></li>
+      <li><a href="{{ url_for('.view', tournament_id=tournament.id) }}">{{ tournament.name }}</a></li>
+    </ol>
+  </nav>
+
+  {{ render_tournament_subnav(tournament, active_tab) }}
+
+  {%- if g.user.authenticated and tournament.tournament_status.name == 'REGISTRATION_OPEN' %}
+  <div class="block">
+    <a href="{{ url_for('.create_team_form', tournament_id=tournament.id) }}" class="button color-info">{{ render_icon('add') }} {{ _('Create team') }}</a>
+  </div>
+  {%- endif %}
+
+  <div class="main-body-box">
+  {%- if teams %}
+    <div class="table-scroll-wrap table-scroll-wrap--teams">
+    <table class="itemlist is-vcentered is-wide">
+      <thead>
+        <tr>
+          <th>{{ _('Name') }}</th>
+          <th>{{ _('Tag') }}</th>
+          <th>{{ _('Members') }}</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {%- for team in teams %}
+        <tr>
+          <td>
+            <a href="{{ url_for('.view_team', team_id=team.id) }}">{{ team.name }}</a>
+          </td>
+          <td>
+            {%- if team.tag %}
+              <span class="dimmed">[{{ team.tag }}]</span>
+            {%- endif %}
+          </td>
+          <td>{{ member_counts.get(team.id, 0) }}</td>
+          <td class="bared">
+            <a href="{{ url_for('.view_team', team_id=team.id) }}" class="button is-compact secondary">{{ render_icon('view') }} {{ _('View') }}</a>
+          </td>
+        </tr>
+        {%- endfor %}
+      </tbody>
+    </table>
+    </div>
+  {%- else %}
+    <p class="dimmed">{{ _('No teams have been created yet.') }}</p>
+  {%- endif %}
+  </div>
+
+{%- endblock %}
