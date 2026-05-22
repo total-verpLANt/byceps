@@ -1,0 +1,811 @@
+{% extends 'layout/base.html' %}
+{% set current_page = 'homepage' %}
+{% set page_title = _('Home') %}
+
+{% block body %}
+{%- set ticket_url = url_for('shop_order.order_form') if g.party else 'https://total-verplant.de/' %}
+
+<div class="bote-page">
+
+  {# ========== 1. EVENT BANNER ========== #}
+  <section id="aufmacher" class="event-banner" aria-label="Veranstaltungs-Eckdaten" style="scroll-margin-top:16px">
+    <div>
+      <div class="kicker">★ Aufmacher · Themen-Auflage „Rentner" ★</div>
+      <h2 class="eb-title">
+        genial <em>verRENTet</em><span class="eb-num">№36</span>
+      </h2>
+      <div class="eb-meta">
+        <span>📅
+          {%- if g.party and g.party.starts_at and g.party.ends_at %}
+            {{ g.party.starts_at|dateformat('EEE d. MMM yyyy') }} — {{ g.party.ends_at|dateformat('EEE d. MMM yyyy') }}
+          {%- else %}
+            Fr 16. — So 18. Oktober 2026
+          {%- endif %}
+        </span>
+        <span class="sep">·</span>
+        <span>📍 Großsporthalle Brake · Philosophenweg 8</span>
+        <span class="sep">·</span>
+        <span>🎟 ab 30 € · 18+</span>
+      </div>
+      {%- if is_nearly_sold_out %}
+      <div class="eb-status">FAST AUSVERKAUFT — nur noch {{ available }} freie Plätze von {{ total }}</div>
+      {%- endif %}
+    </div>
+    <div class="eb-cta">
+      <a class="eb-cta-btn" href="{{ ticket_url }}" target="_blank" rel="noopener">
+        🎟 Tickets kaufen
+      </a>
+      <div class="eb-cta-note">
+        ☎ 04421 / 123-45 · Mo–Fr 9–11 Uhr
+      </div>
+    </div>
+  </section>
+
+  {# ========== 2. HERO — three-column ========== #}
+  <div class="three-col">
+
+    {# ----- 2a. EditorialCol ----- #}
+    <div class="stack">
+
+      {# Editorial · S. 1 #}
+      <div class="box-thick">
+        <div class="kicker">Editorial · S. 1</div>
+        <h2 class="head italic" style="font-size:26px">Sechs Maschen, ein Headshot.</h2>
+        <div class="byline">von Frau Dr. Helga Brinkmann · Vorständin</div>
+        <p class="body-text dropcap">
+          Wir spielen Counter-Strike seit sechsunddreißig Auflagen. In dieser Auflage machen wir
+          endlich offiziell, was wir längst sind: eine LAN-Party im Rentner-Modus — mit
+          Hosenträger-Dresscode, Mittagsschlaf&shy;pflicht und Kuchen als offizieller Spielpause.
+        </p>
+        <p class="body-text">
+          In dieser Ausgabe lesen Sie alles zur Rentner-Auflage, vom Hosenträger-Dresscode bis zum
+          vier&shy;quadrat&shy;meter&shy;großen Kuchenbuffet. Hosenträger lockern empfohlen.
+          Genannt sei auch die Großmutter Grabbels-Stiftung, die wieder fleißig Drops spendet.
+        </p>
+        <a href="#news"
+           style="display:inline-block;margin-top:6px;padding-top:10px;border-top:1px dashed var(--ink);font-family:var(--mono);font-size:10.5px;letter-spacing:0.16em;text-transform:uppercase;color:var(--redDeep);text-decoration:none;font-weight:700;width:100%">
+          › Hier mehr erfahren
+        </a>
+      </div>
+
+      {# Aus der Residenz #}
+      <div class="box">
+        <div class="kicker ink">Aus der Residenz</div>
+        <h2 class="head" style="font-size:22px">Heizung im Wintergarten <em>endlich</em> repariert</h2>
+        <div class="byline">Korrespondent: H. Wolters</div>
+        <div style="font-family:var(--body);font-size:14.5px;line-height:1.5;text-align:justify">
+          Nach drei Auflagen wieder warm. Frau Petersen kann ihre Decke abgeben. „Endlich
+          kein Frieren mehr während des Skat-Online-Turniers", so ein erleichterter Bewohner
+          am Telefon. Heizungs&shy;monteur Helmut (78) bittet trotzdem um „Vorsicht beim
+          zweiten Drehknopf — der ist heimtückisch."
+        </div>
+        <a href="#news"
+           style="display:inline-block;margin-top:12px;padding-top:10px;border-top:1px dashed var(--ink);font-family:var(--mono);font-size:10.5px;letter-spacing:0.16em;text-transform:uppercase;color:var(--redDeep);text-decoration:none;font-weight:700;width:100%">
+          › Hier mehr erfahren
+        </a>
+      </div>
+
+      {# WOLLPAD Anzeige #}
+      <div class="box-blue">
+        <div style="font-family:var(--mono);font-size:10px;letter-spacing:0.2em;text-transform:uppercase;color:var(--blue);margin-bottom:4px">
+          · Anzeige ·
+        </div>
+        <div style="font-family:var(--display);font-size:28px;line-height:1;color:var(--blue);font-style:italic">
+          WOLLPAD™
+        </div>
+        <div style="font-family:var(--body);font-size:14px;margin-top:4px;margin-bottom:8px">
+          Das ergonomische Mauspad aus echter Wesermarsch-Schurwolle. Wärmt die Handfläche
+          bis in die Verlängerung. <em>Niemals waschen.</em>
+        </div>
+        <div style="border-top:1px solid var(--blue);padding-top:6px;font-family:var(--mono);font-size:10.5px;letter-spacing:0.08em;color:var(--blue)">
+          FADENGEIST Manufaktur · Schafstall 3
+        </div>
+      </div>
+
+      {# Crossword — Rätselseite #}
+      <div class="box" style="text-align:center">
+        <div class="kicker ink">Rätselseite · S. 27</div>
+        <div style="display:flex;justify-content:center;margin-top:4px">
+          <div style="display:inline-block;max-width:100%;overflow:hidden">
+            {%- set grid = [
+              "X..X.....X.",
+              "..X...X....",
+              "X......X..X",
+              "...X.....X.",
+              "..X...X....",
+              "X..X.X.X..X",
+              "....X...X..",
+              ".X.....X...",
+              "X..X......X",
+              "....X...X..",
+              ".X.....X..."
+            ] %}
+            {%- set nums = {
+              '0,1': 1, '0,4': 2,
+              '1,3': 3,
+              '2,4': 4, '2,6': 5, '2,8': 6, '2,9': 7,
+              '3,2': 8, '3,5': 9,
+              '4,3': 10,
+              '5,5': 11,
+              '6,5': 12,
+              '7,4': 13,
+              '8,2': 14, '8,5': 15,
+              '9,7': 16,
+              '10,4': 17
+            } %}
+            {%- for r in range(grid|length) %}
+              <div style="display:flex">
+                {%- set row = grid[r] %}
+                {%- for ci in range(row|length) %}
+                  {%- set c = row[ci] %}
+                  {%- set black = (c == 'X') %}
+                  {%- set k = r ~ ',' ~ ci %}
+                  <div style="width:16px;height:16px;background:{% if black %}var(--ink){% else %}transparent{% endif %};border:1px solid var(--ink);position:relative;font-family:var(--mono);font-size:8px;color:var(--ink);padding-left:2px;padding-top:1px">{{ nums[k] if k in nums else '' }}</div>
+                {%- endfor %}
+              </div>
+            {%- endfor %}
+          </div>
+        </div>
+        <div style="font-family:var(--body);font-size:12px;color:var(--inkSoft);font-style:italic;margin-top:8px">
+          Lösungs&shy;wort: ein 11-stelliger Begriff der Jugend von heute.<br>
+          Auflösung beim Bingo am Donnerstag.
+        </div>
+      </div>
+
+    </div>{# /.stack EditorialCol #}
+
+    {# ----- 2b. CenterCol ----- #}
+    <div class="center">
+      <div class="kicker">★ Aufmacher · S. 1 ★</div>
+      <h2 class="h-display" style="text-align:center;font-size:clamp(54px,9vw,104px)">genial <em>verRENTet</em> №36</h2>
+      <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:6px 16px;margin-top:12px;margin-bottom:14px;font-family:var(--body);font-size:17px;font-style:italic;color:var(--ink)">
+        <span>Fr 16. — So 18. Oktober 2026</span>
+        <span>·</span>
+        <span>Großsporthalle Brake</span>
+        <span>·</span>
+        <span>{{ sold }} / {{ total }} angemeldet</span>
+        <span>·</span>
+        <span>18+</span>
+      </div>
+
+      <div class="rule rule-double"></div>
+
+      <div class="halftone" style="height:260px;background-size:8px 8px,16px 16px">
+        <div class="cap">FOTO · Großsporthalle Brake · Auflage 28 · Foto: Archiv</div>
+      </div>
+      <div style="font-family:var(--body);font-style:italic;font-size:12.5px;color:var(--inkSoft);margin-top:6px;margin-bottom:14px;text-align:center">
+        Damals noch mit Diskette, heute mit Gigabit-Glasfaser: Die Großsporthalle vor sieben Auflagen.
+      </div>
+
+      <div class="article-2col">
+        <p class="body-text dropcap" style="text-indent:0">
+          Die sechsunddreißigste Auflage der größten LAN-Party der Wesermarsch steht
+          unter einem klaren Motto: <strong>„Rentner".</strong> Vom 16. bis 18. Oktober
+          verwandelt sich die Großsporthalle Brake in eine Mischung aus Wintergarten und
+          eSports-Arena — mit Hosenträger-Dresscode, Strickjacke an der Cocktailbar,
+          Wollknäuel am Vereinsstand und dem ersten offiziellen Mittagsschlaf-Block der
+          Vereinsgeschichte.
+        </p>
+        <p class="body-text">
+          Veranstalter ist der <em>total verpLANt e.V.</em>, der erste eSports- und
+          Gaming-Club der Wesermarsch. Passend zum Thema: ein <em>Hardware-Helfer&shy;dienst</em>
+          für alle, denen das Bücken unter den Tisch schwerfällt. „Wir verlegen die Kabel,
+          Sie spielen", heißt es im Aushang. Vergütet wird in Bienen&shy;stich. Wer ohne
+          Hosenträger erscheint, erhält am Eingang ein Vereins-Paar zum Anlegen.
+        </p>
+        <p class="body-text">
+          Das offizielle Mittags&shy;schlaf&shy;fenster zwischen 13 und 15 Uhr ist Teil des
+          Programms und <em>verbindlich</em>. Counter-Strike&shy;matches in dieser Zeit
+          werden vom Schiedsrichter neu angesetzt — eine Regelung seit der siebten
+          Auflage 2009, als Helmut beim Turnier eingeschlafen ist. Headshots sind
+          weiterhin erlaubt, aber bitte leise.
+        </p>
+        <p class="body-text">
+          Auf dem Programm: PC-Turniere mit klaren Regeln und Sieger&shy;ehrung, ein
+          „Schlager-Karaoke"-Block am Samstag, Konsolen-Couch-Multiplayer mit
+          Wolldecke im Side-Room sowie die haus&shy;eigene Cocktail&shy;bar — Pharisäer und
+          Eierlikör inklusive, alkohol&shy;frei verfügbar für alle, die noch zielen wollen.
+        </p>
+        <p class="body-text">
+          Tickets sind ab 30 Euro über die Vereins&shy;website verfügbar. Mindest&shy;alter:
+          18 Jahre, durchgesetzt von Frau Wolters persönlich am Einlass — sie
+          kontrolliert in der Rentner-Auflage zusätzlich, ob die Hosenträger korrekt
+          sitzen. Anmeldungen werden vorzugsweise nach dem zweiten Frühstück
+          entgegen&shy;genommen.{% if is_nearly_sold_out %} Aktuell sind nur noch {{ available }} Plätze frei.{% endif %}
+        </p>
+        <p class="body-text">
+          Ebenfalls beschlossen: Die jährliche „Wollknäuel-Spende" der Strickrunde geht
+          dieses Jahr direkt an den Hardware-Helfer&shy;dienst — mit ausdrücklichem Vermerk
+          „nicht für Mauspads verwenden, wir haben es bereits versucht."
+        </p>
+      </div>
+
+      <div class="rule"></div>
+
+      <blockquote class="pullquote">„Früher hatten wir Disketten. Heute haben wir <em>Rücken&shy;kissen</em>. Beides hilft."<div class="attr">— Helmut, 78, Hardware-Beauftragter seit der zweiten Auflage</div></blockquote>
+    </div>{# /.center CenterCol #}
+
+    {# ----- 2c. AsideCol ----- #}
+    <div class="stack">
+
+      {# Tickets aside #}
+      {%- if is_nearly_sold_out %}
+      <div id="tickets" class="box-red aside-ticket-box" style="text-align:center;scroll-margin-top:24px">
+        <div class="kicker">★ {{ _('Fast ausverkauft') }} ★</div>
+        <h2 class="head italic red" style="font-size:30px">noch&nbsp;{{ available }} frei</h2>
+        <div style="font-family:var(--mono);font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:var(--inkSoft);margin-top:4px">
+          {{ sold }} / {{ total }} vergeben
+        </div>
+        <div style="font-family:var(--body);font-size:14px;margin-top:10px">
+          Tickets ab <strong>30 €</strong>, Mindestalter 18+. Online buchen oder im
+          Vereins&shy;büro reservieren.
+        </div>
+        <a class="btn-news" href="{{ ticket_url }}" target="_blank" rel="noopener">🎟 {{ _('Tickets kaufen') }}</a>
+        <div style="font-family:var(--mono);font-size:9.5px;margin-top:6px;color:var(--inkSoft);letter-spacing:0.1em">
+          ⚯ total-verplant.de · ☰ Mo–Fr 9–11
+        </div>
+      </div>
+      {%- endif %}
+
+      {# Heute im Fernsehen #}
+      <div class="box-soft">
+        <div class="kicker ink">Heute im Fernsehen</div>
+        <div style="font-family:var(--body);font-size:13.5px;line-height:1.55">
+          {%- set tv = [
+            ('ARD · 20:15',    'Tatort: de_inferno'),
+            ('ZDF · 19:00',    'heute-journal: Patch Notes'),
+            ('Saal · 21:00',   'Bares für Frags'),
+            ('ZDFneo · 22:30', 'Wer wird Headshot-Millionär?'),
+            ('RTL · 23:15',    'Die Höhle der Hörgeräte'),
+            ('ARTE · 00:05',   'Forsthaus Frag-Out (Wh.)')
+          ] %}
+          {%- for ch, sh in tv %}
+            <div style="display:flex;justify-content:space-between;gap:12px;padding:4px 0;{% if not loop.last %}border-bottom:1px dashed var(--ink){% endif %}">
+              <strong>{{ ch }}</strong><em>{{ sh }}</em>
+            </div>
+          {%- endfor %}
+        </div>
+      </div>
+
+      {# GROSSMUTTER GRABBELS Anzeige (verbatim from JSX — uppercase) #}
+      <div class="box-green">
+        <div style="font-family:var(--mono);font-size:9.5px;letter-spacing:0.2em;text-transform:uppercase;color:var(--green);margin-bottom:6px">
+          · Anzeige ·
+        </div>
+        <div style="font-family:var(--display);font-size:24px;line-height:1.05;color:var(--green);font-style:italic">
+          GROSSMUTTER GRABBELS
+        </div>
+        <div style="font-family:var(--body);font-size:12.5px;margin-top:6px">
+          Karamell-Drops für lange LAN-Sessions.
+          <strong>Seit der ersten Auflage am Snack-Tisch.</strong>
+        </div>
+        <div style="margin-top:8px;padding:4px 10px;background:var(--green);color:var(--paper);font-family:var(--mono);font-size:10px;letter-spacing:0.12em;display:inline-block">
+          IM FOYER ERHÄLTLICH
+        </div>
+      </div>
+
+      {# Kleinanzeigen #}
+      <div class="box">
+        <div class="kicker ink">Klein&shy;anzeigen</div>
+        <div style="font-family:var(--body);font-size:13px;line-height:1.55">
+          {%- set classifieds = [
+            ('Tausche',  'Wollknäuel pistazie gegen Cat6-Patchkabel. Zimmer 14, Brigitte.'),
+            ('Suche',    'Mitspieler für Skat-Online. Niveau: dritte Hand. Klingeln bei Helmut.'),
+            ('Biete',    'Heizdecke gegen Pfand. Funktioniert auf Stufe 3 zuverlässig.'),
+            ('Verloren', 'Gebiss&shy;dose, Sa abends. Schwarzes Brett kontaktieren.')
+          ] %}
+          {%- for k, body in classifieds %}
+            <div style="padding-bottom:8px;{% if not loop.last %}border-bottom:1px dashed var(--ink);margin-bottom:8px{% endif %}">
+              <strong>{{ k }}:</strong> {{ body }}
+            </div>
+          {%- endfor %}
+        </div>
+      </div>
+
+      {# CRT in memoriam #}
+      <div class="box" style="text-align:center">
+        <div style="font-family:var(--display);font-size:26px;font-style:italic">
+          † CRT-Monitor †
+        </div>
+        <div style="font-family:var(--body);font-size:12.5px;font-style:italic;color:var(--inkSoft);margin-top:6px;line-height:1.5">
+          17 Zoll. Treuer Begleiter seit 1994.<br>Ruhe sanft im Keller.
+        </div>
+      </div>
+
+    </div>{# /.stack AsideCol #}
+
+  </div>{# /.three-col Hero #}
+
+  {# ========== 3. STATS ========== #}
+  <section style="margin-top:28px">
+    <div class="rule rule-double"></div>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;margin-bottom:14px">
+      <h2 class="head italic" style="font-size:28px">Die Auflage in Zahlen</h2>
+      <div style="font-family:var(--mono);font-size:10.5px;letter-spacing:0.18em;text-transform:uppercase;color:var(--inkSoft)">
+        Wirtschaftsteil · S. 4
+      </div>
+    </div>
+    <div class="stats">
+      <div>
+        <div class="num">35</div>
+        <div class="lbl">Auflagen seit 2006</div>
+      </div>
+      <div>
+        <div class="num">{{ total }}</div>
+        <div class="lbl">maximale Teilnehmende</div>
+      </div>
+      <div>
+        <div class="num">#1</div>
+        <div class="lbl">eSports-Club Wesermarsch</div>
+      </div>
+      <div>
+        <div class="num">1 Gbit/s</div>
+        <div class="lbl">pro Switchport</div>
+      </div>
+      <div>
+        <div class="num">{{ available }}</div>
+        <div class="lbl">{{ _('Plätze frei') }} (noch)</div>
+      </div>
+    </div>
+  </section>
+
+  {# ========== 4. TOURNAMENTS ========== #}
+  <section id="tournaments" style="margin-top:32px; scroll-margin-top:24px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;margin-bottom:10px">
+      <div>
+        <div class="kicker">Sport · S. 12–14</div>
+        <h2 class="head italic" style="font-size:36px">Turnier&shy;ergebnisse</h2>
+      </div>
+      <div style="font-family:var(--body);font-style:italic;font-size:14px;color:var(--inkSoft)">
+        Berichterstattung: Helmut (Saal), Hannelore (Wintergarten)
+      </div>
+    </div>
+    <div class="rule"></div>
+    <div class="grid-3">
+
+      <div class="box">
+        <div class="kicker green">★ Haupt&shy;programm</div>
+        <h2 class="head" style="font-size:22px">PC-Turniere</h2>
+        <div class="byline">Klare Regeln · feste Zeiten · Sieger&shy;ehrung</div>
+        <pre class="bracket">HF  Wollknäuel-5  ▶ ─┐
+HF  Bingo-Hawks  ─┘ ▶ Wollknäuel
+HF  Stütz-Squad  ▶ ─┐
+HF  Kuchen-Crew  ─┘ ▶ Kuchen-Crew
+
+Finale  Wollknäuel-5  vs.  Kuchen-Crew
+        Sonntag 14:00 · Hauptfeld
+        Eintritt: ein Stück Kuchen</pre>
+        <div style="font-family:var(--body);font-size:13px;margin-top:10px;color:var(--inkSoft);font-style:italic">
+          Schieds&shy;richter Helmut bittet: keine Headshots während des Mittagsschlafs.
+        </div>
+      </div>
+
+      <div class="box">
+        <div class="kicker blue">◆ Spaß-Formate</div>
+        <h2 class="head" style="font-size:22px">Fun- &amp; Community-Events</h2>
+        <div class="byline">Verrückte Modi · spontane Aktionen · So 10:00</div>
+        <pre class="bracket">Block 1  Sumo-Modus (Garry's Mod)
+Block 2  Trackmania "Senioren-Cup"
+Block 3  Rollator-Race (Mario Kart)
+         mit Wii-Lenkrad-Anbau
+Block 4  Karaoke-Battle
+         Schlager vs. Synthwave
+
+Alle Teilnehmenden bekommen
+eine Urkunde, gedruckt von Heinz.</pre>
+        <div style="font-family:var(--body);font-size:13px;margin-top:10px;color:var(--inkSoft);font-style:italic">
+          Punkte gibt's keine. Dafür Applaus aus der ersten Reihe.
+        </div>
+      </div>
+
+      <div class="box">
+        <div class="kicker">🎮 Side-Events</div>
+        <h2 class="head" style="font-size:22px">Konsolen &amp; Couch</h2>
+        <div class="byline">Couch-Multiplayer im Side-Room · täglich</div>
+        <pre class="bracket">Smash Bros. · Switch · 4-Spieler
+  offen, freier Einstieg
+
+Tekken 8     · PS5  · KO-Runden
+  Anmeldung am Eingang
+
+Retro-Ecke   · N64 / SNES
+  Sa 14–18 mit Hannelore
+
+Einfach reinsetzen, mitspielen,
+Heizdecke gibt es vor Ort.</pre>
+        <div style="font-family:var(--body);font-size:13px;margin-top:10px;color:var(--inkSoft);font-style:italic">
+          Wer den Controller fällt, gewinnt einen Beutel Pfeffer&shy;minz.
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  {# ========== 5. NEWS ========== #}
+  <section id="news" style="margin-top:32px; scroll-margin-top:24px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;margin-bottom:10px">
+      <div>
+        <div class="kicker">Aus dem Vereinsbüro · S. 6–9</div>
+        <h2 class="head italic" style="font-size:36px">Neuste Nachrichten</h2>
+      </div>
+      <div style="font-family:var(--body);font-style:italic;font-size:14px;color:var(--inkSoft)">
+        zusammengetragen am Stamm&shy;tisch
+      </div>
+    </div>
+
+    <div class="news-layout">
+
+      {# LEFT — news container #}
+      <div class="news-list">
+        <div class="news-list-header">
+          <div style="font-family:var(--mono);font-size:10.5px;letter-spacing:0.18em;text-transform:uppercase;color:var(--inkSoft)">
+            // {% if news_teasers %}{{ news_teasers|length }}{% else %}3{% endif %} Beiträge · sortiert nach Datum
+          </div>
+          <div style="font-family:var(--body);font-style:italic;font-size:13px;color:var(--inkSoft)">
+            Letzte Aktualisierung:
+            {%- if news_teasers %}
+              {% if news_teasers[0].published_at %}{{ news_teasers[0].published_at|dateformat('d.MM.yyyy') }}{% endif %}
+            {%- else %}
+              13.10.2026
+            {%- endif %}
+          </div>
+        </div>
+
+        {% if news_teasers %}
+          {% for item in news_teasers[:3] %}
+            <article class="news-item">
+              <div class="date">
+                {% if item.published_at %}
+                  <span class="day">{{ item.published_at|dateformat('d') }}</span>
+                  {{ item.published_at|dateformat('MMMM') }}<br>{{ item.published_at|dateformat('yyyy') }}
+                {% endif %}
+              </div>
+              <div class="body">
+                <h3>{{ item.title }}</h3>
+                <div class="meta">
+                  {% if item.published_at %}{{ item.published_at|dateformat('d.MM.yyyy') }}{% endif %}
+                </div>
+                <a class="more" href="{{ url_for('news.view', slug=item.slug) }}">› Weiter&shy;lesen</a>
+              </div>
+            </article>
+          {% endfor %}
+        {% else %}
+          <article class="news-item">
+            <div class="date">
+              <span class="day">13</span>
+              Oktober<br>2026
+            </div>
+            <div class="body">
+              <h3>Festnetzleitung Helmut</h3>
+              <div class="meta">Drei Tage vorher · Redaktion</div>
+              <p class="excerpt">
+                Letzte Hinweise zum Einlass, zu mitzubringender Hardware und zur Anreise nach
+                Brake. Frau Wolters bittet darum, den Personal&shy;ausweis griff&shy;bereit zu
+                halten — das Mindest&shy;alter 18 wird am Eingang konsequent kontrolliert.{% if is_nearly_sold_out %}
+                Aktuell nur noch {{ available }} Plätze frei.{% endif %}
+              </p>
+              <a class="more" href="https://total-verplant.de/news/24-03-2026" target="_blank" rel="noopener">› Weiter&shy;lesen</a>
+            </div>
+          </article>
+          <article class="news-item">
+            <div class="date">
+              <span class="day">25</span>
+              September<br>2026
+            </div>
+            <div class="body">
+              <h3>Wir packen die Hosenträger aus</h3>
+              <div class="meta">Drei Wochen vorher · Hardware-Ressort</div>
+              <p class="excerpt">
+                Treiber, Patch&shy;stand, Game-Versionen — was muss vor Anreise installiert sein?
+                Helmut hat die Liste zusammen&shy;gestellt, gedruckt und am Schwarzen Brett
+                aus&shy;gehängt. „Der Steam-Login muss funktionieren, sonst wird es einsam am Platz."
+              </p>
+              <a class="more" href="https://total-verplant.de/news/10-03-2026" target="_blank" rel="noopener">› Weiter&shy;lesen</a>
+            </div>
+          </article>
+          <article class="news-item">
+            <div class="date">
+              <span class="day">12</span>
+              Januar<br>2026
+            </div>
+            <div class="body">
+              <h3>Goldene Hochzeit beim Bingo</h3>
+              <div class="meta">Aus dem Vereins&shy;büro</div>
+              <p class="excerpt">
+                Nach zwei Auflagen Entwicklungs&shy;zeit ist die neue Webseite des Vereins online
+                — inklusive Ticket&shy;shop. Frau Brinkmann lobt das neue Menü: „Endlich kein
+                Frame&shy;set mehr, und der Knopf ist groß genug zum Treffen."
+              </p>
+              <a class="more" href="https://total-verplant.de/news/12-01-2026" target="_blank" rel="noopener">› Weiter&shy;lesen</a>
+            </div>
+          </article>
+        {% endif %}
+
+        <div class="news-list-footer">
+          <div style="font-family:var(--body);font-style:italic;font-size:13px;color:var(--inkSoft)">
+            Ältere Ausgaben im Archiv des Vereinsbüros.
+          </div>
+          <a class="btn-archive" href="{% if news_teasers %}{{ url_for('news.index') }}{% else %}https://total-verplant.de/news{% endif %}">Alle Nachrichten →</a>
+        </div>
+      </div>
+
+      {# RIGHT — sidebar #}
+      <aside class="news-aside">
+        <div class="box-thick">
+          <div class="kicker ink">Archiv</div>
+          <h2 class="head italic" style="font-size:22px">35 vergangene Auflagen</h2>
+          <div style="font-family:var(--body);font-size:13.5px;line-height:1.55;margin-top:6px;color:var(--ink)">
+            Seit 2006 dokumentiert. Berichte, Fotos und Sieger&shy;listen der vergangenen
+            Veranstaltungen werden im Archiv des Vereins&shy;büros aufbewahrt.
+            <em>Leider sind einige Dias nicht mehr lesbar.</em>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px">
+            {%- for y in ['2025', '2024', '2023', '2022', '2021', 'älter'] %}
+              <a href="https://total-verplant.de/galleries/" target="_blank" rel="noopener"
+                 style="font-family:var(--mono);font-size:10.5px;letter-spacing:0.12em;padding:4px 10px;border:1px solid var(--ink);cursor:pointer;background:rgba(255,255,255,0.3);color:var(--ink);text-decoration:none">{{ y }}</a>
+            {%- endfor %}
+          </div>
+        </div>
+
+        <div class="box" style="text-align:center">
+          <div class="kicker ink">★ Schwarzes Brett</div>
+          <div style="font-family:var(--body);font-size:13px;margin-top:6px;font-style:italic;color:var(--inkSoft)">
+            Aushänge auch analog am Eingang der Großsporthalle, Philosophenweg 8.
+          </div>
+        </div>
+      </aside>
+
+    </div>
+  </section>
+
+  {# ========== 6. GALLERY ========== #}
+  <section id="gallery" style="margin-top:32px; scroll-margin-top:24px">
+    <div class="rule rule-double"></div>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;margin-bottom:14px">
+      <div>
+        <div class="kicker">Foto&shy;album · S. 22–25</div>
+        <h2 class="head italic" style="font-size:42px">Aus dem Archiv</h2>
+      </div>
+      <div style="font-family:var(--body);font-style:italic;font-size:14px;color:var(--inkSoft)">
+        Auswahl von Frau Petersen, mit der freundlichen Genehmigung des Vorstands.
+      </div>
+    </div>
+    <div class="grid-photos">
+      <a href="https://total-verplant.de/galleries/" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
+        <div class="halftone" style="height:372px;background-size:6px 6px,12px 12px">
+          <div class="cap">FOTO · Großer Saal · Auflage 12 · 2004</div>
+        </div>
+      </a>
+      <a href="https://total-verplant.de/galleries/" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
+        <div class="halftone" style="height:180px;background-size:8px 8px,16px 16px">
+          <div class="cap">FOTO · Kuchenbuffet · 2018</div>
+        </div>
+      </a>
+      <a href="https://total-verplant.de/galleries/" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
+        <div class="halftone" style="height:180px;background-size:12px 12px,24px 24px">
+          <div class="cap">FOTO · Helmut &amp; der Verteilerkasten · 1999</div>
+        </div>
+      </a>
+      <a href="https://total-verplant.de/galleries/" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
+        <div class="halftone" style="height:180px;background-size:8px 8px,16px 16px">
+          <div class="cap">FOTO · Strickrunde im Wintergarten · 2022</div>
+        </div>
+      </a>
+      <a href="https://total-verplant.de/galleries/" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
+        <div class="halftone" style="height:180px;background-size:6px 6px,12px 12px">
+          <div class="cap">FOTO · Schlager-Karaoke · 2019</div>
+        </div>
+      </a>
+    </div>
+  </section>
+
+  {# ========== 7. SPONSORS ========== #}
+  <section id="sponsors" style="margin-top:32px; scroll-margin-top:24px">
+    <div class="rule rule-double"></div>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;margin-bottom:14px">
+      <div>
+        <div class="kicker">Anzeigen&shy;teil · S. 28–32</div>
+        <h2 class="head italic" style="font-size:36px">Mit freundlicher Unterstützung</h2>
+      </div>
+      <div style="font-family:var(--body);font-style:italic;font-size:14px;color:var(--inkSoft)">
+        ohne deren Beitrag dieser Bote nicht erscheinen könnte.
+      </div>
+    </div>
+
+    <div class="sponsor-grid">
+
+      {# Sponsor 1 — Stadt Brake #}
+      <a class="sponsor-card" href="https://www.brake.de/" target="_blank" rel="noopener"
+         style="border:1.5px solid var(--ink);padding:10px;background:rgba(255,255,255,0.22);text-decoration:none;color:inherit;display:flex;flex-direction:column;gap:8px">
+        <div class="kicker" style="color:var(--redDeep)">· Sponsorenanzeige ·</div>
+        <div style="aspect-ratio:12 / 5;border:1px solid var(--inkSoft);background:rgba(255,255,255,0.6);display:flex;align-items:center;justify-content:center;overflow:hidden">
+          <img src="{{ url_for_site_file('style/sponsoren/brake_600x250.png') }}" alt="Stadt Brake" width="600" height="250" style="max-width:100%;max-height:100%;object-fit:contain">
+        </div>
+        <div class="head italic" style="font-family:var(--display);font-size:16px;font-style:italic;color:var(--ink);line-height:1.1">Stadt Brake</div>
+        <div class="body-text" style="font-family:var(--body);font-size:12px;color:var(--ink);line-height:1.4">Die Wesermarsch-Stadt für Sport, Kultur und Vereinsleben.</div>
+      </a>
+
+      {# Sponsor 2 — DEPA #}
+      <a class="sponsor-card" href="https://www.depa.de/" target="_blank" rel="noopener"
+         style="border:1.5px solid var(--ink);padding:10px;background:rgba(255,255,255,0.22);text-decoration:none;color:inherit;display:flex;flex-direction:column;gap:8px">
+        <div class="kicker" style="color:var(--redDeep)">· Sponsorenanzeige ·</div>
+        <div style="aspect-ratio:12 / 5;border:1px solid var(--inkSoft);background:rgba(255,255,255,0.6);display:flex;align-items:center;justify-content:center;overflow:hidden">
+          <img src="{{ url_for_site_file('style/sponsoren/depa_600x250.png') }}" alt="DEPA" width="600" height="250" style="max-width:100%;max-height:100%;object-fit:contain">
+        </div>
+        <div class="head italic" style="font-family:var(--display);font-size:16px;font-style:italic;color:var(--ink);line-height:1.1">DEPA</div>
+        <div class="body-text" style="font-family:var(--body);font-size:12px;color:var(--ink);line-height:1.4">Verlässlicher Energiepartner für die Region seit Jahrzehnten.</div>
+      </a>
+
+      {# Sponsor 3 — Fahrrad Gruss #}
+      <a class="sponsor-card" href="https://www.fahrrad-gruss.de/" target="_blank" rel="noopener"
+         style="border:1.5px solid var(--ink);padding:10px;background:rgba(255,255,255,0.22);text-decoration:none;color:inherit;display:flex;flex-direction:column;gap:8px">
+        <div class="kicker" style="color:var(--redDeep)">· Sponsorenanzeige ·</div>
+        <div style="aspect-ratio:12 / 5;border:1px solid var(--inkSoft);background:rgba(255,255,255,0.6);display:flex;align-items:center;justify-content:center;overflow:hidden">
+          <img src="{{ url_for_site_file('style/sponsoren/fahrrad_gruss_600x250.png') }}" alt="Fahrrad Gruss" width="600" height="250" style="max-width:100%;max-height:100%;object-fit:contain">
+        </div>
+        <div class="head italic" style="font-family:var(--display);font-size:16px;font-style:italic;color:var(--ink);line-height:1.1">Fahrrad Gruss</div>
+        <div class="body-text" style="font-family:var(--body);font-size:12px;color:var(--ink);line-height:1.4">Zweirad-Spezialist aus der Wesermarsch.</div>
+      </a>
+
+      {# Sponsor 4 — Freundeskreis Zwiesel #}
+      <a class="sponsor-card" href="#" target="_blank" rel="noopener"
+         style="border:1.5px solid var(--ink);padding:10px;background:rgba(255,255,255,0.22);text-decoration:none;color:inherit;display:flex;flex-direction:column;gap:8px">
+        <div class="kicker" style="color:var(--redDeep)">· Sponsorenanzeige ·</div>
+        <div style="aspect-ratio:12 / 5;border:1px solid var(--inkSoft);background:rgba(255,255,255,0.6);display:flex;align-items:center;justify-content:center;overflow:hidden">
+          <img src="{{ url_for_site_file('style/sponsoren/Freundeskreis_Zwiesel_600x250.png') }}" alt="Freundeskreis Zwiesel" width="600" height="250" style="max-width:100%;max-height:100%;object-fit:contain">
+        </div>
+        <div class="head italic" style="font-family:var(--display);font-size:16px;font-style:italic;color:var(--ink);line-height:1.1">Freundeskreis Zwiesel</div>
+        <div class="body-text" style="font-family:var(--body);font-size:12px;color:var(--ink);line-height:1.4">Freundeskreis Zwiesel.</div>
+      </a>
+
+      {# Sponsor 5 — HiScore #}
+      <a class="sponsor-card" href="https://hiscore-clan.de/" target="_blank" rel="noopener"
+         style="border:1.5px solid var(--ink);padding:10px;background:rgba(255,255,255,0.22);text-decoration:none;color:inherit;display:flex;flex-direction:column;gap:8px">
+        <div class="kicker" style="color:var(--redDeep)">· Sponsorenanzeige ·</div>
+        <div style="aspect-ratio:12 / 5;border:1px solid var(--inkSoft);background:rgba(255,255,255,0.6);display:flex;align-items:center;justify-content:center;overflow:hidden">
+          <img src="{{ url_for_site_file('style/sponsoren/hiscore_600x250.png') }}" alt="HiScore" width="600" height="250" style="max-width:100%;max-height:100%;object-fit:contain">
+        </div>
+        <div class="head italic" style="font-family:var(--display);font-size:16px;font-style:italic;color:var(--ink);line-height:1.1">HiScore</div>
+        <div class="body-text" style="font-family:var(--body);font-size:12px;color:var(--ink);line-height:1.4">Esports-Community aus Norddeutschland.</div>
+      </a>
+
+      {# Sponsor 6 — Inter-Tech #}
+      <a class="sponsor-card" href="https://www.inter-tech.de/" target="_blank" rel="noopener"
+         style="border:1.5px solid var(--ink);padding:10px;background:rgba(255,255,255,0.22);text-decoration:none;color:inherit;display:flex;flex-direction:column;gap:8px">
+        <div class="kicker" style="color:var(--redDeep)">· Sponsorenanzeige ·</div>
+        <div style="aspect-ratio:12 / 5;border:1px solid var(--inkSoft);background:rgba(255,255,255,0.6);display:flex;align-items:center;justify-content:center;overflow:hidden">
+          <img src="{{ url_for_site_file('style/sponsoren/Inter-tech_600x250.png') }}" alt="Inter-Tech" width="600" height="250" style="max-width:100%;max-height:100%;object-fit:contain">
+        </div>
+        <div class="head italic" style="font-family:var(--display);font-size:16px;font-style:italic;color:var(--ink);line-height:1.1">Inter-Tech</div>
+        <div class="body-text" style="font-family:var(--body);font-size:12px;color:var(--ink);line-height:1.4">PC-Komponenten und Cases mit Charakter.</div>
+      </a>
+
+      {# Sponsor 7 — Senchii #}
+      <a class="sponsor-card" href="https://senchii.de/" target="_blank" rel="noopener"
+         style="border:1.5px solid var(--ink);padding:10px;background:rgba(255,255,255,0.22);text-decoration:none;color:inherit;display:flex;flex-direction:column;gap:8px">
+        <div class="kicker" style="color:var(--redDeep)">· Sponsorenanzeige ·</div>
+        <div style="aspect-ratio:12 / 5;border:1px solid var(--inkSoft);background:rgba(255,255,255,0.6);display:flex;align-items:center;justify-content:center;overflow:hidden">
+          <img src="{{ url_for_site_file('style/sponsoren/senchii_600x250.png') }}" alt="Senchii" width="600" height="250" style="max-width:100%;max-height:100%;object-fit:contain">
+        </div>
+        <div class="head italic" style="font-family:var(--display);font-size:16px;font-style:italic;color:var(--ink);line-height:1.1">Senchii</div>
+        <div class="body-text" style="font-family:var(--body);font-size:12px;color:var(--ink);line-height:1.4">Gaming-Mauspads und Custom-Gear.</div>
+      </a>
+
+      {# Sponsor 8 — Thermal Grizzly #}
+      <a class="sponsor-card" href="https://www.thermal-grizzly.com/" target="_blank" rel="noopener"
+         style="border:1.5px solid var(--ink);padding:10px;background:rgba(255,255,255,0.22);text-decoration:none;color:inherit;display:flex;flex-direction:column;gap:8px">
+        <div class="kicker" style="color:var(--redDeep)">· Sponsorenanzeige ·</div>
+        <div style="aspect-ratio:12 / 5;border:1px solid var(--inkSoft);background:rgba(255,255,255,0.6);display:flex;align-items:center;justify-content:center;overflow:hidden">
+          <img src="{{ url_for_site_file('style/sponsoren/thermalgrizzly_600x250.png') }}" alt="Thermal Grizzly" width="600" height="250" style="max-width:100%;max-height:100%;object-fit:contain">
+        </div>
+        <div class="head italic" style="font-family:var(--display);font-size:16px;font-style:italic;color:var(--ink);line-height:1.1">Thermal Grizzly</div>
+        <div class="body-text" style="font-family:var(--body);font-size:12px;color:var(--ink);line-height:1.4">Wärmeleitpasten von Roman „der8auer" Hartung.</div>
+      </a>
+
+      {# Sponsor 9 — Virtual Lounge #}
+      <a class="sponsor-card" href="https://virtual-lounge.de/" target="_blank" rel="noopener"
+         style="border:1.5px solid var(--ink);padding:10px;background:rgba(255,255,255,0.22);text-decoration:none;color:inherit;display:flex;flex-direction:column;gap:8px">
+        <div class="kicker" style="color:var(--redDeep)">· Sponsorenanzeige ·</div>
+        <div style="aspect-ratio:12 / 5;border:1px solid var(--inkSoft);background:rgba(255,255,255,0.6);display:flex;align-items:center;justify-content:center;overflow:hidden">
+          <img src="{{ url_for_site_file('style/sponsoren/virtualounge_600x250.png') }}" alt="Virtual Lounge" width="600" height="250" style="max-width:100%;max-height:100%;object-fit:contain">
+        </div>
+        <div class="head italic" style="font-family:var(--display);font-size:16px;font-style:italic;color:var(--ink);line-height:1.1">Virtual Lounge</div>
+        <div class="body-text" style="font-family:var(--body);font-size:12px;color:var(--ink);line-height:1.4">VR- und Eventerlebnisse in Bremen.</div>
+      </a>
+
+      {# Sponsor 10 — Volt Cola #}
+      <a class="sponsor-card" href="https://voltcola.de/" target="_blank" rel="noopener"
+         style="border:1.5px solid var(--ink);padding:10px;background:rgba(255,255,255,0.22);text-decoration:none;color:inherit;display:flex;flex-direction:column;gap:8px">
+        <div class="kicker" style="color:var(--redDeep)">· Sponsorenanzeige ·</div>
+        <div style="aspect-ratio:12 / 5;border:1px solid var(--inkSoft);background:rgba(255,255,255,0.6);display:flex;align-items:center;justify-content:center;overflow:hidden">
+          <img src="{{ url_for_site_file('style/sponsoren/voltcola_600x250.png') }}" alt="Volt Cola" width="600" height="250" style="max-width:100%;max-height:100%;object-fit:contain">
+        </div>
+        <div class="head italic" style="font-family:var(--display);font-size:16px;font-style:italic;color:var(--ink);line-height:1.1">Volt Cola</div>
+        <div class="body-text" style="font-family:var(--body);font-size:12px;color:var(--ink);line-height:1.4">Brennstoff für lange LAN-Nächte.</div>
+      </a>
+
+      {# Sponsor 11 — Noctua #}
+      <a class="sponsor-card" href="https://noctua.at/" target="_blank" rel="noopener"
+         style="border:1.5px solid var(--ink);padding:10px;background:rgba(255,255,255,0.22);text-decoration:none;color:inherit;display:flex;flex-direction:column;gap:8px">
+        <div class="kicker" style="color:var(--redDeep)">· Sponsorenanzeige ·</div>
+        <div style="aspect-ratio:12 / 5;border:1px solid var(--inkSoft);background:rgba(255,255,255,0.6);display:flex;align-items:center;justify-content:center;overflow:hidden">
+          <img src="{{ url_for_site_file('style/sponsoren/noctua_600x250.png') }}" alt="Noctua" width="600" height="250" style="max-width:100%;max-height:100%;object-fit:contain">
+        </div>
+        <div class="head italic" style="font-family:var(--display);font-size:16px;font-style:italic;color:var(--ink);line-height:1.1">Noctua</div>
+        <div class="body-text" style="font-family:var(--body);font-size:12px;color:var(--ink);line-height:1.4">Leiseste Lüfter, die je geschwiegen haben.</div>
+      </a>
+
+      {# Sponsor 12 — Hosenträger HEINRICH (fake/satirical, no real image) #}
+      <div class="sponsor-card"
+         style="border:1.5px solid var(--ink);padding:10px;background:rgba(255,255,255,0.22);color:inherit;display:flex;flex-direction:column;gap:8px">
+        <div class="kicker" style="color:var(--inkSoft)">· Sponsorenanzeige ·</div>
+        <div style="aspect-ratio:12 / 5;border:1.5px dashed var(--inkSoft);background:repeating-linear-gradient(135deg, rgba(26,24,18,0.04) 0 6px, transparent 6px 12px);display:flex;align-items:center;justify-content:center;text-align:center;padding:6px 8px;font-family:var(--mono);font-size:9px;letter-spacing:0.18em;text-transform:uppercase;color:var(--inkSoft);line-height:1.3">
+          Logo · Hosenträger HEINRICH
+        </div>
+        <div class="head italic" style="font-family:var(--display);font-size:16px;font-style:italic;color:var(--ink);line-height:1.1">Hosenträger HEINRICH</div>
+        <div class="body-text" style="font-family:var(--body);font-size:12px;color:var(--ink);line-height:1.4">Maßgefertigt seit 1962. Auch in Vereinsfarben.</div>
+      </div>
+
+    </div>
+  </section>
+
+  {# ========== 8. NOTES STRIP ========== #}
+  <section id="notes" style="margin-top:28px; scroll-margin-top:24px">
+    <div class="rule rule-double"></div>
+    <div class="grid-5">
+
+      <div style="border:1.5px solid var(--redDeep);padding:10px 12px;background:rgba(255,255,255,0.25)">
+        <div style="font-family:var(--mono);font-size:9px;letter-spacing:0.18em;text-transform:uppercase;color:var(--redDeep);margin-bottom:2px">★ Notiz</div>
+        <div style="font-family:var(--display);font-size:16px;font-style:italic;color:var(--ink);line-height:1.05">Goldene Hochzeit</div>
+        <div style="font-family:var(--body);font-size:12px;color:var(--inkSoft);margin-top:4px;white-space:pre-line">Frau Schmidt &amp;
+Hr. Petersen, *1948
+Pharisäer am Hafen-Café, Sonntag 14:00 nach dem Bingo.</div>
+      </div>
+
+      <div style="border:1.5px solid var(--green);padding:10px 12px;background:rgba(255,255,255,0.25)">
+        <div style="font-family:var(--mono);font-size:9px;letter-spacing:0.18em;text-transform:uppercase;color:var(--green);margin-bottom:2px">★ Notiz</div>
+        <div style="font-family:var(--display);font-size:16px;font-style:italic;color:var(--ink);line-height:1.05">Strick&shy;abend</div>
+        <div style="font-family:var(--body);font-size:12px;color:var(--inkSoft);margin-top:4px;white-space:pre-line">Mi · 14:00 ·
+Wintergarten
+Wollknäuel und Hosenträger willkommen.</div>
+      </div>
+
+      <div style="border:1.5px solid var(--blue);padding:10px 12px;background:rgba(255,255,255,0.25)">
+        <div style="font-family:var(--mono);font-size:9px;letter-spacing:0.18em;text-transform:uppercase;color:var(--blue);margin-bottom:2px">★ Notiz</div>
+        <div style="font-family:var(--display);font-size:16px;font-style:italic;color:var(--ink);line-height:1.05">Rollator-Werkstatt</div>
+        <div style="font-family:var(--body);font-size:12px;color:var(--inkSoft);margin-top:4px;white-space:pre-line">Do · 10:00 ·
+Foyer · Helmut
+Bremsen nachziehen, Rollator-TÜV inklusive.</div>
+      </div>
+
+      <div style="border:1.5px solid var(--redDeep);padding:10px 12px;background:rgba(255,255,255,0.25)">
+        <div style="font-family:var(--mono);font-size:9px;letter-spacing:0.18em;text-transform:uppercase;color:var(--redDeep);margin-bottom:2px">★ Notiz</div>
+        <div style="font-family:var(--display);font-size:16px;font-style:italic;color:var(--ink);line-height:1.05">Kaffee&shy;fahrt</div>
+        <div style="font-family:var(--body);font-size:12px;color:var(--inkSoft);margin-top:4px;white-space:pre-line">Sa nach CS:GO ·
+Hafen-Café Brake
+Treffpunkt 16:00, Pharisäer auf Vereinskosten.</div>
+      </div>
+
+      <div style="border:1.5px solid var(--ink);padding:10px 12px;background:rgba(255,255,255,0.25)">
+        <div style="font-family:var(--mono);font-size:9px;letter-spacing:0.18em;text-transform:uppercase;color:var(--ink);margin-bottom:2px">★ Notiz</div>
+        <div style="font-family:var(--display);font-size:16px;font-style:italic;color:var(--ink);line-height:1.05">Kreuzwort 34</div>
+        <div style="font-family:var(--body);font-size:12px;color:var(--inkSoft);margin-top:4px;white-space:pre-line">Lösung:
+„HEADSHOTS"
+Glückwunsch an Frau Petersen, wieder einmal.</div>
+      </div>
+
+    </div>
+  </section>
+
+  {# ========== 9. MOBILE CTA (last inside .bote-page) ========== #}
+  <div class="mobile-cta" role="complementary" aria-label="Tickets sichern">
+    <div class="mc-info">
+      <strong>{{ available }} {{ _('Plätze frei') }}</strong> / ab 30 € · 16.–18. Oktober · Brake
+    </div>
+    <a href="{{ ticket_url }}" target="_blank" rel="noopener">{{ _('Tickets kaufen') }}</a>
+  </div>
+
+</div>{# /.bote-page #}
+
+{{ render_snippet('homepage', ignore_if_unknown=True)|safe }}
+{% endblock %}

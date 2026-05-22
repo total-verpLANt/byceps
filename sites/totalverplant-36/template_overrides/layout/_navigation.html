@@ -1,0 +1,4 @@
+{%- for item in get_nav_menu_items('main') %}
+  <a href="{{ item.target }}"{% if item.current_page_id == current_page %} class="current"{% endif %}>{{ item.label }}</a>
+  {%- if not loop.last %}<span class="dot">·</span>{% endif %}
+{%- endfor %}

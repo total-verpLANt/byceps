@@ -1,0 +1,54 @@
+{%- from 'macros/page.html' import render_page_title %}
+{%- set current_page = current_page|default -%}
+{%- if ticket_sale_stats is defined and ticket_sale_stats.tickets_max is not none %}
+  {%- set sold = ticket_sale_stats.tickets_sold %}
+  {%- set total = ticket_sale_stats.tickets_max %}
+  {%- set available = [total - sold, 0]|max %}
+  {%- set percentage = [(sold / total * 100) if total > 0 else 0, 100]|min|round(0) %}
+  {%- set is_nearly_sold_out = (total > 0 and percentage >= 90) %}
+{%- else %}
+  {%- set sold = 0 %}{%- set total = 0 %}{%- set available = 0 %}{%- set percentage = 0 %}
+  {%- set is_nearly_sold_out = false %}
+{%- endif %}
+
+
+<!DOCTYPE html>
+<html lang="{{ g.current_locale.language|default('de') }}">
+  <head>
+    <meta charset="utf-8">
+    <meta name="referrer" content="origin-when-cross-origin">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="generator" content="BYCEPS">
+    <title>{{ render_page_title(page_title|default([]), 'genial verpLANt') }}</title>
+    <link rel="stylesheet" href="{{ url_for_site_file('style/fonts/fonts.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style/common.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style/site.css') }}">
+    <link rel="stylesheet" href="{{ url_for_site_file('style/totalverplant-36.css') }}">
+    <link rel="icon" href="{{ url_for_site_file('style/favicon.ico') }}">
+{% block head %}{% endblock %}
+  </head>
+  <body{% if current_page %} class="page-{{ current_page }}"{% endif %}>
+
+    {# Modern single-page layout for all pages #}
+    <header class="page-header-fixed">
+{% include 'layout/_header.html' %}
+    </header>
+
+    <main class="main-content">
+      <div class="content-wrapper">
+{% include 'layout/_notifications.html' %}
+{% block subnav %}{% endblock %}
+{% block body required %}{% endblock %}
+      </div>
+    </main>
+
+    <footer class="page-footer-modern">
+{% include 'layout/_footer.html' %}
+    </footer>
+
+    <script src="{{ url_for('static', filename='behavior/common.js') }}"></script>
+    <script src="{{ url_for_site_file('behavior/bote-hamburger.js') }}"></script>
+{% block scripts %}{% endblock %}
+
+  </body>
+</html>

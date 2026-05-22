@@ -1,0 +1,38 @@
+{%- set login_url = url_for('authn_login.log_in_form') -%}
+<div class="topstrip">
+  <span>Auflage 36 · 16.–18. Oktober MMXXVI</span>
+  <span>Großsporthalle Brake · Philosophenweg 8 · 26919</span>
+  <span>ab 30 € · 18+ · {% if available is defined %}{{ available }}{% else %}5{% endif %} Plätze frei</span>
+</div>
+<div class="rule rule-double"></div>
+<div class="masthead">
+  <div class="mast-box">
+    <div class="small">Wetter</div>
+    <div class="big">9°</div>
+    <div class="mini">bewölkt, später Kaffee</div>
+  </div>
+  <div class="title-block">
+    <h1>Der <em>Rentenbote</em></h1>
+    <div class="tagline">Unabhängig · Überparteilich · Mittagsschlaf&shy;freundlich · gegründet 2006</div>
+  </div>
+  <div class="mast-box">
+    <div class="small">Heute</div>
+    <div class="big">Tatort</div>
+    <div class="mini">20:15 · ARD</div>
+  </div>
+</div>
+<div class="rule"></div>
+<div class="navstrip">
+  <div class="crumbs">{% include 'layout/_navigation.html' with context %}</div>
+  <a class="nav-login" href="{{ login_url }}">🔑 Log in</a>
+  <button class="nav-hamburger" aria-expanded="false" aria-label="Menü öffnen">
+    <span class="bars"></span>
+    <span class="bars"></span>
+    <span class="bars"></span>
+    <span class="label">Menü</span>
+  </button>
+  <nav class="nav-panel" style="flex-basis:100%">
+    {% include 'layout/_navigation.html' with context %}
+    <a class="nav-panel-login" href="{{ login_url }}">🔑 Log in</a>
+  </nav>
+</div>
