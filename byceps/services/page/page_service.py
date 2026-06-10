@@ -44,8 +44,10 @@ def copy_page(
     PageAlreadyExistsError | PageNotFoundError,
 ]:
     """Copy a page from one site to another."""
-    version = find_current_version_for_name(source_site.id, name, language_code)
-    if version is None:
+    source_version = find_current_version_for_name(
+        source_site.id, name, language_code
+    )
+    if source_version is None:
         return Err(PageNotFoundError())
 
     target_version = find_current_version_for_name(
@@ -54,17 +56,20 @@ def copy_page(
     if target_version is not None:
         return Err(PageAlreadyExistsError())
 
-    creator = user_service.get_user(version.creator_id)
+    creator = user_service.get_user(source_version.creator_id)
+
+    page = get_page(source_version.page_id)
 
     db_version, event = create_page(
         target_site,
-        version.page.name,
-        version.page.language_code,
-        version.page.url_path,
+        page.name,
+        page.language_code,
+        page.url_path,
         creator,
-        version.title,
-        version.body,
-        head=version.head,
+        source_version.title,
+        source_version.body,
+        head=source_version.head,
+        hidden=page.hidden,
     )
 
     return Ok((db_version, event))
@@ -80,6 +85,7 @@ def create_page(
     body: str,
     *,
     head: str | None = None,
+    hidden: bool = False,
 ) -> tuple[DbPageVersion, PageCreatedEvent]:
     """Create a page and its initial version."""
     created_at = datetime.utcnow()
@@ -94,6 +100,7 @@ def create_page(
         title,
         head,
         body,
+        hidden,
     )
 
     event = PageCreatedEvent(
@@ -117,6 +124,7 @@ def update_page(
     title: str,
     head: str | None,
     body: str,
+    hidden: bool,
 ) -> tuple[DbPageVersion, PageUpdatedEvent]:
     """Update page with a new version."""
     created_at = datetime.utcnow()
@@ -130,6 +138,7 @@ def update_page(
         title,
         head,
         body,
+        hidden,
     )
 
     site = site_service.get_site(db_page.site_id)
@@ -212,19 +221,6 @@ def find_version(version_id: PageVersionID) -> PageVersion | None:
     return _db_entity_to_version(db_version)
 
 
-def get_version(version_id: PageVersionID) -> PageVersion | None:
-    """Return the page version.
-
-    Raise error if not found.
-    """
-    version = find_version(version_id)
-
-    if version is None:
-        raise ValueError('Unknown version ID')
-
-    return version
-
-
 def get_versions(page_id: PageID) -> list[DbPageVersion]:
     """Return all versions of the page, sorted from most recent to oldest."""
     db_versions = page_repository.get_versions(page_id)
@@ -244,24 +240,34 @@ def is_current_version(page_id: PageID, version_id: PageVersionID) -> bool:
 
 def find_current_version_for_name(
     site_id: SiteID, name: str, language_code: str
-) -> DbPageVersion | None:
+) -> PageVersion | None:
     """Return the current version of the page with that name and
     language code for that site.
     """
-    return page_repository.find_current_version_for_name(
+    db_version = page_repository.find_current_version_for_name(
         site_id, name, language_code
     )
+
+    if db_version is None:
+        return None
+
+    return _db_entity_to_version(db_version)
 
 
 def find_current_version_for_url_path(
     site_id: SiteID, url_path: str, language_code: str
-) -> DbPageVersion | None:
+) -> PageVersion | None:
     """Return the current version of the page with that URL path and
     language code for that site.
     """
-    return page_repository.find_current_version_for_url_path(
+    db_version = page_repository.find_current_version_for_url_path(
         site_id, url_path, language_code
     )
+
+    if db_version is None:
+        return None
+
+    return _db_entity_to_version(db_version)
 
 
 def get_url_paths_by_page_name_for_site(site_id: SiteID) -> dict[str, str]:
@@ -280,19 +286,23 @@ def get_pages_for_site(site_id: SiteID) -> list[Page]:
 
 def find_page_aggregate(version_id: PageVersionID) -> PageAggregate | None:
     """Return an aggregated page for that version."""
-    version = get_version(version_id)
+    version = find_version(version_id)
     if version is None:
         return None
 
     page = get_page(version.page_id)
 
+    return build_page_aggregate(page, version)
+
+
+def build_page_aggregate(page: Page, version: PageVersion) -> PageAggregate:
     return PageAggregate(
         id=page.id,
         site_id=page.site_id,
         name=page.name,
         language_code=page.language_code,
         url_path=page.url_path,
-        published=page.published,
+        hidden=page.hidden,
         nav_menu_id=page.nav_menu_id,
         title=version.title,
         head=version.head,
@@ -322,7 +332,7 @@ def _db_entity_to_page(db_page: DbPage) -> Page:
         name=db_page.name,
         language_code=db_page.language_code,
         url_path=db_page.url_path,
-        published=db_page.published,
+        hidden=db_page.hidden,
         nav_menu_id=db_page.nav_menu_id,
     )
 

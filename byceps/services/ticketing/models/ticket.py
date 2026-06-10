@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from byceps.services.seating.models import SeatGroupID
 
 from byceps.services.party.models import PartyID
+from byceps.services.shop.order.models.number import OrderNumber
 from byceps.services.user.models import User
 
 
@@ -47,11 +48,12 @@ class TicketBundle:
     ticket_category: TicketCategory
     ticket_quantity: int
     owned_by: User
+    order_number: OrderNumber | None
     seats_managed_by: User | None
     users_managed_by: User | None
     label: str | None
     revoked: bool
-    ticket_ids: set[TicketID]
+    ticket_ids: list[TicketID]
     occupied_seat_group_id: SeatGroupID | None
 
     @property

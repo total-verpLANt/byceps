@@ -45,21 +45,24 @@ def get_recent_topics(*, limit=6) -> list[BoardTopicSummary] | None:
     if board_id is None:
         return None
 
+    current_user = g.user
     include_hidden = may_current_user_view_hidden()
     return board_topic_query_service.get_recent_topics(
-        board_id, limit, g.user, include_hidden=include_hidden
+        board_id, limit, current_user, include_hidden=include_hidden
     )
 
 
 def add_unseen_flag_to_postings(
-    db_postings: Iterable[DbPosting], last_viewed_at: datetime
+    db_postings: Iterable[DbPosting], last_viewed_at: datetime | None
 ) -> None:
     """Add the attribute 'unseen' to each post."""
     for db_posting in db_postings:
         db_posting.unseen = _is_posting_unseen(db_posting, last_viewed_at)
 
 
-def _is_posting_unseen(db_posting: DbPosting, last_viewed_at: datetime) -> bool:
+def _is_posting_unseen(
+    db_posting: DbPosting, last_viewed_at: datetime | None
+) -> bool:
     """Return `True` if the posting has not yet been seen by the current
     user.
     """

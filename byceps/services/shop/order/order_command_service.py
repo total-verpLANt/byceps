@@ -20,8 +20,7 @@ from byceps.services.user.models import User
 from byceps.util.result import Err, Ok, Result
 
 from . import order_action_service, order_domain_service, order_payment_service
-from .dbmodels.line_item import DbLineItem
-from .dbmodels.order import DbOrder
+from .dbmodels.order import DbLineItem, DbOrder
 from .errors import (
     OrderActionFailedError,
     OrderAlreadyCanceledError,
@@ -215,7 +214,9 @@ def mark_order_as_paid(
     additional_payment_data: AdditionalPaymentData | None = None,
 ) -> Result[
     tuple[PaidOrder, ShopOrderPaidEvent],
-    OrderActionFailedError | OrderAlreadyMarkedAsPaidError,
+    OrderActionFailedError
+    | OrderAlreadyCanceledError
+    | OrderAlreadyMarkedAsPaidError,
 ]:
     """Mark the order as paid."""
     db_order = get_db_order(order_id)
@@ -225,14 +226,18 @@ def mark_order_as_paid(
 
     payment_added_at = datetime.utcnow()
 
-    order_payment_service.add_payment(
+    match order_payment_service.add_payment(
         order,
         payment_added_at,
         payment_method,
         order.total_amount,
         initiator,
         additional_payment_data if additional_payment_data is not None else {},
-    )
+    ):
+        case Ok(payment):
+            pass
+        case Err(payment_error):
+            return Err(payment_error)
 
     # Use separate timestamp so that log events are properly ordered.
     marked_as_paid_at = datetime.utcnow()
@@ -241,8 +246,8 @@ def mark_order_as_paid(
         order,
         orderer_user,
         marked_as_paid_at,
-        payment_method,
-        additional_payment_data,
+        payment.method,
+        payment.additional_data,
         initiator,
     )
     if mark_order_as_paid_result.is_err():
@@ -293,7 +298,7 @@ def _execute_actions_on_payment(
         if procedure:
             match procedure.on_payment(order, line_item, initiator, {}):
                 case Err(e):
-                    return Err(OrderActionFailedError(e))
+                    return Err(e)
 
     # based on order action registered for product number
     return order_action_service.execute_actions_on_payment(order, initiator)
@@ -312,7 +317,7 @@ def _execute_actions_on_cancellation_before_payment(
                 order, line_item, initiator, {}
             ):
                 case Err(e):
-                    return Err(OrderActionFailedError(e))
+                    return Err(e)
 
     # based on order action registered for product number
     return order_action_service.execute_actions_on_cancellation_before_payment(
@@ -333,7 +338,7 @@ def _execute_actions_on_cancellation_after_payment(
                 order, line_item, initiator, {}
             ):
                 case Err(e):
-                    return Err(OrderActionFailedError(e))
+                    return Err(e)
 
     # based on order action registered for product number
     return order_action_service.execute_actions_on_cancellation_after_payment(

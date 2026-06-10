@@ -1,0 +1,1756 @@
+import json
+import logging
+from datetime import datetime
+from typing import TypeVar
+
+from sqlalchemy import delete, func, select, update
+
+from byceps.database import db
+from byceps.services.party.models import PartyID
+from byceps.services.user.models import UserID
+from byceps.util.result import Err, Ok, Result
+
+from .dbmodels.match import DbTournamentMatch
+from .dbmodels.match_comment import DbTournamentMatchComment
+from .dbmodels.match_contestant import DbTournamentMatchToContestant
+from .dbmodels.participant import DbTournamentParticipant
+from .dbmodels.score_submission import DbScoreSubmission
+from .dbmodels.team import DbTournamentTeam
+from .dbmodels.tournament import DbTournament
+from .models.bracket import Bracket
+from .models.contestant_type import ContestantType
+from .models.tournament import Tournament, TournamentID
+from .models.tournament_match import TournamentMatch, TournamentMatchID
+from .models.tournament_match_comment import (
+    TournamentMatchComment,
+    TournamentMatchCommentID,
+)
+from .models.tournament_match_to_contestant import (
+    TournamentMatchToContestant,
+    TournamentMatchToContestantID,
+)
+from .models.score_ordering import ScoreOrdering
+from .models.score_submission import ScoreSubmission
+from .models.contestant_status import ContestantStatus
+from .models.game_format import GameFormat
+from .models.elimination_mode import EliminationMode
+from .models.tournament_participant import (
+    TournamentParticipant,
+    TournamentParticipantID,
+)
+from .models.tournament_status import TournamentStatus
+from .models.tournament_team import TournamentTeam, TournamentTeamID
+
+logger = logging.getLogger(__name__)
+
+_E = TypeVar('_E')
+
+
+# -- tournament --
+
+
+def _safe_enum_lookup(
+    enum_class: type[_E],
+    value: str | None,
+    default: _E | None = None,
+) -> _E | None:
+    """Safely look up enum by name, returning default
+    if invalid.
+
+    Protects against database corruption or invalid
+    enum values.
+    """
+    if value is None:
+        return None
+    try:
+        return enum_class[value]
+    except KeyError:
+        logger.warning(
+            'Invalid enum value %r for %s, returning default %r',
+            value,
+            enum_class.__name__,
+            default,
+        )
+        return default
+
+
+def create_tournament(tournament: Tournament) -> None:
+    """Persist a tournament."""
+    db_tournament = DbTournament(
+        tournament.id,
+        tournament.party_id,
+        tournament.name,
+        tournament.created_at,
+        game=tournament.game,
+        description=tournament.description,
+        image_url=tournament.image_url,
+        ruleset=tournament.ruleset,
+        start_time=tournament.start_time,
+        min_players=tournament.min_players,
+        max_players=tournament.max_players,
+        min_teams=tournament.min_teams,
+        max_teams=tournament.max_teams,
+        min_players_in_team=tournament.min_players_in_team,
+        max_players_in_team=tournament.max_players_in_team,
+        contestant_type=(
+            tournament.contestant_type.name
+            if tournament.contestant_type
+            else None
+        ),
+        tournament_status=(
+            tournament.tournament_status.name
+            if tournament.tournament_status
+            else None
+        ),
+        game_format=(
+            tournament.game_format.name
+            if tournament.game_format
+            else None
+        ),
+        elimination_mode=(
+            tournament.elimination_mode.name
+            if tournament.elimination_mode
+            else None
+        ),
+        score_ordering=(
+            tournament.score_ordering.name
+            if tournament.score_ordering
+            else None
+        ),
+        point_table=(
+            json.dumps(tournament.point_table)
+            if tournament.point_table
+            else None
+        ),
+        advancement_count=tournament.advancement_count,
+        group_size_min=tournament.group_size_min,
+        group_size_max=tournament.group_size_max,
+        points_carry_to_losers=tournament.points_carry_to_losers,
+    )
+
+    db_tournament.position = tournament.position
+
+    db.session.add(db_tournament)
+    db.session.commit()
+
+
+def update_tournament(tournament: Tournament) -> None:
+    """Update a tournament in place (no delete/recreate)."""
+    db_tournament = db.session.get(DbTournament, tournament.id)
+    if db_tournament is None:
+        raise ValueError(f'Unknown tournament ID "{tournament.id}"')
+
+    db_tournament.name = tournament.name
+    db_tournament.game = tournament.game
+    db_tournament.description = tournament.description
+    db_tournament.image_url = tournament.image_url
+    db_tournament.ruleset = tournament.ruleset
+    db_tournament.start_time = tournament.start_time
+    db_tournament.min_players = tournament.min_players
+    db_tournament.max_players = tournament.max_players
+    db_tournament.min_teams = tournament.min_teams
+    db_tournament.max_teams = tournament.max_teams
+    db_tournament.min_players_in_team = tournament.min_players_in_team
+    db_tournament.max_players_in_team = tournament.max_players_in_team
+    db_tournament.contestant_type = (
+        tournament.contestant_type.name if tournament.contestant_type else None
+    )
+    db_tournament.tournament_status = (
+        tournament.tournament_status.name
+        if tournament.tournament_status
+        else None
+    )
+    db_tournament.game_format = (
+        tournament.game_format.name if tournament.game_format else None
+    )
+    db_tournament.elimination_mode = (
+        tournament.elimination_mode.name
+        if tournament.elimination_mode
+        else None
+    )
+    db_tournament.score_ordering = (
+        tournament.score_ordering.name if tournament.score_ordering else None
+    )
+    db_tournament.point_table = (
+        json.dumps(tournament.point_table)
+        if tournament.point_table
+        else None
+    )
+    db_tournament.advancement_count = tournament.advancement_count
+    db_tournament.group_size_min = tournament.group_size_min
+    db_tournament.group_size_max = tournament.group_size_max
+    db_tournament.points_carry_to_losers = tournament.points_carry_to_losers
+    db_tournament.position = tournament.position
+    db_tournament.winner_team_id = tournament.winner_team_id
+    db_tournament.winner_participant_id = tournament.winner_participant_id
+    db_tournament.updated_at = tournament.updated_at
+
+    db.session.commit()
+
+
+def delete_tournament(
+    tournament_id: TournamentID, *, commit: bool = True
+) -> None:
+    """Delete a tournament."""
+    db.session.execute(delete(DbTournament).filter_by(id=tournament_id))
+    if commit:
+        db.session.commit()
+
+
+def clear_winner_for_tournament(
+    tournament_id: TournamentID, *, commit: bool = True
+) -> None:
+    """NULL-out winner_team_id and winner_participant_id so the
+    tournament row can be deleted without FK violations."""
+    db.session.execute(
+        update(DbTournament)
+        .filter_by(id=tournament_id)
+        .values(winner_team_id=None, winner_participant_id=None)
+    )
+    if commit:
+        db.session.commit()
+
+
+def clear_winner_team_reference(team_id: TournamentTeamID) -> None:
+    """NULL-out winner_team_id on any tournament referencing this team
+    so the team row can be deleted without FK violations."""
+    db.session.execute(
+        update(DbTournament)
+        .filter_by(winner_team_id=team_id)
+        .values(winner_team_id=None)
+    )
+    db.session.commit()
+
+
+def clear_winner_participant_reference_flush(
+    participant_id: TournamentParticipantID,
+) -> None:
+    """NULL-out winner_participant_id on any tournament referencing this
+    participant so the participant row can be deleted without FK violations.
+    Flush only — caller owns the transaction."""
+    db.session.execute(
+        update(DbTournament)
+        .filter_by(winner_participant_id=participant_id)
+        .values(winner_participant_id=None)
+    )
+    db.session.flush()
+
+
+def find_tournament(
+    tournament_id: TournamentID,
+) -> Tournament | None:
+    """Return the tournament, or `None` if not found."""
+    db_tournament = db.session.get(DbTournament, tournament_id)
+    if db_tournament is None:
+        return None
+    return _db_tournament_to_tournament(db_tournament)
+
+
+def get_tournament(
+    tournament_id: TournamentID,
+) -> Tournament:
+    """Return the tournament.
+
+    Raise an exception if not found.
+    """
+    tournament = find_tournament(tournament_id)
+    if tournament is None:
+        raise ValueError(f'Unknown tournament ID "{tournament_id}"')
+    return tournament
+
+
+def lock_tournament_for_update(tournament_id: TournamentID) -> None:
+    """Acquire row-level lock on tournament for atomic bracket generation.
+
+    Uses SELECT FOR UPDATE to prevent concurrent bracket generation.
+    Lock is automatically released when transaction commits/rolls back.
+    """
+    from sqlalchemy import text
+
+    db.session.execute(
+        text(
+            'SELECT id FROM lan_tournaments WHERE id = :tournament_id FOR UPDATE'
+        ),
+        {'tournament_id': str(tournament_id)},
+    )
+
+
+def get_tournament_for_update(
+    tournament_id: TournamentID,
+) -> Tournament:
+    """Return the tournament with row lock for update.
+
+    Raise an exception if not found.
+    """
+    db_tournament = db.session.execute(
+        select(DbTournament).filter_by(id=tournament_id).with_for_update()
+    ).scalar_one_or_none()
+    if db_tournament is None:
+        raise ValueError(f'Unknown tournament ID "{tournament_id}"')
+    return _db_tournament_to_tournament(db_tournament)
+
+
+def get_tournaments_for_party(
+    party_id: PartyID,
+) -> list[Tournament]:
+    """Return all tournaments for that party."""
+    db_tournaments = (
+        db.session.execute(
+            select(DbTournament)
+            .filter_by(party_id=party_id)
+            .order_by(DbTournament.position)
+        )
+        .scalars()
+        .all()
+    )
+    return [_db_tournament_to_tournament(t) for t in db_tournaments]
+
+
+def get_max_position_for_party(party_id: PartyID) -> int:
+    """Return the maximum position value among tournaments for the party.
+
+    Returns 0 if no tournaments exist for the party.
+    """
+    result = db.session.execute(
+        select(func.max(DbTournament.position)).filter_by(party_id=party_id)
+    ).scalar_one()
+    return result if result is not None else 0
+
+
+def reorder_tournaments(tournament_ids: list[str]) -> None:
+    """Update each tournament's position to its index in the list.
+
+    Performs a bulk update in a single transaction.
+    """
+    for index, tid in enumerate(tournament_ids):
+        db.session.execute(
+            update(DbTournament)
+            .where(DbTournament.id == tid)
+            .values(position=index)
+        )
+    db.session.commit()
+
+
+def set_tournament_winner(
+    tournament_id: TournamentID,
+    *,
+    winner_team_id: TournamentTeamID | None,
+    winner_participant_id: TournamentParticipantID | None,
+) -> Result[None, str]:
+    """Store the winner on the tournament row (flush only)."""
+    db_tournament = db.session.get(DbTournament, tournament_id)
+    if db_tournament is None:
+        return Err(f'Unknown tournament ID "{tournament_id}"')
+    db_tournament.winner_team_id = winner_team_id
+    db_tournament.winner_participant_id = winner_participant_id
+    db.session.flush()
+    return Ok(None)
+
+
+def set_tournament_status_flush(
+    tournament_id: TournamentID,
+    status: TournamentStatus,
+) -> Result[None, str]:
+    """Update tournament status (flush only)."""
+    db_tournament = db.session.get(DbTournament, tournament_id)
+    if db_tournament is None:
+        return Err(f'Unknown tournament ID "{tournament_id}"')
+    db_tournament.tournament_status = status.name
+    db.session.flush()
+    return Ok(None)
+
+
+def get_participant_count(
+    tournament_id: TournamentID,
+) -> int:
+    """Return the number of active participants."""
+    return db.session.execute(
+        select(db.func.count(DbTournamentParticipant.id))
+        .filter_by(tournament_id=tournament_id)
+        .where(DbTournamentParticipant.removed_at.is_(None))
+    ).scalar_one()
+
+
+def _db_tournament_to_tournament(
+    db_tournament: DbTournament,
+) -> Tournament:
+    return Tournament(
+        id=db_tournament.id,
+        party_id=db_tournament.party_id,
+        name=db_tournament.name,
+        game=db_tournament.game,
+        description=db_tournament.description,
+        image_url=db_tournament.image_url,
+        ruleset=db_tournament.ruleset,
+        start_time=db_tournament.start_time,
+        created_at=db_tournament.created_at,
+        updated_at=db_tournament.updated_at,
+        min_players=db_tournament.min_players,
+        max_players=db_tournament.max_players,
+        min_teams=db_tournament.min_teams,
+        max_teams=db_tournament.max_teams,
+        min_players_in_team=db_tournament.min_players_in_team,
+        max_players_in_team=db_tournament.max_players_in_team,
+        contestant_type=_safe_enum_lookup(
+            ContestantType, db_tournament.contestant_type
+        ),
+        tournament_status=_safe_enum_lookup(
+            TournamentStatus, db_tournament.tournament_status
+        ),
+        game_format=_safe_enum_lookup(
+            GameFormat, db_tournament.game_format
+        ),
+        elimination_mode=_safe_enum_lookup(
+            EliminationMode, db_tournament.elimination_mode
+        ),
+        score_ordering=_safe_enum_lookup(
+            ScoreOrdering, db_tournament.score_ordering
+        ),
+        point_table=(
+            json.loads(db_tournament.point_table)
+            if db_tournament.point_table
+            else None
+        ),
+        advancement_count=db_tournament.advancement_count,
+        group_size_min=db_tournament.group_size_min,
+        group_size_max=db_tournament.group_size_max,
+        points_carry_to_losers=db_tournament.points_carry_to_losers,
+        position=db_tournament.position,
+        use_bracket_reset=db_tournament.use_bracket_reset,
+        winner_team_id=db_tournament.winner_team_id,
+        winner_participant_id=db_tournament.winner_participant_id,
+    )
+
+
+# -- team --
+
+
+def create_team(team: TournamentTeam) -> None:
+    """Persist a team (flush only — caller commits)."""
+    db_team = DbTournamentTeam(
+        team.id,
+        team.tournament_id,
+        team.name,
+        team.captain_user_id,
+        team.created_at,
+        tag=team.tag,
+        description=team.description,
+        image_url=team.image_url,
+        join_code=team.join_code,
+    )
+
+    db.session.add(db_team)
+    db.session.flush()
+
+
+def update_team(team: TournamentTeam) -> None:
+    """Update a team in place (no delete/recreate)."""
+    db_team = db.session.get(DbTournamentTeam, team.id)
+    if db_team is None:
+        raise ValueError(f'Unknown team ID "{team.id}"')
+
+    db_team.name = team.name
+    db_team.tag = team.tag
+    db_team.description = team.description
+    db_team.image_url = team.image_url
+    db_team.join_code = team.join_code
+    db_team.updated_at = team.updated_at
+
+    db.session.commit()
+
+
+def update_team_captain(
+    team_id: TournamentTeamID,
+    new_captain_user_id: UserID,
+) -> None:
+    """Update the captain of a team."""
+    db_team = db.session.get(DbTournamentTeam, team_id)
+    if db_team is None:
+        raise ValueError(f'Unknown team ID "{team_id}"')
+    db_team.captain_user_id = new_captain_user_id
+    db.session.commit()
+
+
+def delete_team(team_id: TournamentTeamID) -> None:
+    """Delete a team."""
+    db.session.execute(delete(DbTournamentTeam).filter_by(id=team_id))
+    db.session.commit()
+
+
+def delete_team_flush(team_id: TournamentTeamID) -> None:
+    """Delete a team (flush only, caller commits)."""
+    db.session.execute(delete(DbTournamentTeam).filter_by(id=team_id))
+    db.session.flush()
+
+
+def delete_teams_for_tournament(
+    tournament_id: TournamentID, *, commit: bool = True
+) -> None:
+    """Delete all teams for a tournament."""
+    db.session.execute(
+        delete(DbTournamentTeam).filter_by(tournament_id=tournament_id)
+    )
+    if commit:
+        db.session.commit()
+
+
+def find_team(
+    team_id: TournamentTeamID,
+) -> TournamentTeam | None:
+    """Return the team, or `None` if not found."""
+    db_team = db.session.get(DbTournamentTeam, team_id)
+    if db_team is None:
+        return None
+    return _db_team_to_team(db_team)
+
+
+def get_team(team_id: TournamentTeamID) -> TournamentTeam:
+    """Return the team.
+
+    Raise an exception if not found.
+    """
+    team = find_team(team_id)
+    if team is None:
+        raise ValueError(f'Unknown team ID "{team_id}"')
+    return team
+
+
+def get_team_for_update(team_id: TournamentTeamID) -> TournamentTeam:
+    """Return the team with row lock for update.
+
+    Raise an exception if not found.
+    """
+    db_team = db.session.execute(
+        select(DbTournamentTeam).filter_by(id=team_id).with_for_update()
+    ).scalar_one_or_none()
+    if db_team is None:
+        raise ValueError(f'Unknown team ID "{team_id}"')
+    return _db_team_to_team(db_team)
+
+
+def get_teams_for_tournament(
+    tournament_id: TournamentID,
+    *,
+    include_removed: bool = False,
+) -> list[TournamentTeam]:
+    """Return all teams for that tournament."""
+    stmt = select(DbTournamentTeam).filter_by(tournament_id=tournament_id)
+    if not include_removed:
+        stmt = stmt.where(DbTournamentTeam.removed_at.is_(None))
+    db_teams = db.session.execute(stmt).scalars().all()
+    return [_db_team_to_team(t) for t in db_teams]
+
+
+def find_active_team_by_name(
+    tournament_id: TournamentID,
+    name: str,
+) -> TournamentTeam | None:
+    """Return the active team with that name in the tournament,
+    or `None`.
+    """
+    db_team = db.session.execute(
+        select(DbTournamentTeam).where(
+            DbTournamentTeam.tournament_id == tournament_id,
+            db.func.lower(DbTournamentTeam.name) == name.lower(),
+            DbTournamentTeam.removed_at.is_(None),
+        )
+    ).scalar_one_or_none()
+    if db_team is None:
+        return None
+    return _db_team_to_team(db_team)
+
+
+def find_active_team_by_tag(
+    tournament_id: TournamentID,
+    tag: str,
+) -> TournamentTeam | None:
+    """Return the active team with that tag in the tournament,
+    or `None`.
+    """
+    db_team = db.session.execute(
+        select(DbTournamentTeam).where(
+            DbTournamentTeam.tournament_id == tournament_id,
+            db.func.upper(DbTournamentTeam.tag) == tag.upper(),
+            DbTournamentTeam.removed_at.is_(None),
+        )
+    ).scalar_one_or_none()
+    if db_team is None:
+        return None
+    return _db_team_to_team(db_team)
+
+
+def get_teams_by_ids(
+    team_ids: set[TournamentTeamID],
+) -> list[TournamentTeam]:
+    """Return teams matching the given IDs."""
+    if not team_ids:
+        return []
+    db_teams = (
+        db.session.execute(
+            select(DbTournamentTeam).where(DbTournamentTeam.id.in_(team_ids))
+        )
+        .scalars()
+        .all()
+    )
+    return [_db_team_to_team(t) for t in db_teams]
+
+
+def _db_team_to_team(db_team: DbTournamentTeam) -> TournamentTeam:
+    return TournamentTeam(
+        id=db_team.id,
+        tournament_id=db_team.tournament_id,
+        name=db_team.name,
+        tag=db_team.tag,
+        description=db_team.description,
+        image_url=db_team.image_url,
+        captain_user_id=db_team.captain_user_id,
+        join_code=db_team.join_code,
+        created_at=db_team.created_at,
+        updated_at=db_team.updated_at,
+        removed_at=db_team.removed_at,
+    )
+
+
+# -- participant --
+
+
+def create_participant(
+    participant: TournamentParticipant,
+) -> None:
+    """Persist a participant."""
+    db_participant = DbTournamentParticipant(
+        participant.id,
+        participant.user_id,
+        participant.tournament_id,
+        participant.created_at,
+        substitute_player=participant.substitute_player,
+        team_id=participant.team_id,
+    )
+
+    db.session.add(db_participant)
+    db.session.flush()
+
+
+def update_participant(participant: TournamentParticipant) -> None:
+    """Update a participant in place (no delete/recreate)."""
+    db_participant = db.session.get(DbTournamentParticipant, participant.id)
+    if db_participant is None:
+        raise ValueError(f'Unknown participant ID "{participant.id}"')
+
+    db_participant.substitute_player = participant.substitute_player
+    db_participant.team_id = participant.team_id
+
+    db.session.commit()
+
+
+def delete_participant(
+    participant_id: TournamentParticipantID,
+) -> None:
+    """Delete a participant."""
+    db.session.execute(
+        delete(DbTournamentParticipant).filter_by(id=participant_id)
+    )
+    db.session.commit()
+
+
+def delete_participants_by_ids(
+    participant_ids: set[TournamentParticipantID],
+) -> None:
+    """Delete multiple participants (flush only, caller commits)."""
+    if not participant_ids:
+        return
+    db.session.execute(
+        delete(DbTournamentParticipant).where(
+            DbTournamentParticipant.id.in_(participant_ids)
+        )
+    )
+    db.session.flush()
+
+
+def delete_participants_for_tournament(
+    tournament_id: TournamentID, *, commit: bool = True
+) -> None:
+    """Delete all participants for a tournament."""
+    db.session.execute(
+        delete(DbTournamentParticipant).filter_by(tournament_id=tournament_id)
+    )
+    if commit:
+        db.session.commit()
+
+
+def remove_team_from_participants(team_id: TournamentTeamID) -> None:
+    """Set team_id to NULL for all participants in this team."""
+    db.session.execute(
+        db.update(DbTournamentParticipant)
+        .filter_by(team_id=team_id)
+        .values(team_id=None)
+    )
+    db.session.commit()
+
+
+def remove_team_from_participants_flush(
+    team_id: TournamentTeamID,
+) -> None:
+    """Set team_id to NULL for all participants in this team
+    (flush only, caller commits)."""
+    db.session.execute(
+        db.update(DbTournamentParticipant)
+        .filter_by(team_id=team_id)
+        .values(team_id=None)
+    )
+    db.session.flush()
+
+
+def soft_delete_participants_by_ids(
+    participant_ids: set[TournamentParticipantID],
+    removed_at: datetime,
+) -> None:
+    """Soft-delete participants by setting removed_at
+    (flush only, caller commits)."""
+    if not participant_ids:
+        return
+    db.session.execute(
+        db.update(DbTournamentParticipant)
+        .where(DbTournamentParticipant.id.in_(participant_ids))
+        .values(removed_at=removed_at)
+    )
+    db.session.flush()
+
+
+def soft_delete_team_flush(
+    team_id: TournamentTeamID,
+    removed_at: datetime,
+) -> None:
+    """Soft-delete a team by setting removed_at
+    (flush only, caller commits)."""
+    db.session.execute(
+        db.update(DbTournamentTeam)
+        .where(DbTournamentTeam.id == team_id)
+        .values(removed_at=removed_at)
+    )
+    db.session.flush()
+
+
+def find_participant(
+    participant_id: TournamentParticipantID,
+) -> TournamentParticipant | None:
+    """Return the participant, or `None` if not found."""
+    db_participant = db.session.get(DbTournamentParticipant, participant_id)
+    if db_participant is None:
+        return None
+    return _db_participant_to_participant(db_participant)
+
+
+def find_active_participant_by_user(
+    tournament_id: TournamentID,
+    user_id: UserID,
+) -> TournamentParticipant | None:
+    """Return the active (non-removed) participant for a user in a
+    tournament, or `None` if not found.
+    """
+    stmt = (
+        select(DbTournamentParticipant)
+        .filter_by(tournament_id=tournament_id, user_id=user_id)
+        .where(DbTournamentParticipant.removed_at.is_(None))
+    )
+    db_participant = db.session.execute(stmt).scalars().first()
+    if db_participant is None:
+        return None
+    return _db_participant_to_participant(db_participant)
+
+
+def get_participant(
+    participant_id: TournamentParticipantID,
+) -> TournamentParticipant:
+    """Return the participant.
+
+    Raise an exception if not found.
+    """
+    participant = find_participant(participant_id)
+    if participant is None:
+        raise ValueError(f'Unknown participant ID "{participant_id}"')
+    return participant
+
+
+def find_participant_by_user(
+    tournament_id: TournamentID,
+    user_id: UserID,
+) -> TournamentParticipant | None:
+    """Return the active participant for a user in a tournament,
+    or `None`."""
+    db_participant = db.session.execute(
+        select(DbTournamentParticipant)
+        .filter_by(
+            tournament_id=tournament_id,
+            user_id=user_id,
+        )
+        .where(DbTournamentParticipant.removed_at.is_(None))
+    ).scalar_one_or_none()
+    if db_participant is None:
+        return None
+    return _db_participant_to_participant(db_participant)
+
+
+def find_soft_deleted_participant_by_user(
+    tournament_id: TournamentID,
+    user_id: UserID,
+) -> TournamentParticipant | None:
+    """Return a soft-deleted participant for a user in a tournament,
+    or `None`."""
+    db_participant = db.session.execute(
+        select(DbTournamentParticipant)
+        .filter_by(
+            tournament_id=tournament_id,
+            user_id=user_id,
+        )
+        .where(DbTournamentParticipant.removed_at.is_not(None))
+    ).scalar_one_or_none()
+    if db_participant is None:
+        return None
+    return _db_participant_to_participant(db_participant)
+
+
+def reactivate_participant(
+    participant_id: TournamentParticipantID,
+    *,
+    substitute_player: bool,
+    team_id: TournamentTeamID | None,
+    created_at: datetime,
+) -> None:
+    """Reactivate a soft-deleted participant."""
+    db_participant = db.session.get(DbTournamentParticipant, participant_id)
+    if db_participant is None:
+        raise ValueError(f'Unknown participant ID "{participant_id}"')
+
+    db_participant.removed_at = None
+    db_participant.substitute_player = substitute_player
+    db_participant.team_id = team_id
+    db_participant.created_at = created_at
+    db.session.flush()
+
+
+def get_participants_for_tournament(
+    tournament_id: TournamentID,
+    *,
+    include_removed: bool = False,
+) -> list[TournamentParticipant]:
+    """Return all participants for that tournament."""
+    stmt = select(DbTournamentParticipant).filter_by(
+        tournament_id=tournament_id
+    )
+    if not include_removed:
+        stmt = stmt.where(DbTournamentParticipant.removed_at.is_(None))
+    db_participants = db.session.execute(stmt).scalars().all()
+    return [_db_participant_to_participant(p) for p in db_participants]
+
+
+def get_participants_for_team(
+    team_id: TournamentTeamID,
+    *,
+    include_removed: bool = False,
+) -> list[TournamentParticipant]:
+    """Return all participants for that team."""
+    stmt = select(DbTournamentParticipant).filter_by(team_id=team_id)
+    if not include_removed:
+        stmt = stmt.where(DbTournamentParticipant.removed_at.is_(None))
+    db_participants = db.session.execute(stmt).scalars().all()
+    return [_db_participant_to_participant(p) for p in db_participants]
+
+
+def get_team_member_counts(
+    tournament_id: TournamentID,
+) -> dict[TournamentTeamID, int]:
+    """Return active member count per team in a single query."""
+    rows = (
+        db.session.execute(
+            select(
+                DbTournamentParticipant.team_id,
+                db.func.count(DbTournamentParticipant.id),
+            )
+            .filter_by(tournament_id=tournament_id)
+            .where(
+                DbTournamentParticipant.team_id.is_not(None),
+                DbTournamentParticipant.removed_at.is_(None),
+            )
+            .group_by(DbTournamentParticipant.team_id)
+        )
+        .tuples()
+        .all()
+    )
+    return dict(rows)
+
+
+def get_participant_counts_for_tournaments(
+    tournament_ids: list[TournamentID],
+) -> dict[TournamentID, int]:
+    """Return active participant counts per tournament in a single query."""
+    if not tournament_ids:
+        return {}
+    rows = (
+        db.session.execute(
+            select(
+                DbTournamentParticipant.tournament_id,
+                db.func.count(DbTournamentParticipant.id),
+            )
+            .where(
+                DbTournamentParticipant.tournament_id.in_(tournament_ids),
+                DbTournamentParticipant.removed_at.is_(None),
+            )
+            .group_by(DbTournamentParticipant.tournament_id)
+        )
+        .tuples()
+        .all()
+    )
+    return dict(rows)
+
+
+def get_team_counts_for_tournaments(
+    tournament_ids: list[TournamentID],
+) -> dict[TournamentID, int]:
+    """Return active team counts per tournament in a single query."""
+    if not tournament_ids:
+        return {}
+    rows = (
+        db.session.execute(
+            select(
+                DbTournamentTeam.tournament_id,
+                db.func.count(DbTournamentTeam.id),
+            )
+            .where(
+                DbTournamentTeam.tournament_id.in_(tournament_ids),
+                DbTournamentTeam.removed_at.is_(None),
+            )
+            .group_by(DbTournamentTeam.tournament_id)
+        )
+        .tuples()
+        .all()
+    )
+    return dict(rows)
+
+
+def _db_participant_to_participant(
+    db_participant: DbTournamentParticipant,
+) -> TournamentParticipant:
+    return TournamentParticipant(
+        id=db_participant.id,
+        user_id=db_participant.user_id,
+        tournament_id=db_participant.tournament_id,
+        substitute_player=db_participant.substitute_player,
+        team_id=db_participant.team_id,
+        created_at=db_participant.created_at,
+        removed_at=db_participant.removed_at,
+    )
+
+
+# -- match --
+
+
+def commit_session() -> None:
+    """Commit the current database session."""
+    db.session.commit()
+
+
+def rollback_session() -> None:
+    """Roll back the current database session."""
+    db.session.rollback()
+
+
+def create_match(match: TournamentMatch) -> None:
+    """Persist a match."""
+    db_match = DbTournamentMatch(
+        match.id,
+        match.tournament_id,
+        match.created_at,
+        group_order=match.group_order,
+        match_order=match.match_order,
+        round=match.round,
+        next_match_id=match.next_match_id,
+        bracket=match.bracket.value if match.bracket else None,
+        loser_next_match_id=match.loser_next_match_id,
+        confirmed_by=match.confirmed_by,
+    )
+
+    db.session.add(db_match)
+    db.session.flush()
+
+
+def delete_match(match_id: TournamentMatchID) -> None:
+    """Delete a match."""
+    db.session.execute(delete(DbTournamentMatch).filter_by(id=match_id))
+    db.session.commit()
+
+
+def delete_match_flush(match_id: TournamentMatchID) -> None:
+    """Delete a match (flush only - caller owns commit)."""
+    db.session.execute(
+        delete(DbTournamentMatch).filter_by(id=match_id)
+    )
+    db.session.flush()
+
+
+
+def null_self_referential_fks(tournament_id: TournamentID) -> None:
+    """NULL out next_match_id and loser_next_match_id for all matches
+    in the tournament, removing self-referential FK constraints that
+    would block individual match deletion."""
+    db.session.execute(
+        db.update(DbTournamentMatch)
+        .filter_by(tournament_id=tournament_id)
+        .values(next_match_id=None, loser_next_match_id=None)
+    )
+    db.session.flush()
+
+
+def delete_matches_for_tournament(
+    tournament_id: TournamentID, *, commit: bool = True
+) -> None:
+    """Delete all matches for a tournament."""
+    null_self_referential_fks(tournament_id)
+    db.session.execute(
+        delete(DbTournamentMatch).filter_by(tournament_id=tournament_id)
+    )
+    if commit:
+        db.session.commit()
+
+
+def find_match(
+    match_id: TournamentMatchID,
+) -> TournamentMatch | None:
+    """Return the match, or `None` if not found."""
+    db_match = db.session.get(DbTournamentMatch, match_id)
+    if db_match is None:
+        return None
+    return _db_match_to_match(db_match)
+
+
+def get_match(
+    match_id: TournamentMatchID,
+) -> TournamentMatch:
+    """Return the match.
+
+    Raise an exception if not found.
+    """
+    match = find_match(match_id)
+    if match is None:
+        raise ValueError(f'Unknown match ID "{match_id}"')
+    return match
+
+
+def get_match_for_update(
+    match_id: TournamentMatchID,
+) -> TournamentMatch:
+    """Return the match with a row-level lock.
+
+    Issues ``SELECT ... FOR UPDATE`` to prevent concurrent
+    modification (TOCTOU race on confirm).
+
+    Raise an exception if not found.
+    """
+    db_match = db.session.execute(
+        select(DbTournamentMatch)
+        .filter_by(id=match_id)
+        .with_for_update()
+    ).scalar_one_or_none()
+    if db_match is None:
+        raise ValueError(
+            f'Unknown match ID "{match_id}"'
+        )
+    return _db_match_to_match(db_match)
+
+
+def get_matches_for_tournament(
+    tournament_id: TournamentID,
+) -> list[TournamentMatch]:
+    """Return all matches for that tournament."""
+    db_matches = (
+        db.session.execute(
+            select(DbTournamentMatch).filter_by(tournament_id=tournament_id)
+        )
+        .scalars()
+        .all()
+    )
+    return [_db_match_to_match(m) for m in db_matches]
+
+
+def get_matches_for_tournament_ordered(
+    tournament_id: TournamentID,
+) -> list[TournamentMatch]:
+    """Return all matches for that tournament, ordered by round."""
+    db_matches = (
+        db.session.execute(
+            select(DbTournamentMatch)
+            .filter_by(tournament_id=tournament_id)
+            .order_by(
+                DbTournamentMatch.round,
+                DbTournamentMatch.match_order,
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [_db_match_to_match(m) for m in db_matches]
+
+
+def get_matches_for_round(
+    tournament_id: TournamentID,
+    round_number: int,
+    *,
+    bracket: Bracket | None = None,
+) -> list[TournamentMatch]:
+    """Return all matches for a specific round of a tournament.
+
+    Optionally filter by bracket (WB/LB/GF).
+    """
+    query = (
+        select(DbTournamentMatch)
+        .filter_by(tournament_id=tournament_id, round=round_number)
+    )
+    if bracket is not None:
+        query = query.filter(DbTournamentMatch.bracket == bracket.value)
+    db_matches = db.session.execute(query).scalars().all()
+    return [_db_match_to_match(m) for m in db_matches]
+
+
+def confirm_match(
+    match_id: TournamentMatchID,
+    confirmed_by: UserID,
+) -> None:
+    """Set the confirmed_by field on a match."""
+    db_match = db.session.get(DbTournamentMatch, match_id)
+    if db_match is None:
+        raise ValueError(f'Unknown match ID "{match_id}"')
+
+    db_match.confirmed_by = confirmed_by
+    db.session.flush()
+
+
+def unconfirm_match(match_id: TournamentMatchID) -> None:
+    """Reset the confirmed_by field on a match."""
+    db_match = db.session.get(DbTournamentMatch, match_id)
+    if db_match is None:
+        raise ValueError(f'Unknown match ID "{match_id}"')
+
+    db_match.confirmed_by = None
+    db.session.flush()
+
+
+def clear_loser_next_match_id(
+    match_id: TournamentMatchID,
+) -> None:
+    """Remove loser routing from a match (e.g. DEFWIN match
+    with no loser to route).
+    """
+    db_match = db.session.get(DbTournamentMatch, match_id)
+    if db_match is not None:
+        db_match.loser_next_match_id = None
+        db.session.flush()
+
+
+def clear_next_match_id(
+    match_id: TournamentMatchID,
+) -> None:
+    """Remove winner routing from a match (e.g. dead LB
+    match with no incoming feeds).
+    """
+    db_match = db.session.get(DbTournamentMatch, match_id)
+    if db_match is not None:
+        db_match.next_match_id = None
+        db.session.flush()
+
+
+def set_next_match_id_flush(
+    match_id: TournamentMatchID,
+    next_match_id: TournamentMatchID | None,
+) -> None:
+    """Set or clear winner routing on a match (flush only)."""
+    db_match = db.session.get(DbTournamentMatch, match_id)
+    if db_match is not None:
+        db_match.next_match_id = next_match_id
+        db.session.flush()
+
+
+def count_incoming_feeds(
+    match_id: TournamentMatchID,
+) -> int:
+    """Count matches that route winners or losers to this
+    match.
+    """
+    return (
+        db.session.scalar(
+            db.select(db.func.count())
+            .select_from(DbTournamentMatch)
+            .where(
+                (DbTournamentMatch.next_match_id == match_id)
+                | (DbTournamentMatch.loser_next_match_id == match_id)
+            )
+        )
+        or 0
+    )
+
+
+def find_feeder_matches(
+    match_id: TournamentMatchID,
+) -> list[TournamentMatch]:
+    """Return matches whose next_match_id or loser_next_match_id
+    points to the given match."""
+    db_matches = db.session.execute(
+        select(DbTournamentMatch).filter(
+            (DbTournamentMatch.next_match_id == match_id)
+            | (DbTournamentMatch.loser_next_match_id == match_id)
+        )
+    ).scalars().all()
+    return [_db_match_to_match(m) for m in db_matches]
+
+
+def _safe_bracket_lookup(value: str | None) -> Bracket | None:
+    """Safely convert bracket string to enum, returning
+    None on invalid values.
+    """
+    if value is None:
+        return None
+    try:
+        return Bracket(value)
+    except ValueError:
+        logger.warning(
+            'Invalid bracket value %r, returning None',
+            value,
+        )
+        return None
+
+
+def _db_match_to_match(
+    db_match: DbTournamentMatch,
+) -> TournamentMatch:
+    return TournamentMatch(
+        id=db_match.id,
+        tournament_id=db_match.tournament_id,
+        group_order=db_match.group_order,
+        match_order=db_match.match_order,
+        round=db_match.round,
+        next_match_id=db_match.next_match_id,
+        confirmed_by=db_match.confirmed_by,
+        created_at=db_match.created_at,
+        bracket=_safe_bracket_lookup(db_match.bracket),
+        loser_next_match_id=db_match.loser_next_match_id,
+    )
+
+
+# -- match comment --
+
+
+def find_match_comment(
+    comment_id: TournamentMatchCommentID,
+) -> TournamentMatchComment | None:
+    """Return the match comment, or `None` if not found."""
+    db_comment = db.session.get(DbTournamentMatchComment, comment_id)
+    if db_comment is None:
+        return None
+    return _db_comment_to_comment(db_comment)
+
+
+def create_match_comment(
+    comment: TournamentMatchComment,
+) -> None:
+    """Persist a match comment."""
+    db_comment = DbTournamentMatchComment(
+        comment.id,
+        comment.tournament_match_id,
+        comment.created_by,
+        comment.comment,
+        comment.created_at,
+    )
+
+    db.session.add(db_comment)
+    db.session.commit()
+
+
+def update_match_comment(
+    comment_id: TournamentMatchCommentID,
+    comment: str,
+) -> None:
+    """Update a match comment's text."""
+    db_comment = db.session.get(DbTournamentMatchComment, comment_id)
+    if db_comment is None:
+        raise ValueError(f'Unknown comment ID "{comment_id}"')
+
+    db_comment.comment = comment
+    db.session.commit()
+
+
+def delete_match_comment(
+    comment_id: TournamentMatchCommentID,
+) -> None:
+    """Delete a match comment."""
+    db.session.execute(
+        delete(DbTournamentMatchComment).filter_by(id=comment_id)
+    )
+    db.session.commit()
+
+
+def delete_comments_for_match(match_id: TournamentMatchID) -> None:
+    """Delete all comments for a match."""
+    db.session.execute(
+        delete(DbTournamentMatchComment).filter_by(tournament_match_id=match_id)
+    )
+    db.session.commit()
+
+
+def delete_comments_for_match_flush(
+    match_id: TournamentMatchID,
+) -> None:
+    """Delete all comments for a match (flush only — caller owns commit)."""
+    db.session.execute(
+        delete(DbTournamentMatchComment).filter_by(
+            tournament_match_id=match_id
+        )
+    )
+    db.session.flush()
+
+
+def delete_comments_for_tournament(
+    tournament_id: TournamentID, *, commit: bool = True
+) -> None:
+    """Delete all comments for all matches in a tournament."""
+    db.session.execute(
+        delete(DbTournamentMatchComment).where(
+            DbTournamentMatchComment.tournament_match_id.in_(
+                select(DbTournamentMatch.id).filter_by(
+                    tournament_id=tournament_id
+                )
+            )
+        )
+    )
+    if commit:
+        db.session.commit()
+
+
+def get_comments_for_match(
+    match_id: TournamentMatchID,
+) -> list[TournamentMatchComment]:
+    """Return all comments for that match."""
+    db_comments = (
+        db.session.execute(
+            select(DbTournamentMatchComment).filter_by(
+                tournament_match_id=match_id
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [_db_comment_to_comment(c) for c in db_comments]
+
+
+def _db_comment_to_comment(
+    db_comment: DbTournamentMatchComment,
+) -> TournamentMatchComment:
+    return TournamentMatchComment(
+        id=db_comment.id,
+        tournament_match_id=db_comment.tournament_match_id,
+        created_by=db_comment.created_by,
+        comment=db_comment.comment,
+        created_at=db_comment.created_at,
+    )
+
+
+# -- match contestant --
+
+
+def create_match_contestant(
+    contestant: TournamentMatchToContestant,
+) -> None:
+    """Persist a match contestant."""
+    db_contestant = DbTournamentMatchToContestant(
+        contestant.id,
+        contestant.tournament_match_id,
+        contestant.created_at,
+        team_id=contestant.team_id,
+        participant_id=contestant.participant_id,
+        score=contestant.score,
+        placement=contestant.placement,
+        points=contestant.points,
+        contestant_status=(
+            contestant.contestant_status.name
+            if contestant.contestant_status
+            else None
+        ),
+    )
+
+    db.session.add(db_contestant)
+    db.session.flush()
+
+
+def update_contestant_score(
+    contestant_id: TournamentMatchToContestantID,
+    score: int,
+) -> None:
+    """Update a contestant's score."""
+    db_contestant = db.session.get(DbTournamentMatchToContestant, contestant_id)
+    if db_contestant is None:
+        raise ValueError(f'Unknown contestant ID "{contestant_id}"')
+
+    db_contestant.score = score
+    db.session.commit()
+
+
+def update_contestant_scores(
+    scores: dict[TournamentMatchToContestantID, int],
+) -> None:
+    """Update multiple contestant scores in a single flush.
+
+    Caller is responsible for committing the session.
+    """
+    for contestant_id, score in scores.items():
+        db_contestant = db.session.get(
+            DbTournamentMatchToContestant, contestant_id
+        )
+        if db_contestant is None:
+            raise ValueError(f'Unknown contestant ID "{contestant_id}"')
+        db_contestant.score = score
+    db.session.flush()
+
+
+def clear_contestant_scores(match_id: TournamentMatchID) -> None:
+    """Clear all contestant scores for a match.
+
+    Caller is responsible for committing the session.
+    """
+    contestants = (
+        db.session.query(DbTournamentMatchToContestant)
+        .filter_by(tournament_match_id=match_id)
+        .all()
+    )
+    for contestant in contestants:
+        contestant.score = None
+    db.session.flush()
+
+
+def update_contestant_placement_and_points(
+    updates: dict[TournamentMatchToContestantID, tuple[int, int]],
+) -> None:
+    """Update placement and points for multiple contestants in a single flush.
+
+    *updates* maps contestant ID to ``(placement, points)``.
+    Caller is responsible for committing the session.
+    """
+    for contestant_id, (placement, points) in updates.items():
+        db_contestant = db.session.get(
+            DbTournamentMatchToContestant, contestant_id
+        )
+        if db_contestant is None:
+            raise ValueError(f'Unknown contestant ID "{contestant_id}"')
+        db_contestant.placement = placement
+        db_contestant.points = points
+    db.session.flush()
+
+
+def get_contestants_for_match(
+    match_id: TournamentMatchID,
+) -> list[TournamentMatchToContestant]:
+    """Return all contestants for that match."""
+    db_contestants = (
+        db.session.execute(
+            select(DbTournamentMatchToContestant)
+            .filter_by(tournament_match_id=match_id)
+            .order_by(DbTournamentMatchToContestant.created_at)
+        )
+        .scalars()
+        .all()
+    )
+    return [_db_contestant_to_contestant(c) for c in db_contestants]
+
+
+def get_contestants_for_tournament(
+    tournament_id: TournamentID,
+) -> dict[TournamentMatchID, list[TournamentMatchToContestant]]:
+    """Return all contestants for a tournament, grouped by match ID.
+
+    Performs a single query joining contestants with matches instead of
+    one query per match (eliminates N+1).
+    """
+    db_contestants = (
+        db.session.execute(
+            select(DbTournamentMatchToContestant)
+            .join(
+                DbTournamentMatch,
+                DbTournamentMatchToContestant.tournament_match_id
+                == DbTournamentMatch.id,
+            )
+            .filter(DbTournamentMatch.tournament_id == tournament_id)
+            .order_by(DbTournamentMatchToContestant.created_at)
+        )
+        .scalars()
+        .all()
+    )
+    result: dict[TournamentMatchID, list[TournamentMatchToContestant]] = {}
+    for db_c in db_contestants:
+        contestant = _db_contestant_to_contestant(db_c)
+        result.setdefault(contestant.tournament_match_id, []).append(contestant)
+    return result
+
+
+def find_contestant_for_match(
+    match_id: TournamentMatchID,
+    participant_id: TournamentParticipantID | None = None,
+    team_id: TournamentTeamID | None = None,
+) -> TournamentMatchToContestant | None:
+    """Return contestant by match and participant/team, or None."""
+    query = select(DbTournamentMatchToContestant).filter_by(
+        tournament_match_id=match_id
+    )
+    if participant_id is not None:
+        query = query.filter_by(participant_id=participant_id)
+    elif team_id is not None:
+        query = query.filter_by(team_id=team_id)
+    else:
+        raise ValueError('Either participant_id or team_id must be provided.')
+
+    db_contestant = db.session.execute(query).scalar_one_or_none()
+    if db_contestant is None:
+        return None
+    return _db_contestant_to_contestant(db_contestant)
+
+
+def _db_contestant_to_contestant(
+    db_contestant: DbTournamentMatchToContestant,
+) -> TournamentMatchToContestant:
+    return TournamentMatchToContestant(
+        id=db_contestant.id,
+        tournament_match_id=db_contestant.tournament_match_id,
+        team_id=db_contestant.team_id,
+        participant_id=db_contestant.participant_id,
+        score=db_contestant.score,
+        created_at=db_contestant.created_at,
+        placement=db_contestant.placement,
+        points=db_contestant.points,
+        contestant_status=_safe_enum_lookup(
+            ContestantStatus, db_contestant.contestant_status
+        ),
+    )
+
+
+def delete_match_contestant(
+    contestant_id: TournamentMatchToContestantID,
+) -> None:
+    """Delete a match contestant."""
+    db.session.execute(
+        delete(DbTournamentMatchToContestant).filter_by(id=contestant_id)
+    )
+    db.session.commit()
+
+
+def find_contestant_entries_for_participant_in_tournament(
+    tournament_id: TournamentID,
+    participant_id: TournamentParticipantID,
+) -> list[tuple[TournamentMatchToContestant, TournamentMatch]]:
+    """Find all contestant entries for a participant across
+    unconfirmed matches in a tournament."""
+    rows = db.session.execute(
+        select(DbTournamentMatchToContestant, DbTournamentMatch)
+        .join(
+            DbTournamentMatch,
+            DbTournamentMatchToContestant.tournament_match_id
+            == DbTournamentMatch.id,
+        )
+        .where(
+            DbTournamentMatch.tournament_id == tournament_id,
+            DbTournamentMatchToContestant.participant_id == participant_id,
+            DbTournamentMatch.confirmed_by.is_(None),
+        )
+    ).all()
+    return [
+        (
+            _db_contestant_to_contestant(db_c),
+            _db_match_to_match(db_m),
+        )
+        for db_c, db_m in rows
+    ]
+
+
+def find_contestant_entries_for_team_in_tournament(
+    tournament_id: TournamentID,
+    team_id: TournamentTeamID,
+) -> list[tuple[TournamentMatchToContestant, TournamentMatch]]:
+    """Find all contestant entries for a team across
+    unconfirmed matches in a tournament."""
+    rows = db.session.execute(
+        select(DbTournamentMatchToContestant, DbTournamentMatch)
+        .join(
+            DbTournamentMatch,
+            DbTournamentMatchToContestant.tournament_match_id
+            == DbTournamentMatch.id,
+        )
+        .where(
+            DbTournamentMatch.tournament_id == tournament_id,
+            DbTournamentMatchToContestant.team_id == team_id,
+            DbTournamentMatch.confirmed_by.is_(None),
+        )
+    ).all()
+    return [
+        (
+            _db_contestant_to_contestant(db_c),
+            _db_match_to_match(db_m),
+        )
+        for db_c, db_m in rows
+    ]
+
+
+def delete_contestant_from_match(
+    match_id: TournamentMatchID,
+    *,
+    team_id: TournamentTeamID | None = None,
+    participant_id: TournamentParticipantID | None = None,
+) -> None:
+    """Delete a specific contestant from a match."""
+    query = delete(DbTournamentMatchToContestant).filter_by(
+        tournament_match_id=match_id
+    )
+    if team_id is not None:
+        query = query.filter_by(team_id=team_id)
+    elif participant_id is not None:
+        query = query.filter_by(participant_id=participant_id)
+    else:
+        raise ValueError('Either team_id or participant_id required.')
+    db.session.execute(query)
+    db.session.flush()
+
+
+def delete_contestants_for_match(match_id: TournamentMatchID) -> None:
+    """Delete all contestants for a match."""
+    db.session.execute(
+        delete(DbTournamentMatchToContestant).filter_by(
+            tournament_match_id=match_id
+        )
+    )
+    db.session.commit()
+
+
+def delete_contestants_for_match_flush(
+    match_id: TournamentMatchID,
+) -> None:
+    """Delete all contestants for a match (flush only)."""
+    db.session.execute(
+        delete(DbTournamentMatchToContestant).filter_by(
+            tournament_match_id=match_id
+        )
+    )
+    db.session.flush()
+
+
+def delete_contestants_for_tournament(
+    tournament_id: TournamentID, *, commit: bool = True
+) -> None:
+    """Delete all contestants for all matches in a tournament."""
+    db.session.execute(
+        delete(DbTournamentMatchToContestant).where(
+            DbTournamentMatchToContestant.tournament_match_id.in_(
+                select(DbTournamentMatch.id).filter_by(
+                    tournament_id=tournament_id
+                )
+            )
+        )
+    )
+    if commit:
+        db.session.commit()
+
+
+def remove_team_from_contestants(team_id: TournamentTeamID) -> None:
+    """Delete all match contestants referencing this team."""
+    db.session.execute(
+        db.delete(DbTournamentMatchToContestant).filter_by(team_id=team_id)
+    )
+    db.session.commit()
+
+
+# -- score submission --
+
+
+def create_score_submission(
+    submission: ScoreSubmission,
+) -> None:
+    """Persist a score submission."""
+    db_submission = DbScoreSubmission(
+        submission.id,
+        submission.tournament_id,
+        submission.score,
+        submission.submitted_at,
+        participant_id=submission.participant_id,
+        team_id=submission.team_id,
+        submitted_by=submission.submitted_by,
+        is_official=submission.is_official,
+        note=submission.note,
+    )
+    db.session.add(db_submission)
+    db.session.commit()
+
+
+def get_official_submissions_for_tournament(
+    tournament_id: TournamentID,
+) -> list[ScoreSubmission]:
+    """Return all official score submissions for a
+    tournament.
+    """
+    db_subs = (
+        db.session.execute(
+            select(DbScoreSubmission).filter_by(
+                tournament_id=tournament_id,
+                is_official=True,
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [_db_score_submission_to_score_submission(s) for s in db_subs]
+
+
+def delete_submissions_for_tournament(
+    tournament_id: TournamentID, *, commit: bool = True
+) -> None:
+    """Delete all score submissions for a tournament."""
+    db.session.execute(
+        delete(DbScoreSubmission).filter_by(tournament_id=tournament_id)
+    )
+    if commit:
+        db.session.commit()
+
+
+def _db_score_submission_to_score_submission(
+    db_sub: DbScoreSubmission,
+) -> ScoreSubmission:
+    """Convert a DB score submission to a domain model."""
+    return ScoreSubmission(
+        id=db_sub.id,
+        tournament_id=db_sub.tournament_id,
+        participant_id=db_sub.participant_id,
+        team_id=db_sub.team_id,
+        score=db_sub.score,
+        submitted_at=db_sub.submitted_at,
+        submitted_by=db_sub.submitted_by,
+        is_official=db_sub.is_official,
+        note=db_sub.note,
+    )
+
+
+def get_ready_unconfirmed_match_ids(
+    tournament_id: TournamentID,
+) -> list[TournamentMatchID]:
+    """Return IDs of matches that are ready (>= 2 contestants)
+    and not yet confirmed."""
+    ready_match_ids_subq = (
+        select(DbTournamentMatchToContestant.tournament_match_id)
+        .group_by(DbTournamentMatchToContestant.tournament_match_id)
+        .having(func.count() >= 2)
+        .subquery()
+    )
+    match_ids = (
+        db.session.execute(
+            select(DbTournamentMatch.id)
+            .where(
+                DbTournamentMatch.tournament_id == tournament_id,
+                DbTournamentMatch.confirmed_by.is_(None),
+                DbTournamentMatch.id.in_(select(ready_match_ids_subq)),
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return list(match_ids)

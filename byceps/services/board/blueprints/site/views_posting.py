@@ -7,6 +7,7 @@ byceps.services.board.blueprints.site.views_posting
 """
 
 import dataclasses
+from uuid import UUID
 
 from flask import abort, g, redirect, request
 from flask_babel import gettext
@@ -21,7 +22,7 @@ from byceps.services.board.errors import (
     ReactionDeniedError,
     ReactionExistsError,
 )
-from byceps.services.board.models import ReactionKind
+from byceps.services.board.models import PostingID, ReactionKind
 from byceps.services.site.blueprints.site.navigation import (
     subnavigation_for_view,
 )
@@ -77,9 +78,11 @@ def posting_create_form(topic_id, erroneous_form=None):
 
 
 def quote_posting_as_bbcode():
-    posting_id = request.args.get('quote', type=str)
-    if not posting_id:
+    posting_id_str = request.args.get('quote', type=str)
+    if not posting_id_str:
         return
+
+    posting_id = PostingID(UUID(posting_id_str))
 
     db_posting = board_posting_query_service.find_db_posting(posting_id)
     if db_posting is None:
@@ -101,7 +104,7 @@ def posting_create(topic_id):
     if not form.validate():
         return posting_create_form(topic_id, form)
 
-    creator = g.user
+    creator = g.user.as_user()
     body = form.body.data.strip()
 
     if db_topic.locked:
@@ -220,7 +223,7 @@ def posting_update(posting_id):
     body = form.body.data.strip()
 
     event = board_posting_command_service.update_posting(
-        db_posting.id, g.user, body
+        db_posting.id, g.user.as_user(), body
     )
 
     flash_success(gettext('The post has been updated.'))
@@ -254,7 +257,7 @@ def posting_moderate_form(posting_id):
 def posting_hide(posting_id):
     """Hide a post."""
     db_posting = h.get_db_posting_or_404(posting_id)
-    moderator = g.user
+    moderator = g.user.as_user()
 
     event = board_posting_command_service.hide_posting(db_posting.id, moderator)
 
@@ -276,7 +279,7 @@ def posting_hide(posting_id):
 def posting_unhide(posting_id):
     """Un-hide a post."""
     db_posting = h.get_db_posting_or_404(posting_id)
-    moderator = g.user
+    moderator = g.user.as_user()
 
     event = board_posting_command_service.unhide_posting(
         db_posting.id, moderator
@@ -302,17 +305,16 @@ def add_reaction(posting_id, kind):
     db_posting = h.get_db_posting_or_404(posting_id)
 
     result = board_posting_command_service.add_reaction(
-        db_posting, g.user, ReactionKind(kind)
+        db_posting, g.user.as_user(), ReactionKind(kind)
     )
 
     match result:
-        case Err(e):
-            if isinstance(e, ReactionDeniedError):
-                abort(403)
-            elif isinstance(e, ReactionExistsError):
-                abort(409)
-            else:
-                abort(500)
+        case Err(ReactionDeniedError()):
+            abort(403)
+        case Err(ReactionExistsError()):
+            abort(409)
+        case Err(_):
+            abort(500)
 
 
 @blueprint.delete('/postings/<uuid:posting_id>/reactions/<kind>')
@@ -323,14 +325,13 @@ def remove_reaction(posting_id, kind):
     db_posting = h.get_db_posting_or_404(posting_id)
 
     result = board_posting_command_service.remove_reaction(
-        db_posting, g.user, ReactionKind(kind)
+        db_posting, g.user.as_user(), ReactionKind(kind)
     )
 
     match result:
-        case Err(e):
-            if isinstance(e, ReactionDeniedError):
-                abort(403)
-            elif isinstance(e, ReactionExistsError):
-                abort(409)
-            else:
-                abort(500)
+        case Err(ReactionDeniedError()):
+            abort(403)
+        case Err(ReactionExistsError()):
+            abort(409)
+        case Err(_):
+            abort(500)

@@ -7,10 +7,14 @@ byceps.blueprints.site
 """
 
 from flask import Flask
+import structlog
+from importlib import util as importlib_util
 
 from byceps.util.framework.blueprint import register_blueprints
 
 from .common import get_common_blueprints
+
+log = structlog.get_logger()
 
 
 def register_site_blueprints(
@@ -65,5 +69,15 @@ def register_site_blueprints(
         ('services.user_message.blueprints.site', '/user_messages'),
         ('services.user_profile.blueprints.site', '/users'),
     ]
+
+    if importlib_util.find_spec('byceps.services.lan_tournament.blueprints.site'):
+        blueprints.append(
+            ('services.lan_tournament.blueprints.site', '/lan-tournaments')
+        )
+    else:
+        log.warning(
+            'Module byceps.services.lan_tournament.blueprints.site '
+            'is not importable; skipping site blueprints for lan_tournament'
+        )
 
     register_blueprints(app, blueprints)

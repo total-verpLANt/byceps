@@ -47,9 +47,9 @@ def create_bundle(
     ticket_quantity: int,
     owner: User,
     *,
-    label: str | None = None,
     order_number: OrderNumber | None = None,
     user: User | None = None,
+    label: str | None = None,
 ) -> TicketBundle:
     """Create a ticket bundle and the given quantity of tickets."""
     if ticket_quantity < 1:
@@ -64,6 +64,7 @@ def create_bundle(
         category,
         ticket_quantity,
         owner.id,
+        order_number=order_number,
         label=label,
     )
     db.session.add(db_bundle)
@@ -82,7 +83,7 @@ def create_bundle(
 
     db.session.commit()
 
-    ticket_ids = {db_ticket.id for db_ticket in db_tickets}
+    ticket_ids = _get_ticket_ids_sorted_by_creation_time(db_tickets)
 
     bundle = TicketBundle(
         id=bundle_id,
@@ -91,6 +92,7 @@ def create_bundle(
         ticket_category=category,
         ticket_quantity=ticket_quantity,
         owned_by=owner,
+        order_number=order_number,
         seats_managed_by=None,
         users_managed_by=None,
         label=label,
@@ -212,7 +214,7 @@ def db_entity_to_ticket_bundle(db_bundle: DbTicketBundle) -> TicketBundle:
         else None
     )
 
-    ticket_ids = {db_ticket.id for db_ticket in db_bundle.tickets}
+    ticket_ids = _get_ticket_ids_sorted_by_creation_time(db_bundle.tickets)
 
     return _db_entity_to_ticket_bundle(
         db_bundle,
@@ -230,7 +232,7 @@ def _db_entity_to_ticket_bundle(
     owner: User,
     seats_manager: User | None,
     users_manager: User | None,
-    ticket_ids: set[TicketID],
+    ticket_ids: list[TicketID],
 ) -> TicketBundle:
     return TicketBundle(
         id=db_bundle.id,
@@ -239,6 +241,7 @@ def _db_entity_to_ticket_bundle(
         ticket_category=ticket_category,
         ticket_quantity=db_bundle.ticket_quantity,
         owned_by=owner,
+        order_number=db_bundle.order_number,
         seats_managed_by=seats_manager,
         users_managed_by=users_manager,
         label=db_bundle.label,
@@ -246,6 +249,15 @@ def _db_entity_to_ticket_bundle(
         ticket_ids=ticket_ids,
         occupied_seat_group_id=_find_occupied_seat_group_id(db_bundle),
     )
+
+
+def _get_ticket_ids_sorted_by_creation_time(
+    db_tickets: list[DbTicket],
+) -> list[TicketID]:
+    return [
+        db_ticket.id
+        for db_ticket in sorted(db_tickets, key=lambda t: t.created_at)
+    ]
 
 
 def _find_occupied_seat_group_id(

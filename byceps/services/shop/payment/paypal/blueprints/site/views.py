@@ -103,8 +103,11 @@ def _parse_request() -> CapturePayPalRequest:
 
 
 def _get_paypal_order_details(paypal_order_id: str) -> HttpResult:
+    payment_gateways_config = (
+        get_current_byceps_app().byceps_config.payment_gateways
+    )
     paypal_config = (
-        get_current_byceps_app().byceps_config.payment_gateways.paypal
+        payment_gateways_config.paypal if payment_gateways_config else None
     )
 
     if not paypal_config:
@@ -181,6 +184,7 @@ def _check_transaction_against_order(
 def _mark_order_as_paid(
     order: Order, paypal_order_details: PayPalOrderDetails
 ) -> None:
+    initiator = g.user.as_user()
     additional_payment_data = {
         'paypal_order_id': paypal_order_details.id,
         'paypal_transaction_id': paypal_order_details.transaction_id,
@@ -189,7 +193,7 @@ def _mark_order_as_paid(
     paid_order, event = order_command_service.mark_order_as_paid(
         order.id,
         'paypal',
-        g.user,
+        initiator,
         additional_payment_data=additional_payment_data,
     ).unwrap()
 
