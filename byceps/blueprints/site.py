@@ -70,13 +70,15 @@ def register_site_blueprints(
         ('services.user_profile.blueprints.site', '/users'),
     ]
 
-    if importlib_util.find_spec('byceps.services.lan_tournament.blueprints.site'):
+    if importlib_util.find_spec(
+        'byceps.services.lan_tournament.blueprints.site.views'
+    ):
         blueprints.append(
             ('services.lan_tournament.blueprints.site', '/lan-tournaments')
         )
     else:
         log.warning(
-            'Module byceps.services.lan_tournament.blueprints.site '
+            'Module byceps.services.lan_tournament.blueprints.site.views '
             'is not importable; skipping site blueprints for lan_tournament'
         )
 

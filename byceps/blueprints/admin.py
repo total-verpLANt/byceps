@@ -92,13 +92,15 @@ def register_admin_blueprints(
     if metrics_enabled:
         blueprints.append(('services.metrics.blueprints.metrics', '/metrics'))
 
-    if importlib_util.find_spec('byceps.services.lan_tournament.blueprints.admin'):
+    if importlib_util.find_spec(
+        'byceps.services.lan_tournament.blueprints.admin.views'
+    ):
         blueprints.append(
             ('services.lan_tournament.blueprints.admin', '/lan-tournaments')
         )
     else:
         log.warning(
-            'Module byceps.services.lan_tournament.blueprints.admin '
+            'Module byceps.services.lan_tournament.blueprints.admin.views '
             'is not importable; skipping admin blueprints for lan_tournament'
         )
 
