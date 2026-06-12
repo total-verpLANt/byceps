@@ -23,6 +23,12 @@
   --lt-panel: rgba(7, 18, 47, 0.88);
   --lt-card:  rgba(255, 255, 255, 0.05);
 
+  /* Surface tint primitive: base colour mixed into translucent card/border
+     fills and highlight gradients.  Pure white in the dark theme; a site
+     override can re-point it (e.g. to an ink tone) to re-skin every
+     rgba-white surface that references it via color-mix(). */
+  --lt-white: #fff;
+
   /* Borders / lines */
   --lt-border:      rgba(255, 255, 255, 0.12);
   --lt-line:        rgba(194, 211, 255, 0.28);
@@ -31,6 +37,7 @@
   /* Text */
   --lt-text:  #eef4ff;
   --lt-muted: #a8b8dd;
+  --lt-ink:   #1a1a1a;  /* dark ink for text on bright chips (warning/success) */
 
   /* Geometry */
   --lt-radius:    18px;
@@ -119,7 +126,7 @@
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: linear-gradient(175deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0) 34%, rgba(2, 8, 20, 0.16));
+  background: linear-gradient(175deg, color-mix(in srgb, var(--lt-white) 18%, transparent), color-mix(in srgb, var(--lt-white) 0%, transparent) 34%, rgba(2, 8, 20, 0.16));
 }
 
 .tournament-media--hero {
@@ -223,8 +230,8 @@
   padding: 0.28rem 0.56rem;
   text-transform: uppercase;
   white-space: nowrap;
-  color: white;
-  background: rgba(255, 255, 255, 0.08);
+  color: var(--lt-white);
+  background: color-mix(in srgb, var(--lt-white) 8%, transparent);
   text-shadow: none;
 }
 
@@ -253,7 +260,7 @@
 }
 
 .lt-dark .tag.color-disabled {
-  background: rgba(255, 255, 255, 0.12);
+  background: color-mix(in srgb, var(--lt-white) 12%, transparent);
   border-color: var(--lt-border);
   color: var(--lt-muted);
 }
@@ -278,7 +285,7 @@
    ------------------------------------------------------------ */
 
 .lt-dark .button.secondary {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.06));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--lt-white) 12%, transparent), color-mix(in srgb, var(--lt-white) 6%, transparent));
   border-color: var(--lt-border);
   box-shadow: none;
 }
@@ -321,7 +328,7 @@
    ------------------------------------------------------------ */
 
 .lt-dark .progress {
-  background: rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--lt-white) 8%, transparent);
   border: 1px solid var(--lt-border);
   border-radius: 999px;
   display: flex;
@@ -411,7 +418,7 @@
 .match-filter-bar .button.active {
   border-color: color-mix(in srgb, var(--lt-brand-blue) 55%, white);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--lt-brand-blue) 30%, white);
-  color: #fff;
+  color: var(--lt-white);
   background: color-mix(in srgb, var(--lt-brand-blue) 30%, transparent);
 }
 
@@ -501,11 +508,11 @@
   overflow-y: hidden;
   border: 1px solid var(--lt-border);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--lt-white) 4%, transparent);
   margin-bottom: 0.5rem;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
-  scrollbar-color: rgba(194, 211, 255, 0.45) rgba(255, 255, 255, 0.06);
+  scrollbar-color: rgba(194, 211, 255, 0.45) color-mix(in srgb, var(--lt-white) 6%, transparent);
 }
 
 .table-scroll-wrap::-webkit-scrollbar {
@@ -513,7 +520,7 @@
 }
 
 .table-scroll-wrap::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.05);
+  background: color-mix(in srgb, var(--lt-white) 5%, transparent);
 }
 
 .table-scroll-wrap::-webkit-scrollbar-thumb {
@@ -619,7 +626,7 @@
   border: 1px solid var(--lt-border);
   border-radius: 16px;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--lt-white) 4%, transparent);
   margin-bottom: 0.5rem;
 }
 
@@ -632,7 +639,7 @@
   letter-spacing: 0.04em;
   text-align: center;
   padding: 0.7rem 0.85rem;
-  background: rgba(255, 255, 255, 0.02);
+  background: color-mix(in srgb, var(--lt-white) 2%, transparent);
 }
 
 .hs-leaderboard td {
@@ -648,13 +655,13 @@
 }
 
 .hs-leaderboard tbody tr:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--lt-white) 4%, transparent);
 }
 
 /* Podium highlighting — active only when tournament is completed */
 .tournament-ranking[data-tournament-state="completed"] .hs-rank-1 td {
   background: linear-gradient(90deg,
-    color-mix(in srgb, var(--lt-brand-warning) 28%, rgba(255, 255, 255, 0.04)),
+    color-mix(in srgb, var(--lt-brand-warning) 28%, color-mix(in srgb, var(--lt-white) 4%, transparent)),
     rgba(255, 224, 146, 0.18));
 }
 
@@ -668,7 +675,7 @@
 
 .tournament-ranking[data-tournament-state="completed"] .hs-rank-3 td {
   background: linear-gradient(90deg,
-    color-mix(in srgb, var(--lt-brand-orange) 20%, rgba(255, 255, 255, 0.04)),
+    color-mix(in srgb, var(--lt-brand-orange) 20%, color-mix(in srgb, var(--lt-white) 4%, transparent)),
     rgba(255, 173, 112, 0.16));
 }
 
@@ -697,7 +704,7 @@
   display: inline-block;
   cursor: help;
   text-decoration: underline dotted;
-  text-decoration-color: rgba(255, 255, 255, 0.45);
+  text-decoration-color: color-mix(in srgb, var(--lt-white) 45%, transparent);
   text-underline-offset: 2px;
 }
 
@@ -856,7 +863,7 @@ a.lt-hover-name-link:hover {
   background:
     radial-gradient(circle at 14% 8%, color-mix(in srgb, var(--lt-brand-blue) 11%, transparent), transparent 40%),
     linear-gradient(180deg, rgba(7, 19, 49, 0.72), rgba(5, 15, 38, 0.78));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 6px 16px rgba(0, 0, 0, 0.2);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--lt-white) 4%, transparent), 0 6px 16px rgba(0, 0, 0, 0.2);
   overflow: hidden;
 }
 
@@ -866,7 +873,7 @@ a.lt-hover-name-link:hover {
   inset: 0 auto auto 0;
   width: 100%;
   height: 1px;
-  background: rgba(255, 255, 255, 0.18);
+  background: color-mix(in srgb, var(--lt-white) 18%, transparent);
   opacity: 0.45;
 }
 
@@ -907,15 +914,15 @@ a.lt-hover-name-link:hover {
   display: grid;
   gap: 0.34rem;
   padding: 0.52rem 0.62rem 0.58rem;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid color-mix(in srgb, var(--lt-white) 12%, transparent);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.025);
+  background: color-mix(in srgb, var(--lt-white) 2.5%, transparent);
   transition: border-color 140ms ease, background 140ms ease;
 }
 
 .score-submit-side:hover {
   border-color: color-mix(in srgb, var(--lt-brand-blue) 20%, white);
-  background: rgba(255, 255, 255, 0.038);
+  background: color-mix(in srgb, var(--lt-white) 3.8%, transparent);
 }
 
 .score-submit-team-label {
@@ -1206,7 +1213,7 @@ a.lt-hover-name-link:hover {
   align-items: center;
   padding: 0.5rem;
   margin: 0.25rem 0;
-  background-color: rgba(255, 255, 255, 0.06);
+  background-color: color-mix(in srgb, var(--lt-white) 6%, transparent);
   border-radius: 3px;
 }
 
@@ -1366,7 +1373,7 @@ a.lt-hover-name-link:hover {
   border: 1px solid var(--lt-border);
   border-radius: 16px;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--lt-white) 4%, transparent);
   margin: 1rem 0;
 }
 
@@ -1378,7 +1385,7 @@ a.lt-hover-name-link:hover {
 }
 
 .rr-standings th {
-  background: rgba(255, 255, 255, 0.02);
+  background: color-mix(in srgb, var(--lt-white) 2%, transparent);
   font-size: 0.85rem;
   font-weight: 700;
   color: var(--lt-muted);
@@ -1414,7 +1421,7 @@ a.lt-hover-name-link:hover {
 }
 
 .rr-standings tbody tr:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--lt-white) 4%, transparent);
 }
 
 
@@ -1432,7 +1439,7 @@ a.lt-hover-name-link:hover {
   border: 1px solid var(--lt-border);
   border-radius: 16px;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--lt-white) 4%, transparent);
   margin: 1rem 0;
 }
 
@@ -1444,7 +1451,7 @@ a.lt-hover-name-link:hover {
 }
 
 .lt-dark .hs-leaderboard th {
-  background: rgba(255, 255, 255, 0.02);
+  background: color-mix(in srgb, var(--lt-white) 2%, transparent);
   font-size: 0.76rem;
   font-weight: 700;
   color: var(--lt-muted);
@@ -1464,7 +1471,7 @@ a.lt-hover-name-link:hover {
 }
 
 .lt-dark .hs-leaderboard .hs-rank-1 {
-  background: color-mix(in srgb, var(--lt-brand-warning) 28%, rgba(255, 255, 255, 0.04));
+  background: color-mix(in srgb, var(--lt-brand-warning) 28%, color-mix(in srgb, var(--lt-white) 4%, transparent));
 }
 
 .lt-dark .hs-leaderboard .hs-rank-2 {
@@ -1472,7 +1479,7 @@ a.lt-hover-name-link:hover {
 }
 
 .lt-dark .hs-leaderboard .hs-rank-3 {
-  background: color-mix(in srgb, var(--lt-brand-orange) 20%, rgba(255, 255, 255, 0.04));
+  background: color-mix(in srgb, var(--lt-brand-orange) 20%, color-mix(in srgb, var(--lt-white) 4%, transparent));
 }
 
 .lt-dark .hs-leaderboard .hs-score {
@@ -1481,7 +1488,7 @@ a.lt-hover-name-link:hover {
 }
 
 .lt-dark .hs-leaderboard tbody tr:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--lt-white) 4%, transparent);
 }
 
 .lt-dark .hs-ordering-hint {
@@ -1678,7 +1685,7 @@ a.lt-hover-name-link:hover {
 }
 
 .ffa-unconfirmed-row:last-child { border-bottom: none; }
-.ffa-unconfirmed-row:hover { background: rgba(255, 255, 255, 0.03); }
+.ffa-unconfirmed-row:hover { background: color-mix(in srgb, var(--lt-white) 3%, transparent); }
 
 .ffa-unconfirmed-row__bullet {
   width: 6px; height: 6px; border-radius: 50%;
@@ -1994,7 +2001,7 @@ a.lt-hover-name-link:hover {
 /* Mismatch warning */
 .ffa-mismatch-warning {
   background: var(--lt-brand-warning, #ffcc3f);
-  color: #1a1a1a;
+  color: var(--lt-ink, #1a1a1a);
   padding: 0.5rem 0.75rem;
   border-radius: var(--lt-radius-sm, 12px);
   font-size: 0.85em;
