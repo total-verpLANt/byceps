@@ -2228,3 +2228,182 @@ form .form-form-errors, form .invalid {
   margin-left: 0.35em;
 }
 
+/* ============================================================================
+   OLD-SITE PAGE FALLBACK
+   ----------------------------------------------------------------------------
+   These rules were previously embedded as per-page inline <style> blocks in
+   the totalverplant-36 DB page bodies (agb, privacy, event-infos, faq, gn,
+   impressum, turniere, verein, zeitplan). They are relocated here, ID-scoped
+   exactly as authored, so the OLD totalverplant site can render the backed-up
+   page bodies standalone once the inline <style> blocks are removed from those
+   bodies.
+
+   Source of truth: backups/totalverplant-36-pages/INVENTORY.md
+   ("Per-page inline <style> blocks") plus the backed-up <name>.html bodies.
+
+   Card/layout primitives (event-card, stat-card, landing-hero, event-details,
+   about-text) and the Font-Awesome glyphs are already provided elsewhere in
+   this file / by the OLD base.html and are intentionally NOT duplicated here.
+   ============================================================================ */
+
+/* Shared across every page body: hide the auto-rendered page title so the
+   body's own heading markup is authoritative. */
+main > h1:first-child,
+.page-header h1,
+h1.title {
+  display: none !important;
+}
+
+/* agb */
+#agb-content {
+  padding-top: 20px;
+}
+
+/* privacy */
+#privacy-content {
+  padding-top: 20px;
+}
+
+/* event-infos */
+#event-infos-content {
+  padding-top: 20px;
+}
+
+/* faq */
+#faq-content {
+  padding-top: 20px;
+}
+
+/* impressum */
+#impressum-content {
+  padding-top: 20px;
+}
+
+/* verein */
+#verein-content {
+  padding-top: 20px;
+}
+
+/* gn (Gästenächte / overview) */
+#gn-root {
+  padding-top: 20px;
+  --gn-sticky-offset: 96px;
+}
+
+.gn [id] {
+  scroll-margin-top: var(--gn-sticky-offset, 96px);
+}
+
+#gn-gallery-preview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+}
+
+/* turniere (Turnier-Ankündigungen) */
+#turnier-ankuendigungen-content {
+  padding-top: 20px;
+}
+
+/* kleine Zusatz-Styles nur für diese Seite */
+#turnier-ankuendigungen-content .social-cta-row {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+}
+
+#turnier-ankuendigungen-content a.button.social-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid var(--border-color);
+  color: #fff;
+  padding: 0.75rem 1.25rem;
+  border-radius: var(--radius-pill);
+  text-decoration: none;
+}
+
+/* Fallback-Farben (falls bg-* nicht definiert ist) */
+#turnier-ankuendigungen-content a.bg-discord { background: #5865F2; border-color:#5865F2; }
+#turnier-ankuendigungen-content a.bg-instagram { background: #E1306C; border-color:#E1306C; }
+#turnier-ankuendigungen-content a.bg-facebook { background: #1877F2; border-color:#1877F2; }
+
+/* zeitplan (Turnier-Zeitplan) */
+#zeitplan-content {
+  padding-top: 20px;
+}
+
+#zeitplan-content .tourney-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 14px;
+}
+
+#zeitplan-content .tourney-day {
+  background: rgba(255,255,255,0.025);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+#zeitplan-content .tourney-day h3 {
+  margin: 0 0 12px;
+  font-size: 1.08rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#zeitplan-content .tourney-slot {
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 12px 0;
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+#zeitplan-content .tourney-slot:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+
+#zeitplan-content .tourney-time {
+  font-weight: 700;
+  color: var(--primary-color);
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+}
+
+#zeitplan-content .tourney-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+#zeitplan-content .tourney-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  line-height: 1.45;
+}
+
+@media (max-width: 900px) {
+  #zeitplan-content .tourney-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 520px) {
+  #zeitplan-content .tourney-slot {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+}
+

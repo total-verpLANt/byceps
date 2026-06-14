@@ -95,7 +95,7 @@
   cursor: grab;
   touch-action: pan-x pan-y;
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--lt-line) 100%, transparent) rgba(255, 255, 255, 0.06);
+  scrollbar-color: color-mix(in srgb, var(--lt-line) 100%, transparent) color-mix(in srgb, var(--lt-white) 6%, transparent);
 }
 
 .lt-bracket-scroll.is-pannable::-webkit-scrollbar {
@@ -104,7 +104,7 @@
 }
 
 .lt-bracket-scroll.is-pannable::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.05);
+  background: color-mix(in srgb, var(--lt-white) 5%, transparent);
   border-radius: 999px;
 }
 
@@ -149,7 +149,7 @@
   position: absolute;
   border-radius: 16px;
   padding: 0.56rem 0.75rem 0.56rem 0.94rem;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.04));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--lt-white) 8%, transparent), color-mix(in srgb, var(--lt-white) 4%, transparent));
   border: 1px solid var(--lt-border);
   display: flex;
   justify-content: space-between;
@@ -199,7 +199,7 @@
   position: absolute;
   border-radius: var(--lt-radius);
   padding: 7px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--lt-white) 8%, transparent), color-mix(in srgb, var(--lt-white) 3%, transparent));
   border: 1px solid var(--lt-border);
   --match-accent: color-mix(in srgb, var(--lt-brand-blue) 72%, white);
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
@@ -244,27 +244,27 @@
   box-shadow:
     0 0 0 3px color-mix(in srgb, var(--lt-brand-blue) 22%, transparent),
     0 12px 28px rgba(0, 0, 0, 0.28);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.04));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--lt-white) 11%, transparent), color-mix(in srgb, var(--lt-white) 4%, transparent));
 }
 
 .lt-match.match-open {
   --match-accent: color-mix(in srgb, var(--lt-brand-orange) 88%, white);
   border-color: color-mix(in srgb, var(--lt-brand-orange) 30%, white);
   box-shadow: 0 12px 26px rgba(0, 0, 0, 0.22), 0 0 0 1px color-mix(in srgb, var(--lt-brand-orange) 16%, transparent);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--lt-brand-orange) 7%, rgba(255, 255, 255, 0.08)), rgba(255, 255, 255, 0.03));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--lt-brand-orange) 7%, color-mix(in srgb, var(--lt-white) 8%, transparent)), color-mix(in srgb, var(--lt-white) 3%, transparent));
 }
 
 .lt-match.match-pending {
   --match-accent: color-mix(in srgb, var(--lt-brand-blue) 70%, white);
   border-color: color-mix(in srgb, var(--lt-brand-blue) 24%, white);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--lt-brand-blue) 8%, rgba(255, 255, 255, 0.08)), rgba(255, 255, 255, 0.03));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--lt-brand-blue) 8%, color-mix(in srgb, var(--lt-white) 8%, transparent)), color-mix(in srgb, var(--lt-white) 3%, transparent));
 }
 
 .lt-match.match-done,
 .lt-match.match-auto {
   --match-accent: color-mix(in srgb, var(--lt-brand-success) 88%, white);
   border-color: color-mix(in srgb, var(--lt-brand-success) 24%, white);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--lt-brand-success) 6%, rgba(255, 255, 255, 0.08)), rgba(255, 255, 255, 0.03));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--lt-brand-success) 6%, color-mix(in srgb, var(--lt-white) 8%, transparent)), color-mix(in srgb, var(--lt-white) 3%, transparent));
 }
 
 /* DEFWIN participant slot: grey out the non-existent opponent row */
@@ -327,8 +327,8 @@
   height: 8px;
   border-radius: 999px;
   flex: 0 0 auto;
-  border: 1px solid rgba(255, 255, 255, 0.34);
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.03);
+  border: 1px solid color-mix(in srgb, var(--lt-white) 34%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--lt-white) 3%, transparent);
 }
 
 .lt-match-state-dot--open {
@@ -369,7 +369,7 @@
   line-height: 1.12;
   letter-spacing: 0.02em;
   text-transform: none;
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  border: 1px solid color-mix(in srgb, var(--lt-white) 14%, transparent);
   white-space: nowrap;
   grid-column: 2;
   grid-row: 1;
@@ -378,20 +378,20 @@
 
 .lt-match-status--open {
   color: color-mix(in srgb, var(--lt-brand-orange) 84%, white);
-  background: color-mix(in srgb, var(--lt-brand-orange) 14%, rgba(255, 255, 255, 0.04));
+  background: color-mix(in srgb, var(--lt-brand-orange) 14%, color-mix(in srgb, var(--lt-white) 4%, transparent));
   border-color: color-mix(in srgb, var(--lt-brand-orange) 34%, white);
 }
 
 .lt-match-status--pending {
   color: color-mix(in srgb, var(--lt-brand-blue) 84%, white);
-  background: color-mix(in srgb, var(--lt-brand-blue) 16%, rgba(255, 255, 255, 0.04));
+  background: color-mix(in srgb, var(--lt-brand-blue) 16%, color-mix(in srgb, var(--lt-white) 4%, transparent));
   border-color: color-mix(in srgb, var(--lt-brand-blue) 34%, white);
 }
 
 .lt-match-status--done,
 .lt-match-status--auto {
   color: color-mix(in srgb, var(--lt-brand-success) 90%, white);
-  background: color-mix(in srgb, var(--lt-brand-success) 14%, rgba(255, 255, 255, 0.04));
+  background: color-mix(in srgb, var(--lt-brand-success) 14%, color-mix(in srgb, var(--lt-white) 4%, transparent));
   border-color: color-mix(in srgb, var(--lt-brand-success) 34%, white);
 }
 
@@ -408,8 +408,8 @@
   gap: 8px;
   padding: 0 11px 0 10px;
   border-radius: var(--lt-radius-sm);
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: color-mix(in srgb, var(--lt-white) 4%, transparent);
+  border: 1px solid color-mix(in srgb, var(--lt-white) 9%, transparent);
   font-size: 0.93rem;
   line-height: 1.15;
   min-width: 0;
@@ -424,19 +424,19 @@
 
 .lt-team.defwin {
   color: color-mix(in srgb, var(--lt-brand-success) 88%, white);
-  background: color-mix(in srgb, var(--lt-brand-success) 10%, rgba(255, 255, 255, 0.04));
+  background: color-mix(in srgb, var(--lt-brand-success) 10%, color-mix(in srgb, var(--lt-white) 4%, transparent));
   border-color: color-mix(in srgb, var(--lt-brand-success) 18%, white);
 }
 
 .lt-team.winner:not(.defwin) {
   border-color: color-mix(in srgb, var(--lt-brand-success) 66%, white);
-  background: color-mix(in srgb, var(--lt-brand-success) 12%, rgba(255, 255, 255, 0.04));
+  background: color-mix(in srgb, var(--lt-brand-success) 12%, color-mix(in srgb, var(--lt-white) 4%, transparent));
 }
 
 .lt-team.has-active-player {
   transform: translateX(1px);
   border-color: color-mix(in srgb, var(--lt-brand-orange) 55%, white);
-  background: color-mix(in srgb, var(--lt-brand-orange) 10%, rgba(255, 255, 255, 0.04));
+  background: color-mix(in srgb, var(--lt-brand-orange) 10%, color-mix(in srgb, var(--lt-white) 4%, transparent));
   opacity: 1 !important;
 }
 
@@ -479,15 +479,15 @@
   font-weight: 900;
   font-variant-numeric: tabular-nums;
   text-align: center;
-  color: white;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--lt-white);
+  background: color-mix(in srgb, var(--lt-white) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--lt-white) 8%, transparent);
   opacity: 0.58;
   transition: opacity 140ms ease, background 140ms ease, border-color 140ms ease;
 }
 
 .lt-team.winner:not(.defwin) .lt-score-pill {
-  background: color-mix(in srgb, var(--lt-brand-success) 24%, rgba(255, 255, 255, 0.1));
+  background: color-mix(in srgb, var(--lt-brand-success) 24%, color-mix(in srgb, var(--lt-white) 10%, transparent));
   border-color: color-mix(in srgb, var(--lt-brand-success) 38%, white);
   opacity: 0.96;
 }
@@ -526,7 +526,7 @@
   padding: 4px 9px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--lt-bg) 94%, transparent);
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  border: 1px solid color-mix(in srgb, var(--lt-white) 16%, transparent);
   color: color-mix(in srgb, white 86%, var(--lt-muted));
   font-size: 0.7rem;
   font-weight: 800;
@@ -562,8 +562,8 @@
   height: 8px;
   border-radius: 999px;
   flex: 0 0 auto;
-  border: 1px solid rgba(255, 255, 255, 0.34);
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.03);
+  border: 1px solid color-mix(in srgb, var(--lt-white) 34%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--lt-white) 3%, transparent);
 }
 
 .lt-incoming-pill-dot--open {
@@ -653,7 +653,7 @@
 .lt-final-card {
   border-radius: var(--lt-radius);
   padding: 0.75rem;
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--lt-white) 4%, transparent);
   border: 1px solid var(--lt-border);
   overflow: visible;
 }
@@ -677,11 +677,11 @@
 
 .lt-empty-state {
   padding: 1.4rem 1rem;
-  border: 1px dashed rgba(255, 255, 255, 0.22);
+  border: 1px dashed color-mix(in srgb, var(--lt-white) 22%, transparent);
   border-radius: 14px;
   text-align: center;
   color: var(--lt-muted);
-  background: rgba(255, 255, 255, 0.03);
+  background: color-mix(in srgb, var(--lt-white) 3%, transparent);
 }
 
 
@@ -824,8 +824,8 @@
   line-height: 1.2;
   white-space: nowrap;
   color: color-mix(in srgb, white 82%, var(--lt-muted));
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: color-mix(in srgb, var(--lt-white) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--lt-white) 10%, transparent);
 }
 
 
@@ -852,8 +852,8 @@
 .lt-view-select select {
   appearance: none;
   -webkit-appearance: none;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: color-mix(in srgb, var(--lt-white) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--lt-white) 14%, transparent);
   border-radius: var(--lt-radius-sm, 6px);
   color: inherit;
   font-family: inherit;
@@ -870,8 +870,8 @@
 }
 
 .lt-view-select select:hover {
-  border-color: rgba(255, 255, 255, 0.28);
-  background-color: rgba(255, 255, 255, 0.09);
+  border-color: color-mix(in srgb, var(--lt-white) 28%, transparent);
+  background-color: color-mix(in srgb, var(--lt-white) 9%, transparent);
 }
 
 .lt-view-select select:focus-visible {
@@ -911,7 +911,7 @@
 
 .lt-p3-card {
   border-color: color-mix(in srgb, var(--lt-brand-orange) 18%, var(--lt-border));
-  background: color-mix(in srgb, var(--lt-brand-orange) 4%, rgba(255, 255, 255, 0.04));
+  background: color-mix(in srgb, var(--lt-brand-orange) 4%, color-mix(in srgb, var(--lt-white) 4%, transparent));
 }
 
 .lt-p3-card h3 {
@@ -925,7 +925,7 @@
 /* Inline P3 match within bracket grid (SE only) */
 .lt-match.lt-p3-inline {
   border-color: color-mix(in srgb, var(--lt-brand-orange) 18%, var(--lt-border));
-  background: color-mix(in srgb, var(--lt-brand-orange) 4%, rgba(255, 255, 255, 0.04));
+  background: color-mix(in srgb, var(--lt-brand-orange) 4%, color-mix(in srgb, var(--lt-white) 4%, transparent));
 }
 
 .lt-match.lt-p3-inline .lt-match-label {
@@ -941,8 +941,8 @@
   border-color: color-mix(in srgb, var(--lt-brand-orange) 36%, var(--lt-border));
   background: linear-gradient(
     135deg,
-    color-mix(in srgb, var(--lt-brand-orange) 6%, rgba(255, 255, 255, 0.04)),
-    rgba(255, 255, 255, 0.02)
+    color-mix(in srgb, var(--lt-brand-orange) 6%, color-mix(in srgb, var(--lt-white) 4%, transparent)),
+    color-mix(in srgb, var(--lt-white) 2%, transparent)
   );
 }
 
@@ -955,8 +955,8 @@
   border-color: color-mix(in srgb, var(--lt-brand-orange) 32%, var(--lt-border));
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--lt-brand-orange) 8%, rgba(255, 255, 255, 0.08)),
-    rgba(255, 255, 255, 0.03)
+    color-mix(in srgb, var(--lt-brand-orange) 8%, color-mix(in srgb, var(--lt-white) 8%, transparent)),
+    color-mix(in srgb, var(--lt-white) 3%, transparent)
   );
   box-shadow:
     0 10px 24px rgba(0, 0, 0, 0.22),
@@ -978,30 +978,30 @@
 
 .lt-team.lt-team-rank-1:not(.defwin) {
   border-color: color-mix(in srgb, #FFD700 66%, white);  /* Gold */
-  background: color-mix(in srgb, #FFD700 12%, rgba(255, 255, 255, 0.04));
+  background: color-mix(in srgb, #FFD700 12%, color-mix(in srgb, var(--lt-white) 4%, transparent));
 }
 .lt-team.lt-team-rank-1:not(.defwin) .lt-score-pill {
-  background: color-mix(in srgb, #FFD700 24%, rgba(255, 255, 255, 0.1));
+  background: color-mix(in srgb, #FFD700 24%, color-mix(in srgb, var(--lt-white) 10%, transparent));
   border-color: color-mix(in srgb, #FFD700 38%, white);
   opacity: 0.96;
 }
 
 .lt-team.lt-team-rank-2:not(.defwin) {
   border-color: color-mix(in srgb, #C0C0C0 66%, white);  /* Silver */
-  background: color-mix(in srgb, #C0C0C0 12%, rgba(255, 255, 255, 0.04));
+  background: color-mix(in srgb, #C0C0C0 12%, color-mix(in srgb, var(--lt-white) 4%, transparent));
 }
 .lt-team.lt-team-rank-2:not(.defwin) .lt-score-pill {
-  background: color-mix(in srgb, #C0C0C0 24%, rgba(255, 255, 255, 0.1));
+  background: color-mix(in srgb, #C0C0C0 24%, color-mix(in srgb, var(--lt-white) 10%, transparent));
   border-color: color-mix(in srgb, #C0C0C0 38%, white);
   opacity: 0.96;
 }
 
 .lt-team.lt-team-rank-3:not(.defwin) {
   border-color: color-mix(in srgb, #CD7F32 66%, white);  /* Bronze */
-  background: color-mix(in srgb, #CD7F32 12%, rgba(255, 255, 255, 0.04));
+  background: color-mix(in srgb, #CD7F32 12%, color-mix(in srgb, var(--lt-white) 4%, transparent));
 }
 .lt-team.lt-team-rank-3:not(.defwin) .lt-score-pill {
-  background: color-mix(in srgb, #CD7F32 24%, rgba(255, 255, 255, 0.1));
+  background: color-mix(in srgb, #CD7F32 24%, color-mix(in srgb, var(--lt-white) 10%, transparent));
   border-color: color-mix(in srgb, #CD7F32 38%, white);
   opacity: 0.96;
 }
