@@ -29,6 +29,7 @@
     font-family: var(--body);
     overflow-x: hidden;
     position: relative;
+    font-weight: 600;
   }
   /* paper grain + edge vignette — replaces L25-28 invisible dot pattern */
   body::before {
@@ -76,6 +77,26 @@
   /* Header sheet bottom-edge: shadow only below, no double-cast onto .bote-page */
   .page-header-fixed { padding-top: clamp(14px, 3vw, 36px); }
   .page-footer-modern { padding-bottom: clamp(14px, 3vw, 36px); }
+
+  /* ---------- Sticky nav strip ----------
+     The header sheet is sticky with a negative top offset equal to the
+     masthead height (measured into --bote-mast-h by behavior/bote-sticky-nav.js),
+     so the topstrip/masthead scroll away and only the .navstrip row stays
+     pinned at the viewport top. Without JS the 9999px fallback means the
+     header never reaches its sticky offset and simply scrolls as before. */
+  .page-header-fixed {
+    position: sticky;
+    top: calc(-1 * var(--bote-mast-h, 9999px));
+    z-index: 70;
+  }
+  /* Ink rule under the pinned strip so it reads as an edge over the content */
+  .page-header-fixed.is-pinned {
+    box-shadow: 0 0 0 1px var(--paperDark),
+                0 1.5px 0 var(--ink),
+                0 18px 32px -16px rgba(26, 24, 18, 0.22);
+  }
+  /* Anchor jumps land below the pinned strip instead of underneath it */
+  html { scroll-padding-top: calc(var(--bote-nav-h, 0px) + 10px); }
 
   /* ---------- Rules ---------- */
   .rule        { border-top: 1px solid var(--ink); margin: 12px 0; }
@@ -1196,6 +1217,54 @@
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%231a1812' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.5l3 3 3-3'/%3E%3C/svg%3E");
   }
 
+  /* Status chips (Tagesausgabe only): the module's .lt-dark chip rules keep
+     brand-coloured text (e.g. #ffcc3f warning) that is correct on the dark
+     editions but unreadable on paper. Re-stamp as ink on a brand-tinted
+     paper swatch. The dark edition keeps the module rules untouched. */
+  html:not([data-theme="dark"]) body.lt-dark .tag.color-warning {
+    background: color-mix(in srgb, var(--lt-brand-warning) 26%, var(--paperLite));
+    border-color: color-mix(in srgb, var(--lt-brand-warning) 65%, var(--ink));
+    color: var(--ink);
+    text-shadow: none;
+  }
+
+  html:not([data-theme="dark"]) body.lt-dark .tag.color-success {
+    background: color-mix(in srgb, var(--lt-brand-success) 22%, var(--paperLite));
+    border-color: color-mix(in srgb, var(--lt-brand-success) 60%, var(--ink));
+    color: var(--ink);
+    text-shadow: none;
+  }
+
+  html:not([data-theme="dark"]) body.lt-dark .tag.color-info {
+    background: color-mix(in srgb, var(--lt-brand-blue) 22%, var(--paperLite));
+    border-color: color-mix(in srgb, var(--lt-brand-blue) 60%, var(--ink));
+    color: var(--ink);
+    text-shadow: none;
+  }
+
+  html:not([data-theme="dark"]) body.lt-dark .tag.color-danger {
+    background: color-mix(in srgb, var(--lt-brand-danger) 22%, var(--paperLite));
+    border-color: color-mix(in srgb, var(--lt-brand-danger) 60%, var(--ink));
+    color: var(--ink);
+    text-shadow: none;
+  }
+
+  /* Tagesausgabe token tune: the module's success token (#24c26b) and muted
+     ink (--inkMute) pass on the dark editions but land at 1.6:1 ("Done" /
+     "DEFWIN" chips, defwin rows) and ~4.2:1 (stats chips, view label,
+     match meta) on paper. Point them at the printable green/ink. */
+  html:not([data-theme="dark"]) body.lt-dark {
+    --lt-brand-success: var(--green);
+    --lt-muted: var(--inkSoft);
+  }
+
+  /* Champion banner: hardcoded #FFD700 gold text vanishes on paper; keep
+     the gilded frame, set the lettering in ink. */
+  html:not([data-theme="dark"]) body.lt-dark .winner-banner-label,
+  html:not([data-theme="dark"]) body.lt-dark .winner-banner-name {
+    color: var(--ink);
+  }
+
   /* ----------------------------------------------------------------------------
      (b) PAGE-CLASS VOCABULARY — newspaper idiom.
      Paper surfaces, ink/red, square corners, dotted/double rules. These compose
@@ -1482,6 +1551,47 @@
       border-left: 0;
       border-right: 0;
       box-shadow: none;
+    }
+  }
+
+  /* LAN module pages (detail / matches / bracket) — same join to the 1320px
+     sheet. These pages carry body.lt-dark and render their content straight
+     into the byceps .content-wrapper (no inner page-id wrapper like the DB
+     pages), so the wrapper itself is the sheet here. Without this the navstrip,
+     tournament header, and bracket overshoot the masthead at >1320px. */
+  body.lt-dark .content-wrapper {
+    max-width: 1320px;
+    margin: 0 auto;
+    padding-left: clamp(14px, 3vw, 44px);
+    padding-right: clamp(14px, 3vw, 44px);
+    padding-bottom: 36px;
+    background: var(--paper);
+    border-left: 1px solid var(--paperDark);
+    border-right: 1px solid var(--paperDark);
+    box-shadow: 0 0 0 1px var(--paperDark),
+                0 18px 32px -16px rgba(26, 24, 18, 0.18);
+  }
+  /* Phone widths: the sheet IS the viewport, matching header/footer/.bote-page
+     and the DB-page rule above. Placed after the sheet rule so document order
+     keeps it winning at equal specificity. */
+  @media (max-width: 720px) {
+    body.lt-dark .content-wrapper {
+      border-left: 0;
+      border-right: 0;
+      box-shadow: none;
+    }
+  }
+  /* Cancel the bracket module's full-viewport breakout. lan_tournament_bracket.css
+     gives #bracket-app `width:100vw; margin-left:calc(-50vw + 50%)` (min-width:761)
+     so the bracket spans the whole viewport — which now overshoots the 1320 sheet.
+     Pin it back into the wrapper's content box; the inner .lt-bracket-scroll keeps
+     overflow-x:auto, so wide trees still pan WITHIN the sheet. Higher specificity
+     (extra `body` element) beats the module's `.lt-dark #bracket-app`. */
+  @media (min-width: 761px) {
+    body.lt-dark #bracket-app {
+      width: auto;
+      margin-left: 0;
+      padding-inline: 0;
     }
   }
 

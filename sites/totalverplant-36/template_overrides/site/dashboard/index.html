@@ -1,0 +1,105 @@
+{% extends 'layout/base.html' %}
+{% set current_page = 'dashboard' %}
+{% set page_title = _('Dashboard') %}
+
+{% block head %}
+<style>
+  /* Dashboard joins the same 1320px paper-sheet column as every other page.
+     Without the .bote-page wrapper the BYCEPS content-wrapper ran full-bleed
+     and slid under the sticky masthead — that was the "misplaced" dashboard. */
+  .dashboard-page .page-head { margin-bottom: clamp(14px, 2.4vw, 22px); }
+
+  .dashboard-items {
+    display: grid;
+    gap: clamp(20px, 2.6vw, 30px) clamp(22px, 3vw, 40px);
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    margin-top: 6px;
+  }
+  .dashboard-item {
+    border-top: 3px double var(--ink);
+    padding-top: 12px;
+  }
+  .dashboard-item h2 {
+    font-family: var(--display);
+    font-weight: 700;
+    font-style: italic;
+    font-size: clamp(22px, 2.4vw, 28px);
+    line-height: 1;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+    margin: 0 0 12px;
+  }
+  .dashboard-item .dimmed,
+  .dashboard-item .dimmed * {
+    font-family: var(--body);
+    font-style: italic;
+    color: var(--inkSoft);
+  }
+  .dashboard-item-meta {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--inkSoft);
+  }
+  .dashboard-item .continuative-link {
+    margin-top: 14px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--ink);
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+  .dashboard-item .continuative-link a { color: var(--redDeep); }
+</style>
+{%- endblock %}
+
+{% block body %}
+<div class="bote-page dashboard-page">
+
+  <div class="page-folio">
+    <span class="pf-ressort">Mein Vereinskonto</span>
+    <span>Der Rentenbote · Ausgabe 36</span>
+  </div>
+
+  <header class="page-head">
+    <h1 class="ph-title">Mein <em>Schreibtisch</em></h1>
+    <p class="ph-standfirst">
+      Bestellungen, Tickets, Neuigkeiten und Gastserver — alles Wichtige aus dem
+      Vereinsbüro auf einen Blick.
+    </p>
+  </header>
+
+  <div class="dashboard-items">
+
+    <div class="dashboard-item">
+{% include 'site/dashboard/_orders.html' %}
+    </div>
+
+    <div class="dashboard-item">
+{% include 'site/dashboard/_tickets.html' %}
+    </div>
+
+{%- if news_headlines is not none %}
+    <div class="dashboard-item">
+{% include 'site/dashboard/_news.html' %}
+    </div>
+{%- endif %}
+
+{%- if board_topics is not none %}
+    <div class="dashboard-item">
+{% include 'site/dashboard/_board.html' %}
+    </div>
+{%- endif %}
+
+{%- if guest_servers is not none %}
+    <div class="dashboard-item">
+{% include 'site/dashboard/_guest_servers.html' %}
+    </div>
+{%- endif %}
+
+  </div>
+
+</div>
+{%- endblock %}

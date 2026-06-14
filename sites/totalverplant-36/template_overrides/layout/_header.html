@@ -1,4 +1,142 @@
+{%- from 'macros/user.html' import render_user_screen_name %}
 {%- set login_url = url_for('authn_login.log_in_form') -%}
+{%- set logout_url = url_for('authn_login.log_out', _method='POST') -%}
+<style>
+  /* ---------- Logged-in account menu (newspaper "Vereinsausweis") ----------
+     Mirrors the .nav-login button styling but opens a dropdown with the same
+     destinations BYCEPS exposes in its standard current-user menu:
+     Dashboard · Profil · Einstellungen · Tickets · Bestellungen · Abmelden. */
+  .nav-actions { display: inline-flex; align-items: center; gap: 10px; margin-left: auto; flex-wrap: wrap; }
+  .nav-account { position: relative; display: inline-block; }
+  .nav-account > summary {
+    list-style: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px 7px 14px;
+    border: 1.5px solid var(--ink);
+    background: var(--paperLite);
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+    user-select: none;
+  }
+  .nav-account > summary::-webkit-details-marker { display: none; }
+  .nav-account > summary:hover { background: var(--ink); color: var(--paper); }
+  .nav-account .na-name { max-width: 16ch; overflow: hidden; text-overflow: ellipsis; }
+  /* Stacked stripes (hamburger-style) replace the key glyph when logged in */
+  .nav-account .na-bars {
+    display: inline-flex; flex-direction: column; justify-content: center;
+    gap: 3px; width: 16px; flex: 0 0 auto;
+  }
+  .nav-account .na-bars i { display: block; height: 2px; background: currentColor; }
+  .nav-account .na-caret { font-size: 9px; transition: transform 0.15s ease; }
+  .nav-account[open] > summary { background: var(--ink); color: var(--paper); }
+  .nav-account[open] .na-caret { transform: rotate(180deg); }
+
+  .nav-account .na-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 90;
+    min-width: 230px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    background: var(--paper);
+    border: 1.5px solid var(--ink);
+    box-shadow: 5px 5px 0 var(--ink);
+  }
+  .nav-account .na-head {
+    padding: 10px 14px;
+    border-bottom: 3px double var(--ink);
+    font-family: var(--mono);
+    font-size: 9.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--inkSoft);
+    line-height: 1.5;
+  }
+  .nav-account .na-head strong {
+    display: block;
+    font-family: var(--display);
+    font-style: italic;
+    font-weight: 700;
+    font-size: 20px;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+    text-transform: none;
+  }
+  .nav-account .na-menu li > a {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-top: 1px dashed var(--ink);
+    font-family: var(--body);
+    font-style: italic;
+    font-size: 16px;
+    color: var(--ink);
+    text-decoration: none;
+  }
+  .nav-account .na-menu li:first-child > a { border-top: 0; }
+  .nav-account .na-menu li > a::before {
+    content: '›';
+    font-family: var(--mono);
+    font-style: normal;
+    color: var(--redDeep);
+  }
+  .nav-account .na-menu li > a:hover { background: rgba(168,40,28,0.06); color: var(--redDeep); }
+  .nav-account .na-menu .na-logout {
+    border-top: 3px double var(--ink) !important;
+    font-family: var(--mono) !important;
+    font-style: normal !important;
+    font-size: 11px !important;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: var(--redDeep) !important;
+  }
+  .nav-account .na-menu .na-logout::before { content: '✕' !important; }
+
+  /* Mobile icon trigger for the account menu (parallels .nav-login-mobile) */
+  .nav-account-mobile { display: none; }
+
+  /* Account links rendered inside the mobile hamburger panel */
+  .nav-panel .na-panel-head {
+    padding: 12px 4px 8px;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--inkSoft);
+    border-bottom: 1px dashed var(--ink);
+  }
+  .nav-panel .na-panel-head strong {
+    font-family: var(--display); font-style: italic; font-size: 18px;
+    color: var(--ink); text-transform: none; letter-spacing: -0.01em;
+  }
+
+  @media (max-width: 720px) {
+    .nav-account { display: none; }   /* desktop dropdown hidden — lives in panel */
+    .nav-account-mobile {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 44px;
+      height: 44px;
+      margin-left: auto;
+      font-size: 18px;
+      text-decoration: none;
+      color: var(--ink);
+    }
+  }
+</style>
 <div class="topstrip">
   <span>Auflage 36 · 16.–18. Oktober MMXXVI</span>
   <span>Großsporthalle Brake · Philosophenweg 8 · 26919</span>
@@ -24,16 +162,59 @@
 <div class="rule"></div>
 <div class="navstrip">
   <div class="crumbs">{% include 'layout/_navigation.html' with context %}</div>
+
+  <div class="nav-actions">
+  <button type="button" class="theme-toggle" data-theme-toggle aria-pressed="false">
+    <span class="tt-label">☾ Spätausgabe</span>
+  </button>
+
+  {%- if g.user.authenticated %}
+  {%- set screen_name = render_user_screen_name(g.user.as_user()) %}
+  <details class="nav-account">
+    <summary>
+      <span class="na-bars" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span class="na-name">{{ screen_name }}</span>
+      <span class="na-caret" aria-hidden="true">▾</span>
+    </summary>
+    <ul class="na-menu">
+      <li class="na-head">Angemeldet als<strong>{{ screen_name }}</strong></li>
+      <li><a href="{{ url_for('dashboard.index') }}">Übersicht</a></li>
+      <li><a href="{{ url_for('user_profile.view', user_id=g.user.id) }}">Profil</a></li>
+      <li><a href="{{ url_for('user_settings.view') }}">Einstellungen</a></li>
+      <li><a href="{{ url_for('ticketing.index_mine') }}">Meine Tickets</a></li>
+      <li><a href="{{ url_for('shop_orders.index') }}">Bestellungen</a></li>
+      <li>
+        <a class="na-logout" href="{{ logout_url }}"
+           data-action="log-out" data-redirect-target="{{ login_url }}">Abmelden</a>
+      </li>
+    </ul>
+  </details>
+  <a class="nav-account-mobile" href="{{ url_for('dashboard.index') }}" aria-label="Mein Konto"><span class="na-bars"><i></i><i></i><i></i></span></a>
+  {%- else %}
   <a class="nav-login" href="{{ login_url }}">🔑 Log in</a>
   <a class="nav-login-mobile" href="{{ login_url }}" aria-label="Log in">🔑</a>
+  {%- endif %}
+
   <button class="nav-hamburger" aria-expanded="false" aria-label="Menü öffnen">
     <span class="bars"></span>
     <span class="bars"></span>
     <span class="bars"></span>
     <span class="label">Menü</span>
   </button>
+  </div>
   <nav class="nav-panel" style="flex-basis:100%">
     {% include 'layout/_navigation.html' with context %}
+    {%- if g.user.authenticated %}
+    <div class="na-panel-head">Angemeldet als <strong>{{ render_user_screen_name(g.user.as_user()) }}</strong></div>
+    <a href="{{ url_for('dashboard.index') }}">Übersicht</a>
+    <a href="{{ url_for('user_profile.view', user_id=g.user.id) }}">Profil</a>
+    <a href="{{ url_for('user_settings.view') }}">Einstellungen</a>
+    <a href="{{ url_for('ticketing.index_mine') }}">Meine Tickets</a>
+    <a href="{{ url_for('shop_orders.index') }}">Bestellungen</a>
+    <a class="nav-panel-login" href="{{ logout_url }}"
+       data-action="log-out" data-redirect-target="{{ login_url }}">Abmelden</a>
+    {%- else %}
     <a class="nav-panel-login" href="{{ login_url }}">🔑 Log in</a>
+    {%- endif %}
   </nav>
 </div>

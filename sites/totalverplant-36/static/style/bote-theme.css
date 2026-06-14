@@ -1,0 +1,109 @@
+/* ============================================================================
+   Der Rentenbote — „Spätausgabe" (dark mode) for the totalverplant-36 site.
+   Loaded AFTER totalverplant-36.css so the html[data-theme="dark"] token swap
+   wins. Toggle + persistence handled by behavior/bote-theme.js.
+   ============================================================================ */
+
+:root {
+  color-scheme: light;
+  --tintCard: rgba(255, 255, 255, 0.20);
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --paper:     #1c1914;
+  --paperDark: #14110d;
+  --paperLite: #262219;
+  --ink:       #ece3cd;
+  --inkSoft:   #c0b598;
+  --inkMute:   #8d8268;
+  --red:       #e0664f;
+  --redDeep:   #d65a45;
+  --blue:      #8fa9d2;
+  --green:     #9cba80;
+  --tintCard:  rgba(255, 255, 255, 0.045);
+}
+
+/* Smooth the flip */
+body { transition: background-color 0.25s ease, color 0.25s ease; }
+
+/* ---------- Paper grain: dark vignette + faint light flecks ---------- */
+html[data-theme="dark"] body::before {
+  background-image:
+    radial-gradient(ellipse at center, transparent 58%, rgba(0,0,0,0.40) 100%),
+    radial-gradient(circle at 25% 25%, rgba(255,255,255,0.022) 1px, transparent 1.5px),
+    radial-gradient(circle at 75% 75%, rgba(255,255,255,0.022) 1px, transparent 1.5px);
+  background-size: auto, 8px 8px, 8px 8px;
+  mix-blend-mode: normal;
+  opacity: 1;
+}
+
+/* ---------- Plain panels inherit byceps core's hardcoded #ffffff
+   (common.css: `.box, .card, .notification { background-color:#ffffff }`).
+   That white survived the dark token swap, so cream --ink text/borders sat on
+   white = unreadable. Re-seat them on elevated dark paper (--paperLite, one
+   step lighter than the --paper desk) to keep the light-mode "clipping floats
+   above the paper" relationship. .box keeps its cream --ink border from the
+   base theme; .card/.notification keep their #ccc --border-color, which reads
+   fine on the dark panel. Listed before the tinted variants below; the colored
+   .box-* classes never combine with plain .box, so their tints are unaffected. */
+html[data-theme="dark"] :is(.box, .card, .notification) {
+  background-color: var(--paperLite);
+}
+
+/* ---------- Tinted panels — hardcoded rgba() in the base, re-tuned ---------- */
+html[data-theme="dark"] .event-banner { background: rgba(214, 90, 69, 0.07); }
+html[data-theme="dark"] .eb-status     { background: rgba(214, 90, 69, 0.12); }
+html[data-theme="dark"] .box-blue      { background: rgba(143, 169, 210, 0.08); }
+html[data-theme="dark"] .box-red       { background: rgba(214, 90, 69, 0.08); }
+html[data-theme="dark"] .box-green     { background: rgba(156, 186, 128, 0.08); }
+html[data-theme="dark"] .box-soft,
+html[data-theme="dark"] .news-list     { background: var(--tintCard); }
+html[data-theme="dark"] .halftone .cap { background: rgba(20, 17, 13, 0.88); }
+html[data-theme="dark"] .mobile-cta    { box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.55); }
+
+/* ---------- Logged-in account dropdown (header override) ----------
+   Uses the colour tokens, so it swaps automatically; only the offset
+   shadow needs softening against the dark desk. */
+html[data-theme="dark"] .nav-account .na-menu { box-shadow: 5px 5px 0 rgba(0,0,0,0.5); }
+
+/* ---------- Inline-SVG line icons bake a #1a1812 stroke into the data-URI,
+   which would vanish on dark paper. Re-tint only the SVG-backed glyphs
+   (the Unicode dingbat icons inherit currentColor and need no help). ---------- */
+html[data-theme="dark"] :is(
+  .ico--sitemap, .ico--gamepad, .ico--plug, .ico--wifi, .ico--car,
+  .ico--truck, .ico--road, .ico--fire-extinguisher, .ico--wrench,
+  .ico--facebook, .ico--instagram
+)::before {
+  filter: invert(0.9) sepia(0.12) brightness(1.05);
+}
+
+/* ---------- Theme toggle button (Tages-/Spätausgabe) ---------- */
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border: 1.5px solid var(--ink);
+  background: var(--paperLite);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  font-style: normal;
+}
+.theme-toggle:hover { background: var(--ink); color: var(--paper); }
+
+/* Keep the toggle visible next to the hamburger on phones */
+@media (max-width: 720px) {
+  .navstrip .theme-toggle {
+    display: inline-flex;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    padding: 6px 10px;
+  }
+}
