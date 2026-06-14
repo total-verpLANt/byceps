@@ -17,9 +17,9 @@
       <div class="eb-meta">
         <span>📅
           {%- if g.party and g.party.starts_at and g.party.ends_at %}
-            {{ g.party.starts_at|dateformat('EEE d. MMM yyyy') }} — {{ g.party.ends_at|dateformat('EEE d. MMM yyyy') }}
+            {{ g.party.starts_at|dateformat('EEE d. MMM yyyy') }}, {{ g.party.starts_at|timeformat('HH:mm') }} Uhr — {{ g.party.ends_at|dateformat('EEE d. MMM yyyy') }}, {{ g.party.ends_at|timeformat('HH:mm') }} Uhr
           {%- else %}
-            Fr 16. — So 18. Oktober 2026
+            Fr 16. Oktober 2026, 17:00 Uhr — So 18. Oktober 2026, 10:00 Uhr
           {%- endif %}
         </span>
         <span class="sep">·</span>
@@ -185,7 +185,9 @@
 
       <div class="rule rule-double"></div>
 
-      <div class="halftone" style="height:260px;background-size:8px 8px,16px 16px">
+      <div class="halftone has-photo" style="height:260px;background-size:8px 8px,16px 16px">
+        <img class="ht-img" src="{{ url_for_site_file('style/photos/grosssporthalle.webp') }}"
+             alt="Großsporthalle Brake" loading="lazy" decoding="async">
         <div class="cap">FOTO · Großsporthalle Brake · Auflage 28 · Foto: Archiv</div>
       </div>
       <div style="font-family:var(--body);font-style:italic;font-size:12.5px;color:var(--inkSoft);margin-top:6px;margin-bottom:14px;text-align:center">
@@ -194,44 +196,20 @@
 
       <div class="article-2col">
         <p class="body-text dropcap" style="text-indent:0">
-          Die sechsunddreißigste Auflage der größten LAN-Party der Wesermarsch steht
-          unter einem klaren Motto: <strong>„Rentner".</strong> Vom 16. bis 18. Oktober
-          verwandelt sich die Großsporthalle Brake in eine Mischung aus Wintergarten und
-          eSports-Arena — mit Hosenträger-Dresscode, Strickjacke an der Cocktailbar,
-          Wollknäuel am Vereinsstand und dem ersten offiziellen Mittagsschlaf-Block der
-          Vereinsgeschichte.
+          Die sechsunddreißigste Auflage der größten LAN-Party des Nordwestens steht
+          diesmalig unter folgendem klaren Motto: <strong>„Rente".</strong>
+          Nach zwanzigjährigem Bestehen des Vereins ist dies ein mehr als passender Titel
+          für das, was kommt: Die Großsporthalle Brake wird zum Treffpunkt aller elegant
+          gealterten sowie junggebliebenen Spielebegeisterten, die sich die digitale Butter
+          nicht vom überteuerten Bio-Brot nehmen lassen.
         </p>
         <p class="body-text">
-          Veranstalter ist der <em>total verpLANt e.V.</em>, der erste eSports- und
-          Gaming-Club der Wesermarsch. Passend zum Thema: ein <em>Hardware-Helfer&shy;dienst</em>
-          für alle, denen das Bücken unter den Tisch schwerfällt. „Wir verlegen die Kabel,
-          Sie spielen", heißt es im Aushang. Vergütet wird in Bienen&shy;stich. Wer ohne
-          Hosenträger erscheint, erhält am Eingang ein Vereins-Paar zum Anlegen.
-        </p>
-        <p class="body-text">
-          Das offizielle Mittags&shy;schlaf&shy;fenster zwischen 13 und 15 Uhr ist Teil des
-          Programms und <em>verbindlich</em>. Counter-Strike&shy;matches in dieser Zeit
-          werden vom Schiedsrichter neu angesetzt — eine Regelung seit der siebten
-          Auflage 2009, als Helmut beim Turnier eingeschlafen ist. Headshots sind
-          weiterhin erlaubt, aber bitte leise.
-        </p>
-        <p class="body-text">
-          Auf dem Programm: PC-Turniere mit klaren Regeln und Sieger&shy;ehrung, ein
-          „Schlager-Karaoke"-Block am Samstag, Konsolen-Couch-Multiplayer mit
-          Wolldecke im Side-Room sowie die haus&shy;eigene Cocktail&shy;bar — Pharisäer und
-          Eierlikör inklusive, alkohol&shy;frei verfügbar für alle, die noch zielen wollen.
-        </p>
-        <p class="body-text">
-          Tickets sind ab 30 Euro über die Vereins&shy;website verfügbar. Mindest&shy;alter:
-          18 Jahre, durchgesetzt von Frau Wolters persönlich am Einlass — sie
-          kontrolliert in der Rentner-Auflage zusätzlich, ob die Hosenträger korrekt
-          sitzen. Anmeldungen werden vorzugsweise nach dem zweiten Frühstück
-          entgegen&shy;genommen.{% if is_nearly_sold_out %} Aktuell sind nur noch {{ available }} Plätze frei.{% endif %}
-        </p>
-        <p class="body-text">
-          Ebenfalls beschlossen: Die jährliche „Wollknäuel-Spende" der Strickrunde geht
-          dieses Jahr direkt an den Hardware-Helfer&shy;dienst — mit ausdrücklichem Vermerk
-          „nicht für Mauspads verwenden, wir haben es bereits versucht."
+          In klassischer Manier des bekannten <em>total verpLANt e.V.</em> soll es auch
+          dieses Mal heiß hergehen – allerdings mit möglicher Mittagsruhe von 13:00 bis
+          15:00 Uhr. Packen Sie also Ihre Rheumadecke und die Gelenksalbe ein, denn für
+          bereits 30&nbsp;€ können Sie vom 16. bis zum 18. Oktober hautnah miterleben, was
+          es heißt, nochmal Jungspund und grün hinter den Ohren zu sein. Die Tickets sind
+          über die Internetseite des Vereins käuflich erwerblich.{% if is_nearly_sold_out %} Aktuell sind nur noch {{ available }} Plätze frei — beeilen Sie sich, Brigitte aus dem Strickkreis wollte sich nämlich auch noch ein paar sichern, und beim Sitzplatz-Wettlauf kennt die selbst mit Rollator keine Gnade.{% endif %}
         </p>
       </div>
 
@@ -340,135 +318,8 @@
 
   </div>{# /.three-col Hero #}
 
-  {# ========== 3. STATS ========== #}
-  <section style="margin-top:28px;--bote-i:1">
-    <div class="rule rule-double"></div>
-    <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;margin-bottom:14px">
-      <h2 class="head italic" style="font-size:28px">Die Auflage in Zahlen</h2>
-      <div style="font-family:var(--mono);font-size:10.5px;letter-spacing:0.18em;text-transform:uppercase;color:var(--inkSoft)">
-        Wirtschaftsteil · S. 4
-      </div>
-    </div>
-    <div class="stats">
-      <div>
-        <div class="num">35</div>
-        <div class="lbl">Auflagen seit 2006</div>
-      </div>
-      <div>
-        <div class="num">{{ total }}</div>
-        <div class="lbl">maximale Teilnehmende</div>
-      </div>
-      <div>
-        <div class="num">#1</div>
-        <div class="lbl">eSports-Club Wesermarsch</div>
-      </div>
-      <div>
-        <div class="num">1 Gbit/s</div>
-        <div class="lbl">pro Switchport</div>
-      </div>
-      <div>
-        <div class="num">{{ available }}</div>
-        <div class="lbl">{{ _('Plätze frei') }} (noch)</div>
-      </div>
-    </div>
-  </section>
-
-  {# ========== 4. TOURNAMENTS ========== #}
-  <section id="tournaments" style="margin-top:32px; scroll-margin-top:24px;--bote-i:2">
-    <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;margin-bottom:10px">
-      <div>
-        <div class="kicker">Sport · S. 12–14</div>
-        <h2 class="head italic" style="font-size:36px">Turnier&shy;ergebnisse</h2>
-      </div>
-      <div style="font-family:var(--body);font-style:italic;font-size:14px;color:var(--inkSoft)">
-        Berichterstattung: Helmut (Saal), Hannelore (Wintergarten)
-      </div>
-    </div>
-    <div class="rule"></div>
-    <div class="grid-3">
-
-      <div class="box">
-        <div class="kicker green">★ Haupt&shy;programm</div>
-        <h2 class="head" style="font-size:22px">PC-Turniere</h2>
-        <div class="byline">Klare Regeln · feste Zeiten · Sieger&shy;ehrung</div>
-        <svg class="bracket bracket-svg" viewBox="0 0 600 240" role="img" aria-labelledby="bracket-title" xmlns="http://www.w3.org/2000/svg">
-          <title id="bracket-title">Hauptfeld Bracket — Wollknäuel-5 vs. Kuchen-Crew</title>
-          <!-- Round labels -->
-          <text x="10"  y="14">Halbfinale</text>
-          <text x="260" y="14">Endspiel</text>
-          <text x="470" y="14">Sieger</text>
-          <!-- Semifinal 1 lines: two team feeds joining and forwarding -->
-          <path class="bline" d="M10,50 L210,50 L210,80 L260,80"/>
-          <path class="bline" d="M10,90 L210,90 L210,80"/>
-          <!-- Semifinal 2 lines -->
-          <path class="bline" d="M10,170 L210,170 L210,200 L260,200"/>
-          <path class="bline" d="M10,210 L210,210 L210,200"/>
-          <!-- Final feed: both semis to the trophy line -->
-          <path class="bline" d="M260,80  L420,80  L420,140 L470,140"/>
-          <path class="bline" d="M260,200 L420,200 L420,140"/>
-          <!-- Team labels — semifinals -->
-          <text x="12" y="42">HF · Wollknäuel-5</text>
-          <text x="12" y="82">HF · Bingo-Hawks</text>
-          <text x="12" y="162">HF · Stütz-Squad</text>
-          <text x="12" y="202">HF · Kuchen-Crew</text>
-          <!-- Semifinal winners -->
-          <text x="266" y="72">Wollknäuel-5</text>
-          <text x="266" y="192">Kuchen-Crew</text>
-          <!-- Final result — winner highlighted -->
-          <text x="476" y="134" class="winner">Wollknäuel-5</text>
-          <text x="476" y="152">Sonntag 14:00</text>
-        </svg>
-        <div style="font-family:var(--mono);font-size:11px;color:var(--inkSoft);margin-top:8px;letter-spacing:0.06em">
-          Finale: Wollknäuel-5 vs. Kuchen-Crew · Sonntag 14:00 · Hauptfeld · Eintritt: ein Stück Kuchen
-        </div>
-        <div style="font-family:var(--body);font-size:13px;margin-top:10px;color:var(--inkSoft);font-style:italic">
-          Schieds&shy;richter Helmut bittet: keine Headshots während des Mittagsschlafs.
-        </div>
-      </div>
-
-      <div class="box">
-        <div class="kicker blue">◆ Spaß-Formate</div>
-        <h2 class="head" style="font-size:22px">Fun- &amp; Community-Events</h2>
-        <div class="byline">Verrückte Modi · spontane Aktionen · So 10:00</div>
-        <pre class="bracket">Block 1  Sumo-Modus (Garry's Mod)
-Block 2  Trackmania "Senioren-Cup"
-Block 3  Rollator-Race (Mario Kart)
-         mit Wii-Lenkrad-Anbau
-Block 4  Karaoke-Battle
-         Schlager vs. Synthwave
-
-Alle Teilnehmenden bekommen
-eine Urkunde, gedruckt von Heinz.</pre>
-        <div style="font-family:var(--body);font-size:13px;margin-top:10px;color:var(--inkSoft);font-style:italic">
-          Punkte gibt's keine. Dafür Applaus aus der ersten Reihe.
-        </div>
-      </div>
-
-      <div class="box">
-        <div class="kicker">🎮 Side-Events</div>
-        <h2 class="head" style="font-size:22px">Konsolen &amp; Couch</h2>
-        <div class="byline">Couch-Multiplayer im Side-Room · täglich</div>
-        <pre class="bracket">Smash Bros. · Switch · 4-Spieler
-  offen, freier Einstieg
-
-Tekken 8     · PS5  · KO-Runden
-  Anmeldung am Eingang
-
-Retro-Ecke   · N64 / SNES
-  Sa 14–18 mit Hannelore
-
-Einfach reinsetzen, mitspielen,
-Heizdecke gibt es vor Ort.</pre>
-        <div style="font-family:var(--body);font-size:13px;margin-top:10px;color:var(--inkSoft);font-style:italic">
-          Wer den Controller fällt, gewinnt einen Beutel Pfeffer&shy;minz.
-        </div>
-      </div>
-
-    </div>
-  </section>
-
-  {# ========== 5. NEWS ========== #}
-  <section id="news" style="margin-top:32px; scroll-margin-top:24px;--bote-i:3">
+  {# ========== 3. NEWS ========== #}
+  <section id="news" style="margin-top:32px; scroll-margin-top:24px;--bote-i:1">
     <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;margin-bottom:10px">
       <div>
         <div class="kicker">Aus dem Vereinsbüro · S. 6–9</div>
@@ -604,6 +455,133 @@ Heizdecke gibt es vor Ort.</pre>
     </div>
   </section>
 
+  {# ========== 4. STATS ========== #}
+  <section style="margin-top:28px;--bote-i:2">
+    <div class="rule rule-double"></div>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;margin-bottom:14px">
+      <h2 class="head italic" style="font-size:28px">Die Auflage in Zahlen</h2>
+      <div style="font-family:var(--mono);font-size:10.5px;letter-spacing:0.18em;text-transform:uppercase;color:var(--inkSoft)">
+        Wirtschaftsteil · S. 4
+      </div>
+    </div>
+    <div class="stats">
+      <div>
+        <div class="num">35</div>
+        <div class="lbl">Auflagen seit 2006</div>
+      </div>
+      <div>
+        <div class="num">{{ total }}</div>
+        <div class="lbl">maximale Teilnehmende</div>
+      </div>
+      <div>
+        <div class="num">#1</div>
+        <div class="lbl">eSports-Club Wesermarsch</div>
+      </div>
+      <div>
+        <div class="num">1 Gbit/s</div>
+        <div class="lbl">pro Switchport</div>
+      </div>
+      <div>
+        <div class="num">{{ available }}</div>
+        <div class="lbl">{{ _('Plätze frei') }} (noch)</div>
+      </div>
+    </div>
+  </section>
+
+  {# ========== 5. TOURNAMENTS ========== #}
+  <section id="tournaments" style="margin-top:32px; scroll-margin-top:24px;--bote-i:3">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;margin-bottom:10px">
+      <div>
+        <div class="kicker">Sport · S. 12–14</div>
+        <h2 class="head italic" style="font-size:36px">Turnier&shy;ergebnisse</h2>
+      </div>
+      <div style="font-family:var(--body);font-style:italic;font-size:14px;color:var(--inkSoft)">
+        Berichterstattung: Helmut (Saal), Hannelore (Wintergarten)
+      </div>
+    </div>
+    <div class="rule"></div>
+    <div class="grid-3">
+
+      <div class="box">
+        <div class="kicker green">★ Haupt&shy;programm</div>
+        <h2 class="head" style="font-size:22px">PC-Turniere</h2>
+        <div class="byline">Klare Regeln · feste Zeiten · Sieger&shy;ehrung</div>
+        <svg class="bracket bracket-svg" viewBox="0 0 600 240" role="img" aria-labelledby="bracket-title" xmlns="http://www.w3.org/2000/svg">
+          <title id="bracket-title">Hauptfeld Bracket — Wollknäuel-5 vs. Kuchen-Crew</title>
+          <!-- Round labels -->
+          <text x="10"  y="14">Halbfinale</text>
+          <text x="260" y="14">Endspiel</text>
+          <text x="470" y="14">Sieger</text>
+          <!-- Semifinal 1 lines: two team feeds joining and forwarding -->
+          <path class="bline" d="M10,50 L210,50 L210,80 L260,80"/>
+          <path class="bline" d="M10,90 L210,90 L210,80"/>
+          <!-- Semifinal 2 lines -->
+          <path class="bline" d="M10,170 L210,170 L210,200 L260,200"/>
+          <path class="bline" d="M10,210 L210,210 L210,200"/>
+          <!-- Final feed: both semis to the trophy line -->
+          <path class="bline" d="M260,80  L420,80  L420,140 L470,140"/>
+          <path class="bline" d="M260,200 L420,200 L420,140"/>
+          <!-- Team labels — semifinals -->
+          <text x="12" y="42">HF · Wollknäuel-5</text>
+          <text x="12" y="82">HF · Bingo-Hawks</text>
+          <text x="12" y="162">HF · Stütz-Squad</text>
+          <text x="12" y="202">HF · Kuchen-Crew</text>
+          <!-- Semifinal winners -->
+          <text x="266" y="72">Wollknäuel-5</text>
+          <text x="266" y="192">Kuchen-Crew</text>
+          <!-- Final result — winner highlighted -->
+          <text x="476" y="134" class="winner">Wollknäuel-5</text>
+          <text x="476" y="152">Sonntag 14:00</text>
+        </svg>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--inkSoft);margin-top:8px;letter-spacing:0.06em">
+          Finale: Wollknäuel-5 vs. Kuchen-Crew · Sonntag 14:00 · Hauptfeld · Eintritt: ein Stück Kuchen
+        </div>
+        <div style="font-family:var(--body);font-size:13px;margin-top:10px;color:var(--inkSoft);font-style:italic">
+          Schieds&shy;richter Helmut bittet: keine Headshots während des Mittagsschlafs.
+        </div>
+      </div>
+
+      <div class="box">
+        <div class="kicker blue">◆ Spaß-Formate</div>
+        <h2 class="head" style="font-size:22px">Fun- &amp; Community-Events</h2>
+        <div class="byline">Verrückte Modi · spontane Aktionen · So 10:00</div>
+        <pre class="bracket">Block 1  Sumo-Modus (Garry's Mod)
+Block 2  Trackmania "Senioren-Cup"
+Block 3  Rollator-Race (Mario Kart)
+         mit Wii-Lenkrad-Anbau
+Block 4  Karaoke-Battle
+         Schlager vs. Synthwave
+
+Alle Teilnehmenden bekommen
+eine Urkunde, gedruckt von Heinz.</pre>
+        <div style="font-family:var(--body);font-size:13px;margin-top:10px;color:var(--inkSoft);font-style:italic">
+          Punkte gibt's keine. Dafür Applaus aus der ersten Reihe.
+        </div>
+      </div>
+
+      <div class="box">
+        <div class="kicker">🎮 Side-Events</div>
+        <h2 class="head" style="font-size:22px">Konsolen &amp; Couch</h2>
+        <div class="byline">Couch-Multiplayer im Side-Room · täglich</div>
+        <pre class="bracket">Smash Bros. · Switch · 4-Spieler
+  offen, freier Einstieg
+
+Tekken 8     · PS5  · KO-Runden
+  Anmeldung am Eingang
+
+Retro-Ecke   · N64 / SNES
+  Sa 14–18 mit Hannelore
+
+Einfach reinsetzen, mitspielen,
+Heizdecke gibt es vor Ort.</pre>
+        <div style="font-family:var(--body);font-size:13px;margin-top:10px;color:var(--inkSoft);font-style:italic">
+          Wer den Controller fällt, gewinnt einen Beutel Pfeffer&shy;minz.
+        </div>
+      </div>
+
+    </div>
+  </section>
+
   {# ========== 6. GALLERY ========== #}
   <section id="gallery" style="margin-top:32px; scroll-margin-top:24px;--bote-i:4">
     <div class="rule rule-double"></div>
@@ -613,32 +591,42 @@ Heizdecke gibt es vor Ort.</pre>
         <h2 class="head italic" style="font-size:42px">Aus dem Archiv</h2>
       </div>
       <div style="font-family:var(--body);font-style:italic;font-size:14px;color:var(--inkSoft)">
-        Auswahl von Frau Petersen, mit der freundlichen Genehmigung des Vorstands.
+        Bildauswahl: Frau Petersen — mit Genehmigung des Vorstands.
       </div>
     </div>
     <div class="grid-photos">
       <a href="https://total-verplant.de/galleries/" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
-        <div class="halftone" style="height:372px;background-size:6px 6px,12px 12px">
+        <div class="halftone has-photo" style="height:372px;background-size:6px 6px,12px 12px">
+          <img class="ht-img" src="{{ url_for_site_file('style/photos/saal.webp') }}"
+               alt="Großer Saal" loading="lazy" decoding="async">
           <div class="cap">FOTO · Großer Saal · Auflage 12 · 2004</div>
         </div>
       </a>
       <a href="https://total-verplant.de/galleries/" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
-        <div class="halftone" style="height:180px;background-size:8px 8px,16px 16px">
+        <div class="halftone has-photo" style="height:180px;background-size:8px 8px,16px 16px">
+          <img class="ht-img" src="{{ url_for_site_file('style/photos/kuchen.webp') }}"
+               alt="Kuchenbuffet" loading="lazy" decoding="async">
           <div class="cap">FOTO · Kuchenbuffet · 2018</div>
         </div>
       </a>
       <a href="https://total-verplant.de/galleries/" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
-        <div class="halftone" style="height:180px;background-size:12px 12px,24px 24px">
+        <div class="halftone has-photo" style="height:180px;background-size:12px 12px,24px 24px">
+          <img class="ht-img" src="{{ url_for_site_file('style/photos/helmut.webp') }}"
+               alt="Helmut und der Verteilerkasten" loading="lazy" decoding="async">
           <div class="cap">FOTO · Helmut &amp; der Verteilerkasten · 1999</div>
         </div>
       </a>
       <a href="https://total-verplant.de/galleries/" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
-        <div class="halftone" style="height:180px;background-size:8px 8px,16px 16px">
+        <div class="halftone has-photo" style="height:180px;background-size:8px 8px,16px 16px">
+          <img class="ht-img" src="{{ url_for_site_file('style/photos/strickrunde.webp') }}"
+               alt="Strickrunde im Wintergarten" loading="lazy" decoding="async">
           <div class="cap">FOTO · Strickrunde im Wintergarten · 2022</div>
         </div>
       </a>
       <a href="https://total-verplant.de/galleries/" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
-        <div class="halftone" style="height:180px;background-size:6px 6px,12px 12px">
+        <div class="halftone has-photo" style="height:180px;background-size:6px 6px,12px 12px">
+          <img class="ht-img" src="{{ url_for_site_file('style/photos/schlagerrunde.webp') }}"
+               alt="Schlager-Karaoke" loading="lazy" decoding="async">
           <div class="cap">FOTO · Schlager-Karaoke · 2019</div>
         </div>
       </a>
@@ -654,7 +642,7 @@ Heizdecke gibt es vor Ort.</pre>
         <h2 class="head italic" style="font-size:36px">Mit freundlicher Unterstützung</h2>
       </div>
       <div style="font-family:var(--body);font-style:italic;font-size:14px;color:var(--inkSoft)">
-        ohne deren Beitrag dieser Bote nicht erscheinen könnte.
+        Ohne ihren Beitrag könnte dieser Bote nicht erscheinen.
       </div>
     </div>
 

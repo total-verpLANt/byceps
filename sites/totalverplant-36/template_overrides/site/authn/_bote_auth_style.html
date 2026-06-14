@@ -67,22 +67,12 @@
     background:var(--paper); border:1.5px solid var(--ink); border-radius:0; padding:12px 14px;
   }
   .auth-page input.form-control{ appearance:none; -webkit-appearance:none; }
-  /* common.css inks these inputs #ffffff / #bbbbbb 1px / 14px / .4rem via
-     `input.form-control:not([type='checkbox']):not([type='radio'])` — a
-     (0,3,1) selector whose :not() chain outranks `.auth-page .form-control`
-     (0,2,0), so every box declaration above was silently discarded. Most
-     visibly: the forced white background survived the dark token swap, so the
-     cream --ink value below rendered as cream-on-white = invisible writing in
-     Spätausgabe. Re-assert the paper card inputs one notch above base (0,4,1),
-     in tokens, so both editions stay legible. Checkboxes are excluded here
-     (their own appearance:none/grid styling lives further down). */
-  .auth-page input.form-control:not([type='checkbox']):not([type='radio']),
-  .auth-page select.form-control,
-  .auth-page textarea.form-control{
-    background:var(--paper); color:var(--ink);
-    border:1.5px solid var(--ink); border-radius:0;
-    font-size:19px; padding:12px 14px;
-  }
+  /* The paper-card input box (bg / ink colour / ink border / serif / 600 / size)
+     is now asserted site-wide in totalverplant-36.css at common.css-matching
+     specificity, so the per-page re-assertion that used to live here is gone.
+     The global rule fixes auth, shop and every other form identically —
+     including the dark-mode cream-on-white legibility bug. Only auth-specific
+     state (placeholder, hover, focus, invalid) stays below. */
   .auth-page .form-control::placeholder{ color:var(--inkMute); }
   .auth-page .form-control:hover{ border-color:var(--redDeep); }
   .auth-page .form-control:focus{ outline:none; border-color:var(--redDeep); box-shadow:3px 3px 0 var(--redDeep); }

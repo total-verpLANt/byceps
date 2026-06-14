@@ -78,6 +78,11 @@ html[data-theme="dark"] .mobile-cta    { box-shadow: 0 -6px 18px rgba(0, 0, 0, 0
    shadow needs softening against the dark desk. */
 html[data-theme="dark"] .nav-account .na-menu { box-shadow: 5px 5px 0 rgba(0,0,0,0.5); }
 
+/* ---------- Core byceps dropdowns (.dropdown-menu) — same treatment ----------
+   The Rentenbote skin (totalverplant-36.css) gives these a `5px 5px 0 var(--ink)`
+   hard shadow; under Spätausgabe --ink is cream, so soften to black like .na-menu. */
+html[data-theme="dark"] .dropdown-menu { box-shadow: 5px 5px 0 rgba(0,0,0,0.5); }
+
 /* ---------- Mobile menu rail footer ----------
    In dark mode --redDeep lightens to #d65a45, so the cream label on the
    primary (Anmelden/Abmelden) button loses contrast — flip it to dark ink. */
@@ -111,6 +116,11 @@ html[data-theme="dark"] :is(
   cursor: pointer;
   white-space: nowrap;
   font-style: normal;
+  /* Explicit line-box so the toggle height is deterministic and matches the
+     .nav-account summary exactly (both locked to 1.2 = 13.2px @ 11px); without
+     this the toggle relied on UA 'normal' while the summary inherited the body's
+     1.5, leaving the account box ~2.5px taller in the same toolbar row. */
+  line-height: 1.2;
 }
 .theme-toggle:hover { background: var(--ink); color: var(--paper); }
 

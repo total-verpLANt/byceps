@@ -7,7 +7,12 @@
      destinations BYCEPS exposes in its standard current-user menu:
      Dashboard · Profil · Einstellungen · Tickets · Bestellungen · Abmelden. */
   .nav-actions { display: inline-flex; align-items: center; gap: 10px; margin-left: auto; flex-wrap: wrap; }
-  .nav-account { position: relative; display: inline-block; }
+  /* inline-flex (not inline-block) so the wrapper hugs its summary instead of
+     adding a line-box strut from the inherited 21px line-height — that strut
+     made the details box ~4px taller than the summary and dropped the label
+     below the .theme-toggle beside it. The .na-menu is position:absolute, so it
+     stays out of flow and the dropdown anchoring is unaffected. */
+  .nav-account { position: relative; display: inline-flex; align-items: center; }
   .nav-account > summary {
     list-style: none;
     display: inline-flex;
@@ -25,6 +30,11 @@
     cursor: pointer;
     white-space: nowrap;
     user-select: none;
+    /* Match the .theme-toggle line-box exactly (1.2 = 13.2px @ 11px). Without
+       this the summary inherited the body's 1.5 line-height (16.5px), rendering
+       ~2.5px taller than the toggle beside it. 13.2px also clears the 12px
+       .na-bars glyph so the bars never govern the box height. */
+    line-height: 1.2;
   }
   .nav-account > summary::-webkit-details-marker { display: none; }
   .nav-account > summary:hover { background: var(--ink); color: var(--paper); }
