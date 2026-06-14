@@ -1,0 +1,154 @@
+{% extends 'layout/base.html' %}
+{% from 'macros/icons.html' import render_icon %}
+{% from 'macros/misc.html' import render_notification %}
+{% from 'macros/shop/orders.html' import render_order_payment_state, render_order_overdue_tag %}
+{% set current_page = 'shop_orders' %}
+{% set page_title = [_('Order'), order.order_number] %}
+
+{% block head %}
+{% include 'site/shop/_bote_order_style.html' %}
+{%- endblock %}
+
+{% block body %}
+<div class="bote-page order-page order-view-page">
+
+  <div class="page-folio">
+    <span class="pf-ressort">{{ _('Anzeigenkontor') }} · {{ _('Bestellnachweis') }}</span>
+    <span>Der Rentenbote · Ausgabe 36</span>
+  </div>
+
+  <p class="crumb-back">{{ _('Shop') }} » <a href="{{ url_for('.index') }}">{{ _('Your orders') }}</a></p>
+
+  <header class="page-head">
+    <h1 class="ph-title">{{ _('Bestellung') }} <em>{{ order.order_number }}</em></h1>
+    <p class="ph-meta">{{ render_order_payment_state(order.payment_state) }} {{ render_order_overdue_tag(order) }}</p>
+  </header>
+
+  {%- if cancellation_request and cancellation_request.state.name != 'accepted' %}
+{{ render_notification(_('A cancellation has been requested for this order on %(date)s at %(time)s.', date=cancellation_request.created_at|dateformat, time=cancellation_request.created_at|timeformat('short')), category='info') }}
+  {%- endif %}
+
+  {%- if order.is_open and paypal_enabled %}
+  <div id="payment-failed-notice" hidden>
+{{ render_notification(_('Payment failed.'), category='danger', icon='warning') }}
+  </div>
+  <div id="payment-processing-notice" hidden>
+{{ render_notification(_('Payment is being processed, please wait …'), category='info', icon='spinner') }}
+  </div>
+  {%- endif %}
+
+  <div class="main-body-box">
+    <div class="row row--space-between row--wrap">
+      <div>
+
+        <div class="block row">
+          <div>
+            <div class="data-label">{{ _('Date') }}</div>
+            <div class="data-value">{{ order.created_at|dateformat }}, {{ order.created_at|timeformat('short') }}</div>
+          </div>
+          <div>
+          {%- if order.payment_method %}
+            <div class="data-label">{{ _('Payment method') }}</div>
+            <div class="data-value">{{ render_order_payment_method(order.payment_method) }}</div>
+          {%- endif %}
+          </div>
+        </div>
+
+        {%- if order.is_canceled %}
+        <div class="data-label">{{ _('Reason for cancellation') }}</div>
+        <div class="data-value">{{ order.cancellation_reason|fallback }}</div>
+        {%- endif %}
+
+      </div>
+      <div>
+
+        {%- if order.is_open %}
+        <div class="button-row is-compact is-right-aligned">
+          <a class="button is-compact" href="{{ url_for('.cancel_form', order_id=order.id) }}">{{ render_icon('remove') }} <span>{{ _('Cancel order') }}</span></a>
+        </div>
+        {%- endif %}
+
+      </div>
+    </div>
+  </div>
+
+  <h2>{{ _('Billing address') }}</h2>
+  <div class="main-body-box">
+
+    <div class="block row row--wrap">
+      <div class="column--grow">
+        {%- if order.company %}
+        <div class="data-label">{{ _('Company') }}</div>
+        <div class="data-value">{{ order.company }}</div>
+        {%- endif %}
+
+        <div class="data-label">{{ _('Full name') }}</div>
+        <div class="data-value">{{ order.first_name }} {{ order.last_name }}</div>
+      </div>
+      <div class="column--grow">
+        <div class="data-label">{{ _('Address') }}</div>
+        <div class="data-value">
+          {{ order.address.street }}<br>
+          {{ order.address.postal_code }} {{ order.address.city }}<br>
+          {{ order.address.country }}
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <h2>{{ _('Products') }}</h2>
+{% include 'site/shop/orders/_products.html' %}
+
+  {%- if order.is_open %}
+  <h2>{{ _('Payment notes') }}</h2>
+    {%- if payment_instructions %}
+  <div class="main-body-box">
+{{ payment_instructions|safe }}
+  </div>
+    {%- else %}
+{{ render_notification(_('Payment instructions not found.'), category='danger', icon='warning') }}
+    {%- endif %}
+
+    {%- if paypal_enabled or stripe_enabled %}
+  <h2>{{ _('Additional Payment Methods') }}</h2>
+  <div class="main-body-box">
+
+      {%- if paypal_enabled %}
+    <p class="block">{{ _('PayPal offers several ways to pay for the order right now.') }}</p>
+    <p class="block">{{ _('If the order includes tickets, they will be issued immediately.') }}</p>
+    <div id="paypal-button-container" style="margin: 2rem auto 0 auto; width: 250px;"></div>
+      {%- endif %}
+
+      {%- if stripe_enabled %}
+    <p class="block">{{ _('You can use the following payment methods through payment provider Stripe to pay for the order right now:') }}</p>
+    <ul>
+      <li>{{ _('credit card (Apple Pay and Google Pay as well)') }}</li>
+    </ul>
+    <p class="block">{{ _('If the order includes tickets, they will be issued immediately.') }}</p>
+    <div id="stripe-failed-notice" hidden>
+    {{ render_notification(_('The payment process could not be started. Please try again later.'), category='danger', icon='warning') }}
+    </div>
+    <fieldset class="buttons">
+      <div class="button-row is-compact is-hcentered">
+        <button id="stripe-checkout-button" class="button color-primary">{{ render_icon('payment') }} <span>{{ _('Start real-time payment') }}</span></button>
+      </div>
+    </fieldset>
+      {%- endif %}
+  </div>
+    {%- endif %}
+
+  {%- endif %}
+
+  {%- if order.is_paid and cancellation_requesting_enabled and not cancellation_request %}
+  <h2>{{ _('Cancellation') }}</h2>
+  <div class="button-row"><a class="button" href="{{ url_for('.request_cancellation_choices', order_id=order.id) }}"><span>{{ _('Return tickets') }}</span> {{ render_icon('chevron-right') }}</a></div>
+  {%- endif %}
+
+</div>
+{%- endblock %}
+
+{% block scripts %}
+{%- include 'site/shop/orders/_paypal_script.html' %}
+{%- include 'site/shop/orders/_stripe_checkout_script.html' %}
+{%- endblock %}

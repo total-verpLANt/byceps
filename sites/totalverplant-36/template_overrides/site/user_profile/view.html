@@ -31,7 +31,11 @@
   .profile-page .portrait-pic{
     aspect-ratio:1/1;border:1px solid var(--ink);overflow:hidden;background:var(--paperDark);
     display:grid;place-items:center;filter:grayscale(1) sepia(.30) contrast(1.05);
+    transition:filter .4s ease;
   }
+  /* bloom the filed portrait to full colour on hover — same treatment as the
+     gallery / .sponsor-grid prints (sepia at rest → filter:none on hover) */
+  .profile-page .portrait-pic:hover{filter:none;}
   .profile-page .portrait-pic img{display:block;width:100%;height:100%;object-fit:cover;}
   .profile-page .portrait-cap{
     margin-top:8px;padding-top:7px;border-top:1px solid var(--ink);

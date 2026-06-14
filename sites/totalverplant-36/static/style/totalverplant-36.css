@@ -9,6 +9,7 @@
     --redDeep:   #74170f;
     --blue:      #1f3a64;
     --green:     #3b5a2a;
+    --stripe:    rgba(26, 24, 18, 0.05);   /* hatch fill for empty/satirical plates */
     --display: "Playfair Display", "Old English Text MT", "Times New Roman", serif;
     --body:    "Cormorant Garamond", "Times New Roman", Georgia, serif;
     --sans:    "Cabin", "Helvetica Neue", system-ui, sans-serif;
@@ -248,6 +249,14 @@
   }
   .navstrip .crumbs a:hover { color: var(--redDeep); text-decoration: underline; }
   .navstrip .crumbs .dot { color: var(--inkMute); }
+  /* Owl brand mark — far left of the navstrip crumbs (eule_logo) */
+  .navstrip .nav-owl {
+    height: 30px;
+    width: auto;
+    object-fit: contain;
+    margin-right: 4px;
+    flex-shrink: 0;
+  }
 
   /* Hamburger trigger — hidden on desktop, shown on mobile */
   .nav-hamburger {
@@ -280,35 +289,158 @@
   .nav-hamburger.open .bars span:nth-child(2) { opacity: 0; }
   .nav-hamburger.open .bars span:nth-child(3) { transform: translateY(-5px) rotate(-45deg); }
 
+  /* Mobile menu „Leiste" — single-column rail. The sticky header keeps the
+     navstrip pinned at the viewport top (masthead scrolls away), so the open
+     rail is pinned along with it: home row on top, link list that scrolls
+     internally when it cannot fit, login/account footer always at the bottom
+     edge of the menu. */
   .nav-panel {
     display: none;
     flex-direction: column;
-    padding: 8px 0 4px;
     margin-top: 8px;
-    border-top: 1.5px dashed var(--ink);
-    border-bottom: 1.5px dashed var(--ink);
+    border-top: 1px solid var(--ink);
+    border-bottom: 3px double var(--ink);
+    background: var(--paper);
+    overflow: hidden;
   }
-  .nav-panel.open { display: flex; }
-  .nav-panel a {
-    display: block;
-    padding: 12px 4px;
-    border-bottom: 1px dashed var(--ink);
-    font-family: var(--body);
+  .nav-panel.open { display: flex; animation: rail-drop 0.18s ease both; }
+  @keyframes rail-drop { from { transform: translateY(-7px); } to { transform: none; } }
+  /* The link-underline draw below carries seven :not() classes of specificity —
+     a scoped selector cannot outrank it without !important. */
+  .nav-panel a { background-image: none !important; }
+
+  /* Prominent „Startseite" home row at the top of the menu */
+  .nav-panel .mr-home {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 8px 14px;
+    text-decoration: none;
+    border-bottom: 3px double var(--ink);
+    background: var(--paperLite);
+  }
+  .nav-panel .mr-home:hover { background: var(--paper); }
+  .nav-panel .mr-home .owl { height: 28px; width: auto; object-fit: contain; flex: 0 0 auto; display: block; }
+  .nav-panel .mr-home .txt { display: flex; flex-direction: column; line-height: 1.05; min-width: 0; }
+  .nav-panel .mr-home .txt strong {
+    font-family: var(--display);
     font-style: italic;
+    font-weight: 800;
+    font-size: 17px;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+  }
+  .nav-panel .mr-home:hover .txt strong { color: var(--redDeep); }
+  .nav-panel .mr-home .txt small {
+    font-family: var(--mono);
+    font-size: 8.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--inkMute);
+    margin-top: 2px;
+  }
+  .nav-panel .mr-home .arr {
+    margin-left: auto;
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--redDeep);
+    flex: 0 0 auto;
+  }
+
+  /* Link list — scrolls internally only if it cannot fit, so the footer
+     with the login button never gets pushed off the screen */
+  .nav-panel .mr-list {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    max-height: 340px;
+    max-height: min(340px, calc(100dvh - 200px));
+  }
+  .nav-panel .mr-list a {
+    display: flex;
+    align-items: baseline;
+    gap: 9px;
+    padding: 10px 14px;
+    text-decoration: none;
+    border-bottom: 1px dashed var(--inkSoft);
+  }
+  .nav-panel .mr-list a:last-child { border-bottom: 0; }
+  .nav-panel .mr-list .num {
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 700;
+    color: var(--redDeep);
+    width: 16px;
+    flex: 0 0 auto;
+  }
+  .nav-panel .mr-list .lbl {
+    font-family: var(--display);
+    font-style: italic;
+    font-weight: 700;
     font-size: 17px;
     color: var(--ink);
-    text-decoration: none;
   }
-  .nav-panel a:last-child { border-bottom: 0; }
-  .nav-panel a::before {
-    content: '› ';
-    font-family: var(--mono);
-    color: var(--redDeep);
-    font-style: normal;
-  }
-  .nav-panel a:hover { color: var(--redDeep); }
+  .nav-panel .mr-list a:hover .lbl,
+  .nav-panel .mr-list a:focus .lbl,
+  .nav-panel .mr-list a.current .lbl { color: var(--redDeep); }
 
-  /* Log-in button (desktop inside navstrip, also inside mobile panel) */
+  /* Logged-in account section, inside the scrolling list */
+  .nav-panel .mr-account-head {
+    padding: 10px 14px 7px;
+    border-top: 3px double var(--ink);
+    border-bottom: 1px dashed var(--inkSoft);
+    font-family: var(--mono);
+    font-size: 9.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--inkSoft);
+  }
+  .nav-panel .mr-account-head strong {
+    font-family: var(--display);
+    font-style: italic;
+    font-size: 16px;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+    text-transform: none;
+  }
+  .nav-panel .mr-list a.mr-acc .lbl { font-size: 16px; }
+
+  /* Footer with login/logout — stays pinned at the bottom edge of the menu */
+  .nav-panel .mr-foot {
+    flex: 0 0 auto;
+    display: flex;
+    gap: 8px;
+    padding: 9px 14px;
+    border-top: 3px double var(--ink);
+    background: var(--paper);
+  }
+  .nav-panel .mr-foot a {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    text-align: center;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink);
+    text-decoration: none;
+    border: 1.5px solid var(--ink);
+    padding: 10px 6px;
+    background: var(--paperLite);
+  }
+  .nav-panel .mr-foot a:not(.primary):hover { background: var(--ink); color: var(--paper); }
+  .nav-panel .mr-foot a.primary {
+    background: var(--redDeep);
+    color: #f7f1dc;
+    border-color: var(--redDeep);
+  }
+
+  /* Log-in button (desktop navstrip; on mobile it lives in the rail footer) */
   .nav-login {
     display: inline-flex;
     align-items: center;
@@ -327,26 +459,6 @@
   }
   .nav-login:hover { background: var(--ink); color: var(--paper); }
 
-  /* Mobile-only icon login — hidden on desktop, revealed in the mobile breakpoint */
-  .nav-login-mobile { display: none; }
-
-  .nav-panel-login {
-    display: block;
-    margin-top: 12px;
-    padding: 12px 16px !important;
-    border: 1.5px solid var(--ink) !important;
-    background: var(--paperLite);
-    color: var(--ink) !important;
-    font-family: var(--mono) !important;
-    font-size: 12px !important;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    font-weight: 700;
-    text-align: center;
-    font-style: normal !important;
-  }
-  .nav-panel-login::before { content: '' !important; }
-  .nav-panel-login:hover { background: var(--ink); color: var(--paper) !important; }
 
   /* ---------- Event banner (key info + primary CTA) ---------- */
   .event-banner {
@@ -443,6 +555,52 @@
     color: var(--inkSoft);
     text-align: center;
     margin-top: 8px;
+  }
+
+  /* ---------- Ticket meter (Belegungs-Pegel) ---------- */
+  .ticket-meter { margin-top: 12px; text-align: left; }
+  .ticket-meter .tm-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--inkSoft);
+    margin-bottom: 5px;
+  }
+  .ticket-meter .tm-head strong {
+    color: var(--redDeep);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+  }
+  .ticket-meter .tm-bar {
+    height: 16px;
+    border: 1.5px solid var(--ink);
+    background: var(--paperLite);
+    padding: 2px;
+  }
+  .ticket-meter .tm-fill {
+    height: 100%;
+    background: var(--redDeep);
+    background-image: repeating-linear-gradient(135deg, rgba(255,255,255,0.22) 0 3px, transparent 3px 8px);
+  }
+  .ticket-meter .tm-scale {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    color: var(--inkMute);
+    margin-top: 3px;
+  }
+  .ticket-meter .tm-note {
+    font-family: var(--body);
+    font-style: italic;
+    font-size: 12px;
+    color: var(--inkSoft);
+    margin-top: 6px;
   }
 
   /* ---------- Mobile sticky ticket bar ---------- */
@@ -581,17 +739,85 @@
     letter-spacing: 0.06em;
   }
 
-  /* ---------- Sponsor grid (denser than grid-4) ---------- */
+  /* ---------- Sponsor grid — „Anzeigenteil" (printing-plate / Klischee) ---------- */
   .sponsor-grid {
     display: grid;
     grid-template-columns: repeat(6, minmax(0, 1fr));
     gap: 12px;
   }
-  .sponsor-grid img {
-    filter: grayscale(1) sepia(0.25) contrast(1.12) opacity(0.92);
-    transition: filter 0.4s ease;
+
+  /* editorial note above the grid, explaining the one-ink plate treatment */
+  .plate-note {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--inkSoft);
+    border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink);
+    padding: 9px 2px; margin: 16px 0 22px;
   }
-  .sponsor-grid a:hover img { filter: none; }
+  .plate-note .pn-mark { color: var(--redDeep); font-weight: 700; }
+
+  .sponsor-card {
+    position: relative;
+    border: 1.5px solid var(--ink);
+    padding: 11px;
+    text-decoration: none; color: inherit;
+    display: flex; flex-direction: column; gap: 9px;
+    background: var(--tintCard, rgba(255, 255, 255, 0.20));
+    box-shadow: 3px 3px 0 transparent;
+    transition: transform 0.16s ease, box-shadow 0.16s ease;
+  }
+  a.sponsor-card:hover { transform: translate(-2px, -2px); box-shadow: 5px 5px 0 var(--ink); }
+
+  .sc-kicker {
+    font-family: var(--mono); font-size: 8px; letter-spacing: 0.2em;
+    text-transform: uppercase; color: var(--redDeep);
+    display: flex; justify-content: space-between; align-items: center; gap: 6px;
+  }
+  .sc-kicker .sc-no { color: var(--inkMute); }
+
+  /* the printing plate ("Klischee") — logo set in a single ink */
+  .klischee {
+    position: relative; aspect-ratio: 12 / 5;
+    background: var(--paperLite); border: 1px solid var(--ink);
+    display: flex; align-items: center; justify-content: center;
+    padding: 13px 15px; overflow: hidden;
+  }
+  .klischee img {
+    max-width: 100%; max-height: 100%; object-fit: contain; display: block;
+    filter: brightness(0); opacity: 0.9;
+    transition: filter 0.4s ease, opacity 0.4s ease;
+  }
+  /* framed logos carry their own colour panel — print them INTO the paper with a
+     multiply blend so the panel sinks away and only the ink remains (not a grey bar) */
+  .klischee.is-framed { background: var(--paper); }
+  .klischee.is-framed img {
+    filter: grayscale(1) contrast(1.18) brightness(0.92);
+    mix-blend-mode: multiply; opacity: 1;
+  }
+  /* press-proof: bloom to the real brand colour on hover */
+  a.sponsor-card:hover .klischee img { filter: none; opacity: 1; }
+  a.sponsor-card:hover .klischee.is-framed img { mix-blend-mode: normal; }
+  /* registration crop marks in the plate corners */
+  .klischee::before, .klischee::after {
+    content: ""; position: absolute; width: 7px; height: 7px;
+    border: 1px solid var(--inkMute); opacity: 0.5; pointer-events: none;
+  }
+  .klischee::before { top: 5px; left: 5px; border-right: 0; border-bottom: 0; }
+  .klischee::after { bottom: 5px; right: 5px; border-left: 0; border-top: 0; }
+
+  .sc-name { font-family: var(--display); font-size: 16px; font-style: italic; color: var(--ink); line-height: 1.1; }
+  .sc-line { font-family: var(--body); font-size: 12.5px; color: var(--ink); line-height: 1.4; }
+
+  /* satirical placeholder plate (the Heinrich gag card) */
+  .klischee.is-empty {
+    border-style: dashed; border-color: var(--inkSoft);
+    background: repeating-linear-gradient(135deg, var(--stripe, rgba(26, 24, 18, 0.05)) 0 6px, transparent 6px 12px);
+    flex-direction: column; gap: 5px; text-align: center; padding: 10px 12px; color: var(--inkSoft);
+  }
+  .klischee.is-empty .ke-pun { font-family: var(--display); font-style: italic; font-size: 15px; line-height: 1.1; color: var(--ink); }
+  .klischee.is-empty .ke-sub { font-family: var(--mono); font-size: 8px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--inkSoft); }
+  .klischee.is-empty::before, .klischee.is-empty::after { display: none; }
+  .sponsor-card.is-fake .sc-kicker { color: var(--inkSoft); }
 
   /* ---------- Galleries / grids ---------- */
   .grid-5  { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
@@ -1054,7 +1280,7 @@
     .navstrip .page-n { display: none; }
     .navstrip .crumbs { display: none; }
     .nav-hamburger { display: inline-flex; }
-    .nav-login { display: none; }   /* hidden on mobile — lives in the panel */
+    .nav-login { display: none; }   /* hidden on mobile — lives in the rail footer */
 
     /* Event banner: stack and make CTA full-width */
     .event-banner {
@@ -1088,21 +1314,6 @@
     }
     .page-header-fixed { padding-top: 0; }
     .page-footer-modern { padding-bottom: 0; }
-
-    /* Mobile login tap target — 44x44 icon-only, lives in navstrip next to hamburger */
-    .nav-login-mobile {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 44px;
-      height: 44px;
-      margin-left: auto;
-      font-family: var(--mono);
-      font-size: 11px;
-      letter-spacing: 0.18em;
-      color: var(--ink);
-      text-decoration: none;
-    }
 
     /* Progressive-disclosure drawers for low-priority lists on mobile */
     .bote-drawer {
@@ -1523,14 +1734,16 @@
      .detail-row is reserved for genuine key-value data.
      ---------------------------------------------------------------------------- */
 
-  /* Inner-page paper sheet — the DB-page wrappers join the same 1320px
-     "sheet on desk" column that .page-header-fixed / .page-footer-modern /
-     the homepage .bote-page form. Without this the byceps content-wrapper
-     runs full-bleed and the folio overshoots the masthead at >1320px.
-     padding-top stays owned by each body's inline <style> (20px). */
-  #agb-content, #privacy-content, #event-infos-content, #faq-content,
-  #gn-root, #impressum-content, #turnier-ankuendigungen-content,
-  #verein-content, #zeitplan-content {
+  /* Inner-page paper sheet — every page joins the same 1320px "sheet on desk"
+     column that .page-header-fixed / .page-footer-modern / the homepage
+     .bote-page form. Applied to the byceps content-wrapper itself so DB pages,
+     LAN module pages (body.lt-dark), and unoverridden core pages (login, news,
+     party history, forms, error pages …) all get the sheet without per-page
+     allowlisting. Pages whose override already renders its own .bote-page
+     sheet are excluded via :has() so they don't double-frame; browsers without
+     :has() drop the rule entirely and fall back to full-bleed.
+     padding-top stays owned by each body (DB pages: inline <style>, 20px). */
+  .main-content > .content-wrapper:not(:has(.bote-page)) {
     max-width: 1320px;
     margin: 0 auto;
     padding-left: clamp(14px, 3vw, 44px);
@@ -1545,37 +1758,7 @@
   /* Phone widths: the sheet IS the viewport, same as header/footer/.bote-page.
      Lives HERE (after the sheet rule) so document order keeps it winning. */
   @media (max-width: 720px) {
-    #agb-content, #privacy-content, #event-infos-content, #faq-content,
-    #gn-root, #impressum-content, #turnier-ankuendigungen-content,
-    #verein-content, #zeitplan-content {
-      border-left: 0;
-      border-right: 0;
-      box-shadow: none;
-    }
-  }
-
-  /* LAN module pages (detail / matches / bracket) — same join to the 1320px
-     sheet. These pages carry body.lt-dark and render their content straight
-     into the byceps .content-wrapper (no inner page-id wrapper like the DB
-     pages), so the wrapper itself is the sheet here. Without this the navstrip,
-     tournament header, and bracket overshoot the masthead at >1320px. */
-  body.lt-dark .content-wrapper {
-    max-width: 1320px;
-    margin: 0 auto;
-    padding-left: clamp(14px, 3vw, 44px);
-    padding-right: clamp(14px, 3vw, 44px);
-    padding-bottom: 36px;
-    background: var(--paper);
-    border-left: 1px solid var(--paperDark);
-    border-right: 1px solid var(--paperDark);
-    box-shadow: 0 0 0 1px var(--paperDark),
-                0 18px 32px -16px rgba(26, 24, 18, 0.18);
-  }
-  /* Phone widths: the sheet IS the viewport, matching header/footer/.bote-page
-     and the DB-page rule above. Placed after the sheet rule so document order
-     keeps it winning at equal specificity. */
-  @media (max-width: 720px) {
-    body.lt-dark .content-wrapper {
+    .main-content > .content-wrapper:not(:has(.bote-page)) {
       border-left: 0;
       border-right: 0;
       box-shadow: none;

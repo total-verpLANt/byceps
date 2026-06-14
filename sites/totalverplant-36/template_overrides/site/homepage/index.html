@@ -35,6 +35,21 @@
       <a class="eb-cta-btn" href="{{ ticket_url }}" target="_blank" rel="noopener">
         🎟 Tickets kaufen
       </a>
+      {%- if total %}
+      <div class="ticket-meter" role="img"
+           aria-label="{{ total - available }} von {{ total }} Plätzen belegt">
+        <div class="tm-head">
+          <span>Belegungs-Pegel</span>
+          <strong>{{ total - available }} / {{ total }}</strong>
+        </div>
+        <div class="tm-bar">
+          <div class="tm-fill" style="width:{{ (((total - available) / total) * 100)|round(1) }}%"></div>
+        </div>
+        <div class="tm-scale">
+          <span>0</span><span>{{ (total / 4)|round|int }}</span><span>{{ (total / 2)|round|int }}</span><span>{{ (total * 3 / 4)|round|int }}</span><span>{{ total }}</span>
+        </div>
+      </div>
+      {%- endif %}
       <div class="eb-cta-note">
         ☎ 04421 / 123-45 · Mo–Fr 9–11 Uhr
       </div>
@@ -643,239 +658,51 @@ Heizdecke gibt es vor Ort.</pre>
       </div>
     </div>
 
+    <div class="plate-note">
+      <span><span class="pn-mark">★</span> Alle Klischees einfarbig gesetzt — bei Berührung erscheint die Originalfarbe.</span>
+    </div>
+
+    {%- set sponsors = [
+      {'name': 'Stadt Brake',           'base': 'brake',                 'href': 'https://www.brake.de/',            'line': 'Die Wesermarsch-Stadt für Sport, Kultur und Vereinsleben.'},
+      {'name': 'DEPA',                  'base': 'depa',                  'href': 'https://www.depa.de/',             'line': 'Verlässlicher Energiepartner für die Region seit Jahrzehnten.'},
+      {'name': 'Fahrrad Gruss',         'base': 'fahrrad_gruss',         'href': 'https://www.fahrrad-gruss.de/',    'line': 'Zweirad-Spezialist aus der Wesermarsch.', 'framed': true},
+      {'name': 'Freundeskreis Zwiesel', 'base': 'Freundeskreis_Zwiesel', 'href': '#',                                'line': 'Kristallklare Unterstützung aus dem Bayerischen Wald.'},
+      {'name': 'HiScore',               'base': 'hiscore',               'href': 'https://hiscore-clan.de/',         'line': 'Esports-Community aus Norddeutschland.'},
+      {'name': 'Inter-Tech',            'base': 'Inter-tech',            'href': 'https://www.inter-tech.de/',       'line': 'PC-Komponenten und Cases mit Charakter.'},
+      {'name': 'Senchii',               'base': 'senchii',               'href': 'https://senchii.de/',              'line': 'Gaming-Mauspads und Custom-Gear.'},
+      {'name': 'Thermal Grizzly',       'base': 'thermalgrizzly',        'href': 'https://www.thermal-grizzly.com/', 'line': 'Wärmeleitpasten von Roman „der8auer“ Hartung.'},
+      {'name': 'Virtual Lounge',        'base': 'virtualounge',          'href': 'https://virtual-lounge.de/',       'line': 'VR- und Eventerlebnisse in Bremen.'},
+      {'name': 'Volt Cola',             'base': 'voltcola',              'href': 'https://voltcola.de/',             'line': 'Brennstoff für lange LAN-Nächte.'},
+      {'name': 'Noctua',                'base': 'noctua',                'href': 'https://noctua.at/',               'line': 'Leiseste Lüfter, die je geschwiegen haben.'},
+      {'name': 'Hosenträger HEINRICH',  'fake': true,                    'href': '#',                                'line': 'Maßgefertigt seit 1962. Auch in Vereinsfarben.'}
+    ] %}
+
     <div class="sponsor-grid">
-
-      {# Sponsor 1 — Stadt Brake #}
-      <a class="sponsor-card" href="https://www.brake.de/" target="_blank" rel="noopener"
-         style="border:1.5px solid var(--ink);padding:10px;background:rgba(255,255,255,0.22);text-decoration:none;color:inherit;display:flex;flex-direction:column;gap:8px">
-        <div class="kicker" style="color:var(--redDeep)">· Sponsorenanzeige ·</div>
-        <div style="aspect-ratio:12 / 5;border:1px solid var(--inkSoft);background:rgba(255,255,255,0.6);display:flex;align-items:center;justify-content:center;overflow:hidden">
+      {%- for s in sponsors %}
+      {%- set tag = 'div' if s.get('fake') else 'a' %}
+      <{{ tag }} class="sponsor-card{{ ' is-fake' if s.get('fake') }}"{% if not s.get('fake') %} href="{{ s.href }}" target="_blank" rel="noopener"{% endif %}>
+        <div class="sc-kicker"><span>· Sponsorenanzeige ·</span><span class="sc-no">Nr. {{ '%02d'|format(loop.index) }}</span></div>
+        {%- if s.get('fake') %}
+        <div class="klischee is-empty">
+          <div class="ke-pun">Bildträger? Fehlanzeige.</div>
+          <div class="ke-sub">Wir führen nur Hosenträger.</div>
+        </div>
+        {%- else %}
+        <div class="klischee{{ ' is-framed' if s.get('framed') }}">
           <picture>
             <source type="image/webp"
-              srcset="{{ url_for_site_file('style/sponsoren/brake_167.webp') }} 167w,
-                      {{ url_for_site_file('style/sponsoren/brake_334.webp') }} 334w"
+              srcset="{{ url_for_site_file('style/sponsoren/' ~ s.base ~ '_167.webp') }} 167w,
+                      {{ url_for_site_file('style/sponsoren/' ~ s.base ~ '_334.webp') }} 334w"
               sizes="(max-width: 720px) 50vw, 167px">
-            <img
-              src="{{ url_for_site_file('style/sponsoren/brake_600x250.png') }}"
-              alt="Stadt Brake" width="167" height="68"
-              loading="lazy" decoding="async">
+            <img src="{{ url_for_site_file('style/sponsoren/' ~ s.base ~ '_600x250.png') }}"
+                 alt="{{ s.name }}" width="167" height="68" loading="lazy" decoding="async">
           </picture>
         </div>
-        <div class="head italic" style="font-family:var(--display);font-size:16px;font-style:italic;color:var(--ink);line-height:1.1">Stadt Brake</div>
-        <div class="body-text" style="font-family:var(--body);font-size:12px;color:var(--ink);line-height:1.4">Die Wesermarsch-Stadt für Sport, Kultur und Vereinsleben.</div>
-      </a>
-
-      {# Sponsor 2 — DEPA #}
-      <a class="sponsor-card" href="https://www.depa.de/" target="_blank" rel="noopener"
-         style="border:1.5px solid var(--ink);padding:10px;background:rgba(255,255,255,0.22);text-decoration:none;color:inherit;display:flex;flex-direction:column;gap:8px">
-        <div class="kicker" style="color:var(--redDeep)">· Sponsorenanzeige ·</div>
-        <div style="aspect-ratio:12 / 5;border:1px solid var(--inkSoft);background:rgba(255,255,255,0.6);display:flex;align-items:center;justify-content:center;overflow:hidden">
-          <picture>
-            <source type="image/webp"
-              srcset="{{ url_for_site_file('style/sponsoren/depa_167.webp') }} 167w,
-                      {{ url_for_site_file('style/sponsoren/depa_334.webp') }} 334w"
-              sizes="(max-width: 720px) 50vw, 167px">
-            <img
-              src="{{ url_for_site_file('style/sponsoren/depa_600x250.png') }}"
-              alt="DEPA" width="167" height="68"
-              loading="lazy" decoding="async">
-          </picture>
-        </div>
-        <div class="head italic" style="font-family:var(--display);font-size:16px;font-style:italic;color:var(--ink);line-height:1.1">DEPA</div>
-        <div class="body-text" style="font-family:var(--body);font-size:12px;color:var(--ink);line-height:1.4">Verlässlicher Energiepartner für die Region seit Jahrzehnten.</div>
-      </a>
-
-      {# Sponsor 3 — Fahrrad Gruss #}
-      <a class="sponsor-card" href="https://www.fahrrad-gruss.de/" target="_blank" rel="noopener"
-         style="border:1.5px solid var(--ink);padding:10px;background:rgba(255,255,255,0.22);text-decoration:none;color:inherit;display:flex;flex-direction:column;gap:8px">
-        <div class="kicker" style="color:var(--redDeep)">· Sponsorenanzeige ·</div>
-        <div style="aspect-ratio:12 / 5;border:1px solid var(--inkSoft);background:rgba(255,255,255,0.6);display:flex;align-items:center;justify-content:center;overflow:hidden">
-          <picture>
-            <source type="image/webp"
-              srcset="{{ url_for_site_file('style/sponsoren/fahrrad_gruss_167.webp') }} 167w,
-                      {{ url_for_site_file('style/sponsoren/fahrrad_gruss_334.webp') }} 334w"
-              sizes="(max-width: 720px) 50vw, 167px">
-            <img
-              src="{{ url_for_site_file('style/sponsoren/fahrrad_gruss_600x250.png') }}"
-              alt="Fahrrad Gruss" width="167" height="68"
-              loading="lazy" decoding="async">
-          </picture>
-        </div>
-        <div class="head italic" style="font-family:var(--display);font-size:16px;font-style:italic;color:var(--ink);line-height:1.1">Fahrrad Gruss</div>
-        <div class="body-text" style="font-family:var(--body);font-size:12px;color:var(--ink);line-height:1.4">Zweirad-Spezialist aus der Wesermarsch.</div>
-      </a>
-
-      {# Sponsor 4 — Freundeskreis Zwiesel #}
-      <a class="sponsor-card" href="#" target="_blank" rel="noopener"
-         style="border:1.5px solid var(--ink);padding:10px;background:rgba(255,255,255,0.22);text-decoration:none;color:inherit;display:flex;flex-direction:column;gap:8px">
-        <div class="kicker" style="color:var(--redDeep)">· Sponsorenanzeige ·</div>
-        <div style="aspect-ratio:12 / 5;border:1px solid var(--inkSoft);background:rgba(255,255,255,0.6);display:flex;align-items:center;justify-content:center;overflow:hidden">
-          <picture>
-            <source type="image/webp"
-              srcset="{{ url_for_site_file('style/sponsoren/Freundeskreis_Zwiesel_167.webp') }} 167w,
-                      {{ url_for_site_file('style/sponsoren/Freundeskreis_Zwiesel_334.webp') }} 334w"
-              sizes="(max-width: 720px) 50vw, 167px">
-            <img
-              src="{{ url_for_site_file('style/sponsoren/Freundeskreis_Zwiesel_600x250.png') }}"
-              alt="Freundeskreis Zwiesel" width="167" height="68"
-              loading="lazy" decoding="async">
-          </picture>
-        </div>
-        <div class="head italic" style="font-family:var(--display);font-size:16px;font-style:italic;color:var(--ink);line-height:1.1">Freundeskreis Zwiesel</div>
-        <div class="body-text" style="font-family:var(--body);font-size:12px;color:var(--ink);line-height:1.4">Freundeskreis Zwiesel.</div>
-      </a>
-
-      {# Sponsor 5 — HiScore #}
-      <a class="sponsor-card" href="https://hiscore-clan.de/" target="_blank" rel="noopener"
-         style="border:1.5px solid var(--ink);padding:10px;background:rgba(255,255,255,0.22);text-decoration:none;color:inherit;display:flex;flex-direction:column;gap:8px">
-        <div class="kicker" style="color:var(--redDeep)">· Sponsorenanzeige ·</div>
-        <div style="aspect-ratio:12 / 5;border:1px solid var(--inkSoft);background:rgba(255,255,255,0.6);display:flex;align-items:center;justify-content:center;overflow:hidden">
-          <picture>
-            <source type="image/webp"
-              srcset="{{ url_for_site_file('style/sponsoren/hiscore_167.webp') }} 167w,
-                      {{ url_for_site_file('style/sponsoren/hiscore_334.webp') }} 334w"
-              sizes="(max-width: 720px) 50vw, 167px">
-            <img
-              src="{{ url_for_site_file('style/sponsoren/hiscore_600x250.png') }}"
-              alt="HiScore" width="167" height="68"
-              loading="lazy" decoding="async">
-          </picture>
-        </div>
-        <div class="head italic" style="font-family:var(--display);font-size:16px;font-style:italic;color:var(--ink);line-height:1.1">HiScore</div>
-        <div class="body-text" style="font-family:var(--body);font-size:12px;color:var(--ink);line-height:1.4">Esports-Community aus Norddeutschland.</div>
-      </a>
-
-      {# Sponsor 6 — Inter-Tech #}
-      <a class="sponsor-card" href="https://www.inter-tech.de/" target="_blank" rel="noopener"
-         style="border:1.5px solid var(--ink);padding:10px;background:rgba(255,255,255,0.22);text-decoration:none;color:inherit;display:flex;flex-direction:column;gap:8px">
-        <div class="kicker" style="color:var(--redDeep)">· Sponsorenanzeige ·</div>
-        <div style="aspect-ratio:12 / 5;border:1px solid var(--inkSoft);background:rgba(255,255,255,0.6);display:flex;align-items:center;justify-content:center;overflow:hidden">
-          <picture>
-            <source type="image/webp"
-              srcset="{{ url_for_site_file('style/sponsoren/Inter-tech_167.webp') }} 167w,
-                      {{ url_for_site_file('style/sponsoren/Inter-tech_334.webp') }} 334w"
-              sizes="(max-width: 720px) 50vw, 167px">
-            <img
-              src="{{ url_for_site_file('style/sponsoren/Inter-tech_600x250.png') }}"
-              alt="Inter-Tech" width="167" height="68"
-              loading="lazy" decoding="async">
-          </picture>
-        </div>
-        <div class="head italic" style="font-family:var(--display);font-size:16px;font-style:italic;color:var(--ink);line-height:1.1">Inter-Tech</div>
-        <div class="body-text" style="font-family:var(--body);font-size:12px;color:var(--ink);line-height:1.4">PC-Komponenten und Cases mit Charakter.</div>
-      </a>
-
-      {# Sponsor 7 — Senchii #}
-      <a class="sponsor-card" href="https://senchii.de/" target="_blank" rel="noopener"
-         style="border:1.5px solid var(--ink);padding:10px;background:rgba(255,255,255,0.22);text-decoration:none;color:inherit;display:flex;flex-direction:column;gap:8px">
-        <div class="kicker" style="color:var(--redDeep)">· Sponsorenanzeige ·</div>
-        <div style="aspect-ratio:12 / 5;border:1px solid var(--inkSoft);background:rgba(255,255,255,0.6);display:flex;align-items:center;justify-content:center;overflow:hidden">
-          <picture>
-            <source type="image/webp"
-              srcset="{{ url_for_site_file('style/sponsoren/senchii_167.webp') }} 167w,
-                      {{ url_for_site_file('style/sponsoren/senchii_334.webp') }} 334w"
-              sizes="(max-width: 720px) 50vw, 167px">
-            <img
-              src="{{ url_for_site_file('style/sponsoren/senchii_600x250.png') }}"
-              alt="Senchii" width="167" height="68"
-              loading="lazy" decoding="async">
-          </picture>
-        </div>
-        <div class="head italic" style="font-family:var(--display);font-size:16px;font-style:italic;color:var(--ink);line-height:1.1">Senchii</div>
-        <div class="body-text" style="font-family:var(--body);font-size:12px;color:var(--ink);line-height:1.4">Gaming-Mauspads und Custom-Gear.</div>
-      </a>
-
-      {# Sponsor 8 — Thermal Grizzly #}
-      <a class="sponsor-card" href="https://www.thermal-grizzly.com/" target="_blank" rel="noopener"
-         style="border:1.5px solid var(--ink);padding:10px;background:rgba(255,255,255,0.22);text-decoration:none;color:inherit;display:flex;flex-direction:column;gap:8px">
-        <div class="kicker" style="color:var(--redDeep)">· Sponsorenanzeige ·</div>
-        <div style="aspect-ratio:12 / 5;border:1px solid var(--inkSoft);background:rgba(255,255,255,0.6);display:flex;align-items:center;justify-content:center;overflow:hidden">
-          <picture>
-            <source type="image/webp"
-              srcset="{{ url_for_site_file('style/sponsoren/thermalgrizzly_167.webp') }} 167w,
-                      {{ url_for_site_file('style/sponsoren/thermalgrizzly_334.webp') }} 334w"
-              sizes="(max-width: 720px) 50vw, 167px">
-            <img
-              src="{{ url_for_site_file('style/sponsoren/thermalgrizzly_600x250.png') }}"
-              alt="Thermal Grizzly" width="167" height="68"
-              loading="lazy" decoding="async">
-          </picture>
-        </div>
-        <div class="head italic" style="font-family:var(--display);font-size:16px;font-style:italic;color:var(--ink);line-height:1.1">Thermal Grizzly</div>
-        <div class="body-text" style="font-family:var(--body);font-size:12px;color:var(--ink);line-height:1.4">Wärmeleitpasten von Roman „der8auer" Hartung.</div>
-      </a>
-
-      {# Sponsor 9 — Virtual Lounge #}
-      <a class="sponsor-card" href="https://virtual-lounge.de/" target="_blank" rel="noopener"
-         style="border:1.5px solid var(--ink);padding:10px;background:rgba(255,255,255,0.22);text-decoration:none;color:inherit;display:flex;flex-direction:column;gap:8px">
-        <div class="kicker" style="color:var(--redDeep)">· Sponsorenanzeige ·</div>
-        <div style="aspect-ratio:12 / 5;border:1px solid var(--inkSoft);background:rgba(255,255,255,0.6);display:flex;align-items:center;justify-content:center;overflow:hidden">
-          <picture>
-            <source type="image/webp"
-              srcset="{{ url_for_site_file('style/sponsoren/virtualounge_167.webp') }} 167w,
-                      {{ url_for_site_file('style/sponsoren/virtualounge_334.webp') }} 334w"
-              sizes="(max-width: 720px) 50vw, 167px">
-            <img
-              src="{{ url_for_site_file('style/sponsoren/virtualounge_600x250.png') }}"
-              alt="Virtual Lounge" width="167" height="68"
-              loading="lazy" decoding="async">
-          </picture>
-        </div>
-        <div class="head italic" style="font-family:var(--display);font-size:16px;font-style:italic;color:var(--ink);line-height:1.1">Virtual Lounge</div>
-        <div class="body-text" style="font-family:var(--body);font-size:12px;color:var(--ink);line-height:1.4">VR- und Eventerlebnisse in Bremen.</div>
-      </a>
-
-      {# Sponsor 10 — Volt Cola #}
-      <a class="sponsor-card" href="https://voltcola.de/" target="_blank" rel="noopener"
-         style="border:1.5px solid var(--ink);padding:10px;background:rgba(255,255,255,0.22);text-decoration:none;color:inherit;display:flex;flex-direction:column;gap:8px">
-        <div class="kicker" style="color:var(--redDeep)">· Sponsorenanzeige ·</div>
-        <div style="aspect-ratio:12 / 5;border:1px solid var(--inkSoft);background:rgba(255,255,255,0.6);display:flex;align-items:center;justify-content:center;overflow:hidden">
-          <picture>
-            <source type="image/webp"
-              srcset="{{ url_for_site_file('style/sponsoren/voltcola_167.webp') }} 167w,
-                      {{ url_for_site_file('style/sponsoren/voltcola_334.webp') }} 334w"
-              sizes="(max-width: 720px) 50vw, 167px">
-            <img
-              src="{{ url_for_site_file('style/sponsoren/voltcola_600x250.png') }}"
-              alt="Volt Cola" width="167" height="68"
-              loading="lazy" decoding="async">
-          </picture>
-        </div>
-        <div class="head italic" style="font-family:var(--display);font-size:16px;font-style:italic;color:var(--ink);line-height:1.1">Volt Cola</div>
-        <div class="body-text" style="font-family:var(--body);font-size:12px;color:var(--ink);line-height:1.4">Brennstoff für lange LAN-Nächte.</div>
-      </a>
-
-      {# Sponsor 11 — Noctua #}
-      <a class="sponsor-card" href="https://noctua.at/" target="_blank" rel="noopener"
-         style="border:1.5px solid var(--ink);padding:10px;background:rgba(255,255,255,0.22);text-decoration:none;color:inherit;display:flex;flex-direction:column;gap:8px">
-        <div class="kicker" style="color:var(--redDeep)">· Sponsorenanzeige ·</div>
-        <div style="aspect-ratio:12 / 5;border:1px solid var(--inkSoft);background:rgba(255,255,255,0.6);display:flex;align-items:center;justify-content:center;overflow:hidden">
-          <picture>
-            <source type="image/webp"
-              srcset="{{ url_for_site_file('style/sponsoren/noctua_167.webp') }} 167w,
-                      {{ url_for_site_file('style/sponsoren/noctua_334.webp') }} 334w"
-              sizes="(max-width: 720px) 50vw, 167px">
-            <img
-              src="{{ url_for_site_file('style/sponsoren/noctua_600x250.png') }}"
-              alt="Noctua" width="167" height="68"
-              loading="lazy" decoding="async">
-          </picture>
-        </div>
-        <div class="head italic" style="font-family:var(--display);font-size:16px;font-style:italic;color:var(--ink);line-height:1.1">Noctua</div>
-        <div class="body-text" style="font-family:var(--body);font-size:12px;color:var(--ink);line-height:1.4">Leiseste Lüfter, die je geschwiegen haben.</div>
-      </a>
-
-      {# Sponsor 12 — Hosenträger HEINRICH (fake/satirical, no real image) #}
-      <div class="sponsor-card"
-         style="border:1.5px solid var(--ink);padding:10px;background:rgba(255,255,255,0.22);color:inherit;display:flex;flex-direction:column;gap:8px">
-        <div class="kicker" style="color:var(--inkSoft)">· Sponsorenanzeige ·</div>
-        <div style="aspect-ratio:12 / 5;border:1.5px dashed var(--inkSoft);background:repeating-linear-gradient(135deg, rgba(26,24,18,0.04) 0 6px, transparent 6px 12px);display:flex;align-items:center;justify-content:center;text-align:center;padding:6px 8px;font-family:var(--mono);font-size:9px;letter-spacing:0.18em;text-transform:uppercase;color:var(--inkSoft);line-height:1.3">
-          Logo · Hosenträger HEINRICH
-        </div>
-        <div class="head italic" style="font-family:var(--display);font-size:16px;font-style:italic;color:var(--ink);line-height:1.1">Hosenträger HEINRICH</div>
-        <div class="body-text" style="font-family:var(--body);font-size:12px;color:var(--ink);line-height:1.4">Maßgefertigt seit 1962. Auch in Vereinsfarben.</div>
-      </div>
-
+        {%- endif %}
+        <div class="sc-name">{{ s.name }}</div>
+        <div class="sc-line">{{ s.line }}</div>
+      </{{ tag }}>
+      {%- endfor %}
     </div>
   </section>
 

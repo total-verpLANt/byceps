@@ -104,37 +104,8 @@
   }
   .nav-account .na-menu .na-logout::before { content: '✕' !important; }
 
-  /* Mobile icon trigger for the account menu (parallels .nav-login-mobile) */
-  .nav-account-mobile { display: none; }
-
-  /* Account links rendered inside the mobile hamburger panel */
-  .nav-panel .na-panel-head {
-    padding: 12px 4px 8px;
-    font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    color: var(--inkSoft);
-    border-bottom: 1px dashed var(--ink);
-  }
-  .nav-panel .na-panel-head strong {
-    font-family: var(--display); font-style: italic; font-size: 18px;
-    color: var(--ink); text-transform: none; letter-spacing: -0.01em;
-  }
-
   @media (max-width: 720px) {
-    .nav-account { display: none; }   /* desktop dropdown hidden — lives in panel */
-    .nav-account-mobile {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 44px;
-      height: 44px;
-      margin-left: auto;
-      font-size: 18px;
-      text-decoration: none;
-      color: var(--ink);
-    }
+    .nav-account { display: none; }   /* desktop dropdown hidden — lives in the rail */
   }
 </style>
 <div class="topstrip">
@@ -161,11 +132,24 @@
 </div>
 <div class="rule"></div>
 <div class="navstrip">
-  <div class="crumbs">{% include 'layout/_navigation.html' with context %}</div>
+  <div class="crumbs">
+    <img class="nav-owl" src="{{ url_for_site_file('style/eule_logo.png') }}" alt="total verpLANt Eule">
+    {% include 'layout/_navigation.html' with context %}
+  </div>
 
   <div class="nav-actions">
   <button type="button" class="theme-toggle" data-theme-toggle aria-pressed="false">
-    <span class="tt-label">☾ Spätausgabe</span>
+    {#- Both editions stay in the DOM, stacked in one grid cell, so the button
+        always reserves the width of the widest label and the active edition is
+        centred — the control never changes size between Tages-/Spätausgabe. -#}
+    <span class="tt-label">
+      <span class="tt-edition tt-edition--light">☾ Spätausgabe</span>
+      <span class="tt-edition tt-edition--dark">☀ Tagesausgabe</span>
+    </span>
+    <span class="tt-label-short">
+      <span class="tt-edition tt-edition--light">☾ Spät</span>
+      <span class="tt-edition tt-edition--dark">☀ Tag</span>
+    </span>
   </button>
 
   {%- if g.user.authenticated %}
@@ -189,32 +173,42 @@
       </li>
     </ul>
   </details>
-  <a class="nav-account-mobile" href="{{ url_for('dashboard.index') }}" aria-label="Mein Konto"><span class="na-bars"><i></i><i></i><i></i></span></a>
   {%- else %}
   <a class="nav-login" href="{{ login_url }}">🔑 Log in</a>
-  <a class="nav-login-mobile" href="{{ login_url }}" aria-label="Log in">🔑</a>
   {%- endif %}
 
   <button class="nav-hamburger" aria-expanded="false" aria-label="Menü öffnen">
-    <span class="bars"></span>
-    <span class="bars"></span>
-    <span class="bars"></span>
+    <span class="bars"><span></span><span></span><span></span></span>
     <span class="label">Menü</span>
   </button>
   </div>
-  <nav class="nav-panel" style="flex-basis:100%">
-    {% include 'layout/_navigation.html' with context %}
-    {%- if g.user.authenticated %}
-    <div class="na-panel-head">Angemeldet als <strong>{{ render_user_screen_name(g.user.as_user()) }}</strong></div>
-    <a href="{{ url_for('dashboard.index') }}">Übersicht</a>
-    <a href="{{ url_for('user_profile.view', user_id=g.user.id) }}">Profil</a>
-    <a href="{{ url_for('user_settings.view') }}">Einstellungen</a>
-    <a href="{{ url_for('ticketing.index_mine') }}">Meine Tickets</a>
-    <a href="{{ url_for('shop_orders.index') }}">Bestellungen</a>
-    <a class="nav-panel-login" href="{{ logout_url }}"
-       data-action="log-out" data-redirect-target="{{ login_url }}">Abmelden</a>
-    {%- else %}
-    <a class="nav-panel-login" href="{{ login_url }}">🔑 Log in</a>
-    {%- endif %}
+  <nav class="nav-panel" style="flex-basis:100%" aria-label="Hauptnavigation">
+    <a class="mr-home" href="/">
+      <img class="owl" src="{{ url_for_site_file('style/eule_logo.png') }}" alt="total verpLANt Eule">
+      <span class="txt"><strong>Startseite</strong><small>genial verpLANt · zur Übersicht</small></span>
+      <span class="arr" aria-hidden="true">→</span>
+    </a>
+    <div class="mr-list">
+      {#- the home row above covers the homepage, so skip a configured "/" item #}
+      {%- for item in get_nav_menu_items('main') if item.target != '/' %}
+      <a href="{{ item.target }}"{% if item.current_page_id == current_page %} class="current"{% endif %}><span class="num">{{ '%02d'|format(loop.index) }}</span><span class="lbl">{{ item.label }}</span></a>
+      {%- endfor %}
+      {%- if g.user.authenticated %}
+      <div class="mr-account-head">Angemeldet als <strong>{{ render_user_screen_name(g.user.as_user()) }}</strong></div>
+      <a class="mr-acc" href="{{ url_for('dashboard.index') }}"><span class="num">›</span><span class="lbl">Übersicht</span></a>
+      <a class="mr-acc" href="{{ url_for('user_profile.view', user_id=g.user.id) }}"><span class="num">›</span><span class="lbl">Profil</span></a>
+      <a class="mr-acc" href="{{ url_for('user_settings.view') }}"><span class="num">›</span><span class="lbl">Einstellungen</span></a>
+      <a class="mr-acc" href="{{ url_for('ticketing.index_mine') }}"><span class="num">›</span><span class="lbl">Meine Tickets</span></a>
+      <a class="mr-acc" href="{{ url_for('shop_orders.index') }}"><span class="num">›</span><span class="lbl">Bestellungen</span></a>
+      {%- endif %}
+    </div>
+    <div class="mr-foot">
+      {%- if g.user.authenticated %}
+      <a class="primary" href="{{ logout_url }}"
+         data-action="log-out" data-redirect-target="{{ login_url }}">✕ Abmelden</a>
+      {%- else %}
+      <a class="primary" href="{{ login_url }}">🔑 Anmelden</a>
+      {%- endif %}
+    </div>
   </nav>
 </div>

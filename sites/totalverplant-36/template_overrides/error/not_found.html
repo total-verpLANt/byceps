@@ -1,0 +1,67 @@
+{% extends 'layout/base_auto.html' %}
+{% set page_title = _('Page Not Found') %}
+{% set current_page = 'error_not_found' %}
+
+{% block head %}
+{% include 'error/_bote_error_style.html' %}
+{%- endblock %}
+
+{% block body %}
+<div class="bote-page error-page error-404">
+
+  <div class="page-folio">
+    <span class="pf-ressort">Setzerei · Vermisstenanzeige</span>
+    <span>Der Rentenbote · Ausgabe 36</span>
+  </div>
+
+  <header class="page-head">
+    <h1 class="ph-title">An dieser Stelle klafft eine <em>Lücke</em></h1>
+    <p class="ph-standfirst">Die gewünschte Seite ist nicht im Archiv. Womöglich wurde sie verlegt, umbenannt oder ist beim Mittagsschlaf in der Setzerei liegengeblieben.</p>
+  </header>
+
+  <div class="error-shell">
+    <div class="error-main">
+      <div class="error-plate">
+        <div class="plate-art">
+          <span class="stamp">Verschollen</span>
+          <p class="code">4<em>0</em>4</p>
+          <p class="code-sub">Seite nicht gesetzt</p>
+        </div>
+        <div class="plate-cap">
+          <span class="pc-red">Reklamation Nº 404</span>
+          <span>Leere Druckform</span>
+        </div>
+      </div>
+
+      <div class="error-notice">
+        <div class="notice-head">
+          <span class="nh-kicker">Suchmeldung · von der Schriftleitung</span>
+          <span class="nh-no">{{ page_title }}</span>
+        </div>
+        <div class="notice-body">
+          <p class="lead">Wir bedauern den Setzfehler aufrichtig. {{ _('Sorry, the request page could not be found.') }} Trotz gründlicher Durchsicht sämtlicher Kästen, Schubladen und Aschenbecher blieb sie unauffindbar.</p>
+          <p>Vermutlich tippten sich flinke Finger in der Adresszeile, oder ein älterer Verweis wurde inzwischen eingestampft. Kein Grund zur Sorge — der Hausdrucker hat schon Schlimmeres überlebt.</p>
+
+          <div class="error-help">
+            <span class="eh-label">Wo könnte sie stecken?</span>
+            <ul>
+              <li><span class="eh-no">01</span><a href="/">Zur Titelseite</a><span class="eh-note">der sichere Hafen</span></li>
+              {%- if not g.user.authenticated %}
+              <li><span class="eh-no">02</span><a href="{{ url_for('authn_login.log_in_form') }}">Am Lesepult anmelden</a><span class="eh-note">mit Ausweis</span></li>
+              {%- endif %}
+            </ul>
+          </div>
+
+          <div class="error-actions">
+            <a class="button color-primary" href="/"><span>Zurück zur Titelseite</span></a>
+            {%- if not g.user.authenticated %}
+            <a class="button" href="{{ url_for('authn_login.log_in_form') }}"><span>Anmelden</span></a>
+            {%- endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+{%- endblock %}

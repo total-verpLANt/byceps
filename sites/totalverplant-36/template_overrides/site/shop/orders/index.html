@@ -1,0 +1,54 @@
+{% extends 'layout/base.html' %}
+{% from 'macros/shop/orders.html' import render_order_payment_state, render_order_overdue_tag %}
+{% set current_page = 'shop_orders' %}
+{% set page_title = _('Your orders') %}
+
+{% block head %}
+{% include 'site/shop/_bote_order_style.html' %}
+{%- endblock %}
+
+{% block body %}
+<div class="bote-page order-page orders-index-page">
+
+  <div class="page-folio">
+    <span class="pf-ressort">{{ _('Anzeigenkontor') }} · {{ _('Bestellbuch') }}</span>
+    <span>Der Rentenbote · Ausgabe 36</span>
+  </div>
+
+  <header class="page-head">
+    <h1 class="ph-title">{{ _('Ihre') }} <em>{{ _('Bestellungen') }}</em></h1>
+    <p class="ph-standfirst">{{ _('Das Hauptbuch des Kartenschalters: jede aufgegebene Bestellung mit Nummer, Datum, Betrag und Stand der Dinge.') }}</p>
+  </header>
+
+  {%- if orders %}
+  <p class="crumb-back">{{ _('You can cancel orders with status %(payment_state)s yourself.', payment_state=render_order_payment_state(PaymentState.open)) }}</p>
+
+  <table class="itemlist is-wide">
+    <thead>
+      <tr>
+        <th>{{ _('Order number') }}</th>
+        <th>{{ _('Date') }}</th>
+        <th class="number">{{ _('Amount') }}</th>
+        <th>{{ _('Status') }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {%- for order in orders %}
+      <tr>
+        <td><strong><a href="{{ url_for('.view', order_id=order.id) }}">{{ order.order_number }}</a></strong></td>
+        <td>{{ order.created_at|dateformat }}, {{ order.created_at|timeformat('short') }}</td>
+        <td class="number">{{ order.total_amount|moneyformat }}</td>
+        <td class="nowrap">{{- render_order_payment_state(order.payment_state) }} {{ render_order_overdue_tag(order) }}</td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+  {%- else %}
+  <div class="order-empty">
+    <div class="oe-head">{{ _('Hinweis vom Kartenschalter') }}</div>
+    <p>{{ _('You have not placed any orders.') }}</p>
+  </div>
+  {%- endif %}
+
+</div>
+{%- endblock %}

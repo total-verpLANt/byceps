@@ -1,7 +1,9 @@
 /* Der Rentenbote — Tages-/Spätausgabe (light/dark) toggle.
    The pre-paint script in base.html <head> sets html[data-theme] before first
    paint (from localStorage 'bote-theme', else the OS preference). This file
-   only wires the toggle button and keeps its label in sync. */
+   only wires the toggle button and keeps its pressed-state in sync; the label
+   text itself is static markup, shown/hidden purely by CSS on html[data-theme]
+   so the button keeps a constant width across both editions. */
 (function () {
   'use strict';
 
@@ -10,8 +12,6 @@
   }
 
   function syncLabel(btn) {
-    var label = btn.querySelector('.tt-label') || btn;
-    label.textContent = currentTheme() === 'dark' ? '☀ Tagesausgabe' : '☾ Spätausgabe';
     btn.setAttribute('aria-pressed', currentTheme() === 'dark' ? 'true' : 'false');
   }
 

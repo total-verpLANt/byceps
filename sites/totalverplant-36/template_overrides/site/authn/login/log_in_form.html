@@ -1,0 +1,66 @@
+{% extends 'layout/base.html' %}
+{% from 'macros/forms.html' import form_buttons, form_field_check, form_field %}
+{% from 'macros/misc.html' import render_notification %}
+{% set simple_layout = true %}
+{% set current_page = 'authn_login' %}
+{% set page_title = _('Log in') %}
+
+{% block head %}
+{% include 'site/authn/_bote_auth_style.html' %}
+{%- endblock %}
+
+{% block body %}
+<div class="bote-page auth-page auth-login">
+
+  <div class="page-folio">
+    <span class="pf-ressort">Pförtnerloge · Platz an der Konsole</span>
+    <span>Der Rentenbote · Ausgabe 36</span>
+  </div>
+
+  <header class="page-head">
+    <h1 class="ph-title">Am Lesepult <em>einloggen</em></h1>
+    <p class="ph-standfirst">Mitgliedsausweis zücken, Rollator an der Garderobe parken, Headset aufsetzen. Wer noch keinen Zugang hat, löst weiter unten ein Abonnement — Aufnahme jederzeit, auch nach dem Mittagsschlaf.</p>
+  </header>
+
+  {%- if login_enabled %}
+  <div class="auth-shell">
+    <form action="{{ url_for('.log_in') }}" method="post" id="login-form">
+      <div class="main-body-box">
+        <div class="auth-cardhead">
+          <span class="ah-form">Formular A · Zugang zum Stammtisch-Server</span>
+          <span class="ah-no">Nº 36</span>
+        </div>
+        <div class="auth-cardbody">
+          {{ form_field(form.username, maxlength=40, autofocus='autofocus') }}
+          {{ form_field(form.password, maxlength=100) }}
+          {{ form_field_check(form.permanent, _('permanently stay logged in')) }}
+
+          <div id="login-failed-notice" class="hidden">
+{{ render_notification(_('Login failed.'), category='danger', icon='warning') }}
+          </div>
+        </div>
+      </div>
+
+      {{ form_buttons(_('Log in')) }}
+    </form>
+
+    <div class="auth-help">
+      {% if g.site.user_account_creation_enabled %}
+      <p>Noch nicht im Verein? <a href="{{ url_for('user_creation.create_form') }}">{{ _('Create an account.') }}</a></p>
+      <p>Bestätigungsbrief beim Nachbarn oder im Spam-Ordner verschollen? <a href="{{ url_for('user_email_address.request_confirmation_email_form') }}">{{ _('Request it again.') }}</a></p>
+      {%- endif %}
+      <p>Kennwort vergessen — wie so oft die Lesebrille? <a href="{{ url_for('authn_password.request_reset_form') }}">{{ _('Set new password.') }}</a></p>
+    </div>
+  </div>
+  {%- else %}
+  <div class="auth-shell">
+{{ render_notification(_('Login is disabled.'), category='warning', icon='warning') }}
+  </div>
+  {%- endif %}
+
+</div>
+{%- endblock %}
+
+{% block scripts %}
+    <script src="{{ url_for('static', filename='behavior/login.js') }}"></script>
+{%- endblock %}

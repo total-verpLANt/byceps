@@ -1,0 +1,123 @@
+<style>
+  /* ============================================================
+     FEHLERSEITEN — "Setzerei / Pforte" treatment.
+
+     Shared by the two core error pages:
+       error/not_found.html   (404 — Seite nicht gefunden)
+       error/forbidden.html   (403 — Zutritt verweigert)
+
+     Stock rendered a bare <h1 class="title"> + a .main-body-box
+     <p>, full-bleed under the sticky masthead (no .bote-page
+     wrapper) — exactly the unstyled state the rest of this patch
+     fixes. Each template now wraps its body in the centered paper
+     sheet (.bote-page .error-page) with a .page-folio + .page-head
+     and pulls in this partial from its head block.
+
+     The error is re-set as an editorial notice: a hatched "leere
+     Druckform" plate carrying the big status code + a rubber
+     stamp, hinged to a "Suchmeldung / Aushang" card with a ruled
+     header band, a drop-cap notice, a link register and back
+     buttons. Every colour is a theme token, so "Spätausgabe"
+     (dark) is automatic. .bote-page / .page-folio / .page-head /
+     .button come from totalverplant-36.css — only the .error-*
+     furniture lives here.
+     ============================================================ */
+
+  .error-page .error-shell{ max-width:62rem; margin-inline:auto; width:100%; }
+  .error-page .error-main{
+    display:grid; grid-template-columns:minmax(0,.82fr) minmax(0,1.18fr);
+    gap:clamp(18px,2.6vw,34px); align-items:stretch;
+  }
+
+  /* ===== the "missing page" printing plate ===== */
+  .error-page .error-plate{
+    position:relative; border:1.5px solid var(--ink); background:var(--paperLite);
+    box-shadow:6px 6px 0 var(--ink); display:flex; flex-direction:column; overflow:hidden;
+  }
+  .error-page .plate-art{
+    flex:1 1 auto; min-height:300px; position:relative; display:grid; place-content:center;
+    text-align:center; padding:30px 20px; border-bottom:1.5px solid var(--ink);
+    background-color:var(--paper);
+    background-image:repeating-linear-gradient(45deg,transparent 0 13px,rgba(26,24,18,.07) 13px 14px);
+  }
+  html[data-theme="dark"] .error-page .plate-art{
+    background-image:repeating-linear-gradient(45deg,transparent 0 13px,rgba(236,227,205,.07) 13px 14px);
+  }
+  .error-page .plate-art .code{
+    font-family:var(--display); font-weight:900; font-size:clamp(84px,16vw,180px);
+    line-height:.78; letter-spacing:-.05em; color:var(--ink); margin:0;
+  }
+  .error-page .plate-art .code em{ font-style:italic; color:var(--redDeep); }
+  .error-page .plate-art .code-sub{
+    display:inline-block; font-family:var(--mono); font-size:10.5px; font-weight:700;
+    letter-spacing:.2em; text-transform:uppercase; color:var(--inkSoft); margin-top:18px;
+    padding:5px 11px; background:var(--paper); border:1px solid var(--ink);
+  }
+  /* rubber stamp */
+  .error-page .plate-art .stamp{
+    position:absolute; top:18px; right:-6px; transform:rotate(7deg);
+    font-family:var(--mono); font-weight:700; font-size:13px; letter-spacing:.22em; text-transform:uppercase;
+    color:var(--red); border:2.5px solid var(--red); border-radius:3px; padding:6px 12px;
+    box-shadow:inset 0 0 0 1.5px var(--red); opacity:.82; background:transparent;
+  }
+  .error-page .plate-cap{
+    display:flex; justify-content:space-between; gap:10px; padding:9px 14px;
+    font-family:var(--mono); font-size:9.5px; letter-spacing:.2em; text-transform:uppercase; color:var(--inkSoft);
+  }
+  .error-page .plate-cap .pc-red{ color:var(--redDeep); font-weight:700; }
+
+  /* ===== the notice / "Suchmeldung" card ===== */
+  .error-page .error-notice{
+    border:1.5px solid var(--ink); background:var(--paperLite);
+    box-shadow:6px 6px 0 var(--ink); display:flex; flex-direction:column;
+  }
+  .error-page .notice-head{
+    display:flex; justify-content:space-between; align-items:baseline; gap:10px 18px; flex-wrap:wrap;
+    padding:11px clamp(16px,2.2vw,24px) 10px; border-bottom:3px double var(--ink); background:var(--paper);
+    font-family:var(--mono); font-size:9.5px; letter-spacing:.2em; text-transform:uppercase; color:var(--inkSoft);
+  }
+  .error-page .notice-head .nh-kicker{ color:var(--redDeep); font-weight:700; }
+  .error-page .notice-head .nh-no{ color:var(--inkMute); }
+  .error-page .notice-body{ padding:clamp(20px,2.6vw,30px) clamp(18px,2.4vw,28px); }
+  .error-page .notice-body p{ font-family:var(--body); font-size:19px; line-height:1.5; color:var(--ink); margin:0 0 14px; }
+  .error-page .notice-body p:last-of-type{ margin-bottom:0; }
+  .error-page .notice-body p.lead{ font-size:21px; }
+  .error-page .notice-body p.lead::first-letter{
+    font-family:var(--display); font-weight:900; float:left; font-size:64px;
+    line-height:.74; padding:5px 10px 0 0; color:var(--redDeep);
+  }
+  .error-page .notice-body em{ font-style:italic; }
+
+  /* ===== "Wo könnte sie sein?" link register ===== */
+  .error-page .error-help{ margin-top:22px; border-top:3px double var(--ink); padding-top:6px; }
+  .error-page .error-help .eh-label{
+    font-family:var(--mono); font-size:9.5px; letter-spacing:.22em; text-transform:uppercase;
+    color:var(--redDeep); font-weight:700; padding:10px 0 6px; display:block;
+  }
+  .error-page .error-help ul{ list-style:none; margin:0; padding:0; }
+  .error-page .error-help li{
+    display:flex; align-items:baseline; gap:12px; padding:9px 2px; border-top:1px solid var(--ink);
+  }
+  .error-page .error-help li:first-child{ border-top:0; }
+  .error-page .error-help .eh-no{ font-family:var(--mono); font-size:11px; color:var(--inkMute); flex:0 0 auto; }
+  .error-page .error-help a{
+    font-family:var(--body); font-size:18px; color:var(--ink); text-decoration:none;
+    border-bottom:1px dashed var(--inkSoft);
+  }
+  .error-page .error-help a:hover{ color:var(--redDeep); border-bottom-color:var(--redDeep); }
+  .error-page .error-help .eh-note{ font-family:var(--body); font-style:italic; font-size:15px; color:var(--inkMute); margin-left:auto; }
+
+  /* ===== back actions (re-uses .button furniture from totalverplant-36.css) ===== */
+  .error-page .error-actions{ display:flex; gap:12px; flex-wrap:wrap; margin:26px 0 0; }
+
+  @media (max-width:760px){
+    .error-page .error-main{ grid-template-columns:1fr; }
+    .error-page .plate-art{ min-height:200px; }
+  }
+  @media (max-width:560px){
+    .error-page .error-help .eh-note{ display:none; }
+    .error-page .error-help li{ gap:10px; }
+    .error-page .error-actions .button{ flex:1 1 auto; }
+    .error-page .plate-art .stamp{ font-size:11px; letter-spacing:.18em; padding:5px 10px; }
+  }
+</style>

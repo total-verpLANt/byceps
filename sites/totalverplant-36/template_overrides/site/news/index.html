@@ -1,0 +1,43 @@
+{% extends 'layout/base.html' %}
+{% from 'macros/pagination.html' import render_pagination_nav %}
+{% from 'macros/subnav.html' import render_subnav_for_menu_id %}
+{% set current_page = 'news' %}
+{% set page_title = _('News') %}
+
+{% block subnav %}
+  {%- if subnav_menu_id|default %}
+{{ render_subnav_for_menu_id(subnav_menu_id, current_page) }}
+  {%- endif %}
+{% endblock %}
+
+{% block head %}
+{% include 'site/news/_bote_news_style.html' %}
+{%- endblock %}
+
+{% block body %}
+<div class="bote-page news-page news-index">
+
+  <div class="page-folio">
+    <span class="pf-ressort">{{ _('Aus der Redaktion') }} · {{ _('Neuigkeiten') }}</span>
+    <span>Der Rentenbote · Ausgabe 36</span>
+  </div>
+
+  <header class="page-head">
+    <h1 class="ph-title">{{ _('Neuigkeiten') }} <em>der Auflage</em></h1>
+    <p class="ph-standfirst">{{ _('Berichte, Bekanntmachungen und Bulletins der Redaktion — frisch aus der Setzerei, der Reihe nach von oben gelesen.') }}</p>
+  </header>
+
+  <div class="news-feed">
+    {%- for item in items.items %}
+{% include 'site/news/_item.html' %}
+    {%- endfor %}
+  </div>
+
+{{ render_pagination_nav(items, 'news.index', {
+  'per_page': per_page,
+}) }}
+
+  <div class="block centered"><a href="{{ url_for('.archive') }}">{{ _('Archive') }}</a></div>
+
+</div>
+{%- endblock %}

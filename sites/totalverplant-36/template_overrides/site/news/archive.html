@@ -1,0 +1,59 @@
+{% extends 'layout/base.html' %}
+{% from 'macros/misc.html' import render_tag %}
+{% from 'macros/pagination.html' import render_pagination_nav %}
+{% from 'macros/subnav.html' import render_subnav_for_menu_id %}
+{% set current_page = 'news' %}
+{% set page_title = _('News Archive') %}
+
+{% block subnav %}
+  {%- if subnav_menu_id|default %}
+{{ render_subnav_for_menu_id(subnav_menu_id, current_page) }}
+  {%- endif %}
+{% endblock %}
+
+{% block head %}
+{% include 'site/news/_bote_news_style.html' %}
+{%- endblock %}
+
+{% block body %}
+<div class="bote-page news-page news-archive">
+
+  <div class="page-folio">
+    <span class="pf-ressort">{{ _('Aus der Redaktion') }} · {{ _('Archiv') }}</span>
+    <span>Der Rentenbote · Ausgabe 36</span>
+  </div>
+
+  <header class="page-head">
+    <h1 class="ph-title">Das <em>Zeitungsarchiv</em></h1>
+    <p class="ph-standfirst">{{ _('Sämtliche Bekanntmachungen vergangener Auflagen, sauber abgeheftet — nach Datum geordnet, zum Nachschlagen wie im Lesesaal.') }}</p>
+  </header>
+
+  <table class="itemlist is-wide">
+    <thead>
+      <tr>
+        <th>{{ _('Date') }}</th>
+        <th>{{ _('Title') }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {%- for item in headlines.items %}
+      <tr>
+        <td>
+        {%- if item.published %}
+          {{ item.published_at|dateformat('medium') }}
+        {%- else %}
+          {{ render_tag(_('Draft')) }}
+        {%- endif %}
+        </td>
+        <td><a href="{{ url_for('.view', slug=item.slug) }}">{{ item.title }}</a></td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+
+{{ render_pagination_nav(headlines, 'news.archive', {
+  'per_page': per_page,
+}) }}
+
+</div>
+{%- endblock %}

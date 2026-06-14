@@ -1,0 +1,49 @@
+{% extends 'layout/base.html' %}
+{% from 'macros/forms.html' import form_buttons %}
+{% from 'macros/subnav.html' import render_subnav_for_menu_id %}
+{% set simple_layout = true %}
+{% set current_page = 'shop_order' %}
+{% set page_title = pgettext('verb', 'Order') %}
+
+{% block head %}
+{% include 'site/shop/_bote_order_style.html' %}
+{%- endblock %}
+
+{% block subnav %}
+  {%- if subnav_menu_id|default %}
+{{ render_subnav_for_menu_id(subnav_menu_id, current_page) }}
+  {%- endif %}
+{% endblock %}
+
+{% block body %}
+<div class="bote-page order-page order-form-page">
+
+  <div class="page-folio">
+    <span class="pf-ressort">{{ _('Anzeigenkontor') }} · {{ _('Bestellschein') }}</span>
+    <span>Der Rentenbote · Ausgabe 36</span>
+  </div>
+
+  <header class="page-head">
+    <h1 class="ph-title">{{ _('Bestellung') }} <em>{{ _('aufgeben') }}</em></h1>
+    <p class="ph-standfirst">{{ _('Bitte am Schalter ausfüllen: Rechnungsanschrift eintragen, Karten wählen und verbindlich abschicken. Der Hausdrucker kümmert sich um den Rest.') }}</p>
+  </header>
+
+{{ render_snippet('shop_order_intro', ignore_if_unknown=True)|safe }}
+
+  {%- if collections %}
+  <form action="{{ url_for('.order') }}" method="post" class="disable-submit-button-on-submit">
+
+{% include 'site/shop/order/_order_form_orderer.html' %}
+{% include 'site/shop/order/_order_form_products.html' %}
+
+    {{ form_buttons(_('Place binding order now')) }}
+  </form>
+  {%- else %}
+  <div class="order-empty">
+    <div class="oe-head">{{ _('Hinweis vom Kartenschalter') }}</div>
+    <p>{{ _('No products are available at this time.') }}</p>
+  </div>
+  {%- endif %}
+
+</div>
+{%- endblock %}
