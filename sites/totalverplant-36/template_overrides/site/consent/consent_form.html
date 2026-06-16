@@ -1,0 +1,47 @@
+{% extends 'layout/base.html' %}
+{% from 'macros/forms.html' import form_buttons, form_field_check %}
+{% from 'macros/misc.html' import render_notification %}
+{% set simple_layout = true %}
+{% set page_title = _('Consent required') %}
+
+{% block head %}
+{% include 'site/authn/_bote_auth_style.html' %}
+{%- endblock %}
+
+{% block body %}
+<div class="bote-page auth-page auth-consent">
+
+  <div class="page-folio">
+    <span class="pf-ressort">Pförtnerloge · Neue Hausordnung</span>
+    <span>Der Rentenbote · Ausgabe 36</span>
+  </div>
+
+  <header class="page-head">
+    <h1 class="ph-title">Die <em>Hausordnung</em></h1>
+    <p class="ph-standfirst">Am Stammtisch hat sich etwas geändert — und ohne frische Unterschrift lässt der Pförtner niemanden weiter. Einmal in Ruhe gegenlesen, Häkchen setzen, fertig. Dann geht es zurück an die Konsole.</p>
+  </header>
+
+  <div class="auth-shell">
+
+    {{ render_notification(_('Please consent to the updated terms to be able to continue.'), category='warning', icon='warning') }}
+
+    <form action="{{ url_for('.consent', token=token) }}" method="post" class="disable-submit-button-on-submit">
+      <div class="main-body-box">
+        <div class="auth-cardhead">
+          <span class="ah-form">Formular H · Erneuerte Hausordnung</span>
+          <span class="ah-no">Nº 36</span>
+        </div>
+        <div class="auth-cardbody">
+          {{ form.subject_ids() }}
+          {%- for subject, field in subjects_and_fields %}
+          {{ form_field_check(field, subject.checkbox_label.replace('{url}', subject.checkbox_link_target)|safe) }}
+          {%- endfor %}
+        </div>
+      </div>
+
+      {{ form_buttons(_('I consent')) }}
+    </form>
+  </div>
+
+</div>
+{%- endblock %}

@@ -1,0 +1,131 @@
+{% extends 'layout/base.html' %}
+{% from 'macros/icons.html' import render_icon %}
+{% set current_page = 'guest_server' %}
+{% set page_title = _('Guest Servers') %}
+
+{% block head %}
+{% include 'site/guest_server/_bote_guest_server_style.html' %}
+{%- endblock %}
+
+{% block body %}
+<div class="bote-page gs-page">
+
+  <div class="page-folio">
+    <span class="pf-ressort">Netzwerk · Mitgebrachte Kisten</span>
+    <span>Der Rentenbote · Ausgabe 36</span>
+  </div>
+
+  <header class="page-head">
+    <h1 class="ph-title">Eigene <em>Kisten</em> am Netz</h1>
+    <p class="ph-standfirst">Wer Server, NAS oder Bastelrechner in die Halle schleppt, trägt ihn hier ein und bekommt vom Netzwart feste Adressen zugeteilt. Dann findet auch der Nachbartisch den TeamSpeak — und der Stammtisch weiß, welche Kiste in Reihe 7 so brummt.</p>
+  </header>
+
+  <div class="gs-toolbar">
+    <h2>Deine Maschinen am Strang</h2>
+    <a class="gs-action" href="{{ url_for('.create_form') }}"><span class="plus">＋</span> {{ _('Register guest server') }}</a>
+  </div>
+
+  {%- if servers %}
+
+  <div class="gs-list">
+    {%- for server in servers %}
+    <article class="gs-card">
+      <div class="gc-head">
+        <p class="gc-desc">{{ server.description|fallback }}</p>
+        {%- if server.approved %}
+        <span class="gc-stamp is-approved">{{ render_icon('success') }} Freigegeben vom Netzwart</span>
+        {%- else %}
+        <span class="gc-stamp is-pending">Wartet auf den Netzwart</span>
+        {%- endif %}
+      </div>
+      <div class="gc-body">
+
+        <div class="gs-spec gs-spec--wide">
+          <span class="gs-k">Hostnamen</span>
+          <span class="gs-v">
+            {%- for address in sort_addresses(server.addresses) -%}
+              {%- if address.hostname -%}
+              <code>{{ address.hostname }}{% if setting.domain %}.{{ setting.domain }}{% endif %}</code>{% if not loop.last %} · {% endif %}
+              {%- else -%}
+              <span class="gs-dim">noch nicht vergeben</span>{% if not loop.last %} · {% endif %}
+              {%- endif -%}
+            {%- endfor -%}
+          </span>
+        </div>
+
+        {%- if server.approved %}
+        <div class="gs-addr">
+          <span class="ga-k">Adresse</span>
+          <span class="ga-k">Netzmaske</span>
+          <span class="ga-k">Gateway</span>
+          <span class="ga-k">Hostname</span>
+          {%- for address in sort_addresses(server.addresses) %}
+          <span class="ga-v">
+            {%- if address.ip_address -%}{{ address.ip_address }}{%- else -%}<span class="ga-dim">keine</span>{%- endif -%}
+          </span>
+          <span class="ga-v">
+            {%- if address.netmask -%}{{ address.netmask }}{%- elif setting.netmask -%}{{ setting.netmask }}{%- else -%}<span class="ga-dim">—</span>{%- endif -%}
+          </span>
+          <span class="ga-v">
+            {%- if address.gateway -%}{{ address.gateway }}{%- elif setting.gateway -%}{{ setting.gateway }}{%- else -%}<span class="ga-dim">—</span>{%- endif -%}
+          </span>
+          <span class="ga-v">
+            {%- if address.hostname -%}{{ address.hostname }}{% if setting.domain %}.{{ setting.domain }}{% endif %}{%- else -%}<span class="ga-dim">—</span>{%- endif -%}
+          </span>
+          {%- endfor %}
+        </div>
+
+        <div class="gs-card-foot">
+          <a class="gs-link" href="{{ url_for('guest_server_common.view_printable_card', server_id=server.id) }}">{{ render_icon('print') }} Steckkarte für den Netzwart drucken</a>
+        </div>
+        {%- else %}
+        <div class="gs-spec gs-spec--wide">
+          <span class="gs-k">Adressen</span>
+          <span class="gs-v gs-note">Liegen noch beim Netzwart. Sobald er die Kiste freigibt, stehen IP, Netzmaske und Gateway hier — und auf der Steckkarte zum Abschreiben.</span>
+        </div>
+        {%- endif %}
+
+      </div>
+    </article>
+    {%- endfor %}
+  </div>
+
+  <div class="gs-settings">
+    <span class="gs-shead">Was am Strang für alle gilt</span>
+    <div class="gs-spec">
+      <span class="gs-k">{{ _('DNS servers') }}</span>
+      <span class="gs-v">
+        {%- with dns_servers = [setting.dns_server1, setting.dns_server2]|reject('none')|list %}
+          {%- if dns_servers %}
+            {%- for dns_server in dns_servers %}
+        <code>{{ dns_server }}</code>{% if not loop.last %} · {% endif %}
+            {%- endfor %}
+          {%- else %}
+        <span class="gs-dim">nicht hinterlegt</span>
+          {%- endif %}
+        {%- endwith %}
+      </span>
+    </div>
+    <div class="gs-spec">
+      <span class="gs-k">{{ _('Domain') }}</span>
+      <span class="gs-v">
+        {%- if setting.domain -%}
+        <code>{{ setting.domain }}</code>
+        {%- else -%}
+        <span class="gs-dim">nicht hinterlegt</span>
+        {%- endif -%}
+      </span>
+    </div>
+  </div>
+
+  {%- else %}
+
+  <div class="gs-empty">
+    <span class="ge-mark">∅</span>
+    Noch keine Kiste angemeldet. Wer was mitbringt, trägt es oben am Schalter ein — sonst vergisst der Netzwart, wo der Strom langläuft.
+  </div>
+
+  {%- endif %}
+
+</div>
+{%- endblock %}

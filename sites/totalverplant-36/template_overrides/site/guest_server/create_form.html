@@ -1,0 +1,101 @@
+{% extends 'layout/base.html' %}
+{% from 'macros/forms.html' import form_field %}
+{% set simple_layout = true %}
+{% set current_page = 'guest_server' %}
+{% set page_title = _('Register guest server') %}
+
+{% block head %}
+{% include 'site/guest_server/_bote_guest_server_style.html' %}
+{%- endblock %}
+
+{% block body %}
+<div class="bote-page gs-page gs-form">
+
+  {%- if address_quantity is none %}
+
+  {# ===== Schritt 1 — wie viele Adressen? (stock GET form, address_quantity select) ===== #}
+  <div class="page-folio">
+    <span class="pf-ressort">Netzwerk · Anmeldung, Schritt 1 von 2</span>
+    <span>Der Rentenbote · Ausgabe 36</span>
+  </div>
+
+  <p class="gs-crumbs"><a href="{{ url_for('.index') }}">Eigene Kisten</a><span class="sep">»</span><span>Kiste anmelden</span></p>
+
+  <header class="page-head">
+    <h1 class="ph-title">Kiste anmelden — <em>wie viele Adressen?</em></h1>
+    <p class="ph-standfirst">Jede Netzwerkkarte, die brummen soll, braucht ihre eigene Adresse. Ein Rechner mit zwei Karten? Dann zwei. Im Zweifel reicht eine — nachmelden geht immer, der Netzwart sitzt eh an der Pforte.</p>
+  </header>
+
+  <div class="form-shell">
+    <form action="{{ url_for('.create') }}" method="get">
+      <div class="main-body-box">
+        <div class="form-cardhead">
+          <span class="ah-form">Formular N1 · Adressen beim Netzwart anfordern</span>
+          <span class="ah-no">Nº 36</span>
+        </div>
+        <div class="form-cardbody">
+          {{ form_field(form.address_quantity, caption='Eine pro Netzwerkkarte. Mehr als eine Handvoll braucht keiner — und der Netzwart guckt sonst böse.', autofocus=true) }}
+        </div>
+      </div>
+      <div class="button-row">
+        <button type="submit" class="button color-primary"><span>{{ _('Continue') }}</span></button>
+        <a class="button is-outlined" href="{{ url_for('.index') }}"><span>{{ _('Cancel') }}</span></a>
+        <span class="step-note">Schritt 1 von 2 · danach kommt der Steckbrief</span>
+      </div>
+    </form>
+  </div>
+
+  {%- else %}
+
+  {# ===== Schritt 2 — Steckbrief (stock POST form, description + hostnameN + notes) ===== #}
+  <div class="page-folio">
+    <span class="pf-ressort">Netzwerk · Anmeldung, Schritt 2 von 2</span>
+    <span>Der Rentenbote · Ausgabe 36</span>
+  </div>
+
+  <p class="gs-crumbs"><a href="{{ url_for('.index') }}">Eigene Kisten</a><span class="sep">»</span><span>Kiste anmelden</span></p>
+
+  <header class="page-head">
+    <h1 class="ph-title">Kiste anmelden — <em>Steckbrief</em></h1>
+    <p class="ph-standfirst">Damit der Netzwart die richtige Kiste findet, wenn sie zickt: kurzer Steckbrief, ein, zwei Wunsch-Hostnamen, fertig. Die Adressen liegen danach in der Übersicht bereit — abschreiben und einstöpseln.</p>
+  </header>
+
+  <div class="form-shell">
+    <form action="{{ url_for('.create', address_quantity=address_quantity) }}" method="post">
+      <div class="main-body-box">
+        <div class="form-cardhead">
+          <span class="ah-form">Formular N2 · Steckbrief fürs Schwarze Brett</span>
+          <span class="ah-no">Nº 36</span>
+        </div>
+        <div class="form-cardbody">
+
+          {{ form_field(form.description, caption='Hersteller, Modell, Farbe — wie sieht der Kasten aus? Damit man ihn unter Tisch C in Reihe 7 wiederfindet.', autofocus=true) }}
+
+          {%- with suffix = ('.' + domain) if domain else '' %}
+            {%- for address_index in address_indexes %}
+              {%- set host_suffix %}<span class="host-suffix">{{ suffix }}</span>{% endset %}
+              {%- if suffix %}
+                {%- set host_caption %}Nur der Name. Die Endung <code>{{ suffix }}</code> hängt der Netzwart automatisch dran.{% endset %}
+              {%- else %}
+                {%- set host_caption = 'Nur der Hostname, ohne Domain.' %}
+              {%- endif %}
+      {{ form_field(form|attr('hostname' ~ address_index), placeholder=('kellerkiste' if loop.first else 'kellerkiste%d'|format(address_index)), suffix=(host_suffix if suffix else none), caption=host_caption) }}
+            {%- endfor %}
+          {%- endwith %}
+
+          {{ form_field(form.notes, caption='Freiwillig. Alles, was der Mensch an der Pforte wissen sollte, bevor er an Kabeln zieht — etwa: Lüfter klingt wie eine Kaffeemaschine, ist aber gewollt.') }}
+
+        </div>
+      </div>
+      <div class="button-row">
+        <button type="submit" class="button color-primary"><span>{{ _('Register guest server') }}</span></button>
+        <a class="button is-outlined" href="{{ url_for('.index') }}"><span>{{ _('Cancel') }}</span></a>
+        <span class="step-note">Schritt 2 von 2 · danach steht sie am Brett</span>
+      </div>
+    </form>
+  </div>
+
+  {%- endif %}
+
+</div>
+{%- endblock %}

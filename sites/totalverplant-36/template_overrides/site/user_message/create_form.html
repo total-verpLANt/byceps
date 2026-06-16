@@ -1,0 +1,48 @@
+{% extends 'layout/base.html' %}
+{% from 'macros/forms.html' import form_buttons, form_field %}
+{% from 'macros/user.html' import render_user_avatar_and_link %}
+{% set simple_layout = true %}
+{% set current_page = 'user_message' %}
+{% set page_title = _('Send message') %}
+
+{% block head %}
+{% include 'site/user_message/_bote_message_style.html' %}
+{%- endblock %}
+
+{% block body %}
+<div class="bote-page msg-page">
+
+  <div class="page-folio">
+    <span class="pf-ressort">Leserpost · Briefkasten der Redaktion</span>
+    <span>Der Rentenbote · Ausgabe 36</span>
+  </div>
+
+  <header class="page-head">
+    <h1 class="ph-title">Ein Wort an <em>ein Mitglied</em></h1>
+    <p class="ph-standfirst">Aufschreiben, in den Kasten werfen, fertig — die Poststelle trägt es persönlich aus. Antworten kommen über den Briefkasten auf deinem eigenen Profil zurück, ganz ohne dass jemand deine Adresse erfährt.</p>
+  </header>
+
+  <div class="msg-shell">
+
+    <form action="{{ url_for('.create', recipient_id=recipient.id) }}" method="post">
+      <div class="main-body-box">
+        <div class="msg-cardhead">
+          <span class="mh-form">Formular L · Leserpost an ein Mitglied</span>
+          <span class="mh-no">Nº 36</span>
+        </div>
+        <div class="msg-cardbody">
+          <label class="form-label">{{ _('Recipient') }}</label>
+          <div class="mb">
+            {{ render_user_avatar_and_link(recipient, size=48) }}
+          </div>
+          {{ form_field(form.body, autofocus='autofocus', caption=_('Wird wortgetreu zugestellt. Deine Adresse bleibt dabei verborgen — geantwortet wird über den Briefkasten auf deinem Profil.')) }}
+        </div>
+      </div>
+
+      {{ form_buttons(_('Send')) }}
+    </form>
+
+  </div>
+
+</div>
+{%- endblock %}

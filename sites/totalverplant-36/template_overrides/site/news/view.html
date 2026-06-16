@@ -1,0 +1,65 @@
+{% extends 'layout/base.html' %}
+{% from 'macros/subnav.html' import render_subnav_for_menu_id %}
+{% set current_page = 'news' %}
+{% set page_title = [item.title, _('News')] %}
+
+{% block subnav %}
+  {%- if subnav_menu_id|default %}
+{{ render_subnav_for_menu_id(subnav_menu_id, current_page) }}
+  {%- endif %}
+{% endblock %}
+
+{% block head %}
+{% include 'site/news/_bote_news_style.html' %}
+{%- endblock %}
+
+{% block body %}
+<div class="bote-page news-page news-article">
+
+  <div class="page-folio">
+    <span class="pf-ressort">{{ _('Aus der Redaktion') }} · {{ _('Neuigkeiten') }}</span>
+    <span>Der Rentenbote · Ausgabe 36</span>
+  </div>
+
+  <nav class="breadcrumbs mb">
+    <ol>
+      <li><a href="{{ url_for('.index') }}">{{ _('News') }}</a></li>
+    </ol>
+  </nav>
+
+{% include 'site/news/_item.html' %}
+
+  {%- if older_headline or newer_headline %}
+  <nav class="news-nav">
+
+    {%- if newer_headline %}
+    <a href="{{ url_for('.view', slug=newer_headline.slug) }}" class="nn-card nn-prev">
+      <span class="nn-arrow" aria-hidden="true">‹</span>
+      <span class="nn-body">
+        <span class="nn-kicker">{{ _('Newer') }}</span>
+        <span class="nn-title">{{ newer_headline.title }}</span>
+        <span class="nn-date">{{ newer_headline.published_at|dateformat('medium') }}</span>
+      </span>
+    </a>
+    {%- else %}
+    <span></span>
+    {%- endif %}
+
+    {%- if older_headline %}
+    <a href="{{ url_for('.view', slug=older_headline.slug) }}" class="nn-card nn-next">
+      <span class="nn-body">
+        <span class="nn-kicker">{{ _('Older') }}</span>
+        <span class="nn-title">{{ older_headline.title }}</span>
+        <span class="nn-date">{{ older_headline.published_at|dateformat('medium') }}</span>
+      </span>
+      <span class="nn-arrow" aria-hidden="true">›</span>
+    </a>
+    {%- else %}
+    <span></span>
+    {%- endif %}
+
+  </nav>
+  {%- endif %}
+
+</div>
+{%- endblock %}

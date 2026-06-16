@@ -1,0 +1,42 @@
+{% extends 'layout/base_auto.html' %}
+{% from 'macros/forms.html' import form_buttons, form_field %}
+{% set simple_layout = true %}
+{% set current_page = 'authn_password_update' %}
+{% set page_title = _('Set new password') %}
+
+{% block head %}
+{% include 'site/authn/_bote_auth_style.html' %}
+{%- endblock %}
+
+{% block body %}
+<div class="bote-page auth-page auth-reset">
+
+  <div class="page-folio">
+    <span class="pf-ressort">Pförtnerloge · Kennwort-Respawn</span>
+    <span>Der Rentenbote · Ausgabe 36</span>
+  </div>
+
+  <header class="page-head">
+    <h1 class="ph-title">Neues <em>Kennwort</em> vergeben</h1>
+    <p class="ph-standfirst">Zweimal sauber eintippen — am besten gleich auf den Zettel unterm Telefon notieren. Dann ist der Zugang wieder dicht, fester als die Gartenpforte um Punkt acht.</p>
+  </header>
+
+  <div class="auth-shell">
+    <form action="{{ url_for('.reset', token=token) }}" method="post">
+      <div class="main-body-box">
+        <div class="auth-cardhead">
+          <span class="ah-form">Formular K · Neues Kennwort</span>
+          <span class="ah-no">Nº 36</span>
+        </div>
+        <div class="auth-cardbody">
+          {{ form_field(form.new_password, autofocus='autofocus') }}
+          {{ form_field(form.new_password_confirmation) }}
+        </div>
+      </div>
+
+      {{ form_buttons(_('Save')) }}
+    </form>
+  </div>
+
+</div>
+{%- endblock %}

@@ -1,0 +1,46 @@
+{#- ============================================================================
+    Der Rentenbote — flashed messages re-set as editorial "Anschläge".
+
+    Overrides services/core/blueprints/common/templates/layout/_notifications.html
+    (included from layout/base.html on every page). The stock partial calls the
+    render_notification() macro, which emits
+
+        <div class="notification color-{category} block-with-icon"> … </div>
+
+    and that, with no theme rule, fell back to common.css's bright #88ccff/#ff9999
+    bands and bled full-width above the paper sheet (the "Please log in." strip).
+
+    This override keeps the same .notification + .color-{category} hooks (so the
+    base styling and any JS still resolve) but re-flows each message as a paper
+    notice slip with a German kicker, a stamped category mark and a serif body.
+    All visual styling lives in static/style/bote-theme.css, so light/dark and
+    1320-sheet alignment are handled there (notifications are global, not a
+    {% block head %} page, so the CSS can't ride a per-page _bote_*_style.html).
+
+    Markup contract preserved: message.text honours text_is_safe; .block-with-icon-body
+    keeps common.css's first/last-child margin reset working for safe-HTML texts.
+    ============================================================================ -#}
+{%- set bote_kickers = {
+  'info':    'Hinweis',
+  'success': 'Erledigt',
+  'warning': 'Achtung',
+  'danger':  'Fehler',
+} -%}
+{%- with flashed_messages = get_flashed_messages() %}
+  {%- if flashed_messages %}
+  <div class="bote-notices" role="status" aria-live="polite">
+    {%- for message in flashed_messages %}
+      {%- with text = message.text|safe if message.text_is_safe else message.text %}
+      <div class="notification bote-notice{% if message.category %} color-{{ message.category }}{% endif %}">
+        <div class="bote-notice-rail">
+          <span class="bote-notice-mark block-with-icon-icon" aria-hidden="true"></span>
+          <span class="bote-notice-kicker">{{ bote_kickers.get(message.category, 'Notiz') }}</span>
+          <span class="bote-notice-rule"></span>
+        </div>
+        <div class="bote-notice-body block-with-icon-body">{{ text }}</div>
+      </div>
+      {%- endwith %}
+    {%- endfor %}
+  </div>
+  {%- endif %}
+{%- endwith %}

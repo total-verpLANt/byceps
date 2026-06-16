@@ -1,0 +1,41 @@
+{% extends 'layout/base_auto.html' %}
+{% from 'macros/forms.html' import form_buttons, form_field %}
+{% set simple_layout = true %}
+{% set current_page = 'authn_password_request_reset' %}
+{% set page_title = _('Request password reset') %}
+
+{% block head %}
+{% include 'site/authn/_bote_auth_style.html' %}
+{%- endblock %}
+
+{% block body %}
+<div class="bote-page auth-page auth-reset-request">
+
+  <div class="page-folio">
+    <span class="pf-ressort">Pförtnerloge · Kennwort-Respawn</span>
+    <span>Der Rentenbote · Ausgabe 36</span>
+  </div>
+
+  <header class="page-head">
+    <h1 class="ph-title">Kennwort <em>neu setzen</em></h1>
+    <p class="ph-standfirst">Benutzernamen eintragen — die Setzerei schickt umgehend einen Boten (zu Fuß, dafür zuverlässig) mit der Anleitung zum Respawn Ihres Kennworts.</p>
+  </header>
+
+  <div class="auth-shell">
+    <form action="{{ url_for('.request_reset') }}" method="post">
+      <div class="main-body-box">
+        <div class="auth-cardhead">
+          <span class="ah-form">Formular K · Kennwort-Respawn</span>
+          <span class="ah-no">Nº 36</span>
+        </div>
+        <div class="auth-cardbody">
+          {{ form_field(form.screen_name, maxlength=40, autofocus='autofocus') }}
+        </div>
+      </div>
+
+      {{ form_buttons(_('Request')) }}
+    </form>
+  </div>
+
+</div>
+{%- endblock %}

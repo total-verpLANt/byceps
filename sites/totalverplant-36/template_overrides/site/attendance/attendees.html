@@ -1,0 +1,270 @@
+{% extends 'layout/base.html' %}
+{% from 'macros/icons.html' import render_icon %}
+{% from 'macros/misc.html' import render_tag %}
+{% from 'macros/pagination.html' import render_pagination_nav %}
+{% from 'macros/seating.html' import render_seat_link %}
+{% from 'macros/subnav.html' import render_subnav_for_menu_id %}
+{% from 'macros/user.html' import render_user_avatar, render_user_link %}
+{% set current_page = 'attendees' %}
+{% set page_title = _('Attendees') %}
+
+{% block head %}
+<style>
+  /* ============================================================
+     TEILNEHMERVERZEICHNIS — "Die Gästeliste"
+
+     The stock /attendees page had no .bote-page wrapper, so the
+     title, the raw search control and the attendee table ran
+     full-bleed under the sticky masthead (the screenshot that
+     prompted this). We wrap the body in the centered 1320px paper
+     sheet with a folio + headline and re-set the stock
+     `table.itemlist.attendees-list` as the paper's guest register:
+     each row an ink-framed sepia portrait + serif name hinged to
+     the member's booked seat(s) — stock `render_seat_link`s re-set
+     as inked seat chits that still jump to the Saalplan, with the
+     `render_tag('checked in')` flag re-set as a green "eingetroffen"
+     stamp. The search bar mirrors the Saalplan controls; the search
+     result line and empty state become ruled notice slips, and
+     `render_pagination_nav` becomes inked page ciphers.
+
+     Markup, field names, endpoints and the render_* macros are
+     unchanged — only the wrapper + page classes were added. All
+     colours are theme tokens, so dark mode is automatic.
+     ============================================================ */
+
+  /* ---- search controls (mirror the Saalplan control bar) ---- */
+  .attendees-page .attendees-controls{
+    display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px 24px;
+    padding-bottom:18px;margin-bottom:24px;border-bottom:1px solid var(--ink);
+  }
+  .attendees-page form.single-row{display:flex;gap:0;margin:0;}
+  .attendees-page .form-control{
+    font-family:var(--body);font-size:18px;color:var(--ink);background:var(--paperLite);
+    border:1.5px solid var(--ink);border-right:0;border-radius:0;padding:9px 14px;width:18rem;max-width:60vw;
+    box-shadow:inset 2px 2px 0 rgba(26,24,18,.07);
+  }
+  .attendees-page .form-control::placeholder{color:var(--inkMute);font-style:italic;}
+  .attendees-page .form-control:focus{outline:none;border-color:var(--redDeep);}
+  .attendees-page form.single-row .button{
+    display:inline-flex;align-items:center;justify-content:center;gap:0;min-width:48px;padding:0 14px;min-height:42px;
+    font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--ink);background:var(--paperLite);border:1.5px solid var(--ink);border-radius:0;
+    text-decoration:none;cursor:pointer;line-height:1;
+  }
+  .attendees-page form.single-row .button:hover{background:var(--ink);color:var(--paper);}
+  .attendees-page form.single-row .button + .button{border-left:0;}
+  .attendees-page .button .icon{width:1em;height:1em;}
+  .attendees-page .roster-count{
+    font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--inkSoft);
+  }
+  .attendees-page .roster-count strong{color:var(--redDeep);}
+
+  /* ---- search-result notice slip ---- */
+  .attendees-page .search-notice{
+    display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px 24px;
+    border:1.5px solid var(--ink);border-left:7px solid var(--redDeep);background:var(--paperLite);
+    box-shadow:4px 4px 0 var(--ink);padding:12px 18px;margin:0 0 24px;
+  }
+  .attendees-page .search-notice p{margin:0;font-family:var(--body);font-style:italic;font-size:17px;color:var(--ink);}
+  .attendees-page .search-notice strong{font-style:normal;font-weight:700;}
+  .attendees-page .search-notice a{
+    font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--redDeep);text-decoration:none;border-bottom:1px dashed var(--redDeep);
+  }
+  .attendees-page .search-notice a:hover{color:var(--ink);border-bottom-color:var(--ink);}
+
+  /* ---- the register (stock table.itemlist.attendees-list) ---- */
+  .attendees-page .attendees-list{
+    width:100%;border-collapse:collapse;margin:0;table-layout:fixed;
+  }
+  .attendees-page .attendees-list thead th{
+    font-family:var(--mono);font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;
+    color:var(--inkMute);font-weight:700;text-align:left;padding:0 4px 10px;
+    border-bottom:3px double var(--ink);
+  }
+  .attendees-page .attendees-list thead th:last-child{text-align:right;}
+  .attendees-page .attendees-list tbody td{
+    padding:16px 4px;border-bottom:1px solid var(--paperDark);vertical-align:middle;
+  }
+  .attendees-page .attendees-list tbody tr:last-child td{border-bottom:1.5px solid var(--ink);}
+  .attendees-page .attendees-list tbody tr:hover td{background:var(--paperLite);}
+  .attendees-page .attendees-list tbody td:last-child{text-align:right;}
+
+  /* counter — a running register number down the left edge */
+  .attendees-page .attendees-list tbody{counter-reset:roster;}
+  .attendees-page .attendee{position:relative;align-items:center;display:flex;gap:14px;}
+  .attendees-page .attendee::before{
+    counter-increment:roster;content:counter(roster,decimal-leading-zero);
+    font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--inkMute);
+    width:26px;flex:0 0 auto;text-align:right;
+  }
+  .attendees-page .attendee-avatar{margin:0;flex:0 0 auto;}
+  .attendees-page .attendee-avatar .avatar{
+    display:block;width:52px;height:52px;border-radius:0;overflow:hidden;
+    border:1.5px solid var(--ink);background:var(--paperDark);box-shadow:3px 3px 0 var(--ink);line-height:0;
+  }
+  .attendees-page .attendee-avatar .avatar.orga{border-color:var(--redDeep);box-shadow:3px 3px 0 var(--redDeep);}
+  .attendees-page .attendee-avatar .avatar img{
+    width:100%;height:100%;object-fit:cover;display:block;filter:grayscale(.4) sepia(.14) contrast(1.05);
+  }
+  .attendees-page .attendee-name{font-family:var(--display);font-style:italic;font-weight:700;font-size:24px;
+    letter-spacing:-.01em;line-height:1.05;}
+  .attendees-page .attendee-name a{color:var(--ink);text-decoration:none;border-bottom:1px dashed transparent;}
+  .attendees-page .attendee-name a:hover{color:var(--redDeep);border-bottom-color:var(--redDeep);}
+  .attendees-page .attendee-name .dimmed{color:var(--inkMute);}
+
+  /* seat column — booked seat(s) as inked chits + eintreff-stamp */
+  .attendees-page .attendee-seats{margin:0;display:flex;flex-direction:column;gap:8px;align-items:flex-end;}
+  .attendees-page .attendee-seats .row{
+    display:flex;align-items:center;justify-content:flex-end;gap:12px;width:100%;
+  }
+  .attendees-page .attendee-seats a{
+    display:inline-flex;align-items:center;font-family:var(--mono);font-size:12px;font-weight:700;
+    letter-spacing:.1em;color:var(--ink);text-decoration:none;
+    border:1.5px solid var(--ink);background:var(--paper);padding:6px 12px;
+    box-shadow:2px 2px 0 var(--ink);transition:transform .12s ease,box-shadow .12s ease,background-color .12s,color .12s;
+  }
+  .attendees-page .attendee-seats a:hover{transform:translate(-1px,-1px);box-shadow:3px 3px 0 var(--ink);background:var(--ink);color:var(--paper);}
+  .attendees-page .attendee-seats .dimmed{
+    font-family:var(--body);font-style:italic;font-size:17px;color:var(--inkMute);
+  }
+  .attendees-page .attendee-seats .row > div:first-child{font-family:var(--body);font-style:italic;font-size:15px;color:var(--inkMute);}
+  /* the "checked in" → "eingetroffen" green stamp (stock render_tag) */
+  .attendees-page .attendee-seats .tag{
+    display:inline-flex;align-items:center;font-family:var(--mono);font-size:8.5px;font-weight:700;
+    letter-spacing:.14em;text-transform:uppercase;color:#fff;background:var(--green);
+    border:none;border-radius:0;padding:4px 9px;transform:rotate(-3deg);
+  }
+
+  /* empty state — hatched notice slip */
+  .attendees-page .empty-slip{
+    border:1.5px dashed var(--inkSoft);
+    background:repeating-linear-gradient(135deg,rgba(128,116,86,.10) 0 7px,transparent 7px 14px);
+    padding:26px 24px;text-align:center;margin:6px 0 0;
+  }
+  .attendees-page .empty-slip .es-head{
+    font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;
+    color:var(--redDeep);margin:0 0 8px;
+  }
+  .attendees-page .empty-slip p{margin:0;font-family:var(--body);font-style:italic;font-size:19px;color:var(--inkSoft);}
+
+  /* ---- pagination (stock render_pagination_nav) ---- */
+  .attendees-page .pagination{margin:clamp(24px,3vw,34px) 0 0;}
+  .attendees-page .pagination ol{
+    list-style:none;margin:0;padding:14px 0 0;border-top:3px double var(--ink);
+    display:flex;justify-content:center;flex-wrap:wrap;gap:7px;align-items:center;
+  }
+  .attendees-page .pagination-item a,
+  .attendees-page .pagination-item span{
+    display:inline-flex;align-items:center;justify-content:center;min-width:38px;height:38px;padding:0 11px;
+    font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:.04em;
+    color:var(--ink);text-decoration:none;border:1.5px solid var(--ink);background:var(--paperLite);
+    transition:background-color .14s,color .14s;
+  }
+  .attendees-page .pagination-item a:hover{background:var(--ink);color:var(--paper);}
+  .attendees-page .pagination--current span{background:var(--redDeep);color:var(--paper);border-color:var(--redDeep);}
+  .attendees-page .pagination .icon{width:1em;height:1em;}
+  .attendees-page .pagination ol > li:not(.pagination-item){font-family:var(--mono);color:var(--inkMute);padding:0 4px;}
+
+  @media (max-width:640px){
+    .attendees-page .attendees-list{table-layout:auto;}
+    .attendees-page .attendee-name{font-size:20px;}
+    .attendees-page .attendee-avatar .avatar{width:44px;height:44px;}
+  }
+</style>
+{%- endblock %}
+
+{% block subnav %}
+  {%- if subnav_menu_id|default %}
+{{ render_subnav_for_menu_id(subnav_menu_id, current_page) }}
+  {%- endif %}
+{% endblock %}
+
+{% block body %}
+<div class="bote-page attendees-page">
+
+  <div class="page-folio">
+    <span class="pf-ressort">{{ _('Anmeldungen') }} · {{ _('Teilnehmerverzeichnis') }}</span>
+    <span>Großsporthalle Brake · Ausgabe 36</span>
+  </div>
+
+  <header class="page-head">
+    <h1 class="ph-title">Die <em>Gästeliste</em></h1>
+    <p class="ph-standfirst">{{ _('Wer hat sich schon eingetragen? Das Teilnehmerverzeichnis führt alle angemeldeten Gäste — mit gebuchtem Platz und Eintreff-Vermerk. Nach Mitgliedern suchen wie im Karteikasten der Pforte.') }}</p>
+  </header>
+
+  <div class="attendees-controls">
+    <form action="{{ url_for('.attendees') }}" class="single-row unobtrusive">
+      <input type="search" name="search_term" placeholder="{{ _('Username') }}"{%- if search_term %} value="{{ search_term }}"{% endif %} class="form-control">
+      <button type="submit" class="button" title="{{ _('Search') }}">{{ render_icon('search') }}</button>
+      {%- if search_term %}
+      <a href="{{ url_for('.attendees') }}" class="button" title="{{ _('Remove search term constraint') }}">{{ render_icon('remove') }}</a>
+      {%- endif %}
+    </form>
+    {%- if not search_term and attendees.total %}
+    <p class="roster-count"><strong>{{ attendees.total|numberformat }}</strong> {{ _('eingetragen') }}</p>
+    {%- endif %}
+  </div>
+
+  {%- if search_term %}
+  <div class="search-notice">
+    <p><strong>{{ attendees.total }}</strong> {{ _('results for search term') }} &quot;<strong>{{ search_term }}</strong>&quot;</p>
+    <p><a href="{{ url_for('.attendees') }}">{{ _('all attendees') }}</a></p>
+  </div>
+  {%- endif %}
+
+  {%- if attendees.items %}
+  <table class="itemlist is-wide attendees-list">
+    <thead>
+      <tr>
+        <th>{{ _('User') }}</th>
+        <th>{{ _('Seat') }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {%- for attendee in attendees.items %}
+      <tr>
+        <td>
+          <div class="attendee">
+            <div class="attendee-avatar">{{ render_user_avatar(attendee.user, size=32, orga=attendee.is_orga) }}</div>
+            <div class="attendee-name">{{ render_user_link(attendee.user) }}</div>
+          </div>
+        </td>
+        <td>
+          <div class="attendee-seats">
+            {%- for ticket in attendee.tickets %}
+            <div class="row row--space-between">
+              <div>
+              {%- with seat = ticket.seat %}
+                {%- if seat %}
+                {{ render_seat_link(seat) }}
+                {%- else %}
+                {{ _('not chosen')|dim }} ({{ ticket.category_title }})
+                {%- endif %}
+              {%- endwith %}
+              </div>
+              {%- if ticket.checked_in %}
+              <div>{{ render_tag(_('checked in')) }}</div>
+              {%- endif %}
+            </div>
+            {%- endfor %}
+          </div>
+        </td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+  {%- else %}
+  <div class="empty-slip">
+    <p class="es-head">{{ _('Hinweis vom Kartenschalter') }}</p>
+    <p>{{ _('No attendees found.') }}</p>
+  </div>
+  {%- endif %}
+
+{{ render_pagination_nav(attendees, '.attendees', {
+  'per_page': per_page,
+  'search_term': search_term if search_term else None,
+}) }}
+
+</div>
+{%- endblock %}

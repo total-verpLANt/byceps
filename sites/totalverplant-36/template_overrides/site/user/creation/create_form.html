@@ -1,0 +1,71 @@
+{% extends 'layout/base.html' %}
+{% from 'macros/forms.html' import form_buttons, form_field_check, form_field %}
+{% set simple_layout = true %}
+{% set current_page = 'user.create' %}
+{% set page_title = _('Create user account') %}
+
+{% block head %}
+{% include 'site/authn/_bote_auth_style.html' %}
+{%- endblock %}
+
+{% block body %}
+<div class="bote-page auth-page auth-page--wide auth-register">
+
+  <div class="page-folio">
+    <span class="pf-ressort">Aufnahmeschalter · Neuzugang am Server</span>
+    <span>Der Rentenbote · Ausgabe 36</span>
+  </div>
+
+  <header class="page-head">
+    <h1 class="ph-title">Der <em>Aufnahmeantrag</em></h1>
+    <p class="ph-standfirst">Einmal in Ruhe ausfüllen — die Lesebrille hilft. Dann gehört der Bote auch Ihnen: mit festem Sitzplatz an der LAN, eigenem Fach am Schwarzen Brett, Stammtischrecht und verbrieftem Anspruch auf Mittagsschlaf zwischen zwei Runden.</p>
+  </header>
+
+  <div class="auth-shell">
+    <form action="{{ url_for('.create') }}" method="post" class="disable-submit-button-on-submit">
+      <div class="main-body-box">
+        <div class="auth-cardhead">
+          <span class="ah-form">Formular N · Aufnahme in die Spielgemeinschaft</span>
+          <span class="ah-no">Nº 36</span>
+        </div>
+        <div class="auth-cardbody">
+          {{ form_field(form.screen_name, caption=_('publicly visible'), autofocus='autofocus') }}
+
+          {%- if form.first_name is defined and form.last_name is defined %}
+          <div class="form-control-block row">
+            {%- if form.first_name is defined %}
+            <div class="column--grow">
+              {{ form_field(form.first_name) }}
+            </div>
+            {%- endif %}
+            {%- if form.last_name is defined %}
+            <div class="column--grow">
+              {{ form_field(form.last_name) }}
+            </div>
+            {%- endif %}
+          </div>
+          {%- endif %}
+
+          {{ form_field(form.email_address, type='email') }}
+          {{ form_field(form.password, maxlength=100) }}
+
+          {%- for subject in required_consent_subjects %}
+            {%- with field = form.get_field_for_consent_subject_id(subject.id) %}
+          {{ form_field_check(field, subject.checkbox_label.replace('{url}', subject.checkbox_link_target)|safe) }}
+            {%- endwith %}
+          {%- endfor %}
+
+          {%- if form.subscribe_to_newsletter is defined %}
+          {{ form_field_check(form.subscribe_to_newsletter, _('I like to subscribe to the newsletter.')) }}
+          {%- endif %}
+
+          <div style="display: none;">{{ form_field_check(form.is_bot, _('I am a bot.')) }}</div>
+        </div>
+      </div>
+
+      {{ form_buttons(_('Create')) }}
+    </form>
+  </div>
+
+</div>
+{%- endblock %}

@@ -1,0 +1,228 @@
+{% extends 'layout/base.html' %}
+{% from 'macros/user.html' import render_user_avatar_image, render_user_screen_name %}
+{% set current_page = 'orga_team' %}
+{% set page_title = _('Orga Team') %}
+
+{% block head %}
+<style>
+  /* ============================================================
+     ORGA-TEAM — "Die Redaktion / Impressum"
+     The stock BYCEPS orga-team page (a bare <h1 class="title"> +
+     per-team headings + a centred list of avatar/name/duties) ran
+     full-bleed under the sticky masthead with no .bote-page wrapper.
+     It is reframed here as the newspaper's editorial staff box: the
+     same crew that sets the Rentenbote also staffs the local
+     Seniorenresidenz Eule. Joins the same 1320px paper sheet
+     (.bote-page) as every other page. All colours are theme tokens,
+     so dark mode ("Spätausgabe") is automatic.
+
+     Data contract (byceps orga_team site view): `teams` is a list of
+     (team_name, orgas) tuples; with GROUP_BY_TEAM off the view already
+     merges each person into one PublicOrga whose .team_name is the
+     comma-joined departments and .duties the comma-joined functions.
+     We flatten every tuple's orgas into one register and render each
+     person's own .team_name / .duties — so no single team title turns
+     into a section heading (e.g. a board / "Vorstand" team that lives
+     on its own page never leaks in).
+     ============================================================ */
+
+  /* --- two workplaces banner --- */
+  .orga-page .workplaces{display:grid;grid-template-columns:1fr 1fr;gap:0;margin:0 0 clamp(30px,4vw,46px);
+    border:1.5px solid var(--ink);background:var(--paperLite);box-shadow:5px 5px 0 var(--ink);}
+  .orga-page .workplace{padding:clamp(16px,2.2vw,24px) clamp(18px,2.4vw,28px);
+    background:repeating-linear-gradient(135deg,rgba(128,116,86,.06) 0 8px,transparent 8px 16px);}
+  .orga-page .workplace + .workplace{border-left:1.5px solid var(--ink);}
+  .orga-page .wp-kicker{display:flex;align-items:center;gap:9px;font-family:var(--mono);font-size:9.5px;
+    letter-spacing:.2em;text-transform:uppercase;color:var(--redDeep);font-weight:700;margin:0 0 9px;}
+  .orga-page .wp-kicker .mk{font-size:13px;line-height:1;}
+  .orga-page .wp-name{font-family:var(--display);font-weight:800;font-style:italic;letter-spacing:-.015em;
+    line-height:1;font-size:clamp(26px,3vw,38px);margin:0;color:var(--ink);}
+  .orga-page .wp-name em{color:var(--redDeep);font-style:italic;}
+  .orga-page .wp-addr{font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--inkSoft);
+    margin:10px 0 0;line-height:1.7;}
+  .orga-page .wp-note{font-family:var(--body);font-style:italic;font-size:16px;line-height:1.45;
+    color:var(--inkSoft);margin:10px 0 0;}
+
+  /* --- team section heading --- */
+  .orga-page .team-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px 18px;flex-wrap:wrap;
+    border-bottom:1.5px solid var(--ink);padding-bottom:9px;margin:0 0 clamp(22px,3vw,32px);}
+  .orga-page .team-head h2{font-family:var(--display);font-weight:900;font-style:italic;letter-spacing:-.02em;
+    line-height:1;font-size:clamp(26px,3.4vw,40px);margin:0;color:var(--ink);}
+  .orga-page .team-head .team-count{font-family:var(--mono);font-size:10px;letter-spacing:.2em;text-transform:uppercase;
+    color:var(--inkSoft);font-weight:700;white-space:nowrap;}
+
+  /* --- member dossier grid --- */
+  .orga-page .crew{display:grid;gap:clamp(22px,2.8vw,34px);
+    grid-template-columns:repeat(auto-fill,minmax(248px,1fr));margin:0 0 clamp(20px,3vw,34px);}
+  .orga-page .crew-card{display:flex;flex-direction:column;border:1.5px solid var(--ink);background:var(--paperLite);
+    box-shadow:5px 5px 0 var(--ink);transition:transform .16s ease,box-shadow .16s ease;}
+  .orga-page .crew-card:hover{transform:translate(-2px,-2px);box-shadow:7px 7px 0 var(--ink);}
+  .orga-page .portrait-frame{padding:10px 10px 0;}
+  .orga-page .portrait-pic{aspect-ratio:1/1;border:1.5px solid var(--ink);overflow:hidden;background:var(--paperDark);
+    display:grid;place-items:center;filter:grayscale(1) sepia(.30) contrast(1.05);transition:filter .25s ease;}
+  .orga-page .crew-card:hover .portrait-pic{filter:none;}
+  .orga-page .portrait-pic :is(img,svg,.avatar){display:block;width:100%;height:100%;object-fit:cover;}
+  .orga-page .crew-body{padding:14px clamp(14px,1.8vw,18px) 16px;display:flex;flex-direction:column;flex:1;}
+  .orga-page .crew-handle{font-family:var(--display);font-weight:900;font-style:italic;letter-spacing:-.01em;
+    line-height:1;font-size:clamp(22px,2.4vw,28px);color:var(--ink);margin:0;word-break:break-word;}
+  .orga-page .crew-handle a{color:inherit;text-decoration:none;}
+  .orga-page .crew-handle a:hover{color:var(--redDeep);}
+  .orga-page .crew-realname{font-family:var(--body);font-size:18px;line-height:1.2;color:var(--inkSoft);margin:5px 0 0;}
+  .orga-page .crew-roles{margin:14px 0 0;padding-top:12px;border-top:1px dashed var(--inkSoft);
+    display:flex;flex-direction:column;gap:11px;}
+  /* No Funktion to print → drop the empty block so no orphan dashed rule
+     hangs under the name (more noticeable in the compact mobile roster row). */
+  .orga-page .crew-roles:not(:has(.role-row)){display:none;border:0;margin:0;padding:0;}
+  .orga-page .role-row{display:grid;grid-template-columns:72px 1fr;align-items:baseline;gap:10px;}
+  .orga-page .role-key{font-family:var(--mono);font-size:8.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--inkMute);}
+  .orga-page .role-val{font-family:var(--body);font-style:italic;font-size:17px;line-height:1.25;color:var(--ink);}
+  .orga-page .role-val--stamp{justify-self:start;font-family:var(--mono);font-style:normal;font-size:9.5px;font-weight:700;
+    letter-spacing:.12em;text-transform:uppercase;color:var(--paper);background:var(--redDeep);padding:4px 9px;}
+
+  /* --- collective doppeldienst note --- */
+  .orga-page .doppel-note{margin:clamp(8px,2vw,18px) 0 0;border-top:3px double var(--ink);padding-top:14px;
+    font-family:var(--body);font-style:italic;font-size:17px;line-height:1.5;color:var(--inkSoft);max-width:74ch;}
+  .orga-page .doppel-note strong{font-style:normal;font-weight:700;color:var(--ink);}
+
+  .orga-page .crew-empty{border:1px dashed var(--inkSoft);padding:22px;text-align:center;
+    background:repeating-linear-gradient(135deg,rgba(128,116,86,.10) 0 6px,transparent 6px 12px);
+    font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--inkSoft);}
+
+  @media (max-width:720px){
+    .orga-page .workplaces{grid-template-columns:1fr;}
+    .orga-page .workplace + .workplace{border-left:none;border-top:1.5px solid var(--ink);}
+  }
+
+  /* --- phone roster (≤560px): a full-width square portrait per person made each
+     card a whole screen tall, so the team was impossible to scan. The same card
+     markup is reflowed into a compact roster row — a small fixed 74px avatar at
+     left, name + Funktion at right — so a whole department fits on one screen.
+     Pure reflow: no markup change, every grouped .crew grid is covered. --- */
+  @media (max-width:560px){
+    .orga-page .crew{grid-template-columns:1fr;gap:13px;}
+    .orga-page .crew-card{display:grid;grid-template-columns:74px 1fr;align-items:stretch;box-shadow:4px 4px 0 var(--ink);}
+    .orga-page .crew-card:hover{transform:none;box-shadow:4px 4px 0 var(--ink);}
+    .orga-page .crew-card:hover .portrait-pic{filter:grayscale(1) sepia(.30) contrast(1.05);}
+    .orga-page .portrait-frame{padding:11px 0 11px 11px;}
+    .orga-page .portrait-pic{width:74px;height:74px;aspect-ratio:auto;}
+    .orga-page .crew-body{padding:11px 14px 12px;justify-content:center;}
+    .orga-page .crew-handle{font-size:21px;}
+    .orga-page .crew-realname{font-size:15px;margin-top:3px;}
+    .orga-page .crew-roles{margin-top:9px;padding-top:9px;gap:7px;}
+    .orga-page .role-row{grid-template-columns:52px 1fr;gap:8px;align-items:center;}
+  }
+</style>
+{%- endblock %}
+
+{% block body %}
+<div class="bote-page orga-page">
+
+  <div class="page-folio">
+    <span class="pf-ressort">{{ _('Impressum') }} · {{ _('Die Redaktion') }}</span>
+    <span>Der Rentenbote · Ausgabe 36</span>
+  </div>
+
+  <header class="page-head">
+    <h1 class="ph-title">{{ _('Die') }} <em>{{ _('Redaktion') }}</em></h1>
+    <p class="ph-standfirst">{{ _('Wer den Rentenboten setzt, schiebt auch Dienst: Dieselben Hände, die hier die Spalten füllen, mischen an der Cocktailbar und hüten die Saaltür — und kümmern sich nebenan in der Seniorenresidenz Eule um Kaffee, Bingo und WLAN.') }}</p>
+  </header>
+
+  {# ===== TWO WORKPLACES ===== #}
+  <div class="workplaces">
+    <div class="workplace">
+      <p class="wp-kicker"><span class="mk">✶</span> {{ _('Arbeitsplatz I · Die Zeitung') }}</p>
+      <h3 class="wp-name">Der <em>Rentenbote</em></h3>
+      <p class="wp-addr">{{ _('Setzerei & Geschäftsstelle') }}<br>Saarlandstraße 3 · 26919 Brake</p>
+      <p class="wp-note">{{ _('Unabhängig, überparteilich, mittagsschlaffreundlich — gegründet 2006, gesetzt von Hand.') }}</p>
+    </div>
+    <div class="workplace">
+      <p class="wp-kicker"><span class="mk">❀</span> {{ _('Arbeitsplatz II · Das Heim') }}</p>
+      <h3 class="wp-name">Seniorenresidenz <em>Eule</em></h3>
+      <p class="wp-addr">{{ _('Pforte & Pflegeteam') }}<br>Philosophenweg 8 · 26919 Brake</p>
+      <p class="wp-note">{{ _('Kaffee ab 14 Uhr, Bingo mittwochs, Tatort sonntags — und einmal im Jahr eine LAN-Party.') }}</p>
+    </div>
+  </div>
+
+  {# ===== ORGA CREW — grouped by department (Abteilung) =====
+     `teams` is [(None, merged_orgas)] (GROUP_BY_TEAM off in read-only core), so
+     each PublicOrga is merged per person: .team_name and .duties are ', '-joined
+     across the teams that person belongs to. We split .team_name on ', ' and file
+     each card under EVERY department it names — a multi-team face appears once per
+     department. Departments render in a fixed priority order; any department not
+     in that list is appended alphabetically, so no member is ever dropped.
+     Each card shows the Funktion for ITS department: core joins team_name over
+     all of a person's teams but joins duties only over non-empty ones, so when
+     the two counts match the lists are position-aligned and we map them; when
+     they differ a blank was dropped and we hide the ambiguous Funktion. #}
+  {%- set priority = ['Projektleitung', 'Catering', 'Cocktailbar', 'Sicherheit und Ordnung', 'Turniere', 'Technik', 'PR'] %}
+
+  {# flatten the (already screen-name sorted) merged orgas into one list #}
+  {%- set all_orgas = [] %}
+  {%- for _team_name, _orgas in teams %}
+    {%- for _o in _orgas %}{% set _ = all_orgas.append(_o) %}{%- endfor %}
+  {%- endfor %}
+
+  {# collect every department actually present, in first-seen order #}
+  {%- set seen = [] %}
+  {%- for orga in all_orgas %}
+    {%- for d in (orga.team_name.split(', ') if orga.team_name else []) %}
+      {%- if d not in seen %}{% set _ = seen.append(d) %}{%- endif %}
+    {%- endfor %}
+  {%- endfor %}
+
+  {# render order: priority departments present in data, then the rest alphabetically #}
+  {%- set ordered = [] %}
+  {%- for d in priority %}{% if d in seen %}{% set _ = ordered.append(d) %}{% endif %}{%- endfor %}
+  {%- for d in seen|sort %}{% if d not in priority %}{% set _ = ordered.append(d) %}{% endif %}{%- endfor %}
+
+  {%- if all_orgas %}
+  {%- for department in ordered %}
+    {%- set members = [] %}
+    {%- for orga in all_orgas %}
+      {%- if department in (orga.team_name.split(', ') if orga.team_name else []) %}{% set _ = members.append(orga) %}{%- endif %}
+    {%- endfor %}
+    {%- if members %}
+  <div class="team-head">
+    <h2>{{ department }}</h2>
+    <span class="team-count">{{ ngettext('%(num)d Mitglied', '%(num)d Mitglieder', members|length) }}</span>
+  </div>
+  <div class="crew">
+    {%- for orga in members %}
+    {%- set departments = orga.team_name.split(', ') if orga.team_name else [] %}
+    {%- set duty_list = orga.duties.split(', ') if orga.duties else [] %}
+    {# Funktion for THIS department: a single-team person shows their duty as-is.
+       For a multi-team person, core joins team_name over ALL teams but joins
+       duties only over NON-EMPTY ones (views.py:77-78). So when duty count ==
+       team count, nothing was dropped and the two lists are position-aligned —
+       we can show the duty for this department. When they differ, a blank duty
+       was dropped and the mapping is ambiguous, so we hide it (unrecoverable
+       from the template; would require read-only core's un-merged records). #}
+    {%- set duty = '' %}
+    {%- if departments|length <= 1 %}{% set duty = orga.duties %}
+    {%- elif duty_list|length == departments|length %}{% set duty = duty_list[departments.index(department)] %}
+    {%- endif %}
+    <article class="crew-card">
+      <div class="portrait-frame"><div class="portrait-pic">{{ render_user_avatar_image(orga.user) }}</div></div>
+      <div class="crew-body">
+        <h3 class="crew-handle">{{ render_user_screen_name(orga.user) }}</h3>
+        <p class="crew-realname">{% if orga.full_name %}{{ orga.full_name }}{% else %}&nbsp;{% endif %}</p>
+        <div class="crew-roles">
+          {%- if duty %}
+          <div class="role-row"><span class="role-key">{{ _('Funktion') }}</span><span class="role-val role-val--stamp">{{ duty }}</span></div>
+          {%- endif %}
+        </div>
+      </div>
+    </article>
+    {%- endfor %}
+  </div>
+    {%- endif %}
+  {%- endfor %}
+  {%- else %}
+  <div class="crew-empty">{{ _('Noch keine Mannschaft eingetragen — die Setzerei wartet auf Personal.') }}</div>
+  {%- endif %}
+
+  <p class="doppel-note"><strong>{{ _('Doppeldienst.') }}</strong> {{ _('Das gesamte Orga-Team steht zugleich im Dienst des Rentenboten und der Seniorenresidenz Eule — vormittags Korrektur lesen, nachmittags Bingo-Karten austeilen, abends die Beamerwand hochfahren. Beschwerden bitte schriftlich ans Schwarze Brett.') }}</p>
+
+</div>
+{%- endblock %}
