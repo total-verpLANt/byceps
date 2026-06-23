@@ -1,0 +1,119 @@
+{% extends 'layout/site/lan_tournament.html' %}
+{% from 'macros/icons.html' import render_icon %}
+{% from 'macros/misc.html' import render_tag %}
+{% from 'macros/lan_tournament.html' import render_hover_name, render_match_ref, render_tournament_subnav %}
+{% set page_title = [_('Matches'), tournament.name] %}
+
+{% block body %}
+
+  <nav class='breadcrumbs'>
+    <ol>
+      <li><a href='{{ url_for('.index') }}'>{{ _('Tournaments') }}</a></li>
+      <li><a href='{{ url_for('.view', tournament_id=tournament.id) }}'>
+        {{ tournament.name }}
+      </a></li>
+    </ol>
+  </nav>
+
+  {{ render_tournament_subnav(tournament, active_tab) }}
+
+  {%- if match_quantities %}
+  <div class='match-filter-bar'>
+    <a href='{{ url_for('.matches', tournament_id=tournament.id, only='ready') }}'
+       class='button secondary{{ ' active' if only == 'ready' else '' }}'>
+      {{ render_icon('success') }} {{ _('Ready') }}
+      <span class='dimmed' style='margin-left: 0.3rem;'>{{ match_quantities.ready }}</span>
+    </a>
+    <a href='{{ url_for('.matches', tournament_id=tournament.id, only='open') }}'
+       class='button secondary{{ ' active' if only == 'open' else '' }}'>
+      {{ render_icon('pending') }} {{ _('Open') }}
+      <span class='dimmed' style='margin-left: 0.3rem;'>{{ match_quantities.open }}</span>
+    </a>
+    <a href='{{ url_for('.matches', tournament_id=tournament.id, only='all') }}'
+       class='button secondary{{ ' active' if only == 'all' else '' }}'>
+      {{ render_icon('view') }} {{ _('All') }}
+      <span class='dimmed' style='margin-left: 0.3rem;'>{{ match_quantities.all }}</span>
+    </a>
+
+    {%- if current_user_participant and match_data %}
+    <button type='button' id='match-filter-mine' class='button secondary'
+            aria-pressed='false'
+            data-user-team-id='{{ current_user_participant.team_id or "" }}'
+            data-user-participant-id='{{ current_user_participant.id or "" }}'>
+      {{ render_icon('user') }} {{ _('My Matches') }}
+    </button>
+    {%- endif %}
+  </div>
+  {%- endif %}
+
+  {%- if match_data %}
+  <div class='match-table'>
+    {%- for data in match_data %}
+    {%- set match = data.match %}
+    {%- set contestants = data.contestants %}
+    <a href='{{ url_for('.view_match', match_id=match.id) }}'
+       class='match-link-reset'
+       data-team-ids='{{ contestants|selectattr("team_id")|map(attribute="team_id")|join(",") }}'
+       data-participant-ids='{{ contestants|selectattr("participant_id")|map(attribute="participant_id")|join(",") }}'>
+      <div class='match-row'>
+        <div class='match-number'>
+          {{ render_match_ref(match) }}
+        </div>
+        <div class='match-contestants'>
+          {%- for contestant in contestants %}
+            {%- if contestant.team_id %}
+              {%- set _team = teams_by_id.get(contestant.team_id) -%}
+              {%- if _team -%}
+                {{ _('Team') }} {{ render_hover_name(_team.name, team_id=_team.id, team_members_by_team_id=team_members_by_team_id, truncate_len=15, link_profiles=False) }}
+              {%- else -%}
+                {{ contestant.team_id|string }}
+              {%- endif -%}
+            {%- elif contestant.participant_id %}
+              {%- set _user = participants_by_id.get(contestant.participant_id) -%}
+              {%- if _user -%}
+                {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted, seats_by_user_id=seats_by_user_id, truncate_len=15, link_profiles=False) }}
+              {%- else -%}
+                {{ contestant.participant_id|string }}
+              {%- endif -%}
+            {%- else %}
+              {{ _('defwin') }}
+            {%- endif %}
+            {%- if not loop.last %} <strong>vs</strong> {% endif %}
+          {%- endfor %}
+        </div>
+        <div class='match-score'>
+          {%- for contestant in contestants %}
+            {{ contestant.score if contestant.score is not none else '–' }}
+            {%- if not loop.last %} : {% endif %}
+          {%- endfor %}
+        </div>
+        <div class='match-list-status'>
+          {%- if match.confirmed_by and contestants|selectattr('team_id')|list|length + contestants|selectattr('participant_id')|list|length < 2 %}
+            {{ render_tag(_('DEFWIN'), class='color-info') }}
+          {%- elif match.confirmed_by %}
+            {{ render_tag(_('Confirmed'), class='color-success') }}
+          {%- else %}
+            {{ render_tag(_('Pending'), class='color-warning') }}
+          {%- endif %}
+        </div>
+      </div>
+    </a>
+    {%- endfor %}
+  </div>
+  {%- else %}
+  <p class='dimmed'>
+    {%- if only == 'ready' %}
+      {%- if current_user_participant %}
+        {{ _('No matches are ready for you yet.') }}
+      {%- else %}
+        {{ _('No ready matches.') }}
+      {%- endif %}
+    {%- elif only == 'open' %}
+      {{ _('No open matches.') }}
+    {%- else %}
+      {{ _('No matches have been created yet.') }}
+    {%- endif %}
+  </p>
+  {%- endif %}
+
+{%- endblock %}

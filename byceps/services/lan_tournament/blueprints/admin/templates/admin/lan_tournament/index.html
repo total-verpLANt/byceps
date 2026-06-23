@@ -1,0 +1,116 @@
+{% extends 'layout/admin/lan_tournament.html' %}
+{% from 'macros/admin.html' import render_extra_in_heading %}
+{% from 'macros/icons.html' import render_icon %}
+{% from 'macros/misc.html' import render_tag %}
+{% set current_page_party = party %}
+{% set current_tab = 'tournaments' %}
+{% set page_title = [_('LAN Tournaments'), party.title] %}
+
+{% block head %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_sort.css') }}">
+{%- endblock %}
+
+{% block body %}
+
+  <div class="row row--space-between block">
+    <div>
+      <h1 class="title">{{ _('LAN Tournaments') }} {{ render_extra_in_heading(tournaments|length) }}</h1>
+    </div>
+    <div>
+      {%- if g.user.has_permission('lan_tournament.create') %}
+      <div class="button-row is-right-aligned">
+        <a class="button" href="{{ url_for('.create_form', party_id=party.id) }}">{{ render_icon('add') }} <span>{{ _('Create tournament') }}</span></a>
+      </div>
+      {%- endif %}
+    </div>
+  </div>
+
+  {%- if tournaments %}
+  <table class="itemlist is-vcentered is-wide">
+    <thead>
+      <tr>
+        {%- if g.user.has_permission('lan_tournament.update') %}
+        <th></th>
+        {%- endif %}
+        <th>{{ _('Name') }}</th>
+        <th>{{ _('Game') }}</th>
+        <th>{{ _('Mode') }}</th>
+        <th>{{ _('Type') }}</th>
+        <th>{{ _('Registrations') }}</th>
+        <th>{{ _('Start') }}</th>
+        <th>{{ _('Status') }}</th>
+      </tr>
+    </thead>
+    <tbody id="tournament-list">
+    {%- for tournament in tournaments %}
+      <tr data-tournament-id="{{ tournament.id }}">
+        {%- if g.user.has_permission('lan_tournament.update') %}
+        <td class="drag-handle">&#9776;</td>
+        {%- endif %}
+        <td>
+          <a href="{{ url_for('.view', tournament_id=tournament.id) }}" class="disguised">
+            <strong>{{ tournament.name }}</strong>
+          </a>
+        </td>
+        <td>{{ tournament.game|default('', true) }}</td>
+        <td>
+          {%- if tournament.game_format and tournament.elimination_mode %}
+            {{ tournament.game_format.label }} / {{ tournament.elimination_mode.name|replace('_', ' ')|title }}
+          {%- elif tournament.game_format %}
+            {{ tournament.game_format.label }}
+          {%- endif %}
+        </td>
+        <td>
+          {%- if tournament.contestant_type %}
+            {{ tournament.contestant_type.name|title }}
+          {%- endif %}
+        </td>
+        <td>
+          {%- if tournament.contestant_type and tournament.contestant_type.name == 'TEAM' %}
+            {{ team_counts.get(tournament.id, 0) }}{% if tournament.max_teams %}/{{ tournament.max_teams }}{% endif %} {{ _('Teams') }}
+          {%- elif tournament.max_players %}
+            {{ participant_counts.get(tournament.id, 0) }}/{{ tournament.max_players }}
+          {%- else %}
+            —
+          {%- endif %}
+        </td>
+        <td>
+          {%- if tournament.start_time %}
+            {{ tournament.start_time|dateformat }}, {{ tournament.start_time|timeformat('short') }}
+          {%- endif %}
+        </td>
+        <td>
+          {%- if tournament.tournament_status %}
+            {%- if tournament.tournament_status.name == 'DRAFT' %}
+              {{ render_tag(_('Draft'), class='color-disabled') }}
+            {%- elif tournament.tournament_status.name == 'REGISTRATION_OPEN' %}
+              {{ render_tag(_('Registration open'), class='color-info') }}
+            {%- elif tournament.tournament_status.name == 'REGISTRATION_CLOSED' %}
+              {{ render_tag(_('Registration closed'), class='color-warning') }}
+            {%- elif tournament.tournament_status.name == 'ONGOING' %}
+              {{ render_tag(_('Ongoing'), class='color-success') }}
+            {%- elif tournament.tournament_status.name == 'PAUSED' %}
+              {{ render_tag(_('Paused'), class='color-warning') }}
+            {%- elif tournament.tournament_status.name == 'COMPLETED' %}
+              {{ render_tag(_('Completed'), class='color-success') }}
+            {%- elif tournament.tournament_status.name == 'CANCELLED' %}
+              {{ render_tag(_('Cancelled'), class='color-danger') }}
+            {%- endif %}
+          {%- endif %}
+        </td>
+      </tr>
+    {%- endfor %}
+    </tbody>
+  </table>
+  {%- else %}
+  <div class="box no-data-message">{{ _('No tournaments exist.') }}</div>
+  {%- endif %}
+
+{%- endblock %}
+
+{% block scripts %}
+{%- if tournaments and g.user.has_permission('lan_tournament.update') %}
+<script src="{{ url_for('static', filename='behavior/sortable.min.js') }}"></script>
+<script src="{{ url_for('static', filename='behavior/lan_tournament_sort.js') }}" data-sort-url="{{ url_for('.sort_tournaments', party_id=party.id) }}"></script>
+{%- endif %}
+{% endblock %}

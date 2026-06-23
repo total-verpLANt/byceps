@@ -1,0 +1,135 @@
+{% extends 'layout/admin/lan_tournament.html' %}
+{% from 'macros/admin.html' import render_backlink %}
+{% from 'macros/forms.html' import form_buttons, form_field %}
+{% from 'macros/icons.html' import render_icon %}
+{% set current_page_party = party %}
+{% set current_tab = 'tournaments' %}
+{% set page_title = _('Edit tournament') %}
+
+{% block head %}{{ super() }}
+  <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_ffa_admin.css') }}">
+{%- endblock %}
+
+{% block before_body %}
+{{ render_backlink(url_for('.view', tournament_id=tournament.id), tournament.name) }}
+{%- endblock %}
+
+{% block body %}
+
+  <h1 class="title">{{ page_title }}</h1>
+
+  {% if is_locked %}
+    <div class="notification color-info" style="margin-bottom: 1rem;">
+      {{ render_icon('lock') }} {{ _('This tournament is ongoing. Only description, image, and ruleset can be changed.') }}
+    </div>
+  {% endif %}
+
+  {% set lock = {'disabled': 'disabled'} if is_locked else {} %}
+
+  <form action="{{ url_for('.update', tournament_id=tournament.id) }}" method="post">
+    <div class="box">
+      {{ form_field(form.name, maxlength=80, **lock) }}
+      {{ form_field(form.game, **lock) }}
+      {{ form_field(form.description) }}
+      {{ form_field(form.image_url) }}
+      {{ form_field(form.contestant_type, **lock) }}
+      {{ form_field(form.game_format, **lock) }}
+      {{ form_field(form.elimination_mode, **lock) }}
+      <div id="highscore-constraints" style="display: none;">
+        {{ form_field(form.score_ordering, **lock) }}
+      </div>
+      <div id="ffa-constraints" style="display: none;">
+        {# -- FFA Point Table: visual editor with hidden-input sync -- #}
+        <div class="ffa-point-editor" data-ffa-editor
+             data-field-id="{{ form.point_table.id }}"
+             data-field-name="{{ form.point_table.name }}"
+             data-field-value="{{ form.point_table.data or '' }}"
+             {{ 'data-locked' if is_locked else '' }}>
+          <label class="form-label">{{ form.point_table.label.text }}</label>
+          {% if not is_locked %}
+          <div class="ffa-point-editor__toolbar">
+            <button type="button" data-ffa-preset="10,8,6,4,2,1">F1 (10-8-6-4-2-1)</button>
+            <button type="button" data-ffa-preset="25,18,15,12,10,8,6,4,2,1">Top 10</button>
+            <button type="button" data-ffa-add>+ Add place</button>
+          </div>
+          {% endif %}
+          <div class="ffa-point-cards" data-ffa-cards-container></div>
+          <noscript>
+            {{ form_field(form.point_table, **lock) }}
+          </noscript>
+        </div>
+        {{ form_field(form.group_size_min, min=2, style='width: 5rem;', **lock) }}
+        {{ form_field(form.group_size_max, min=2, style='width: 5rem;', **lock) }}
+        {{ form_field(form.advancement_count, min=1, style='width: 5rem;', **lock) }}
+      </div>
+      <div id="ffa-de-constraints" style="display: none;">
+        {{ form_field(form.points_carry_to_losers, **lock) }}
+      </div>
+      {{ form_field(form.start_time, **lock) }}
+      {{ form_field(form.ruleset) }}
+    </div>
+
+    <div class="box">
+      <h3>{{ _('Player/team constraints') }}</h3>
+      <div id="solo-constraints" style="display: none;">
+        {{ form_field(form.min_players, min=0, style='width: 5rem;', **lock) }}
+        {{ form_field(form.max_players, min=0, style='width: 5rem;', **lock) }}
+      </div>
+      <div id="team-constraints" style="display: none;">
+        {{ form_field(form.min_teams, min=0, style='width: 5rem;', **lock) }}
+        {{ form_field(form.max_teams, min=0, style='width: 5rem;', **lock) }}
+        {{ form_field(form.min_players_in_team, min=0, style='width: 5rem;', **lock) }}
+        {{ form_field(form.max_players_in_team, min=0, style='width: 5rem;', **lock) }}
+      </div>
+    </div>
+
+    {{ form_buttons(_('Save')) }}
+  </form>
+
+{%- endblock %}
+
+{% block scripts %}
+{% include 'admin/lan_tournament/_constraint_toggle.html' %}
+<script src="{{ url_for('static', filename='behavior/lan_tournament_ffa.js') }}"></script>
+<script>
+  /* Toggle FFA fields based on game_format and elimination_mode. */
+  (function() {
+    const gameFormatSelect = document.getElementById('game_format');
+    const eliminationModeSelect = document.getElementById('elimination_mode');
+    const ffaConstraints = document.getElementById('ffa-constraints');
+    const ffaDeConstraints = document.getElementById('ffa-de-constraints');
+    const highscoreConstraints = document.getElementById('highscore-constraints');
+
+    function updateFormatVisibility() {
+      if (!gameFormatSelect) return;
+      const gf = gameFormatSelect.value;
+      const em = eliminationModeSelect ? eliminationModeSelect.value : '';
+
+      /* FFA fields: visible when game_format = FREE_FOR_ALL */
+      if (ffaConstraints) {
+        ffaConstraints.style.display = (gf === 'FREE_FOR_ALL') ? '' : 'none';
+      }
+
+      /* Points carry: visible when FFA + DOUBLE_ELIMINATION */
+      if (ffaDeConstraints) {
+        ffaDeConstraints.style.display = (
+          gf === 'FREE_FOR_ALL' && em === 'DOUBLE_ELIMINATION'
+        ) ? '' : 'none';
+      }
+
+      /* Highscore constraints: visible when game_format = HIGHSCORE */
+      if (highscoreConstraints) {
+        highscoreConstraints.style.display = (gf === 'HIGHSCORE') ? '' : 'none';
+      }
+    }
+
+    if (gameFormatSelect) {
+      gameFormatSelect.addEventListener('change', updateFormatVisibility);
+    }
+    if (eliminationModeSelect) {
+      eliminationModeSelect.addEventListener('change', updateFormatVisibility);
+    }
+    updateFormatVisibility();
+  })();
+</script>
+{%- endblock %}
