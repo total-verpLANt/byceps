@@ -3,7 +3,7 @@
 :License: Revised BSD (see `LICENSE` file for details)
 """
 
-from flask_babel import gettext
+from flask_babel import force_locale, gettext
 
 from byceps.services.chair_optout import chair_optout_service
 from byceps.services.ticketing import ticket_creation_service
@@ -45,17 +45,22 @@ def test_view_profile_of_unknown_user(site_app, site):
 
 
 def test_own_profile_shows_current_chair_state_and_edit_action(
-    site_app, site, party, user, make_ticket_category
+    site_app, site, party, make_user, make_ticket_category
 ):
+    profile_user = make_user(generate_token())
     category = make_ticket_category(party.id, generate_token())
-    ticket = ticket_creation_service.create_ticket(category, user, user=user)
-    unanswered_ticket = ticket_creation_service.create_ticket(
-        category, user, user=user
+    ticket = ticket_creation_service.create_ticket(
+        category, profile_user, user=profile_user
     )
-    chair_optout_service.set_optout(party.id, ticket.id, user.id, False)
-    log_in_user(user.id)
+    unanswered_ticket = ticket_creation_service.create_ticket(
+        category, profile_user, user=profile_user
+    )
+    chair_optout_service.set_optout(party.id, ticket.id, profile_user.id, False)
+    log_in_user(profile_user.id)
 
-    response = request_profile(site_app, user.id, current_user_id=user.id)
+    response = request_profile(
+        site_app, profile_user.id, current_user_id=profile_user.id
+    )
     text = response.get_data(as_text=True)
 
     assert response.status_code == 200
@@ -69,14 +74,17 @@ def test_own_profile_shows_current_chair_state_and_edit_action(
 
 
 def test_other_profile_does_not_show_chair_edit_action(
-    site_app, site, party, user, make_user, make_ticket_category
+    site_app, site, party, make_user, make_ticket_category
 ):
+    current_user = make_user(generate_token())
     other_user = make_user(generate_token())
     category = make_ticket_category(party.id, generate_token())
     ticket_creation_service.create_ticket(category, other_user, user=other_user)
-    log_in_user(user.id)
+    log_in_user(current_user.id)
 
-    response = request_profile(site_app, other_user.id, current_user_id=user.id)
+    response = request_profile(
+        site_app, other_user.id, current_user_id=current_user.id
+    )
     text = response.get_data(as_text=True)
 
     assert response.status_code == 200
@@ -97,4 +105,5 @@ def request_profile(app, user_id, *, current_user_id=None):
 
 def translate(app, message: str) -> str:
     with app.test_request_context():
-        return gettext(message)
+        with force_locale(app.config['LOCALE']):
+            return gettext(message)
