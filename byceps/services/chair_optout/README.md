@@ -17,7 +17,13 @@ they will bring their own chair or need a provided chair.
 
 The party-specific `More` page links to `Seat management`. Its first tool is
 `Participant chair information`, which provides summary counts, a participant
-table, CSV export, and graphical seating plans.
+table, CSV export, and graphical seating plans. The participant table can be
+filtered by answer state or missing seat and links to the corresponding user,
+ticket, and seat views.
+
+The graphical seating plans show the participant and chair status in each
+occupied seat's tooltip. A green inner outline and dot mark participants who
+bring their own chair.
 
 The overview and export use the existing `seating.view` permission. There is no
 Chair-specific permission or role.
@@ -45,6 +51,10 @@ data and are not duplicated in the Chair table.
 ## Validation
 
 Use the repository commands documented in the root `justfile`, `pyproject.toml`,
-and CI workflow. Chair tests are located below
-`tests/unit/blueprints/chair_optout` and
-`tests/unit/services/chair_optout`.
+and CI workflow. Chair tests are located below these paths:
+
+- `tests/unit/blueprints/chair_optout`;
+- `tests/unit/services/chair_optout`;
+- `tests/integration/blueprints/admin/chair_optout`;
+- `tests/integration/blueprints/site/chair_optout`;
+- `tests/integration/services/chair_optout`.
