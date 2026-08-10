@@ -99,7 +99,7 @@ Documentation = "https://byceps.readthedocs.io/"
 Repository = "https://github.com/byceps/byceps"
 
 [build-system]
-requires = ["uv_build>=0.8.11,<0.9.0"]
+requires = ["uv_build>=0.12.3,<0.13.0"]
 build-backend = "uv_build"
 
 [tool.mypy]
@@ -164,7 +164,7 @@ order-by-type = false
 
 [tool.uv]
 default-groups = []
-required-version = ">=0.9.28"
+required-version = ">=0.12.3"
 
 [tool.uv.build-backend]
 module-name = "byceps"
