@@ -42,7 +42,7 @@ dependencies = [
     "jinja2>=3.1.6",
     "lanpartydb>=0.13.0",
     "markupsafe==3.0.3",
-    "mistletoe>=1.5.1",
+    "mistletoe>=1.6.0",
     "paypal-checkout-serversdk==1.0.3",
     "paypalhttp==1.0.1",
     "pillow>=12.2.0",
