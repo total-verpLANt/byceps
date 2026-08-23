@@ -1,9 +1,6 @@
 """
 tests.integration.services.lan_tournament.test_tournament_participant_service
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-:Copyright: 2014-2026 Jochen Kupperschmidt
-:License: Revised BSD (see `LICENSE` file for details)
 """
 
 import pytest
@@ -12,11 +9,9 @@ from byceps.services.lan_tournament import (
     tournament_participant_service,
     tournament_service,
 )
-from byceps.services.lan_tournament.models import (
-    TournamentMode,
-    TournamentStatus,
-)
+from byceps.services.lan_tournament.models import TournamentStatus
 from byceps.services.party.models import PartyID
+from byceps.services.ticketing import ticket_creation_service
 
 
 PARTY_ID = PartyID('lan-party-2024-participant')
@@ -42,15 +37,39 @@ def user3(make_user):
     return make_user('ParticipantUser3')
 
 
-def test_join_tournament(party, user1):
-    tournament = tournament_service.create_tournament(
-        PARTY_ID, 'Join Test Tournament', TournamentMode.single_player, 16
-    ).unwrap()
+@pytest.fixture(scope='module')
+def ticket_category(make_ticket_category, party):
+    return make_ticket_category(party.id, 'Tournament Entry')
+
+
+@pytest.fixture(scope='module')
+def grant_ticket(ticket_category):
+    """Give a user a valid (used) ticket for the party."""
+
+    def _grant(user):
+        return ticket_creation_service.create_ticket(
+            ticket_category, user, user=user
+        )
+
+    return _grant
+
+
+def _create_solo_tournament(name):
+    result = tournament_service.create_tournament(PARTY_ID, name, max_players=16)
+    assert result.is_ok()
+    tournament, _ = result.unwrap()
+    return tournament
+
+
+def test_join_tournament(party, user1, grant_ticket):
+    tournament = _create_solo_tournament('Join Test Tournament')
 
     # Open for registration
     tournament_service.change_status(
         tournament.id, TournamentStatus.REGISTRATION_OPEN
     )
+
+    grant_ticket(user1)
 
     # Join tournament
     result = tournament_participant_service.join_tournament(
@@ -69,17 +88,14 @@ def test_join_tournament(party, user1):
     assert count == 1
 
 
-def test_join_tournament_duplicate_fails(party, user1):
-    tournament = tournament_service.create_tournament(
-        PARTY_ID,
-        'Duplicate Join Test Tournament',
-        TournamentMode.single_player,
-        16,
-    ).unwrap()
+def test_join_tournament_duplicate_fails(party, user1, grant_ticket):
+    tournament = _create_solo_tournament('Duplicate Join Test Tournament')
 
     tournament_service.change_status(
         tournament.id, TournamentStatus.REGISTRATION_OPEN
     )
+
+    grant_ticket(user1)
 
     # Join once
     result1 = tournament_participant_service.join_tournament(
@@ -94,20 +110,11 @@ def test_join_tournament_duplicate_fails(party, user1):
     assert result2.is_err()
     assert 'already registered' in result2.unwrap_err()
 
-    # Try to join again - should raise error
-    with pytest.raises(ValueError):
-        tournament_participant_service.join_tournament(tournament.id, user1)
-
 
 def test_join_tournament_when_closed_fails(party, user2):
-    tournament = tournament_service.create_tournament(
-        PARTY_ID,
-        'Closed Registration Test',
-        TournamentMode.single_player,
-        16,
-    ).unwrap()
+    tournament = _create_solo_tournament('Closed Registration Test')
 
-    # Keep it in scheduled status (not open for registration)
+    # Keep it in draft status (not open for registration)
 
     # Try to join - should fail
     result = tournament_participant_service.join_tournament(
@@ -117,19 +124,20 @@ def test_join_tournament_when_closed_fails(party, user2):
     assert 'not open' in result.unwrap_err()
 
 
-def test_leave_tournament(party, user1):
-    tournament = tournament_service.create_tournament(
-        PARTY_ID, 'Leave Test Tournament', TournamentMode.single_player, 16
-    ).unwrap()
+def test_leave_tournament(party, user1, grant_ticket):
+    tournament = _create_solo_tournament('Leave Test Tournament')
 
     tournament_service.change_status(
         tournament.id, TournamentStatus.REGISTRATION_OPEN
     )
 
+    grant_ticket(user1)
+
     # Join tournament
     result = tournament_participant_service.join_tournament(
         tournament.id, user1.id
     )
+    assert result.is_ok()
     participant, _ = result.unwrap()
 
     # Verify joined
@@ -147,22 +155,20 @@ def test_leave_tournament(party, user1):
     assert count == 0
 
 
-def test_get_participants_for_tournament(party, user1, user2, user3):
-    tournament = tournament_service.create_tournament(
-        PARTY_ID,
-        'Get Participants Test',
-        TournamentMode.single_player,
-        16,
-    ).unwrap()
+def test_get_participants_for_tournament(party, user1, user2, user3, grant_ticket):
+    tournament = _create_solo_tournament('Get Participants Test')
 
     tournament_service.change_status(
         tournament.id, TournamentStatus.REGISTRATION_OPEN
     )
 
     # Join multiple users
-    tournament_participant_service.join_tournament(tournament.id, user1.id)
-    tournament_participant_service.join_tournament(tournament.id, user2.id)
-    tournament_participant_service.join_tournament(tournament.id, user3.id)
+    for user in (user1, user2, user3):
+        grant_ticket(user)
+        result = tournament_participant_service.join_tournament(
+            tournament.id, user.id
+        )
+        assert result.is_ok()
 
     # Get all participants
     participants = (

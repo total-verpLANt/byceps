@@ -1,9 +1,6 @@
 """
 tests.integration.services.lan_tournament.test_tournament_match_service
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-:Copyright: 2014-2026 Jochen Kupperschmidt
-:License: Revised BSD (see `LICENSE` file for details)
 """
 
 import dataclasses
@@ -19,10 +16,12 @@ from byceps.services.lan_tournament import (
 )
 from byceps.services.lan_tournament.models import (
     ContestantType,
-    TournamentMode,
+    EliminationMode,
+    GameFormat,
     TournamentStatus,
 )
 from byceps.services.party.models import PartyID
+from byceps.services.ticketing import ticket_creation_service
 
 
 PARTY_ID = PartyID('lan-party-2024-match')
@@ -58,205 +57,223 @@ def admin_user(make_user):
     return make_user('MatchAdmin')
 
 
+@pytest.fixture(scope='module')
+def ticket_category(make_ticket_category, party):
+    return make_ticket_category(party.id, 'Tournament Entry')
+
+
+@pytest.fixture(scope='module')
+def grant_ticket(ticket_category):
+    """Give a user a valid (used) ticket for the party."""
+
+    def _grant(user):
+        return ticket_creation_service.create_ticket(
+            ticket_category, user, user=user
+        )
+
+    return _grant
+
+
+def _create_tournament(
+    name,
+    *,
+    contestant_type,
+    max_players=None,
+    max_teams=None,
+    min_players_in_team=None,
+    max_players_in_team=None,
+):
+    result = tournament_service.create_tournament(
+        PARTY_ID,
+        name,
+        game_format=GameFormat.ONE_V_ONE,
+        elimination_mode=EliminationMode.SINGLE_ELIMINATION,
+        contestant_type=contestant_type,
+        max_players=max_players,
+        max_teams=max_teams,
+        min_players_in_team=min_players_in_team,
+        max_players_in_team=max_players_in_team,
+    )
+    assert result.is_ok()
+    tournament, _ = result.unwrap()
+
+    open_result = tournament_service.change_status(
+        tournament.id, TournamentStatus.REGISTRATION_OPEN
+    )
+    assert open_result.is_ok()
+
+    return tournament
+
+
+def _join_all(tournament, users, grant_ticket):
+    participants = {}
+    for user in users:
+        grant_ticket(user)
+        result = tournament_participant_service.join_tournament(
+            tournament.id, user.id
+        )
+        assert result.is_ok()
+        participant, _ = result.unwrap()
+        participants[user.id] = participant
+    return participants
+
+
 def test_generate_and_seed_bracket_for_solo_tournament(
-    party, user1, user2, user3, user4, admin_user
+    party, user1, user2, user3, user4, grant_ticket
 ):
     """Test full bracket workflow for solo player tournament."""
     # Create tournament
-    tournament, _ = tournament_service.create_tournament(
-        PARTY_ID,
+    tournament = _create_tournament(
         'Solo Bracket Test',
-        tournament_mode=TournamentMode.SINGLE_ELIMINATION,
         contestant_type=ContestantType.SOLO,
         max_players=8,
     )
 
-    # Open registration and add participants
-    tournament_service.change_status(
-        tournament.id, TournamentStatus.REGISTRATION_OPEN
-    )
-
-    result1 = tournament_participant_service.join_tournament(
-        tournament.id, user1.id
-    )
-    result2 = tournament_participant_service.join_tournament(
-        tournament.id, user2.id
-    )
-    result3 = tournament_participant_service.join_tournament(
-        tournament.id, user3.id
-    )
-    result4 = tournament_participant_service.join_tournament(
-        tournament.id, user4.id
-    )
-
-    assert result1.is_ok()
-    assert result2.is_ok()
-    assert result3.is_ok()
-    assert result4.is_ok()
-
-    # Close registration and start tournament
-    tournament_service.change_status(
+    # Add participants and close registration
+    _join_all(tournament, [user1, user2, user3, user4], grant_ticket)
+    close_result = tournament_service.change_status(
         tournament.id, TournamentStatus.REGISTRATION_CLOSED
     )
-    tournament_service.start_tournament(tournament.id)
+    assert close_result.is_ok()
 
-    # Generate bracket
-    seeds = tournament_match_service.generate_single_elimination_bracket(
+    # Generate bracket (creates and seeds all matches)
+    generate_result = tournament_match_service.generate_single_elimination_bracket(
         tournament.id
     )
+    assert generate_result.is_ok()
 
-    # 4 players = 2 matches in first round
-    assert len(seeds) == 2
-    assert all(seed.entry_a.upper() != 'DEFWIN' for seed in seeds)
-    assert all(seed.entry_b.upper() != 'DEFWIN' for seed in seeds)
-
-    # Set seeds to create matches
-    tournament_match_service.set_seed(seeds, tournament.id)
-
-    # Verify matches created
+    # 4 players = 2 matches in first round (+ semifinal wiring to
+    # final, third-place match), no byes/DEFWINs.
     matches = tournament_match_service.get_matches_for_tournament(tournament.id)
-    assert len(matches) == 2
-    assert all(match.confirmed_by is None for match in matches)
+    first_round = [m for m in matches if m.round == 0]
+    assert len(first_round) == 2
+
+    for match in first_round:
+        contestants = tournament_match_service.get_contestants_for_match(
+            match.id
+        )
+        assert len(contestants) == 2
+
+    assert all(match.confirmed_by is None for match in first_round)
 
 
-def test_set_scores_and_confirm_match(party, user1, user2, admin_user):
+def test_set_scores_and_confirm_match(party, user1, user2, admin_user, grant_ticket):
     """Test setting scores and confirming match results."""
     # Create tournament
-    tournament, _ = tournament_service.create_tournament(
-        PARTY_ID,
+    tournament = _create_tournament(
         'Score Test Tournament',
-        tournament_mode=TournamentMode.SINGLE_ELIMINATION,
         contestant_type=ContestantType.SOLO,
         max_players=4,
     )
 
     # Add participants
-    tournament_service.change_status(
-        tournament.id, TournamentStatus.REGISTRATION_OPEN
-    )
-    result1 = tournament_participant_service.join_tournament(
-        tournament.id, user1.id
-    )
-    result2 = tournament_participant_service.join_tournament(
-        tournament.id, user2.id
-    )
-    participant1, _ = result1.unwrap()
-    participant2, _ = result2.unwrap()
+    participants = _join_all(tournament, [user1, user2], grant_ticket)
+    participant1 = participants[user1.id]
+    participant2 = participants[user2.id]
 
-    # Start and seed
-    tournament_service.start_tournament(tournament.id)
-    seeds = tournament_match_service.generate_single_elimination_bracket(
+    # Generate bracket (creates one final match for 2 contestants)
+    generate_result = tournament_match_service.generate_single_elimination_bracket(
         tournament.id
     )
-    tournament_match_service.set_seed(seeds, tournament.id)
+    assert generate_result.is_ok()
 
     # Get the match
     matches = tournament_match_service.get_matches_for_tournament(tournament.id)
+    assert len(matches) == 1
     match = matches[0]
 
     # Set scores
-    tournament_match_service.set_score(match.id, participant1.id, 10)
-    tournament_match_service.set_score(match.id, participant2.id, 5)
+    set_result1 = tournament_match_service.set_score(
+        match.id, participant1.id, 10
+    )
+    assert set_result1.is_ok()
+    set_result2 = tournament_match_service.set_score(
+        match.id, participant2.id, 5
+    )
+    assert set_result2.is_ok()
 
     # Confirm match
-    tournament_match_service.confirm_match(match.id, admin_user.id)
+    confirm_result = tournament_match_service.confirm_match(
+        match.id, admin_user.id
+    )
+    assert confirm_result.is_ok()
 
     # Verify confirmation
     confirmed_match = tournament_match_service.get_match(match.id)
     assert confirmed_match.confirmed_by == admin_user.id
 
 
-def test_cannot_confirm_match_without_scores(party, user1, user2, admin_user):
+def test_cannot_confirm_match_without_scores(party, user1, user2, admin_user, grant_ticket):
     """Test that match cannot be confirmed without scores."""
-    tournament, _ = tournament_service.create_tournament(
-        PARTY_ID,
+    tournament = _create_tournament(
         'No Score Test',
-        tournament_mode=TournamentMode.SINGLE_ELIMINATION,
         contestant_type=ContestantType.SOLO,
         max_players=4,
     )
 
-    tournament_service.change_status(
-        tournament.id, TournamentStatus.REGISTRATION_OPEN
-    )
-    tournament_participant_service.join_tournament(tournament.id, user1.id)
-    tournament_participant_service.join_tournament(tournament.id, user2.id)
+    _join_all(tournament, [user1, user2], grant_ticket)
 
-    tournament_service.start_tournament(tournament.id)
-    seeds = tournament_match_service.generate_single_elimination_bracket(
+    generate_result = tournament_match_service.generate_single_elimination_bracket(
         tournament.id
     )
-    tournament_match_service.set_seed(seeds, tournament.id)
+    assert generate_result.is_ok()
 
     matches = tournament_match_service.get_matches_for_tournament(tournament.id)
     match = matches[0]
 
     # Try to confirm without setting scores
-    with pytest.raises(ValueError, match='must have scores'):
-        tournament_match_service.confirm_match(match.id, admin_user.id)
+    result = tournament_match_service.confirm_match(match.id, admin_user.id)
+    assert result.is_err()
+    assert 'must have scores' in result.unwrap_err()
 
 
-def test_cannot_set_negative_score(party, user1, user2):
+def test_cannot_set_negative_score(party, user1, user2, grant_ticket):
     """Test that negative scores are rejected."""
-    tournament, _ = tournament_service.create_tournament(
-        PARTY_ID,
+    tournament = _create_tournament(
         'Negative Score Test',
-        tournament_mode=TournamentMode.SINGLE_ELIMINATION,
         contestant_type=ContestantType.SOLO,
         max_players=4,
     )
 
-    tournament_service.change_status(
-        tournament.id, TournamentStatus.REGISTRATION_OPEN
-    )
-    result = tournament_participant_service.join_tournament(
-        tournament.id, user1.id
-    )
-    tournament_participant_service.join_tournament(tournament.id, user2.id)
-    participant, _ = result.unwrap()
+    participants = _join_all(tournament, [user1, user2], grant_ticket)
+    participant = participants[user1.id]
 
-    tournament_service.start_tournament(tournament.id)
-    seeds = tournament_match_service.generate_single_elimination_bracket(
+    generate_result = tournament_match_service.generate_single_elimination_bracket(
         tournament.id
     )
-    tournament_match_service.set_seed(seeds, tournament.id)
+    assert generate_result.is_ok()
 
     matches = tournament_match_service.get_matches_for_tournament(tournament.id)
     match = matches[0]
 
-    with pytest.raises(ValueError, match='cannot be negative'):
-        tournament_match_service.set_score(match.id, participant.id, -1)
+    result = tournament_match_service.set_score(match.id, participant.id, -1)
+    assert result.is_err()
+    assert 'cannot be negative' in result.unwrap_err()
 
 
-def test_match_comments_workflow(party, user1, user2, admin_user):
+def test_match_comments_workflow(party, user1, user2, admin_user, grant_ticket):
     """Test adding, updating, and deleting match comments."""
-    tournament, _ = tournament_service.create_tournament(
-        PARTY_ID,
+    tournament = _create_tournament(
         'Comment Test Tournament',
-        tournament_mode=TournamentMode.SINGLE_ELIMINATION,
         contestant_type=ContestantType.SOLO,
         max_players=4,
     )
 
-    tournament_service.change_status(
-        tournament.id, TournamentStatus.REGISTRATION_OPEN
-    )
-    tournament_participant_service.join_tournament(tournament.id, user1.id)
-    tournament_participant_service.join_tournament(tournament.id, user2.id)
+    _join_all(tournament, [user1, user2], grant_ticket)
 
-    tournament_service.start_tournament(tournament.id)
-    seeds = tournament_match_service.generate_single_elimination_bracket(
+    generate_result = tournament_match_service.generate_single_elimination_bracket(
         tournament.id
     )
-    tournament_match_service.set_seed(seeds, tournament.id)
+    assert generate_result.is_ok()
 
     matches = tournament_match_service.get_matches_for_tournament(tournament.id)
     match = matches[0]
 
     # Add comment
-    tournament_match_service.add_comment(
+    add_result = tournament_match_service.add_comment(
         match.id, admin_user.id, 'Great match!'
     )
+    assert add_result.is_ok()
 
     # Get comments
     comments = tournament_match_service.get_comments_from_match(match.id)
@@ -266,7 +283,10 @@ def test_match_comments_workflow(party, user1, user2, admin_user):
 
     # Update comment
     comment_id = comments[0].id
-    tournament_match_service.update_comment(comment_id, 'Amazing match!')
+    update_result = tournament_match_service.update_comment(
+        comment_id, 'Amazing match!'
+    )
+    assert update_result.is_ok()
 
     # Verify update
     updated_comments = tournament_match_service.get_comments_from_match(
@@ -285,160 +305,139 @@ def test_match_comments_workflow(party, user1, user2, admin_user):
     assert len(final_comments) == 0
 
 
-def test_comment_length_validation(party, user1, user2, admin_user):
+def test_comment_length_validation(party, user1, user2, admin_user, grant_ticket):
     """Test that comments exceeding 1000 characters are rejected."""
-    tournament, _ = tournament_service.create_tournament(
-        PARTY_ID,
+    tournament = _create_tournament(
         'Long Comment Test',
-        tournament_mode=TournamentMode.SINGLE_ELIMINATION,
         contestant_type=ContestantType.SOLO,
         max_players=4,
     )
 
-    tournament_service.change_status(
-        tournament.id, TournamentStatus.REGISTRATION_OPEN
-    )
-    tournament_participant_service.join_tournament(tournament.id, user1.id)
-    tournament_participant_service.join_tournament(tournament.id, user2.id)
+    _join_all(tournament, [user1, user2], grant_ticket)
 
-    tournament_service.start_tournament(tournament.id)
-    seeds = tournament_match_service.generate_single_elimination_bracket(
+    generate_result = tournament_match_service.generate_single_elimination_bracket(
         tournament.id
     )
-    tournament_match_service.set_seed(seeds, tournament.id)
+    assert generate_result.is_ok()
 
     matches = tournament_match_service.get_matches_for_tournament(tournament.id)
     match = matches[0]
 
     # Try to add comment that's too long
     long_comment = 'x' * 1001
-    with pytest.raises(ValueError, match='cannot exceed 1000 characters'):
-        tournament_match_service.add_comment(
-            match.id, admin_user.id, long_comment
-        )
+    result = tournament_match_service.add_comment(
+        match.id, admin_user.id, long_comment
+    )
+    assert result.is_err()
+    assert 'cannot exceed 1000 characters' in result.unwrap_err()
 
     # Comment at exactly 1000 chars should work
     limit_comment = 'x' * 1000
-    tournament_match_service.add_comment(match.id, admin_user.id, limit_comment)
+    limit_result = tournament_match_service.add_comment(
+        match.id, admin_user.id, limit_comment
+    )
+    assert limit_result.is_ok()
 
     comments = tournament_match_service.get_comments_from_match(match.id)
     assert len(comments) == 1
     assert len(comments[0].comment) == 1000
 
 
-def test_team_tournament_bracket_workflow(party, user1, user2, user3, user4):
+def test_team_tournament_bracket_workflow(
+    party, user1, user2, user3, user4, grant_ticket
+):
     """Test bracket generation for team tournament."""
-    tournament, _ = tournament_service.create_tournament(
-        PARTY_ID,
+    tournament = _create_tournament(
         'Team Bracket Test',
-        tournament_mode=TournamentMode.SINGLE_ELIMINATION,
         contestant_type=ContestantType.TEAM,
         max_teams=4,
         min_players_in_team=1,
         max_players_in_team=2,
     )
 
-    # Open registration
-    tournament_service.change_status(
-        tournament.id, TournamentStatus.REGISTRATION_OPEN
-    )
+    # All team members must be registered participants.
+    _join_all(tournament, [user1, user2, user3, user4], grant_ticket)
 
     # Create teams
-    result1 = tournament_team_service.create_team(
+    team1_result = tournament_team_service.create_team(
         tournament.id, 'Team Alpha', user1.id
     )
-    result2 = tournament_team_service.create_team(
+    team2_result = tournament_team_service.create_team(
         tournament.id, 'Team Beta', user3.id
     )
 
-    assert result1.is_ok()
-    assert result2.is_ok()
+    assert team1_result.is_ok()
+    assert team2_result.is_ok()
 
-    team1, _ = result1.unwrap()
-    team2, _ = result2.unwrap()
+    team1, _ = team1_result.unwrap()
+    team2, _ = team2_result.unwrap()
 
     # Add members to teams
-    tournament_team_service.admin_add_member(team1.id, user2.id)
-    tournament_team_service.admin_add_member(team2.id, user4.id)
+    add_result1 = tournament_team_service.admin_add_member(team1.id, user2.id)
+    assert add_result1.is_ok()
+    add_result2 = tournament_team_service.admin_add_member(team2.id, user4.id)
+    assert add_result2.is_ok()
 
-    # Start tournament
-    tournament_service.start_tournament(tournament.id)
-
-    # Generate bracket
-    seeds = tournament_match_service.generate_single_elimination_bracket(
+    # Generate bracket (creates and seeds all matches)
+    generate_result = tournament_match_service.generate_single_elimination_bracket(
         tournament.id
     )
+    assert generate_result.is_ok()
 
     # 2 teams = 1 match
-    assert len(seeds) == 1
-
-    # Seed bracket
-    tournament_match_service.set_seed(seeds, tournament.id)
-
-    # Verify matches created
     matches = tournament_match_service.get_matches_for_tournament(tournament.id)
     assert len(matches) == 1
 
 
-def test_bracket_with_defwins(party, user1, user2, user3):
-    """Test bracket generation with DEFWIN entries."""
-    tournament, _ = tournament_service.create_tournament(
-        PARTY_ID,
+def test_bracket_with_defwins(party, user1, user2, user3, grant_ticket):
+    """Test bracket generation with DEFWIN (bye) entries."""
+    tournament = _create_tournament(
         'DEFWIN Test Tournament',
-        tournament_mode=TournamentMode.SINGLE_ELIMINATION,
         contestant_type=ContestantType.SOLO,
         max_players=8,
     )
 
-    # Add 3 participants (will require defwins to round up to 4)
-    tournament_service.change_status(
-        tournament.id, TournamentStatus.REGISTRATION_OPEN
-    )
-    tournament_participant_service.join_tournament(tournament.id, user1.id)
-    tournament_participant_service.join_tournament(tournament.id, user2.id)
-    tournament_participant_service.join_tournament(tournament.id, user3.id)
-
-    tournament_service.start_tournament(tournament.id)
+    # Add 3 participants (will require a bye to round up to 4)
+    _join_all(tournament, [user1, user2, user3], grant_ticket)
 
     # Generate bracket
-    seeds = tournament_match_service.generate_single_elimination_bracket(
+    generate_result = tournament_match_service.generate_single_elimination_bracket(
         tournament.id
     )
+    assert generate_result.is_ok()
 
-    # 3 players rounds up to 4 bracket size = 2 matches
-    assert len(seeds) == 2
+    # 3 players round up to a 4-slot bracket = 2 first-round matches
+    matches = tournament_match_service.get_matches_for_tournament(tournament.id)
+    first_round = [m for m in matches if m.round == 0]
+    assert len(first_round) == 2
 
-    # Count DEFWINs (should be 1 DEFWIN since we have 3 players in 4-slot bracket)
+    # Exactly one bye (DEFWIN): one first-round match has only one
+    # contestant, whose opponent slot was a DEFWIN entry.
     defwin_count = sum(
         1
-        for seed in seeds
-        for entry in [seed.entry_a, seed.entry_b]
-        if entry.upper() == 'DEFWIN'
+        for match in first_round
+        if len(
+            tournament_match_service.get_contestants_for_match(match.id)
+        )
+        == 1
     )
     assert defwin_count == 1
 
 
-def test_reset_match(party, user1, user2):
+def test_reset_match(party, user1, user2, grant_ticket):
     """Test resetting a match."""
-    tournament, _ = tournament_service.create_tournament(
-        PARTY_ID,
+    tournament = _create_tournament(
         'Reset Match Test',
-        tournament_mode=TournamentMode.SINGLE_ELIMINATION,
         contestant_type=ContestantType.SOLO,
         max_players=4,
     )
 
-    tournament_service.change_status(
-        tournament.id, TournamentStatus.REGISTRATION_OPEN
-    )
-    tournament_participant_service.join_tournament(tournament.id, user1.id)
-    tournament_participant_service.join_tournament(tournament.id, user2.id)
+    _join_all(tournament, [user1, user2], grant_ticket)
 
-    tournament_service.start_tournament(tournament.id)
-    seeds = tournament_match_service.generate_single_elimination_bracket(
+    generate_result = tournament_match_service.generate_single_elimination_bracket(
         tournament.id
     )
-    tournament_match_service.set_seed(seeds, tournament.id)
+    assert generate_result.is_ok()
 
     # Get match
     matches = tournament_match_service.get_matches_for_tournament(tournament.id)
@@ -455,35 +454,21 @@ def test_reset_match(party, user1, user2):
     assert len(remaining_matches) == 0
 
 
-def test_bracket_generation_rejects_empty_team(party, user1, user2, user3):
+def test_bracket_generation_rejects_empty_team(
+    party, user1, user2, user3, grant_ticket
+):
     """Test that bracket generation rejects teams with no members."""
-    tournament, _ = tournament_service.create_tournament(
-        PARTY_ID,
+    tournament = _create_tournament(
         'Empty Team Reject Test',
-        tournament_mode=TournamentMode.SINGLE_ELIMINATION,
         contestant_type=ContestantType.TEAM,
         max_teams=4,
         min_players_in_team=1,
         max_players_in_team=2,
     )
 
-    # Open registration and join participants
-    tournament_service.change_status(
-        tournament.id, TournamentStatus.REGISTRATION_OPEN
-    )
-    result1 = tournament_participant_service.join_tournament(
-        tournament.id, user1.id
-    )
-    result2 = tournament_participant_service.join_tournament(
-        tournament.id, user2.id
-    )
-    result3 = tournament_participant_service.join_tournament(
-        tournament.id, user3.id
-    )
-    assert result1.is_ok()
-    assert result2.is_ok()
-    assert result3.is_ok()
-    participant2, _ = result2.unwrap()
+    # Register participants
+    participants = _join_all(tournament, [user1, user2, user3], grant_ticket)
+    participant2 = participants[user2.id]
 
     # Create two teams (captains are auto-assigned as members)
     team1_result = tournament_team_service.create_team(
@@ -497,14 +482,12 @@ def test_bracket_generation_rejects_empty_team(party, user1, user2, user3):
 
     # Add an extra member to team1 so it clearly has members
     team1, _ = team1_result.unwrap()
-    tournament_team_service.admin_add_member(team1.id, user3.id)
+    add_result = tournament_team_service.admin_add_member(team1.id, user3.id)
+    assert add_result.is_ok()
 
     # Make team2 empty by un-assigning its captain
     updated_participant = dataclasses.replace(participant2, team_id=None)
     tournament_repository.update_participant(updated_participant)
-
-    # Start tournament
-    tournament_service.start_tournament(tournament.id)
 
     # Attempt bracket generation -- should fail with Err
     result = tournament_match_service.generate_single_elimination_bracket(

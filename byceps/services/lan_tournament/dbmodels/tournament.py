@@ -62,12 +62,20 @@ class DbTournament(db.Model):
     )
     winner_team_id: Mapped[TournamentTeamID | None] = mapped_column(
         db.Uuid,
-        db.ForeignKey('lan_tournament_teams.id'),
+        db.ForeignKey(
+            'lan_tournament_teams.id',
+            use_alter=True,
+            name='lan_tournaments_winner_team_id_fkey',
+        ),
     )
     winner_participant_id: Mapped[TournamentParticipantID | None] = (
         mapped_column(
             db.Uuid,
-            db.ForeignKey('lan_tournament_participants.id'),
+            db.ForeignKey(
+                'lan_tournament_participants.id',
+                use_alter=True,
+                name='lan_tournaments_winner_participant_id_fkey',
+            ),
         )
     )
 
