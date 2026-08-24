@@ -10,6 +10,7 @@ from operator import attrgetter
 
 from flask import abort, g
 
+from byceps.services.chair_optout import chair_optout_service
 from byceps.services.orga_team import orga_team_service
 from byceps.services.ticketing import ticket_attendance_service, ticket_service
 from byceps.services.user import user_service
@@ -48,6 +49,23 @@ def view(user_id):
         orga_teams = []
         current_party_tickets = []
 
+    is_own_profile = g.user.authenticated and g.user.id == user.id
+    chair_information_by_ticket_id = {}
+    if is_own_profile:
+        optouts_by_ticket_id = (
+            chair_optout_service.get_current_optouts_for_tickets(
+                current_party_tickets
+            )
+        )
+        chair_information_by_ticket_id = {
+            ticket.id: (
+                optouts_by_ticket_id[ticket.id].brings_own_chair
+                if ticket.id in optouts_by_ticket_id
+                else None
+            )
+            for ticket in current_party_tickets
+        }
+
     attended_parties = ticket_attendance_service.get_attended_parties(user.id)
     attended_parties = [party for party in attended_parties if not party.hidden]
     attended_parties.sort(key=attrgetter('starts_at'), reverse=True)
@@ -57,5 +75,7 @@ def view(user_id):
         'badges_with_awarding_quantity': badges_with_awarding_quantity,
         'orga_teams': orga_teams,
         'current_party_tickets': current_party_tickets,
+        'is_own_profile': is_own_profile,
+        'chair_information_by_ticket_id': chair_information_by_ticket_id,
         'attended_parties': attended_parties,
     }

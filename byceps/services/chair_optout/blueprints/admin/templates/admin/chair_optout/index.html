@@ -1,0 +1,93 @@
+{% extends 'layout/admin/base.html' %}
+{% from 'macros/admin.html' import render_main_tabs %}
+{% from 'macros/admin/chair_optout.html' import render_chair_information_navigation %}
+{% from 'macros/icons.html' import render_icon %}
+{% from 'macros/stats.html' import render_bigstats_item %}
+{% set current_page = 'more_admin_party' %}
+{% set current_page_party = party %}
+{% set page_title = [_('Participant chair information'), party.title] %}
+
+{% block body %}
+
+  <div class="block row row--space-between">
+    <div>
+      <h1 class="title">{{ _('Participant chair information') }}</h1>
+    </div>
+    <div>
+      <div class="button-row is-right-aligned">
+        <a class="button" href="{{ url_for('.export_as_csv', party_id=party.id) }}" download="chair_optout_{{ party.id }}.csv">{{ render_icon('download') }} <span>{{ _('Export') }} (CSV)</span></a>
+      </div>
+    </div>
+  </div>
+
+  <div class="block">
+    {{ render_chair_information_navigation(party, 'participants', selected_filter) }}
+  </div>
+
+  <div class="block row row--equal-sized-centered-columns row--space-around row--wrap bigstats">
+    {{ render_bigstats_item(summary.brings_own_chair, _('Brings own chair')) }}
+    {{ render_bigstats_item(summary.needs_provided_chair, _('Needs a provided chair')) }}
+    {{ render_bigstats_item(summary.not_specified, _('Not specified yet')) }}
+    {{ render_bigstats_item(summary.no_seat, _('no seat')) }}
+  </div>
+
+  <div class="block">
+  {{
+    render_main_tabs(
+      Navigation()
+        .add_item(url_for('.chair_information', party_id=party.id, filter='all'), _('All participants'), id='all')
+        .add_item(url_for('.chair_information', party_id=party.id, filter='own_chair'), _('Brings own chair'), id='own_chair')
+        .add_item(url_for('.chair_information', party_id=party.id, filter='provided_chair'), _('Needs a provided chair'), id='provided_chair')
+        .add_item(url_for('.chair_information', party_id=party.id, filter='not_specified'), _('Not specified yet'), id='not_specified')
+        .add_item(url_for('.chair_information', party_id=party.id, filter='no_seat'), _('no seat'), id='no_seat')
+      , selected_filter
+    )
+  }}
+  </div>
+
+  {%- if report_entries %}
+  <table class="itemlist is-vcentered is-wide">
+    <thead>
+      <tr>
+        <th>{{ _('Name') }}</th>
+        <th>{{ _('Nickname') }}</th>
+        <th>{{ _('Ticket number') }}</th>
+        <th>{{ _('Seat') }}</th>
+        <th>{{ _('Chair information') }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {%- for entry in report_entries %}
+      <tr>
+        <td>{{ entry.full_name|fallback }}</td>
+        <td>{% if entry.screen_name %}<a href="{{ url_for('user_admin.view', user_id=entry.user_id) }}">{{ entry.screen_name }}</a>{% endif %}</td>
+        <td><a class="monospace" href="{{ url_for('ticketing_admin.view_ticket', ticket_id=entry.ticket_id) }}">{{ entry.ticket_code }}</a></td>
+        <td>
+          {%- if entry.has_seat -%}
+            {%- if seat_urls_by_ticket_id.get(entry.ticket_id) -%}
+              <a href="{{ seat_urls_by_ticket_id[entry.ticket_id] }}">{{ entry.seat_label|fallback(_('unnamed')) }}</a>
+            {%- else -%}
+              {{ entry.seat_label|fallback(_('unnamed')) }}
+            {%- endif -%}
+          {%- else -%}
+            {{ _('no seat')|dim }}
+          {%- endif -%}
+        </td>
+        <td>
+          {%- if entry.brings_own_chair is sameas true -%}
+            {{ _('Brings own chair') }}
+          {%- elif entry.brings_own_chair is sameas false -%}
+            {{ _('Needs a provided chair') }}
+          {%- else -%}
+            {{ _('Not specified yet') }}
+          {%- endif -%}
+        </td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+  {%- else %}
+  <div class="box no-data-message">{{ _('No entries') }}</div>
+  {%- endif %}
+
+{% endblock %}

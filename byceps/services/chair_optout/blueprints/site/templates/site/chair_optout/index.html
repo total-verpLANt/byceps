@@ -1,0 +1,44 @@
+{% extends 'layout/base.html' %}
+{% from 'macros/forms.html' import form_field_radio, form_form_errors %}
+{% from 'macros/icons.html' import render_icon %}
+{% set current_page = 'chair_optout' %}
+{% set page_title = _('Chair information') %}
+
+{% block body %}
+
+  <h1 class="title">{{ page_title }}</h1>
+
+  {%- for item in ticket_information|sort(attribute='ticket.code') %}
+  <section class="box block" id="ticket-{{ item.ticket.id }}">
+    <h2 class="title">
+      {{ _('Ticket') }} <span class="monospace">{{ item.ticket.code }}</span>
+      ·
+      {%- if item.ticket.occupied_seat %}
+        {{ _('Seat') }} {{ item.seat_label|fallback(_('unnamed')) }}
+      {%- else %}
+        {{ _('no seat') }}
+      {%- endif %}
+    </h2>
+
+    <p>
+      <strong>{{ _('Chair information') }}:</strong>
+      {%- if item.brings_own_chair is sameas true %}
+        {{ _('Brings own chair') }}
+      {%- elif item.brings_own_chair is sameas false %}
+        {{ _('Needs a provided chair') }}
+      {%- else %}
+        {{ _('Not specified yet') }}
+      {%- endif %}
+    </p>
+
+    <form action="{{ url_for('.update', ticket_id=item.ticket.id) }}" method="post">
+      {{ form_form_errors(item.form) }}
+      {{ form_field_radio(item.form.choice) }}
+      <div class="button-row">
+        <button class="button color-success" type="submit">{{ render_icon('save') }} <span>{{ _('Save') }}</span></button>
+      </div>
+    </form>
+  </section>
+  {%- endfor %}
+
+{% endblock %}

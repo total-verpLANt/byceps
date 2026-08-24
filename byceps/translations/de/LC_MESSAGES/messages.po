@@ -5200,6 +5200,9 @@ msgstr "nicht festgelegt"
 
 #: byceps/services/party/blueprints/admin/templates/admin/party/view.html:81
 #: byceps/services/party/blueprints/admin/templates/macros/admin/party.html:64
+#: byceps/services/chair_optout/blueprints/admin/templates/admin/chair_optout/seat_management.html:6
+#: byceps/services/chair_optout/blueprints/admin/templates/admin/chair_optout/seat_management.html:14
+#: byceps/services/more/blueprints/admin/item_service.py:169
 #: byceps/services/seating/blueprints/site/templates/site/seating/view_area.html:7
 #: byceps/services/seating/blueprints/site/templates/site/seating/view_area.html:28
 msgid "Seat management"
@@ -5618,11 +5621,16 @@ msgstr[1] "Du verwaltest die Sitzplätze von <strong>%(quantity)s</strong> Ticke
 msgid "no user"
 msgstr "kein/e Nutzer/in"
 
+#: byceps/services/chair_optout/blueprints/admin/templates/admin/chair_optout/index.html:41
+#: byceps/services/chair_optout/blueprints/admin/templates/admin/chair_optout/index.html:65
+#: byceps/services/chair_optout/blueprints/admin/views.py:84
+#: byceps/services/chair_optout/blueprints/site/templates/site/chair_optout/index.html:19
 #: byceps/services/seating/blueprints/site/templates/site/seating/_ticket_selector.html:37
 #: byceps/services/ticketing/blueprints/admin/templates/admin/ticketing/_ticket_list.html:37
 #: byceps/services/ticketing/blueprints/admin/templates/admin/ticketing/view_ticket.html:132
 #: byceps/services/ticketing/blueprints/site/templates/site/ticketing/index_mine.html:167
 #: byceps/services/ticketing/checkin/blueprints/admin/templates/admin/ticketing/checkin/_ticket_list.html:46
+#: byceps/services/user_profile/blueprints/site/templates/site/user_profile/_current_party_attendance.html:37
 msgid "no seat"
 msgstr "kein Sitzplatz"
 
@@ -10027,3 +10035,90 @@ msgstr "Tickets bezahlt"
 msgid "Order tickets"
 msgstr "Tickets bestellen"
 
+#: byceps/services/chair_optout/blueprints/admin/templates/admin/chair_optout/index.html:6
+#: byceps/services/chair_optout/blueprints/admin/templates/admin/chair_optout/index.html:28
+#: byceps/services/chair_optout/blueprints/admin/templates/admin/chair_optout/seat_management.html:18
+msgid "Participant chair information"
+msgstr "Stuhlangaben der Teilnehmer"
+
+#: byceps/services/chair_optout/blueprints/admin/templates/admin/chair_optout/index.html:52
+#: byceps/services/chair_optout/blueprints/admin/views.py:76
+#: byceps/services/chair_optout/blueprints/site/forms.py:18
+#: byceps/services/chair_optout/blueprints/site/templates/site/chair_optout/index.html:5
+#: byceps/services/chair_optout/blueprints/site/templates/site/chair_optout/index.html:24
+#: byceps/services/seating/blueprints/site/templates/site/seating/_ticket_selector.html:16
+#: byceps/services/user_profile/blueprints/site/templates/site/user_profile/_current_party_attendance.html:25
+#: byceps/services/user_profile/blueprints/site/templates/site/user_profile/_current_party_attendance.html:40
+msgid "Chair information"
+msgstr "Stuhlangabe"
+
+#: byceps/services/chair_optout/blueprints/admin/templates/admin/chair_optout/index.html:40
+#: byceps/services/chair_optout/blueprints/admin/templates/admin/chair_optout/index.html:74
+#: byceps/services/chair_optout/blueprints/admin/views.py:100
+#: byceps/services/chair_optout/blueprints/site/templates/site/chair_optout/index.html:30
+#: byceps/services/user_profile/blueprints/site/templates/site/user_profile/_current_party_attendance.html:46
+msgid "Not specified yet"
+msgstr "Noch nicht angegeben"
+
+#: byceps/services/chair_optout/blueprints/admin/templates/admin/chair_optout/index.html:12
+#: byceps/services/chair_optout/blueprints/admin/templates/admin/chair_optout/index.html:38
+#: byceps/services/chair_optout/blueprints/admin/templates/admin/chair_optout/index.html:70
+#: byceps/services/chair_optout/blueprints/admin/views.py:97
+#: byceps/services/chair_optout/blueprints/site/templates/site/chair_optout/index.html:26
+#: byceps/services/user_profile/blueprints/site/templates/site/user_profile/_current_party_attendance.html:42
+msgid "Brings own chair"
+msgstr "Bringt eigenen Stuhl mit"
+
+#: byceps/services/chair_optout/blueprints/admin/templates/admin/chair_optout/index.html:39
+#: byceps/services/chair_optout/blueprints/admin/templates/admin/chair_optout/index.html:72
+#: byceps/services/chair_optout/blueprints/admin/views.py:99
+#: byceps/services/chair_optout/blueprints/site/templates/site/chair_optout/index.html:28
+#: byceps/services/user_profile/blueprints/site/templates/site/user_profile/_current_party_attendance.html:44
+msgid "Needs a provided chair"
+msgstr "Benötigt einen Stuhl"
+
+#: byceps/services/chair_optout/blueprints/site/forms.py:20
+msgid "I will bring my own chair"
+msgstr "Ich bringe meinen eigenen Stuhl mit"
+
+#: byceps/services/chair_optout/blueprints/site/forms.py:21
+msgid "I need a provided chair"
+msgstr "Ich benötige einen bereitgestellten Stuhl"
+
+#: byceps/services/user_profile/blueprints/site/templates/site/user_profile/_current_party_attendance.html:51
+msgid "Make selection"
+msgstr "Angabe machen"
+
+#: byceps/services/user_profile/blueprints/site/templates/site/user_profile/_current_party_attendance.html:51
+msgid "Change selection"
+msgstr "Angabe ändern"
+
+#: byceps/services/chair_optout/blueprints/admin/templates/admin/chair_optout/index.html:49
+#: byceps/services/chair_optout/blueprints/admin/views.py:73
+msgid "Nickname"
+msgstr "Nickname"
+
+#: byceps/services/chair_optout/blueprints/admin/templates/admin/chair_optout/index.html:50
+#: byceps/services/chair_optout/blueprints/admin/views.py:74
+msgid "Ticket number"
+msgstr "Ticketnummer"
+
+#: byceps/services/chair_optout/blueprints/admin/views.py:75
+msgid "Seat label"
+msgstr "Sitzplatzbezeichnung"
+
+#: byceps/services/chair_optout/blueprints/admin/templates/macros/admin/chair_optout.html:4
+msgid "Participant list"
+msgstr "Teilnehmerliste"
+
+#: byceps/services/chair_optout/blueprints/admin/templates/macros/admin/chair_optout.html:5
+msgid "Graphical seating plan"
+msgstr "Grafischer Sitzplan"
+
+#: byceps/services/chair_optout/blueprints/admin/templates/admin/chair_optout/index.html:38
+msgid "All participants"
+msgstr "Alle Teilnehmer"
+
+#: byceps/services/chair_optout/blueprints/admin/templates/admin/chair_optout/seating_plan.html:45
+msgid "Green outline and dot: Brings own chair"
+msgstr "Grüne Umrandung und Punkt: Bringt eigenen Stuhl mit"

@@ -1,0 +1,22 @@
+{% extends 'layout/admin/base.html' %}
+{% from 'macros/admin/dashboard.html' import render_cell %}
+{% from 'macros/icons.html' import render_icon %}
+{% set current_page = 'more_admin_party' %}
+{% set current_page_party = party %}
+{% set page_title = [_('Seat management'), party.title] %}
+
+{% block head %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='style/admin_dashboard.css') }}">
+{%- endblock %}
+
+{% block body %}
+
+  <h1 class="title">{{ _('Seat management') }}</h1>
+
+  <div class="grid">
+    {%- call render_cell(icon_name='seating-area', href=url_for('.chair_information', party_id=party.id)) %}
+      {{ render_icon('seating-area') }} <span>{{ _('Participant chair information') }}</span>
+    {%- endcall %}
+  </div>
+
+{% endblock %}
