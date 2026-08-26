@@ -1,221 +1,137 @@
-"""
-tests.unit.services.lan_tournament.test_notification_handlers
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Unit tests for notification handler gating and catch-up logic
-in ``notification_handlers.py``.
-"""
+"""Assignment work listeners, post-commit ordering and retained request contracts."""
 
 from datetime import UTC, datetime
-from unittest.mock import MagicMock, patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
-from byceps.services.lan_tournament.events import (
-    MatchReadyEvent,
-    TournamentStatusChangedEvent,
-)
-from byceps.services.lan_tournament.models.tournament import TournamentID
-from byceps.services.lan_tournament.models.tournament_match import (
-    TournamentMatchID,
-)
-from byceps.services.lan_tournament.models.tournament_status import (
-    TournamentStatus,
-)
-from byceps.services.lan_tournament.notification_handlers import (
-    _on_match_ready,
-    _on_tournament_status_changed,
-)
+import pytest
 
-from tests.helpers import generate_uuid
+from byceps.services.lan_tournament import notification_handlers as handlers, signals
+from byceps.services.lan_tournament.events import MatchReadyEvent, TournamentStatusChangedEvent
+from byceps.services.lan_tournament.models.tournament_status import TournamentStatus
+from byceps.util.result import Err, Ok
+from byceps.util.uuid import uuid7
 
 
-NOW = datetime(2025, 6, 15, 14, 0, 0, tzinfo=UTC)
-TOURNAMENT_ID = TournamentID(generate_uuid())
+@pytest.fixture
+def collaborators(monkeypatch):
+    repo, invitations, messages = MagicMock(), MagicMock(), MagicMock()
+    # The handlers no longer import the repository; a stray use would hit this mock.
+    monkeypatch.setattr(handlers, 'tournament_repository', repo, raising=False)
+    monkeypatch.setattr(handlers, 'tournament_invitation_service', invitations)
+    monkeypatch.setattr(handlers, 'tournament_notification_service', messages)
+    invitations.reconcile_match_invitations_flush.return_value = Ok((uuid7(),))
+    invitations.enqueue_invitation_dispatch.return_value = Ok(None)
+    invitations.enqueue_tournament_sweep.return_value = Ok(None)
+    return repo, invitations, messages
 
 
-def _make_match_ready_event(
-    tournament_id: TournamentID | None = None,
-    match_id: TournamentMatchID | None = None,
-) -> MatchReadyEvent:
+def assignment():
     return MatchReadyEvent(
-        occurred_at=NOW,
-        initiator=None,
-        tournament_id=tournament_id or TOURNAMENT_ID,
-        match_id=match_id or TournamentMatchID(generate_uuid()),
+        occurred_at=datetime.now(UTC), initiator=None,
+        tournament_id=uuid7(), match_id=uuid7(),
     )
 
 
-def _make_status_changed_event(
-    new_status: TournamentStatus,
-    tournament_id: TournamentID | None = None,
-) -> TournamentStatusChangedEvent:
+def status(new_status):
     return TournamentStatusChangedEvent(
-        occurred_at=NOW,
-        initiator=None,
-        tournament_id=tournament_id or TOURNAMENT_ID,
-        old_status=TournamentStatus.REGISTRATION_CLOSED,
-        new_status=new_status,
+        occurred_at=datetime.now(UTC), initiator=None, tournament_id=uuid7(),
+        old_status=TournamentStatus.PAUSED, new_status=new_status,
     )
 
 
-# -------------------------------------------------------------------- #
-# _on_match_ready
-# -------------------------------------------------------------------- #
-
-
-@patch(
-    'byceps.services.lan_tournament.notification_handlers.tournament_notification_service'
-)
-@patch(
-    'byceps.services.lan_tournament.notification_handlers.tournament_repository'
-)
-def test_on_match_ready_sends_when_ongoing(mock_repo, mock_notif):
-    """When tournament is ONGOING, match-ready emails are sent."""
-    tournament = MagicMock()
-    tournament.tournament_status = TournamentStatus.ONGOING
-    mock_repo.get_tournament.return_value = tournament
-
-    event = _make_match_ready_event()
-    _on_match_ready(None, event=event)
-
-    mock_notif.send_match_ready_emails.assert_called_once_with(
-        event.tournament_id, event.match_id,
-    )
-
-
-@patch(
-    'byceps.services.lan_tournament.notification_handlers.tournament_notification_service'
-)
-@patch(
-    'byceps.services.lan_tournament.notification_handlers.tournament_repository'
-)
-def test_on_match_ready_skips_when_not_ongoing(mock_repo, mock_notif):
-    """When tournament is not ONGOING, no emails are sent."""
-    tournament = MagicMock()
-    tournament.tournament_status = TournamentStatus.REGISTRATION_CLOSED
-    mock_repo.get_tournament.return_value = tournament
-
-    event = _make_match_ready_event()
-    _on_match_ready(None, event=event)
-
-    mock_notif.send_match_ready_emails.assert_not_called()
-
-
-@patch(
-    'byceps.services.lan_tournament.notification_handlers.tournament_notification_service'
-)
-@patch(
-    'byceps.services.lan_tournament.notification_handlers.tournament_repository'
-)
-def test_on_match_ready_skips_when_event_is_none(mock_repo, mock_notif):
-    """When event is None, handler returns without crashing or sending."""
-    _on_match_ready(None, event=None)
-
-    mock_repo.get_tournament.assert_not_called()
-    mock_notif.send_match_ready_emails.assert_not_called()
-
-
-# -------------------------------------------------------------------- #
-# _on_tournament_status_changed
-# -------------------------------------------------------------------- #
-
-
-@patch(
-    'byceps.services.lan_tournament.notification_handlers.tournament_notification_service'
-)
-@patch(
-    'byceps.services.lan_tournament.notification_handlers.tournament_repository'
-)
-def test_on_tournament_started_sends_catchup_emails(mock_repo, mock_notif):
-    """Transition to ONGOING sends catch-up emails for ready matches."""
-    match_id_1 = TournamentMatchID(generate_uuid())
-    match_id_2 = TournamentMatchID(generate_uuid())
-    mock_repo.get_ready_unconfirmed_match_ids.return_value = [
-        match_id_1,
-        match_id_2,
-    ]
-
-    event = _make_status_changed_event(TournamentStatus.ONGOING)
-    _on_tournament_status_changed(None, event=event)
-
-    assert mock_notif.send_match_ready_emails.call_count == 2
-    mock_notif.send_match_ready_emails.assert_any_call(
-        event.tournament_id, match_id_1,
-    )
-    mock_notif.send_match_ready_emails.assert_any_call(
-        event.tournament_id, match_id_2,
-    )
-
-
-@patch(
-    'byceps.services.lan_tournament.notification_handlers.tournament_notification_service'
-)
-@patch(
-    'byceps.services.lan_tournament.notification_handlers.tournament_repository'
-)
-def test_on_tournament_started_ignores_non_ongoing_transitions(
-    mock_repo, mock_notif
+def test_assignment_leaves_the_recipient_work_to_the_emitting_writer(
+    collaborators,
 ):
-    """Transition to PAUSED (non-ONGOING) does not send emails."""
-    event = _make_status_changed_event(TournamentStatus.PAUSED)
-    _on_tournament_status_changed(None, event=event)
-
-    mock_repo.get_ready_unconfirmed_match_ids.assert_not_called()
-    mock_notif.send_match_ready_emails.assert_not_called()
-
-
-@patch(
-    'byceps.services.lan_tournament.notification_handlers.tournament_notification_service'
-)
-@patch(
-    'byceps.services.lan_tournament.notification_handlers.tournament_repository'
-)
-def test_on_tournament_started_skips_confirmed_matches(mock_repo, mock_notif):
-    """When all matches are confirmed (empty list), no emails are sent."""
-    mock_repo.get_ready_unconfirmed_match_ids.return_value = []
-
-    event = _make_status_changed_event(TournamentStatus.ONGOING)
-    _on_tournament_status_changed(None, event=event)
-
-    mock_notif.send_match_ready_emails.assert_not_called()
+    repo, invitations, messages = collaborators
+    handlers._on_match_ready(None, event=assignment())
+    assert invitations.mock_calls == []
+    assert repo.mock_calls == []
+    assert messages.mock_calls == []
 
 
-@patch(
-    'byceps.services.lan_tournament.notification_handlers.tournament_notification_service'
-)
-@patch(
-    'byceps.services.lan_tournament.notification_handlers.tournament_repository'
-)
-def test_on_tournament_started_handles_email_failure_gracefully(
-    mock_repo, mock_notif
+def test_both_ready_sends_no_second_email(collaborators):
+    repo, invitations, messages = collaborators
+    handlers.enable_match_notifications()
+    assert handlers._on_match_ready in signals.match_ready.receivers_for(None)
+    assert not list(signals.match_both_ready.receivers_for(None))
+    signals.match_both_ready.send(None, event=assignment())
+    invitations.dispatch_match_invitations.assert_not_called()
+    invitations.enqueue_invitation_dispatch.assert_not_called()
+    messages.send_match_ready_emails.assert_not_called()
+    repo.mark_matches_both_ready_notified.assert_not_called()
+
+
+def test_start_resume_enqueues_one_sweep_and_leaves_reconcile_to_the_owner(
+    collaborators,
 ):
-    """If one catch-up email fails, the remaining are still sent."""
-    match_id_1 = TournamentMatchID(generate_uuid())
-    match_id_2 = TournamentMatchID(generate_uuid())
-    match_id_3 = TournamentMatchID(generate_uuid())
-    mock_repo.get_ready_unconfirmed_match_ids.return_value = [
-        match_id_1,
-        match_id_2,
-        match_id_3,
-    ]
-
-    # First call raises, second and third succeed.
-    mock_notif.send_match_ready_emails.side_effect = [
-        RuntimeError('SMTP down'),
-        None,
-        None,
-    ]
-
-    event = _make_status_changed_event(TournamentStatus.ONGOING)
-    _on_tournament_status_changed(None, event=event)
-
-    # All three were attempted despite the first failure.
-    assert mock_notif.send_match_ready_emails.call_count == 3
-    mock_notif.send_match_ready_emails.assert_any_call(
-        event.tournament_id, match_id_1,
+    repo, invitations, messages = collaborators
+    event = status(TournamentStatus.ONGOING)
+    handlers._on_tournament_status_changed(None, event=event)
+    invitations.enqueue_tournament_sweep.assert_called_once_with(
+        event.tournament_id
     )
-    mock_notif.send_match_ready_emails.assert_any_call(
-        event.tournament_id, match_id_2,
+    # `change_status` already reconciled every match and dispatches its ids.
+    invitations.reconcile_match_invitations_flush.assert_not_called()
+    invitations.dispatch_match_invitations.assert_not_called()
+    repo.get_matches_for_tournament.assert_not_called()
+    repo.lock_tournament_for_update.assert_not_called()
+    repo.recover_expired_invitations_flush.assert_not_called()
+    repo.select_invitation_retry_ids_flush.assert_not_called()
+    repo.commit_session.assert_not_called()
+    repo.get_both_ready_unnotified_match_ids.assert_not_called()
+    repo.mark_matches_both_ready_notified.assert_not_called()
+    messages.send_match_ready_emails.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    'failure',
+    [Err('invitation_dispatch_failed'), RuntimeError('private redis secret')],
+)
+def test_start_resume_sweep_failure_is_swallowed(collaborators, failure):
+    _, invitations, _ = collaborators
+    if isinstance(failure, Exception):
+        invitations.enqueue_tournament_sweep.side_effect = failure
+    else:
+        invitations.enqueue_tournament_sweep.return_value = failure
+    handlers._on_tournament_status_changed(
+        None, event=status(TournamentStatus.ONGOING)
     )
-    mock_notif.send_match_ready_emails.assert_any_call(
-        event.tournament_id, match_id_3,
+    invitations.enqueue_tournament_sweep.assert_called_once()
+
+
+@pytest.mark.parametrize('new_status', [TournamentStatus.PAUSED, TournamentStatus.COMPLETED, TournamentStatus.CANCELLED])
+def test_non_ongoing_status_is_inert(collaborators, new_status):
+    repo, invitations, _ = collaborators
+    handlers._on_tournament_status_changed(None, event=status(new_status))
+    repo.get_matches_for_tournament.assert_not_called()
+    invitations.dispatch_match_invitations.assert_not_called()
+    invitations.enqueue_tournament_sweep.assert_not_called()
+
+
+def test_missing_events_are_inert(collaborators):
+    repo, invitations, _ = collaborators
+    handlers._on_match_ready(None)
+    handlers._on_tournament_status_changed(None)
+    repo.commit_session.assert_not_called()
+    invitations.reconcile_match_invitations_flush.assert_not_called()
+
+
+def test_request_handlers_remain_registered():
+    handlers.enable_match_notifications()
+    assert handlers._on_tournament_request_accepted in signals.tournament_request_accepted.receivers_for(None)
+    assert handlers._on_tournament_request_rejected in signals.tournament_request_rejected.receivers_for(None)
+
+
+@pytest.mark.parametrize('decision', ['accepted', 'rejected'])
+def test_request_notification_contract_unchanged(collaborators, monkeypatch, decision):
+    _, _, messages = collaborators
+    request_repo, parties, brands = MagicMock(), MagicMock(), MagicMock()
+    monkeypatch.setattr(handlers, 'tournament_request_repository', request_repo)
+    monkeypatch.setattr(handlers, 'party_service', parties)
+    monkeypatch.setattr(handlers, 'brand_service', brands)
+    event = SimpleNamespace(request_id=uuid7(), party_id=uuid7())
+    getattr(handlers, f'_on_tournament_request_{decision}')(None, event=event)
+    getattr(messages, f'send_request_{decision}_email').assert_called_once_with(
+        brands.get_brand.return_value, request_repo.find_request.return_value,
     )

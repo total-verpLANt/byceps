@@ -37,6 +37,7 @@ from .events import (
 )
 from .models.contestant_type import ContestantType
 from .models.tournament import Tournament, TournamentID
+from .models.tournament_match import MatchInvitationID
 from .models.tournament_image import TournamentImageID
 from .models.score_ordering import ScoreOrdering
 from .models.game_format import GameFormat, is_valid_combination
@@ -788,7 +789,7 @@ def delete_tournament(
     """
     tournament_repository.lock_tournament_for_update(tournament_id)
 
-    tournament = tournament_repository.get_tournament(tournament_id)
+    tournament = tournament_repository.get_tournament(tournament_id, fresh=True)
 
     # Delete in dependency order (children first, then parent).
     # All repo calls use commit=False so the entire cascade is a
@@ -983,6 +984,39 @@ def _start_confirmation_refusal(
     return None
 
 
+def _reconcile_lifecycle_invitations_flush(
+    tournament_id: TournamentID, status: TournamentStatus, *,
+    occurred_at: datetime,
+) -> Result[tuple[MatchInvitationID, ...], str]:
+    """Reconcile work under the owning lifecycle transaction, without effects.
+
+    Terminal suppression must remain irreversible on an authorized reopen. A
+    temporary pause uses the storage reconciliation contract so permanent
+    failures/retry delays and readiness holds survive. Durable intent/effect
+    collection at all writer boundaries remains the owner-intent integration.
+    """
+    from . import tournament_invitation_service
+
+    matches = tournament_repository.get_matches_for_tournament_ordered_fresh(
+        tournament_id
+    )
+    tournament_repository.lock_matches_for_update([match.id for match in matches])
+    pending: set[MatchInvitationID] = set()
+    for match in sorted(matches, key=lambda match: str(match.id)):
+        if status in {TournamentStatus.COMPLETED, TournamentStatus.CANCELLED}:
+            tournament_repository.suppress_match_invitations_flush(
+                match.id, reason='tournament_terminal'
+            )
+        else:
+            result = tournament_invitation_service.reconcile_match_invitations_flush(
+                match.id, occurred_at=occurred_at
+            )
+            if result.is_err():
+                return Err(result.unwrap_err())
+            pending.update(result.unwrap())
+    return Ok(tuple(sorted(pending, key=str)))
+
+
 def change_status(
     tournament_id: TournamentID,
     new_status: TournamentStatus,
@@ -1111,8 +1145,39 @@ def change_status(
             updated, winner_team_id=None, winner_participant_id=None
         )
 
-    # `commit_session` below commits this entry together with the
-    # status change.
+    try:
+        persisted = _persist_status_change_flush(
+            tournament, updated, event, initiator_id
+        )
+        if persisted.is_err():
+            tournament_repository.rollback_session()
+            return Err(persisted.unwrap_err())
+        tournament_repository.commit_session()
+    except Exception:
+        tournament_repository.rollback_session()
+        raise
+
+    from . import tournament_readiness_service
+
+    try:
+        _dispatch_status_change_effects(tournament, event, initiator_id)
+    finally:
+        tournament_readiness_service.dispatch_pending_invitations(
+            persisted.unwrap(),
+        )
+    return Ok((updated, event))
+
+
+def _persist_status_change_flush(
+    tournament: Tournament,
+    updated: Tournament,
+    event: TournamentStatusChangedEvent,
+    initiator_id: UserID | None,
+) -> Result[tuple[MatchInvitationID, ...], str]:
+    """Persist status/work/audit; the owning caller commits and emits effects."""
+    tournament_id = tournament.id
+    new_status = updated.tournament_status
+    # The caller commits this entry together with status and work.
     create_log_entry(
         'tournament-status-changed',
         tournament_id,
@@ -1137,11 +1202,30 @@ def change_status(
         tournament_id, new_status
     )
     if status_result.is_err():
-        tournament_repository.rollback_session()
         return Err(status_result.unwrap_err())
 
-    tournament_repository.commit_session()
+    if new_status in {
+        TournamentStatus.ONGOING, TournamentStatus.PAUSED,
+        TournamentStatus.COMPLETED, TournamentStatus.CANCELLED,
+    }:
+        work_result = _reconcile_lifecycle_invitations_flush(
+            tournament_id, new_status, occurred_at=event.occurred_at
+        )
+        if work_result.is_err():
+            return Err(work_result.unwrap_err())
+        return work_result
 
+    return Ok(())
+
+
+def _dispatch_status_change_effects(
+    tournament: Tournament,
+    event: TournamentStatusChangedEvent,
+    initiator_id: UserID | None,
+) -> None:
+    """Existing lifecycle effects, strictly after the owning commit."""
+    tournament_id = tournament.id
+    new_status = event.new_status
     signals.tournament_status_changed.send(None, event=event)
 
     # A plain round robin completes only while ONGOING, so one settled
@@ -1169,8 +1253,6 @@ def change_status(
         tournament_qualification_service.auto_release_after_commit(
             tournament_id, triggered_by=initiator_id
         )
-
-    return Ok((updated, event))
 
 
 def start_tournament(

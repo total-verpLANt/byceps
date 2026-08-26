@@ -481,8 +481,8 @@ R{{ r }} M{{ m }}
           <div class='bracket-match-header'>
             {{ render_match_ref(match) }}
             {%- if contestants|length == 1 and not data.get('has_pending_feeder') %}
-              <span class='badge-defwin' title='{{ _("Free Win - Opponent advanced automatically") }}'>
-                {{ _('defwin') }}
+              <span class='badge-defwin' title='{{ _("Free win: advances without an opponent.") }}'>
+                {{ _('DEFWIN') }}
               </span>
             {%- elif data.get('has_pending_feeder') %}
               <span class='badge-pending' title='{{ _("Waiting for opponent") }}'>
@@ -602,7 +602,7 @@ R{{ r }} M{{ m }}
             {{ _('defwin') }}
           {%- endif %}
           <strong>{{ contestant.score if contestant.score is not none else '–' }}</strong>
-          <span class='badge-defwin' title='{{ _("Free Win") }}'>{{ _('defwin') }}</span>
+          <span class='badge-defwin' title='{{ _("Free win: advances without an opponent.") }}'>{{ _('DEFWIN') }}</span>
         </div>
       {%- elif data.get('has_pending_feeder') and contestants|length == 1 %}
         {# Pending match — waiting on feeder #}
@@ -831,8 +831,8 @@ R{{ r }} M{{ m }}
         {{ render_match_ref(match) }}
         {%- if contestants|length == 1 and not data.get('has_pending_feeder') %}
           <span class='badge-defwin'
-                title='{{ _("Free Win") }}'>
-            {{ _('defwin') }}
+                title='{{ _("Free win: advances without an opponent.") }}'>
+            {{ _('DEFWIN') }}
           </span>
         {%- elif data.get('has_pending_feeder') %}
           <span class='badge-pending'
@@ -1038,8 +1038,8 @@ R{{ r }} M{{ m }}
             {{ contestant.score if contestant.score is not none else '–' }}
           </strong>
           <span class='badge-defwin'
-                title='{{ _("Free Win") }}'>
-            {{ _('defwin') }}
+                title='{{ _("Free win: advances without an opponent.") }}'>
+            {{ _('DEFWIN') }}
           </span>
         </div>
       {%- elif data.get('has_pending_feeder') and contestants|length == 1 %}

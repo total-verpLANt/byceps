@@ -604,7 +604,9 @@ def test_transfer_captain_success(app):
         ):
             raw_fn(TOURNAMENT_ID_STR, TEAM_ID_STR)
 
-    mocks['team_svc'].transfer_captain.assert_called_once()
+    mocks['team_svc'].transfer_captain.assert_called_once_with(
+        mocks['team'].id, MEMBER_USER_ID, acting_captain_id=CAPTAIN_USER_ID
+    )
     mocks['flash_success'].assert_called_once()
     mocks['flash_error'].assert_not_called()
 
@@ -634,7 +636,10 @@ def test_remove_member_captain_can_remove_non_captain(app):
             raw_fn(TOURNAMENT_ID_STR, TEAM_ID_STR)
 
     mocks['team_svc'].remove_team_member.assert_called_once_with(
-        mocks['team'].id, MEMBER_USER_ID, initiator_id=CAPTAIN_USER_ID
+        mocks['team'].id,
+        MEMBER_USER_ID,
+        initiator_id=CAPTAIN_USER_ID,
+        acting_captain_id=CAPTAIN_USER_ID,
     )
     mocks['flash_success'].assert_called_once()
     mocks['flash_error'].assert_not_called()
@@ -663,6 +668,43 @@ def test_remove_member_service_error_flashes_error(app):
 
     mocks['flash_error'].assert_called_once()
     mocks['flash_success'].assert_not_called()
+
+
+# ------------------------------------------------------------------ #
+# 9b. A captain whose participant row was removed has no captain rights
+# ------------------------------------------------------------------ #
+
+
+@pytest.mark.parametrize(
+    ('view_name', 'form'),
+    [
+        ('update_team', {'name': 'New Name', 'description': ''}),
+        ('site_transfer_captain', {'new_captain_id': str(MEMBER_USER_ID)}),
+        ('site_remove_member', {'user_id': str(MEMBER_USER_ID)}),
+    ],
+)
+def test_captain_without_an_active_membership_is_forbidden(
+    app, view_name, form
+):
+    from werkzeug.exceptions import Forbidden
+
+    with _patched_captain_view(
+        app, tournament_status=TournamentStatus.ONGOING
+    ) as mocks:
+        from byceps.services.lan_tournament.blueprints.site import views
+
+        mocks['team_svc'].get_team_members.return_value = [
+            _make_member_participant()
+        ]
+        raw_fn = getattr(views, view_name).__wrapped__
+
+        with app.test_request_context('/', method='POST', data=form):
+            with pytest.raises(Forbidden):
+                raw_fn(TOURNAMENT_ID_STR, TEAM_ID_STR)
+
+    mocks['team_svc'].update_team.assert_not_called()
+    mocks['team_svc'].transfer_captain.assert_not_called()
+    mocks['team_svc'].remove_team_member.assert_not_called()
 
 
 # ------------------------------------------------------------------ #

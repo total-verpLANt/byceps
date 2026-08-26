@@ -13,7 +13,12 @@ from byceps.services.user.models import UserID
 from byceps.util.result import Err, Ok, Result
 from byceps.util.uuid import generate_uuid7
 
-from . import signals, tournament_log_service, tournament_orga_repository
+from . import (
+    signals,
+    tournament_log_service,
+    tournament_orga_repository,
+    tournament_repository,
+)
 from .db_error_helpers import extract_constraint_name
 from .events import TournamentOrgaAssignedEvent, TournamentOrgaRevokedEvent
 from .models.tournament import TournamentID
@@ -99,13 +104,17 @@ def revoke_orga(
     initiator_id: UserID,
 ) -> Result[None, str]:
     """Revoke the user's orga assignment for the tournament."""
-    orga = tournament_orga_repository.find_orga_for_tournament_and_user(
-        tournament_id, user_id
-    )
-    if orga is None:
-        return Err('User is not an orga of this tournament.')
-
     try:
+        # Ready and explicit retry resolve current scope while holding this
+        # same lock. Revoke must serialize before reading/deleting the grant.
+        tournament_repository.lock_tournament_for_update(tournament_id)
+        orga = tournament_orga_repository.find_orga_for_tournament_and_user(
+            tournament_id, user_id
+        )
+        if orga is None:
+            tournament_repository.rollback_session()
+            return Err('User is not an orga of this tournament.')
+
         tournament_orga_repository.delete_orga(orga.id)
 
         tournament_log_service.create_log_entry(

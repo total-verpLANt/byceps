@@ -12,6 +12,10 @@ from byceps.services.lan_tournament.models.tournament import (
     Tournament,
     TournamentID,
 )
+from byceps.services.lan_tournament.models.tournament_participant import (
+    TournamentParticipant,
+    TournamentParticipantID,
+)
 from byceps.services.lan_tournament.models.tournament_team import (
     TournamentTeam,
     TournamentTeamID,
@@ -28,6 +32,66 @@ TOURNAMENT_ID = TournamentID(generate_uuid())
 PARTY_ID = PartyID('lan-2025')
 
 MOCK_PREFIX = 'byceps.services.lan_tournament.tournament_participant_service'
+
+
+# -------------------------------------------------------------------- #
+# _hand_over_captaincy_flush
+# -------------------------------------------------------------------- #
+
+
+def _member(user_id: UserID, seconds: int) -> TournamentParticipant:
+    return TournamentParticipant(
+        id=TournamentParticipantID(generate_uuid()),
+        user_id=user_id,
+        tournament_id=TOURNAMENT_ID,
+        substitute_player=False,
+        team_id=None,
+        created_at=datetime(2025, 6, 15, 14, 0, seconds, tzinfo=UTC),
+    )
+
+
+@patch(f'{MOCK_PREFIX}.tournament_repository')
+def test_a_leaving_captain_hands_over_to_the_longest_standing_member(mock_repo):
+    team = _create_team('Team A')
+    captain = _member(team.captain_user_id, 1)
+    newest = _member(UserID(generate_uuid()), 9)
+    oldest = _member(UserID(generate_uuid()), 2)
+
+    hand_over = tournament_participant_service._hand_over_captaincy_flush
+    emptied, handover = hand_over(team, [captain], [captain, newest, oldest])
+
+    assert emptied is False
+    assert handover == tournament_participant_service._CaptaincyHandover(
+        team.id, team.captain_user_id, oldest.user_id
+    )
+    mock_repo.update_team_captain_flush.assert_called_once_with(
+        team.id, oldest.user_id
+    )
+
+
+@patch(f'{MOCK_PREFIX}.tournament_repository')
+def test_a_leaving_member_keeps_the_captain(mock_repo):
+    team = _create_team('Team A')
+    captain = _member(team.captain_user_id, 1)
+    leaver = _member(UserID(generate_uuid()), 2)
+
+    hand_over = tournament_participant_service._hand_over_captaincy_flush
+    emptied, handover = hand_over(team, [leaver], [captain, leaver])
+
+    assert (emptied, handover) == (False, None)
+    mock_repo.update_team_captain_flush.assert_not_called()
+
+
+@patch(f'{MOCK_PREFIX}.tournament_repository')
+def test_nobody_left_to_inherit_reports_the_team_as_emptied(mock_repo):
+    team = _create_team('Team A')
+    captain = _member(team.captain_user_id, 1)
+
+    hand_over = tournament_participant_service._hand_over_captaincy_flush
+    emptied, handover = hand_over(team, [captain], [captain])
+
+    assert (emptied, handover) == (True, None)
+    mock_repo.update_team_captain_flush.assert_not_called()
 
 
 # -------------------------------------------------------------------- #

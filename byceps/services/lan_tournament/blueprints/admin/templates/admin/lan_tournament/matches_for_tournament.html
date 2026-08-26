@@ -1,5 +1,5 @@
 {% extends 'layout/admin/lan_tournament.html' %}
-{% from 'macros/admin.html' import render_backlink, render_main_tabs %}
+{% from 'macros/admin.html' import render_backlink %}
 {% from 'macros/icons.html' import render_icon %}
 {% from 'macros/misc.html' import render_tag %}
 {% from 'macros/lan_tournament.html' import render_hover_name, render_match_ref, hover_card_styles %}
@@ -7,7 +7,9 @@
 {% set current_tab = 'tournaments' %}
 {% set page_title = [_('Matches'), tournament.name, party.title] %}
 
-{% block head %}{{ super() }}{{ hover_card_styles() }}{% endblock %}
+{% block head %}{{ super() }}{{ hover_card_styles() }}
+  <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_match_admin.css') }}">
+{%- endblock %}
 
 {% block before_body %}
 {{ render_backlink(url_for('.view', tournament_id=tournament.id),
@@ -18,19 +20,20 @@
 
   <h1 class='title'>{{ _('Matches') }}</h1>
 
-  {{ render_main_tabs(
-      Navigation()
-        .add_item(url_for('.matches_for_tournament', tournament_id=tournament.id, only='open'),
-                  _('Open') ~ '<span style="margin-left: 0.4rem;">%s</span>'|format(match_quantities.open|dim)|safe,
-                  id='open', icon='pending')
-        .add_item(url_for('.matches_for_tournament', tournament_id=tournament.id, only='ready'),
-                  _('Ready') ~ '<span style="margin-left: 0.4rem;">%s</span>'|format(match_quantities.ready|dim)|safe,
-                  id='ready', icon='success')
-        .add_item(url_for('.matches_for_tournament', tournament_id=tournament.id, only='all'),
-                  _('All') ~ '<span style="margin-left: 0.4rem;">%s</span>'|format(match_quantities.all|dim)|safe,
-                  id='all', icon='view')
-      , only
-  ) }}
+  {%- set tab_icons = {
+    'waiting': '⧗', 'not_ready': '○', 'partially_ready': '◐',
+    'both_ready': '✓', 'no_readiness': '⧗', 'finished': '■', 'all': '◉',
+  } %}
+  <nav class="lt-match-tabs" aria-label="{{ _('Filter matches') }}">
+    {%- for key, label, count in match_filter_options %}
+    <a href="{{ url_for('.matches_for_tournament', tournament_id=tournament.id, only=key) }}"
+       {%- if key == only %} aria-current="page"{% endif %}>
+      <span class="lt-match-tabs__icon" aria-hidden="true">{{ tab_icons[key] }}</span>
+      {{ label }}
+      <span class="lt-match-tabs__count">{{ count }}</span>
+    </a>
+    {%- endfor %}
+  </nav>
 
   {%- if match_data %}
   <table class='table table--wide'>
@@ -77,7 +80,9 @@
             {%- else %}
               {{ _('defwin') }}
             {%- endif %}
+            {%- if data.readiness.outcome == 'defwin' %}
             {{ render_tag(_('defwin - Advanced'), class='color-info', icon='arrow-right') }}
+            {%- endif %}
           {%- else %}
             {# Normal match: multiple contestants #}
             {%- for contestant in contestants %}
@@ -110,13 +115,26 @@
             {%- if not loop.last %} : {% endif %}
           {%- endfor %}
         </td>
-        <td>
-          {%- if match.confirmed_by and contestants|selectattr('team_id')|list|length + contestants|selectattr('participant_id')|list|length < 2 %}
-            {{ render_tag(_('DEFWIN'), class='color-info') }}
-          {%- elif match.confirmed_by %}
-            {{ render_tag(_('Confirmed'), class='color-success') }}
+        {%- set bucket = data.readiness.filter_bucket %}
+        <td class="match-list-status" data-readiness-status="{{ data.readiness_display.status }}">
+          {%- if bucket == 'finished' %}
+            {{ render_tag(data.readiness_display.label, class='color-info') }}
+          {%- elif bucket == 'waiting' %}
+            {{ _('Waiting for opponent') }}
+          {%- elif bucket == 'no_readiness' %}
+            {{ _('Open (no readiness)') }}
           {%- else %}
-            {{ render_tag(_('Pending'), class='color-warning') }}
+            <span class="readiness-status readiness-status--{{ data.readiness_display.status }}">
+              {%- if bucket == 'not_ready' %}
+                <span aria-hidden="true">○</span> {{ _('Not ready') }}
+              {%- elif bucket == 'partially_ready' %}
+                <span aria-hidden="true">◐</span> {{ _('Partially ready') }}
+                · {{ data.readiness_display.label }}
+                · {{ _('Side B not ready') if 'a' in data.readiness_display.ready_sides else _('Side A not ready') }}
+              {%- else %}
+                <span aria-hidden="true">✓</span> {{ _('Both ready') }}
+              {%- endif %}
+            </span>
           {%- endif %}
         </td>
         <td>
@@ -131,12 +149,10 @@
   </table>
   {%- else %}
   <p class='dimmed'>
-    {%- if only == 'open' %}
-      {{ _('No open matches.') }}
-    {%- elif only == 'ready' %}
-      {{ _('No ready matches.') }}
-    {%- else %}
+    {%- if only == 'all' %}
       {{ _('No matches have been created yet.') }}
+    {%- else %}
+      {{ _('No matches with this readiness state.') }}
     {%- endif %}
   </p>
   {%- endif %}

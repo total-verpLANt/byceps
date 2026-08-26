@@ -147,7 +147,8 @@
 {%- endmacro %}
 
 
-{% macro render_phase_match_list(rows) -%}
+{% macro render_phase_match_list(rows, readiness_by_match_id={}) -%}
+{%- from 'site/lan_tournament/_readiness_bracket.html' import render_readiness_status %}
 {%- if rows %}
 <h3 class='lt-sh'>{{ _('Matches') }}</h3>
 <ul class='lt-ml'>
@@ -157,10 +158,12 @@
       <span class='lt-ml__label'>{{ row.label }}</span>
       <b>{{ row.names|join(' – ') if row.names else '–' }}</b>
       <span class='lt-ml__status'>
-        {%- if row.status == 'confirmed' -%}
+        {%- if row.match_id in readiness_by_match_id -%}
+          {% if row.score %}{{ row.score }} · {% endif %}{{ render_readiness_status(readiness_by_match_id[row.match_id]) }}
+        {%- elif row.status == 'confirmed' -%}
           {% if row.score %}{{ row.score }} · {% endif %}{{ _('Confirmed') }}
         {%- elif row.status == 'ready' -%}
-          {{ _('Ready') }}
+          {{ _('Open (no readiness)') }}
         {%- else -%}
           {{ _('Pending') }}
         {%- endif -%}

@@ -2,6 +2,7 @@
 {% from 'macros/misc.html' import render_tag %}
 {% from 'macros/lan_tournament.html' import render_bracket, render_de_bracket, render_hover_name, render_round_robin_standings, render_tournament_subnav %}
 {% from 'site/lan_tournament/_standings.html' import render_group_standings, render_phase_match_list, render_phase_switch, render_playoff_lobbies, render_playoffs_waiting %}
+{% from 'site/lan_tournament/_readiness_bracket.html' import render_readiness_index %}
 {% set page_title = [_('Bracket'), tournament.name] %}
 
 {% block head %}{{ super() }}
@@ -167,9 +168,11 @@
     {% endif %}
 
     {% if phase_view == 2 %}
-      {{ render_phase_match_list(playoff_matches) }}
+      {{ render_phase_match_list(playoff_matches, readiness_by_match_id) }}
     {% endif %}
   {% endif %}
+
+  {{ render_readiness_index(match_data, readiness_by_match_id, phase_view) }}
 
   <div class='bracket-cta'>
     <a href='{{ url_for('.matches', tournament_id=tournament.id) }}'

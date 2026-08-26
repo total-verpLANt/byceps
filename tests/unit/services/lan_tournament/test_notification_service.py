@@ -936,3 +936,78 @@ def test_send_match_ready_emails_isolates_unexpected_recipient_error(
     message = mock_email_service.enqueue_message.call_args[0][0]
     assert message.recipients == ['bob@example.com']
     mock_log.exception.assert_called_once()
+
+
+def test_admin_edited_snippets_are_not_overwritten():
+    from types import SimpleNamespace
+
+    from byceps.services.lan_tournament import tournament_notification_service as notif
+
+    missing_pair = (notif.SNIPPET_NAME_SUBJECT, 'de')
+    existing = [
+        SimpleNamespace(name=name, language_code=language, body='Admin-edited text')
+        for name, language in notif._REQUIRED_SNIPPET_PAIRS
+        if (name, language) != missing_pair
+    ]
+    with patch(f'{MODULE}.snippet_service') as snippets:
+        snippets.get_snippets_for_scope_with_current_versions.return_value = existing
+        creator = _make_user(UserID(generate_uuid()), 'Admin')
+        assert notif.create_match_ready_email_snippets(BRAND, creator) is True
+        assert notif.create_tournament_request_email_snippets(BRAND, creator) is False
+        assert snippets.create_snippet.call_count == 1
+        assert snippets.create_snippet.call_args.args[1:3] == missing_pair
+        snippets.update_snippet.assert_not_called()
+        # After the one missing pair has been installed, repeat setup is a no-op.
+        existing.append(SimpleNamespace(name=missing_pair[0], language_code=missing_pair[1]))
+        snippets.create_snippet.reset_mock()
+        assert notif.create_match_ready_email_snippets(BRAND, creator) is False
+        assert notif.create_tournament_request_email_snippets(BRAND, creator) is False
+        snippets.create_snippet.assert_not_called()
+
+
+# fmt: off
+@pytest.mark.parametrize('decision', ['accepted', 'rejected'])
+@pytest.mark.parametrize('has_address', [True, False])
+# fmt: on
+def test_request_notification_contract_unchanged(decision, has_address):
+    from byceps.services.lan_tournament import tournament_notification_service as notif
+    from tests.unit.services.lan_tournament.test_tournament_request_notifications import _make_request
+
+    request = _make_request(name='Community Cup', rejection_reason='No capacity')
+    with (
+        patch(f'{MODULE}.email_config_service.get_config', return_value=EMAIL_CONFIG),
+        patch(f'{MODULE}.user_service.find_email_address', return_value=(
+            'proposer@example.com' if has_address else None
+        )),
+        patch(f'{MODULE}.user_service.find_locale', return_value=Locale('de')),
+        patch(f'{MODULE}.get_default_locale', return_value=Locale('en')),
+        patch(f'{MODULE}.snippet_service.get_snippet_body') as snippets,
+        patch(f'{MODULE}.email_footer_service.get_footer', return_value=Ok('de footer')),
+        patch(f'{MODULE}.email_service.enqueue_message') as enqueue,
+        patch(f'{MODULE}.email_service.send_email') as send,
+    ):
+        snippets.side_effect = lambda scope, name, language: Ok(
+            'de {request_name}: {reason}\n{footer}'
+            if decision == 'rejected' and name.endswith('_body')
+            else 'de {request_name}\n{footer}' if name.endswith('_body')
+            else 'de {request_name}'
+        )
+        helper = getattr(notif, f'send_request_{decision}_email')
+        assert helper(BRAND, request) is None
+        send.assert_not_called()
+        if not has_address:
+            enqueue.assert_not_called()
+            snippets.assert_not_called()
+            return
+        enqueue.assert_called_once()
+        message = enqueue.call_args.args[0]
+        assert message.recipients == ['proposer@example.com']
+        assert message.sender == SENDER
+        assert message.subject == 'de Community Cup'
+        expected = 'de Community Cup: No capacity' if decision == 'rejected' else 'de Community Cup'
+        assert message.body == f'{expected}\nde footer'
+        assert {call.args[1] for call in snippets.call_args_list} == {
+            f'email_tournament_request_{decision}_body',
+            f'email_tournament_request_{decision}_subject',
+        }
+        assert {call.args[2] for call in snippets.call_args_list} == {'de'}

@@ -33,6 +33,17 @@ _MATCH_ATTRS = (
     'created_at',
     'phase',
     'seeding_target',
+    'occupied_since',
+    'ready_at_a',
+    'ready_at_b',
+    'ready_by_a',
+    'ready_by_b',
+    'both_ready_notified_at',
+    'pairing_generation',
+    'readiness_revision',
+    'pairing_id',
+    'invitation_hold_a',
+    'invitation_hold_b',
 )
 
 _REPO_DB = 'byceps.services.lan_tournament.tournament_repository.db'
@@ -51,6 +62,17 @@ def _row(**kw) -> SimpleNamespace:
         created_at=None,
         phase=1,
         seeding_target=None,
+        occupied_since=None,
+        ready_at_a=None,
+        ready_at_b=None,
+        ready_by_a=None,
+        ready_by_b=None,
+        both_ready_notified_at=None,
+        pairing_generation=0,
+        readiness_revision=0,
+        pairing_id=None,
+        invitation_hold_a=False,
+        invitation_hold_b=False,
     )
     for key, value in kw.items():
         setattr(row, key, value)
@@ -311,6 +333,46 @@ def test_find_match_fresh_observes_a_change_find_match_misses():
         fresh = tournament_repository.find_match_fresh(match_id)
 
     assert fresh.confirmed_by == user_id
+
+
+def test_fresh_mapper_roundtrips_readiness_facts():
+    from byceps.services.lan_tournament import tournament_repository
+    from byceps.services.lan_tournament.models.tournament_match import MatchPairingID
+
+    match_id = TournamentMatchID(generate_uuid())
+    session = _FakeIdentityMapSession()
+    session.add(_row(id=match_id, tournament_id=TournamentID(generate_uuid())))
+    facts = dict(
+        pairing_generation=2**40, readiness_revision=2**41,
+        pairing_id=MatchPairingID(generate_uuid()),
+        invitation_hold_a=True, invitation_hold_b=True,
+    )
+    with patch(_REPO_DB, _FakeDb(session)):
+        before = tournament_repository.find_match(match_id)
+        for key, value in facts.items():
+            setattr(session.backing_store[match_id], key, value)
+        assert tournament_repository.find_match(match_id) == before
+        locked = tournament_repository.get_match_for_update(match_id)
+    for key, value in facts.items():
+        assert getattr(locked, key) == value
+
+
+def test_tournament_and_team_lock_reads_request_populate_existing():
+    from byceps.services.lan_tournament import tournament_repository
+
+    session = MagicMock()
+    session.execute.return_value.scalar_one_or_none.return_value = None
+    with patch(_REPO_DB, _FakeDb(session)):
+        for reader in (tournament_repository.get_tournament_for_update,
+                       tournament_repository.get_team_for_update,
+                       tournament_repository.get_participant_for_update):
+            try:
+                reader(generate_uuid())
+            except ValueError:
+                pass
+    assert session.execute.call_count == 3
+    for call in session.execute.call_args_list:
+        assert call.args[0].get_execution_options()['populate_existing'] is True
 
 
 def test_get_matches_for_tournament_ordered_fresh_observes_a_new_edge():

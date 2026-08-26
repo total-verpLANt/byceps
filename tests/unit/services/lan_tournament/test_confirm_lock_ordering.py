@@ -9,7 +9,10 @@ reachable-set lock first; the FFA writers do not need it.
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from byceps.services.lan_tournament.models.tournament_match import (
+    TournamentMatch,
     TournamentMatchID,
 )
 from byceps.services.lan_tournament.models.tournament_match_to_contestant import (
@@ -30,6 +33,14 @@ MATCH_ID = TournamentMatchID(generate_uuid())
 TOURNAMENT_ID = generate_uuid()
 USER_ID = generate_uuid()
 PARTICIPANT_A = TournamentParticipantID(generate_uuid())
+
+
+@pytest.fixture(autouse=True)
+def pairing_audit():
+    """Keep deletion adapters real while isolating audit persistence."""
+    with patch(f'{_S}.create_log_entry') as audit:
+        yield audit
+        assert all(c.kwargs.get('commit') is False for c in audit.call_args_list)
 
 
 def _terminal_match() -> MagicMock:
@@ -452,10 +463,18 @@ def test_set_match_scores_releases_locks_when_the_winner_submits():
 
 def _defwin_entry(match_id, next_match_id=None):
     contestant = MagicMock()
-    match = MagicMock()
-    match.id = match_id
-    match.next_match_id = next_match_id
+    match = TournamentMatch(
+        id=match_id, tournament_id=TOURNAMENT_ID, group_order=None,
+        match_order=0, round=None, next_match_id=next_match_id,
+        confirmed_by=None, created_at=datetime.now(UTC),
+    )
     return (contestant, match)
+
+
+def _stub_defwin_reads(repo, entries):
+    by_id = {match.id: match for _, match in entries}
+    repo.find_match.side_effect = by_id.get
+    repo.get_match.side_effect = by_id.__getitem__
 
 
 def _sorted_uuids(count):
@@ -476,6 +495,7 @@ def test_removed_participant_defwin_locks_matches_in_id_order():
         mock_repo.find_contestant_entries_for_participant_in_tournament.return_value = (
             entries
         )
+        _stub_defwin_reads(mock_repo, entries)
         mock_process.return_value = tournament_match_service.DefwinResult(
             [], [], []
         )
@@ -500,6 +520,7 @@ def test_removed_team_defwin_locks_matches_in_id_order():
         mock_repo.find_contestant_entries_for_team_in_tournament.return_value = (
             entries
         )
+        _stub_defwin_reads(mock_repo, entries)
         mock_process.return_value = tournament_match_service.DefwinResult(
             [], [], []
         )
@@ -526,6 +547,7 @@ def test_defwin_lock_covers_the_advance_destinations():
         mock_repo.find_contestant_entries_for_participant_in_tournament.return_value = (
             entries
         )
+        _stub_defwin_reads(mock_repo, entries)
         mock_process.return_value = tournament_match_service.DefwinResult(
             [], [], []
         )
@@ -551,6 +573,7 @@ def test_defwin_lock_is_taken_before_any_write():
         mock_repo.find_contestant_entries_for_participant_in_tournament.return_value = (
             entries
         )
+        _stub_defwin_reads(mock_repo, entries)
         mock_process.return_value = tournament_match_service.DefwinResult(
             [], [], []
         )
@@ -560,9 +583,13 @@ def test_defwin_lock_is_taken_before_any_write():
         )
 
     call_names = [c[0] for c in mock_repo.method_calls]
+    assert call_names.index('lock_tournament_for_update') < call_names.index(
+        'lock_matches_for_update'
+    )
     assert call_names.index('lock_matches_for_update') < call_names.index(
         'delete_contestant_from_match'
     )
+    mock_repo.commit_session.assert_not_called()
 
 
 def test_defwin_with_no_entries_locks_nothing():
@@ -633,6 +660,10 @@ def test_defwin_handler_takes_the_tournament_row_first():
     ):
         mock_repo.find_contestant_entries_for_participant_in_tournament.return_value = (
             [_defwin_entry(generate_uuid())]
+        )
+        _stub_defwin_reads(
+            mock_repo,
+            mock_repo.find_contestant_entries_for_participant_in_tournament.return_value,
         )
         mock_process.return_value = tournament_match_service.DefwinResult(
             [], [], []

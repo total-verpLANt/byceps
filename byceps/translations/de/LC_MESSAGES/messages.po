@@ -11025,9 +11025,6 @@ msgstr "Noch keine Kommentare."
 msgid "No confirmed rounds yet."
 msgstr "Noch keine bestätigten Runden."
 
-msgid "No matches are ready for you yet."
-msgstr "Es sind noch keine Partien für dich bereit."
-
 msgid "No ready matches."
 msgstr "Keine bereiten Partien."
 
@@ -11039,9 +11036,6 @@ msgstr "Noch keine Mitglieder in diesem Team."
 
 msgid "No members in this team."
 msgstr "Keine Mitglieder in diesem Team."
-
-msgid "No open matches."
-msgstr "Keine offenen Partien."
 
 msgid "No orgas have been assigned yet."
 msgstr "Es wurden noch keine Orgas zugewiesen."
@@ -15862,3 +15856,301 @@ msgstr "Eine Partie hat bereits ein bestätigtes Ergebnis. Nimm es zurück, bevo
 
 msgid "Only the latest %(n)s entries are shown."
 msgstr "Nur die letzten %(n)s Einträge werden angezeigt."
+
+msgid "Readiness"
+msgstr "Bereitschaft"
+
+msgid "Not yet occupied"
+msgstr "Noch nicht besetzt"
+
+msgid "Partially ready"
+msgstr "Teilweise bereit"
+
+msgid "Both ready"
+msgstr "Beide bereit"
+
+msgid "Occupied since"
+msgstr "Besetzt seit"
+
+msgid "Ready since"
+msgstr "Bereit seit"
+
+msgid "Side A"
+msgstr "Seite A"
+
+msgid "Side B"
+msgstr "Seite B"
+
+msgid "I am ready"
+msgstr "Ich bin bereit"
+
+msgid "Ready (on behalf of this side)"
+msgstr "Bereit (für diese Seite)"
+
+msgid "Readiness cannot be changed right now."
+msgstr "Bereitschaft kann derzeit nicht geändert werden."
+
+msgid "Readiness claimed."
+msgstr "Bereitschaft gemeldet."
+
+msgid "Readiness revoked."
+msgstr "Bereitschaft widerrufen."
+
+msgid "Invalid match side."
+msgstr "Ungültige Match-Seite."
+
+# lan_tournament: match readiness and invitations
+msgid "Waiting for opponent"
+msgstr "Wartet auf Gegner"
+
+msgid "Side A ready"
+msgstr "Seite A bereit"
+
+msgid "Side B ready"
+msgstr "Seite B bereit"
+
+msgid "Side A not ready"
+msgstr "Seite A nicht bereit"
+
+msgid "Side B not ready"
+msgstr "Seite B nicht bereit"
+
+msgid "Not ready"
+msgstr "Nicht bereit"
+
+msgid "Tournament completed"
+msgstr "Turnier abgeschlossen"
+
+msgid "Tournament cancelled"
+msgstr "Turnier abgebrochen"
+
+msgid "Readiness is not available for this format."
+msgstr "Bereitschaft ist für dieses Format nicht verfügbar."
+
+msgid "Readiness is not available for this match format."
+msgstr "Bereitschaft ist für dieses Partieformat nicht verfügbar."
+
+msgid "Readiness unavailable for this format"
+msgstr "Bereitschaft für dieses Format nicht verfügbar"
+
+msgid "No matches with this readiness state."
+msgstr "Keine Partien mit diesem Bereitschaftsstatus."
+
+msgid "Match %(number)s"
+msgstr "Partie %(number)s"
+
+msgid "Match %(num)s"
+msgstr "Partie %(num)s"
+
+msgid "Match readiness"
+msgstr "Bereitschaft der Partien"
+
+msgid "Assignment does not indicate physical presence or that play has started."
+msgstr "Die Zuweisung sagt nichts über die Anwesenheit vor Ort aus und auch nicht, ob das Spiel begonnen hat."
+
+msgid "Originally occupied since"
+msgstr "Ursprünglich besetzt seit"
+
+msgid "Current pairing since"
+msgstr "Aktuelle Paarung seit"
+
+msgid "Side A ready since"
+msgstr "Seite A bereit seit"
+
+msgid "Side B ready since"
+msgstr "Seite B bereit seit"
+
+msgid "Tournament paused; readiness is read-only."
+msgstr "Das Turnier ist pausiert; die Bereitschaft ist schreibgeschützt."
+
+msgid "Tournament ended; readiness is read-only."
+msgstr "Das Turnier ist beendet; die Bereitschaft ist schreibgeschützt."
+
+msgid "This match is finished; readiness is read-only."
+msgstr "Diese Partie ist abgeschlossen; die Bereitschaft ist schreibgeschützt."
+
+msgid "Current pairing is unavailable; readiness is read-only."
+msgstr "Die aktuelle Paarung ist nicht verfügbar; die Bereitschaft ist schreibgeschützt."
+
+msgid "Side"
+msgstr "Seite"
+
+msgid "Pairing generation"
+msgstr "Paarungsgeneration"
+
+msgid "Readiness revision"
+msgstr "Bereitschaftsrevision"
+
+msgid "CSRF token"
+msgstr "CSRF-Token"
+
+msgid "Party does not belong to this tournament."
+msgstr "Die Party gehört nicht zu diesem Turnier."
+
+msgid "Team does not belong to this tournament."
+msgstr "Das Team gehört nicht zu diesem Turnier."
+
+msgid "csrf_invalid"
+msgstr "Das Sicherheits-Token ist ungültig oder abgelaufen. Lade die Seite neu und versuche es erneut."
+
+msgid "match_not_found"
+msgstr "Partie nicht gefunden."
+
+msgid "tournament_not_found"
+msgstr "Turnier nicht gefunden."
+
+msgid "tournament_not_ongoing"
+msgstr "Das Turnier läuft derzeit nicht."
+
+msgid "match_confirmed"
+msgstr "Partie ist bereits bestätigt."
+
+msgid "match_tournament_mismatch"
+msgstr "Die Partie gehört nicht zu diesem Turnier."
+
+msgid "match_requires_two_contestants"
+msgstr "Die Partie braucht genau zwei Teilnehmer."
+
+msgid "pairing_tournament_mismatch"
+msgstr "Die Paarung gehört nicht zu diesem Turnier."
+
+msgid "pairing_time_before_start"
+msgstr "Der Zeitpunkt liegt vor dem Beginn der aktuellen Paarung."
+
+msgid "invalid_match_side"
+msgstr "Ungültige Match-Seite."
+
+msgid "invalid_readiness_revision"
+msgstr "Ungültiger Bereitschaftsstand. Lade die Seite neu und versuche es erneut."
+
+msgid "readiness_subject_not_found"
+msgstr "Die Partie oder das Turnier existiert nicht mehr."
+
+msgid "readiness_format_unsupported"
+msgstr "Bereitschaft ist für dieses Partieformat nicht verfügbar."
+
+msgid "readiness_pairing_invalid"
+msgstr "Die aktuelle Paarung dieser Partie ist nicht gültig; die Bereitschaft kann nicht geändert werden."
+
+msgid "readiness_conflict"
+msgstr "Die Bereitschaft hat sich zwischenzeitlich geändert. Lade die Seite neu und versuche es erneut."
+
+msgid "readiness_revision_exhausted"
+msgstr "Die Bereitschaft dieser Partie kann nicht mehr geändert werden. Wende dich an die Orga."
+
+msgid "readiness_forbidden"
+msgstr "Du darfst die Bereitschaft für diese Seite nicht ändern."
+
+msgid "readiness_audit_failed"
+msgstr "Die Änderung der Bereitschaft konnte nicht protokolliert werden und wurde nicht gespeichert."
+
+msgid "readiness_dispatch_failed"
+msgstr "Die Änderung wurde gespeichert, aber nicht alle Benachrichtigungen konnten verarbeitet werden."
+
+msgid "invitation_dispatch_failed"
+msgstr "Die Einladungen konnten nicht versendet werden."
+
+msgid "invitation_record_failed"
+msgstr "Das Ergebnis des Einladungsversands konnte nicht gespeichert werden."
+
+msgid "invitation_not_found"
+msgstr "Einladung nicht gefunden."
+
+msgid "invitation_conflict"
+msgstr "Die Einladung wurde zwischenzeitlich geändert."
+
+msgid "invitation_lease_expired"
+msgstr "Die Bearbeitung der Einladung ist abgelaufen."
+
+msgid "invalid_invitation_status"
+msgstr "Ungültiger Einladungsstatus."
+
+msgid "recipient_not_on_unique_match_side"
+msgstr "Der Empfänger gehört nicht eindeutig zu einer Seite der Partie."
+
+msgid "email_config_missing"
+msgstr "Für diese Marke ist keine E-Mail-Absenderkonfiguration hinterlegt."
+
+msgid "email_address_missing"
+msgstr "Für diesen Benutzer ist keine E-Mail-Adresse hinterlegt."
+
+msgid "email_subject_snippet_missing"
+msgstr "Der Betreff der E-Mail-Vorlage fehlt."
+
+msgid "email_body_snippet_missing"
+msgstr "Der Text der E-Mail-Vorlage fehlt."
+
+msgid "email_footer_missing"
+msgstr "Die Fußzeile der E-Mail fehlt."
+
+msgid "email_template_formatting_failed"
+msgstr "Die E-Mail-Vorlage konnte nicht ausgefüllt werden."
+
+msgid "Open (no readiness)"
+msgstr "Offen (ohne Bereitschaft)"
+
+msgid "Finished"
+msgstr "Beendet"
+
+msgid "I am not ready"
+msgstr "Ich bin nicht bereit"
+
+msgid "Not ready (on behalf of this side)"
+msgstr "Nicht bereit (für diese Seite)"
+
+msgid "Filter matches"
+msgstr "Partien filtern"
+
+msgid "Free win: advances without an opponent."
+msgstr "Freilos: rückt ohne Gegner weiter."
+
+msgid "Bracket not yet generated."
+msgstr "Turnierbaum noch nicht generiert."
+
+msgid "Losers Bracket"
+msgstr "Verliererseite"
+
+msgid "Winners Bracket"
+msgstr "Gewinnerseite"
+
+msgid "Quarter-Finals"
+msgstr "Viertelfinale"
+
+msgid "Semi-Finals"
+msgstr "Halbfinale"
+
+msgid "Rounds"
+msgstr "Runden"
+
+msgid "No confirmed matches yet."
+msgstr "Noch keine bestätigten Partien."
+
+msgid "No scores submitted yet."
+msgstr "Noch keine Ergebnisse eingetragen."
+
+msgid "No FFA results yet."
+msgstr "Noch keine FFA-Ergebnisse."
+
+msgid "Per-round breakdown"
+msgstr "Aufschlüsselung nach Runden"
+
+msgid "Score For"
+msgstr "Punkte erzielt"
+
+msgid "Score Against"
+msgstr "Punkte kassiert"
+
+msgid "Score Difference"
+msgstr "Punktdifferenz"
+
+msgid "SF"
+msgstr "+P"
+
+msgid "SA"
+msgstr "−P"
+
+msgid "SD"
+msgstr "Diff."
+
+msgid "P"
+msgstr "Pkt."

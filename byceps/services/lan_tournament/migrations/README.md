@@ -108,7 +108,8 @@ Creates the `lan_tournament_orgas` table, recording which users are assigned as 
 
 `uq_lan_tournament_orgas_tournament_user` — `UNIQUE (tournament_id, user_id)` — mirrors `DbMembership.__table_args__` in `orga_team/dbmodels.py` and guards against a double-submit of the assign form creating two rows for the same person. Zero CASCADE behaviors (BYCEPS convention).
 
-Note: the branch `prd/f04-match-ready` also uses 014 (`014_add_match_ready_columns.sql`). Whichever of the two branches is merged second must renumber its migration, its rollback and its README entry before merging.
+The readiness migration on `prd/f04-match-ready` is numbered 021 after its
+rebase onto `prd/fixes`; this orga migration and rollback remain numbered 014.
 
 **Rollback:** `rollback_014.sql` (drops both indexes, then table)
 
@@ -147,9 +148,8 @@ Note: BYCEPS resolves a session's permissions on every request, not at login
 blueprint's `before_app_request`). The grant takes effect on the very next
 request — no re-login needed.
 
-Note: check the highest migration number in sibling branches before merging;
-014 is already shared with `prd/f04-match-ready`, so 015 may need renumbering
-along with it, together with its rollback and this entry.
+Note: check the highest migration number in the integration base and sibling
+branches before adding another migration.
 
 **Rollback:** `rollback_015.sql` — revokes the permission from every role that
 holds it. Not a precise undo: after `ON CONFLICT DO NOTHING`, a row granted by
@@ -439,6 +439,121 @@ the table, the script aborts after 5 s instead of queueing the site behind it.
 Re-run it in a quiet moment. This also applies to `rollback_020.sql`.
 The timeout aborts the transaction; idempotency is unchanged. Undo timeout
 edits only in these files, never by executing the destructive rollback script.
+
+### 021_add_match_ready_columns.sql
+
+F-04 match-ready system: per-side readiness claims on `lan_tournament_matches`:
+
+1. **`occupied_since TIMESTAMP NULL`** — set when both sides of a match are fixed (backfilled for existing fully-occupied matches from contestant creation timestamps)
+2. **`ready_at_a` / `ready_at_b TIMESTAMP NULL`** — per-side readiness claim timestamps
+3. **`ready_by_a` / `ready_by_b UUID NULL`** — FK to `users.id`; who claimed readiness per side
+4. **`both_ready_notified_at TIMESTAMP NULL`** — ready-email marker; cleared on revocation so emails stay suppressed until readiness is newly claimed
+
+Zero CASCADE behaviors (BYCEPS convention). Idempotent (`IF NOT EXISTS`), transaction-wrapped.
+There is no revocation record: un-ready clears the side's claim, and the
+`match-ready-revoked` audit entry is the only trace.
+
+**Rollback:** `rollback_021.sql` (drops the added columns)
+
+**Staging note:** 021 was edited in place (readiness never reached production,
+so no new migration number). A database that already ran the earlier 021 keeps
+five extra nullable columns (`ready_revoked_at/by/reason/side/role`). They are
+harmless: nothing reads or writes them, and `rollback_021.sql` no longer drops
+them. Optional cleanup, a **human action** that nobody runs without approval
+(never run by agents or scripts):
+
+```sql
+ALTER TABLE lan_tournament_matches DROP COLUMN IF EXISTS ready_revoked_at, DROP COLUMN IF EXISTS ready_revoked_by, DROP COLUMN IF EXISTS ready_revoked_reason, DROP COLUMN IF EXISTS ready_revoked_side, DROP COLUMN IF EXISTS ready_revoked_role;
+```
+
+
+### 022_add_match_readiness_integrity.sql
+
+Additive repair after **021**: BIGINT pairing generation/readiness revision,
+nullable retained-pair pointer and two invitation holds; retained opponent
+snapshots and recipient invitation work. SQL types, named checks, uniqueness,
+defaults and indexes match the ORM. UUID IDs have application uuid7 defaults,
+not server defaults; historical inserts use `gen_random_uuid()`.
+
+**Human approval is required before deployment, activation or rollback.** Local
+verification is not server authorization. Recheck the highest migration number
+in the integration base and sibling branches before merging:
+
+```bash
+ls byceps/services/lan_tournament/migrations/[0-9][0-9][0-9]_*.sql | sort
+```
+
+022 was free on this snapshot. If occupied, reconcile/renumber apply, rollback,
+README and tests together. Never repurpose 021 or orga `rollback_014.sql`.
+Prerequisites: base schema through 020 and 021, PostgreSQL 13+, reviewed backup
+and maintenance window. Do not blindly replay the old chain (003 is not
+idempotent). Both 022 scripts use `BEGIN`/`COMMIT` and
+`SET LOCAL lock_timeout = '5s'`; lock contention aborts atomically. Re-run in a
+quiet window. Catalog guards are relation-scoped; repeat apply/rollback is safe.
+
+**Backfill/activation contract:** readiness was never deployed. 022 does not
+invent or modify Ready actors, timestamps, revocations or the legacy inert
+`both_ready_notified_at`. Exactly two distinct active, tournament-owned real
+contestants are ordered by `(created_at, id)`. Placeholder slots and FFA are
+excluded; phase 2 uses `playoff_game_format`, not the main format. Known current
+pair timing is the later of `occupied_since` and current side insertion times;
+if original occupancy is unknown, pair start remains NULL. Original occupancy
+is untouched. Existing unconfirmed ONGOING audiences (all active team members,
+not only captains) get `delivery_unknown`, attempts 0 and no acceptance/lease
+facts. Reapplication preserves recorded acceptance and other known work facts.
+Pre-start rows get pair snapshots but **no invitations until actual start**:
+the repaired start/reconciliation path creates pending work then. Unknown
+historical delivery needs explicit human resend judgment, never automatic bulk
+resend. Both-ready does not trigger a second email.
+
+After human approval, stop web/workers, apply SQL before activating repaired
+code, verify parity/backfill and deploy the matching repaired application:
+
+```bash
+docker compose stop web worker
+docker compose exec -T db psql -v ON_ERROR_STOP=1 -U byceps byceps < \
+  byceps/services/lan_tournament/migrations/022_add_match_readiness_integrity.sql
+docker compose start web worker
+```
+
+Native equivalent (after backup/approval, with matching code installed):
+
+```bash
+systemctl stop byceps-web byceps-worker
+psql -v ON_ERROR_STOP=1 -U byceps -h localhost byceps -f \
+  /opt/byceps/byceps/services/lan_tournament/migrations/022_add_match_readiness_integrity.sql
+systemctl start byceps-web byceps-worker
+```
+
+**Rollback is data-losing:** permanently removes new pairing/work history,
+generation/revision and hold facts. Back up first and obtain separate human
+approval; stop repaired code and install compatible pre-repair code before
+restarting. All 021 columns/constraints, orga 014 and audit FK hardening survive.
+No retained pairing/work FK points back to deletable live match, tournament or
+contestant rows. Only invitation recipient references `users`; the live match
+pointer references retained pairing. Application explicitly closes/suppresses
+facts before deletion/regeneration; there is no database cascade.
+
+```bash
+docker compose stop web worker
+docker compose exec -T db psql -v ON_ERROR_STOP=1 -U byceps byceps < \
+  byceps/services/lan_tournament/migrations/rollback_022.sql
+# Install compatible pre-repair application before restarting web/worker.
+docker compose start web worker
+```
+
+Native rollback while services are stopped:
+
+```bash
+psql -v ON_ERROR_STOP=1 -U byceps -h localhost byceps -f \
+  /opt/byceps/byceps/services/lan_tournament/migrations/rollback_022.sql
+```
+
+Actual isolated PostgreSQL checks (serialize with the integration lock):
+
+```bash
+flock /tmp/opencode/f04-execution/integration.lock bash -c 'source /tmp/opencode/f04-execution/verification-preflight.env; "$PY" -m pytest tests/integration/services/lan_tournament/test_migration_match_readiness.py -q -o addopts="" -p no:cacheprovider'
+```
 
 ## Pre-Application Checklist
 

@@ -3,6 +3,7 @@ tests.unit.services.lan_tournament.test_tournament_match_service
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 """
 
+from dataclasses import replace
 from datetime import datetime, UTC
 from unittest.mock import Mock, call, patch
 
@@ -11,13 +12,20 @@ import pytest
 from byceps.services.lan_tournament.models.contestant_type import (
     ContestantType,
 )
+from byceps.services.lan_tournament.models.match_readiness import (
+    MatchReadiness,
+    ReadinessDisplayStatus,
+)
+from byceps.services.lan_tournament.models.readiness_change import ReadinessChange
 from byceps.services.lan_tournament.models.tournament import (
     Tournament,
     TournamentID,
 )
 from byceps.services.lan_tournament.models.tournament_match import (
+    MatchInvitationID,
     TournamentMatch,
     TournamentMatchID,
+    MatchPairingID,
 )
 from byceps.services.lan_tournament.models.tournament_match_comment import (
     TournamentMatchCommentID,
@@ -57,6 +65,119 @@ TOURNAMENT_ID = TournamentID(generate_uuid())
 PARTY_ID = PartyID('lan-2025')
 MATCH_ID = TournamentMatchID(generate_uuid())
 USER_ID = UserID(generate_uuid())
+
+
+@pytest.fixture(autouse=True)
+def invitation_collaborators():
+    """Isolate recipient storage and queue, retaining real engine adapters."""
+    pending_ids: tuple[MatchInvitationID, ...] = (
+        MatchInvitationID(generate_uuid()), MatchInvitationID(generate_uuid()),
+    )
+
+    def reconcile(match_ids, *, occurred_at):
+        assert isinstance(occurred_at, datetime)
+        return Ok(pending_ids if match_ids else ())
+
+    with (
+        patch('byceps.services.lan_tournament.tournament_readiness_service'
+              '.reconcile_invitations_flush', side_effect=reconcile) as flush,
+        patch('byceps.services.lan_tournament.tournament_readiness_service'
+              '.dispatch_pending_invitations', return_value=Ok(None)) as dispatch,
+        # Combined U creates an app and registers the catch-up ORM listener.
+        # Keep ready-event construction real; isolate its post-commit signal.
+        patch.object(tournament_match_service.match_ready, 'send'),
+    ):
+        yield flush, dispatch, pending_ids
+
+
+@pytest.fixture(autouse=True)
+def readiness_collaborators():
+    """Mock only the new flush-only service boundary, not engine adapters."""
+    def change(match_id, *, occurred_at):
+        assert occurred_at.tzinfo is None
+        match = _create_match(match_id=match_id)
+        return Ok(ReadinessChange(
+            match=match,
+            readiness=MatchReadiness(
+                status=ReadinessDisplayStatus.NOT_YET_OCCUPIED,
+                ready_sides=(), match_id=match_id,
+            ),
+            actor_role=None,
+            pending_invitation_ids=(),
+        ))
+
+    with (
+        patch('byceps.services.lan_tournament.tournament_readiness_service'
+              '.refresh_pairing_and_invitations_flush', side_effect=change),
+        patch('byceps.services.lan_tournament.tournament_readiness_service'
+              '.reset_readiness_flush', side_effect=change),
+        patch('byceps.services.lan_tournament.tournament_match_service'
+              '.create_log_entry') as audit,
+    ):
+        yield audit
+        assert all(c.kwargs.get('commit') is False for c in audit.call_args_list)
+
+
+@pytest.mark.parametrize('audit_fails', [False, True])
+def test_engine_deletion_audits_revision_before_owner_commit(
+    readiness_collaborators, audit_fails,
+):
+    before = replace(
+        _create_match(), pairing_id=MatchPairingID(generate_uuid()),
+        pairing_generation=3, readiness_revision=7,
+    )
+    after = replace(before, pairing_id=None, readiness_revision=8)
+    participant_id = TournamentParticipantID(generate_uuid())
+    audit = readiness_collaborators
+    if audit_fails:
+        audit.side_effect = RuntimeError('audit unavailable')
+    with patch('byceps.services.lan_tournament.tournament_match_service'
+               '.tournament_repository') as repo:
+        repo.find_match.return_value = before
+        repo.get_match.return_value = after
+        if audit_fails:
+            with pytest.raises(RuntimeError, match='audit unavailable'):
+                tournament_match_service._delete_contestant_from_match_flush(
+                    MATCH_ID, participant_id=participant_id,
+                )
+            repo.rollback_session.assert_called_once_with()
+        else:
+            tournament_match_service._delete_contestant_from_match_flush(
+                MATCH_ID, participant_id=participant_id,
+            )
+            repo.rollback_session.assert_not_called()
+        repo.commit_session.assert_not_called()
+        repo.delete_contestant_from_match.assert_called_once_with(
+            MATCH_ID, team_id=None, participant_id=participant_id,
+        )
+    audit.assert_called_once_with(
+        'match-pairing-invalidated', TOURNAMENT_ID, None,
+        data={
+            'match_id': str(MATCH_ID), 'previous_pairing_id': str(before.pairing_id),
+            'previous_pairing_generation': 3, 'pairing_generation': 3,
+            'readiness_revision': 8,
+        },
+        commit=False,
+    )
+
+
+def test_engine_insert_rolls_back_rejected_pairing_refresh():
+    contestant = _create_match_contestant(
+        participant_id=TournamentParticipantID(generate_uuid()),
+    )
+    with (
+        patch('byceps.services.lan_tournament.tournament_match_service'
+              '.tournament_repository') as repo,
+        patch('byceps.services.lan_tournament.tournament_readiness_service'
+              '.refresh_pairing_and_invitations_flush',
+              return_value=Err('pairing_time_invalid')) as refresh,
+    ):
+        with pytest.raises(ValueError, match='pairing_time_invalid'):
+            tournament_match_service._create_match_contestant_flush(contestant)
+    repo.create_match_contestant.assert_called_once_with(contestant)
+    repo.rollback_session.assert_called_once_with()
+    repo.commit_session.assert_not_called()
+    assert refresh.call_args.args == (contestant.tournament_match_id,)
 
 
 # -------------------------------------------------------------------- #
@@ -1845,7 +1966,7 @@ def test_unconfirm_match_success(mock_repo):
     result = tournament_match_service.unconfirm_match(MATCH_ID, USER_ID)
 
     assert result.is_ok()
-    mock_repo.unconfirm_match.assert_called_once_with(MATCH_ID)
+    mock_repo.unconfirm_match.assert_called_once_with(MATCH_ID, reset_readiness=False)
     mock_repo.commit_session.assert_called()
 
 
@@ -1956,7 +2077,7 @@ def test_unconfirm_match_tolerates_dangling_next_match_id(mock_repo):
     result = tournament_match_service.unconfirm_match(MATCH_ID, USER_ID)
 
     assert result.is_ok()
-    mock_repo.unconfirm_match.assert_called_once_with(MATCH_ID)
+    mock_repo.unconfirm_match.assert_called_once_with(MATCH_ID, reset_readiness=False)
 
 
 @patch(
@@ -1988,7 +2109,7 @@ def test_unconfirm_match_draw_skips_cascade(mock_repo):
     result = tournament_match_service.unconfirm_match(MATCH_ID, USER_ID)
 
     assert result.is_ok()
-    mock_repo.unconfirm_match.assert_called_once_with(MATCH_ID)
+    mock_repo.unconfirm_match.assert_called_once_with(MATCH_ID, reset_readiness=False)
     # Draw: no winner => no cascade retraction
     mock_repo.delete_contestant_from_match.assert_not_called()
 
@@ -2787,7 +2908,8 @@ def test_unconfirm_retracts_lb_auto_advance(mock_repo):
     )
 
     mock_repo.get_match_for_update.return_value = match
-    _route_find_match(mock_repo, [match, next_match, loser_next_match])
+    lb_next_match = _create_match(match_id=lb_next_match_id)
+    _route_find_match(mock_repo, [match, next_match, loser_next_match, lb_next_match])
     mock_repo.get_contestants_for_match.return_value = contestants
 
     result = tournament_match_service.unconfirm_match(MATCH_ID, USER_ID)
@@ -3475,21 +3597,26 @@ def test_clear_bracket_deletes_all_matches(mock_repo, mock_signals):
     """3 matches: FK nulling + per-match child/match deletion, no commit."""
     match_ids = [TournamentMatchID(generate_uuid()) for _ in range(3)]
     matches = [_create_match(match_id=mid) for mid in match_ids]
-    mock_repo.get_matches_for_tournament.return_value = matches
+    mock_repo.get_matches_for_tournament_ordered_fresh.return_value = matches
+    _route_find_match(mock_repo, matches)
 
     events = tournament_match_service.clear_bracket(TOURNAMENT_ID)
 
     # Verify exact call ordering: FK nulling → per-match children/match
     # deletion.  Order matters for PostgreSQL FK integrity.
     expected_repo_calls = [
-        call.get_matches_for_tournament(TOURNAMENT_ID),
+        call.lock_tournament_for_update(TOURNAMENT_ID),
+        call.get_matches_for_tournament_ordered_fresh(TOURNAMENT_ID),
+        call.lock_matches_for_update(match_ids),
         call.get_contestants_for_matches([]),
         call.null_self_referential_fks(TOURNAMENT_ID),
     ]
     for mid in match_ids:
         expected_repo_calls += [
             call.delete_comments_for_match_flush(mid),
+            call.get_match(mid),
             call.delete_contestants_for_match_flush(mid),
+            call.get_match(mid),
             call.delete_match_flush(mid),
         ]
 
@@ -3507,7 +3634,7 @@ def test_clear_bracket_deletes_all_matches(mock_repo, mock_signals):
 )
 def test_clear_bracket_empty_tournament(mock_repo, _mock_signals):
     """No matches, early return without commit."""
-    mock_repo.get_matches_for_tournament.return_value = []
+    mock_repo.get_matches_for_tournament_ordered_fresh.return_value = []
 
     tournament_match_service.clear_bracket(TOURNAMENT_ID)
 
@@ -3525,7 +3652,7 @@ def test_clear_bracket_empty_tournament(mock_repo, _mock_signals):
 )
 def test_clear_bracket_returns_no_events_when_empty(mock_repo, _mock_signals):
     """Nothing deleted, nothing to announce."""
-    mock_repo.get_matches_for_tournament.return_value = []
+    mock_repo.get_matches_for_tournament_ordered_fresh.return_value = []
 
     result = tournament_match_service.clear_bracket(TOURNAMENT_ID)
 
@@ -3554,7 +3681,10 @@ def test_force_regenerate_commits_once_before_announcing_deletions(
         _create_mock_participant(TournamentParticipantID(generate_uuid()))
         for _ in range(3)
     ]
-    mock_repo.get_matches_for_tournament.return_value = [_create_match()]
+    matches = [_create_match()]
+    mock_repo.get_matches_for_tournament.return_value = matches
+    mock_repo.get_matches_for_tournament_ordered_fresh.return_value = matches
+    _route_find_match(mock_repo, matches)
     order = []
     mock_repo.commit_session.side_effect = lambda: order.append('commit')
     mock_signals.match_deleted.send.side_effect = (
@@ -5165,7 +5295,9 @@ def test_unconfirm_gf_m1_deletes_unconfirmed_gf_m2(mock_repo):
     # get_match calls:
     # 1) next_match cascade check (gf_m2) — unconfirmed
     # 2) re-read gf_m1 after bracket reset cleanup
-    mock_repo.get_match.side_effect = [gf_m2, gf_m1_after]
+    mock_repo.get_match.side_effect = lambda mid: {
+        gf_m2_id: gf_m2, gf_m1_id: gf_m1_after,
+    }[mid]
     mock_repo.find_match.return_value = gf_m2
     mock_repo.get_contestants_for_match.return_value = contestants
     mock_repo.get_tournament.return_value = tournament
@@ -5277,7 +5409,9 @@ def test_unconfirm_gf_m1_cascades_through_confirmed_gf_m2(mock_repo):
     # get_match calls:
     # 1) next_match cascade check (GF M2 — confirmed)
     # 2) re-read GF M1 after bracket reset cleanup
-    mock_repo.get_match.side_effect = [gf_m2, gf_m1_after]
+    mock_repo.get_match.side_effect = lambda mid: {
+        gf_m2_id: gf_m2, gf_m1_id: gf_m1_after,
+    }[mid]
     mock_repo.find_match.return_value = gf_m2
 
     # get_contestants_for_match calls:
@@ -5364,7 +5498,7 @@ def test_unconfirm_gf_m1_without_gf_m2_works_normally(mock_repo):
         winner_team_id=None,
         winner_participant_id=None,
     )
-    mock_repo.unconfirm_match.assert_called_once_with(gf_m1_id)
+    mock_repo.unconfirm_match.assert_called_once_with(gf_m1_id, reset_readiness=False)
 
 
 # ---- Bracket Reset Provenance Helper Tests ----
@@ -5568,7 +5702,9 @@ def test_unconfirm_gf_m1_deletes_gf_m2_comments(mock_repo):
     )
 
     mock_repo.get_match_for_update.return_value = gf_m1
-    mock_repo.get_match.side_effect = [gf_m2, gf_m1_after]
+    mock_repo.get_match.side_effect = lambda mid: {
+        gf_m2_id: gf_m2, gf_m1_id: gf_m1_after,
+    }[mid]
     mock_repo.find_match.return_value = gf_m2
     mock_repo.get_contestants_for_match.return_value = contestants
     mock_repo.get_tournament.return_value = tournament
@@ -5661,7 +5797,9 @@ def test_unconfirm_gf_m1_emits_match_deleted_event(
     )
 
     mock_repo.get_match_for_update.return_value = gf_m1
-    mock_repo.get_match.side_effect = [gf_m2, gf_m1_after]
+    mock_repo.get_match.side_effect = lambda mid: {
+        gf_m2_id: gf_m2, gf_m1_id: gf_m1_after,
+    }[mid]
     mock_repo.find_match.return_value = gf_m2
     mock_repo.get_contestants_for_match.return_value = contestants
     mock_repo.get_tournament.return_value = tournament
@@ -5825,3 +5963,146 @@ def test_generate_wrapper_commits_and_impl_does_not(mock_repo):
 
     assert result.is_ok()
     mock_repo.commit_session.assert_called_once()
+
+
+def _generation_repository():
+    """No wildcard methods or truthy missing graph reads in the new probes."""
+    repo = Mock(spec_set=[
+        'lock_tournament_for_update', 'get_matches_for_tournament',
+        'get_tournament', 'get_participants_for_tournament',
+        'get_contestants_for_match', 'create_match', 'create_match_contestant',
+        'clear_loser_next_match_id', 'count_incoming_feeds', 'clear_next_match_id',
+        'commit_session', 'rollback_session',
+    ])
+    matches = []
+    contestants = []
+    repo.create_match.side_effect = matches.append
+    repo.create_match_contestant.side_effect = contestants.append
+    repo.get_matches_for_tournament.side_effect = lambda tid: list(matches)
+    repo.get_contestants_for_match.side_effect = lambda mid: [
+        c for c in contestants if c.tournament_match_id == mid
+    ]
+    repo.count_incoming_feeds.side_effect = lambda mid: sum(
+        int(m.next_match_id == mid) + int(m.loser_next_match_id == mid)
+        for m in matches
+    )
+    return repo
+
+
+@pytest.mark.parametrize('kind', ['single_elimination', 'double_elimination', 'round_robin'])
+def test_generation_flush_returns_durable_ids_without_commit_or_dispatch(
+    invitation_collaborators, kind,
+):
+    flush, dispatch, pending_ids = invitation_collaborators
+    impl = getattr(tournament_match_service, f'_generate_{kind}_impl')
+    with patch.object(tournament_match_service, 'tournament_repository',
+                      new=_generation_repository()) as repo:
+        _layout_fixture(repo, 4, elimination_mode=(
+            EliminationMode.DOUBLE_ELIMINATION if kind == 'double_elimination' else None
+        ))
+        outcome = impl(TOURNAMENT_ID).unwrap()
+        assert outcome.pending_invitation_ids == pending_ids
+        flush.assert_called_once_with(
+            outcome.ready_match_ids, occurred_at=outcome.occurred_at,
+        )
+        assert outcome.ready_match_ids
+        repo.commit_session.assert_not_called()
+        repo.rollback_session.assert_not_called()
+        dispatch.assert_not_called()
+        tournament_match_service.match_ready.send.assert_not_called()
+
+
+@pytest.mark.parametrize('kind', ['single_elimination', 'double_elimination', 'round_robin'])
+def test_generation_dispatches_exact_ids_after_owner_commit_and_signals(
+    invitation_collaborators, kind,
+):
+    flush, dispatch, pending_ids = invitation_collaborators
+    generate = getattr(tournament_match_service, f'generate_{kind}_bracket')
+    order = []
+    with (
+        patch.object(tournament_match_service, 'tournament_repository',
+                     new=_generation_repository()) as repo,
+        patch('byceps.services.lan_tournament.signals.match_created.send') as created,
+        patch.object(tournament_match_service.match_ready, 'send') as ready,
+    ):
+        _layout_fixture(repo, 4, elimination_mode=(
+            EliminationMode.DOUBLE_ELIMINATION if kind == 'double_elimination' else None
+        ))
+
+        def reconcile(match_ids, *, occurred_at):
+            assert match_ids and isinstance(occurred_at, datetime)
+            repo.commit_session.assert_not_called()
+            created.assert_not_called()
+            ready.assert_not_called()
+            dispatch.assert_not_called()
+            order.append('flush')
+            return Ok(pending_ids)
+
+        def committed():
+            created.assert_not_called()
+            ready.assert_not_called()
+            dispatch.assert_not_called()
+            order.append('commit')
+
+        flush.side_effect = reconcile
+        repo.commit_session.side_effect = committed
+        created.side_effect = lambda *a, **kw: order.append('created')
+        ready.side_effect = lambda *a, **kw: order.append('ready')
+        dispatch.side_effect = lambda ids: order.append('dispatch') or Ok(None)
+        assert generate(TOURNAMENT_ID).is_ok()
+        repo.commit_session.assert_called_once_with()
+        repo.rollback_session.assert_not_called()
+    dispatch.assert_called_once_with(pending_ids)
+    assert order[:2] == ['flush', 'commit']
+    assert set(order[2:-1]) == {'created', 'ready'}
+    assert order[-1] == 'dispatch'
+
+
+@pytest.mark.parametrize('kind', ['single_elimination', 'double_elimination', 'round_robin'])
+@pytest.mark.parametrize('failure', ['intent_err', 'intent_exception', 'commit'])
+def test_generation_intent_or_commit_failure_rolls_back_without_effects(
+    invitation_collaborators, kind, failure,
+):
+    flush, dispatch, _pending_ids = invitation_collaborators
+    generate = getattr(tournament_match_service, f'generate_{kind}_bracket')
+    with (
+        patch.object(tournament_match_service, 'tournament_repository',
+                     new=_generation_repository()) as repo,
+        patch('byceps.services.lan_tournament.signals.match_created.send') as created,
+    ):
+        _layout_fixture(repo, 4, elimination_mode=(
+            EliminationMode.DOUBLE_ELIMINATION if kind == 'double_elimination' else None
+        ))
+        if failure == 'intent_err':
+            flush.side_effect = None
+            flush.return_value = Err('intent_unavailable')
+        elif failure == 'intent_exception':
+            flush.side_effect = RuntimeError('intent_unavailable')
+        else:
+            repo.commit_session.side_effect = RuntimeError('intent_unavailable')
+        with pytest.raises((ValueError, RuntimeError), match='intent_unavailable'):
+            generate(TOURNAMENT_ID)
+        repo.rollback_session.assert_called_once_with()
+        if failure == 'commit':
+            repo.commit_session.assert_called_once_with()
+        else:
+            repo.commit_session.assert_not_called()
+        created.assert_not_called()
+        dispatch.assert_not_called()
+
+
+def test_generation_listener_failure_still_dispatches_committed_ids(invitation_collaborators):
+    _flush, dispatch, pending_ids = invitation_collaborators
+    with (
+        patch.object(tournament_match_service, 'tournament_repository',
+                     new=_generation_repository()) as repo,
+        patch('byceps.services.lan_tournament.signals.match_created.send',
+              side_effect=RuntimeError('listener')) as created,
+    ):
+        _layout_fixture(repo, 4)
+        with pytest.raises(RuntimeError, match='listener'):
+            tournament_match_service.generate_single_elimination_bracket(TOURNAMENT_ID)
+        repo.commit_session.assert_called_once_with()
+        repo.rollback_session.assert_not_called()
+        created.assert_called_once()
+    dispatch.assert_called_once_with(pending_ids)

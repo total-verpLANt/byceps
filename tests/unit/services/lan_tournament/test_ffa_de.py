@@ -8,7 +8,7 @@ confirm_ffa_match (GF completion), point carry.
 """
 
 from datetime import datetime, UTC
-from unittest.mock import Mock, patch, call
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -22,11 +22,14 @@ from byceps.services.lan_tournament.models.elimination_mode import (
 from byceps.services.lan_tournament.models.game_format import (
     GameFormat,
 )
+from byceps.services.lan_tournament.models.match_readiness import derive_match_readiness
+from byceps.services.lan_tournament.models.readiness_change import ReadinessChange
 from byceps.services.lan_tournament.models.tournament import (
     Tournament,
     TournamentID,
 )
 from byceps.services.lan_tournament.models.tournament_match import (
+    MatchInvitationID,
     TournamentMatch,
     TournamentMatchID,
 )
@@ -49,6 +52,7 @@ from byceps.services.lan_tournament.tournament_match_service import (
 )
 from byceps.services.party.models import PartyID
 from byceps.services.user.models import UserID
+from byceps.util.result import Ok
 
 from tests.helpers import generate_uuid
 
@@ -69,6 +73,29 @@ class _Everyone:
 
     def __contains__(self, item):
         return True
+
+
+@pytest.fixture(autouse=True)
+def _ffa_pairing_refresh():
+    """FFA refresh succeeds without two-side claims or invitation effects."""
+    pending_ids: tuple[MatchInvitationID, ...] = ()
+    def refresh(match_id, *, occurred_at):
+        match = _create_match(match_id=match_id)
+        return Ok(ReadinessChange(
+            match=match,
+            readiness=derive_match_readiness(
+                match, [], pairing=None, supports_readiness=False,
+            ),
+            actor_role=None,
+            pending_invitation_ids=pending_ids,
+        ))
+
+    with patch(
+        'byceps.services.lan_tournament.tournament_readiness_service'
+        '.refresh_pairing_and_invitations_flush',
+        side_effect=refresh,
+    ) as refresh_mock:
+        yield refresh_mock
 
 
 @pytest.fixture(autouse=True)
@@ -1226,9 +1253,19 @@ def test_generate_ffa_grand_final_includes_dropped_wb_players(mock_repo, mock_lo
     )
     assert trigger.unwrap() == 'grand_final_eligible'
 
-    result = tournament_match_service.generate_ffa_grand_final(
-        TOURNAMENT_ID, initiator_id=USER_ID,
-    )
+    pending_ids: tuple[MatchInvitationID, ...] = ()
+    with (
+        patch('byceps.services.lan_tournament.tournament_readiness_service'
+              '.reconcile_invitations_flush', return_value=Ok(pending_ids)),
+        patch('byceps.services.lan_tournament.tournament_readiness_service'
+              '.dispatch_pending_invitations', return_value=Ok(None)) as dispatch,
+        patch.object(tournament_match_service.match_ready, 'send') as ready,
+    ):
+        result = tournament_match_service.generate_ffa_grand_final(
+            TOURNAMENT_ID, initiator_id=USER_ID,
+        )
+    dispatch.assert_called_once_with(())
+    ready.assert_called_once()
 
     assert result.is_ok()
     created = [

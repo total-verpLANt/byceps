@@ -44,6 +44,7 @@ from byceps.services.lan_tournament import (
     tournament_participant_service,
     tournament_qualification_repository,
     tournament_qualification_service,
+    tournament_repository,
     tournament_request_domain_service,
     tournament_request_repository,
     tournament_request_service,
@@ -72,6 +73,9 @@ from byceps.services.lan_tournament.models.tournament_request import (
 from byceps.services.lan_tournament.models.contestant_type import (
     ContestantType,
 )
+from byceps.services.lan_tournament.models.tournament_participant import (
+    TournamentParticipantID,
+)
 from byceps.services.lan_tournament.models.tournament_team import (
     TournamentTeam,
     TournamentTeamID,
@@ -82,6 +86,10 @@ from byceps.services.lan_tournament.models.tournament_match import (
 )
 from byceps.services.lan_tournament.models.tournament_match_comment import (
     TournamentMatchCommentID,
+)
+from byceps.services.lan_tournament.models.match_readiness import (
+    real_contestants,
+    side_for_contestant,
 )
 from byceps.services.lan_tournament.models.score_ordering import ScoreOrdering
 from byceps.services.lan_tournament.models.bracket import Bracket
@@ -109,17 +117,21 @@ from byceps.services.lan_tournament.tournament_service import (
     resolve_winner_display_name,
 )
 from byceps.services.lan_tournament.lan_tournament_view_helpers import (
+    active_match_filter,
     build_contestant_name_lookups,
     contestant_names,
     build_create_wizard_context,
     build_downstream_impact,
     build_hover_lookups,
     build_match_label,
+    build_match_readiness_projections,
     build_request_refusal,
     build_round_robin_standings,
     build_seat_lookup,
     build_team_members_lookup,
     compute_feed_counts,
+    count_match_projections,
+    filter_match_projections,
     first_error_step,
     format_file_size,
     get_timezone_detail_at,
@@ -128,10 +140,12 @@ from byceps.services.lan_tournament.lan_tournament_view_helpers import (
     ffa_grand_final_refusal,
     ffa_phase,
     is_walkover_match,
+    match_filter_options,
     match_uses_placements,
     participant_rankings,
     parse_match_ids,
     phase_match_labels,
+    serialize_public_match_readiness,
     parse_submitted_contestant_scores,
     parse_int,
     parse_seeding_action,
@@ -289,6 +303,18 @@ def view(tournament_id):
 
     is_team_tournament = tournament.contestant_type == ContestantType.TEAM
 
+    match_data, readiness_by_match_id = _admin_match_projections(tournament)
+    match_quantities = count_match_projections(
+        list(readiness_by_match_id.values())
+    )
+    match_labels = (
+        phase_match_labels(tournament, [entry['match'] for entry in match_data])
+        if tournament.has_playoffs else {}
+    )
+    teams_by_id, participants_by_id = build_contestant_name_lookups(
+        tournament.id, [entry['contestants'] for entry in match_data]
+    )
+
     participant_counts = (
         tournament_service.get_participant_counts_for_tournaments(
             [tournament.id]
@@ -325,7 +351,7 @@ def view(tournament_id):
     if is_ffa_de and has_bracket:
         pool_data = _build_ffa_de_pool_data(
             tournament.id,
-            _build_ffa_match_data_list(tournament.id),
+            match_data,
         )
         ffa_de_pool_status = pool_data.pool_status
         offer = ffa_grand_final_offer(tournament)
@@ -335,6 +361,14 @@ def view(tournament_id):
         'party': party,
         'tournament': tournament,
         'has_bracket': has_bracket,
+        'match_data': match_data,
+        'readiness_by_match_id': readiness_by_match_id,
+        'match_quantities': match_quantities,
+        'match_filter_options': match_filter_options(match_quantities),
+        'only': 'all',
+        'match_labels': match_labels,
+        'teams_by_id': teams_by_id,
+        'participants_by_id': participants_by_id,
         'requires_bracket': tournament.game_format.requires_bracket_generation if tournament.game_format else False,
         'start_gate': start_gate(tournament),
         'is_team_tournament': is_team_tournament,
@@ -3314,8 +3348,13 @@ def remove_participant(tournament_id, participant_id):
     """Remove a participant from the tournament."""
     tournament = _get_tournament_or_404(tournament_id)
 
+    try:
+        participant_uuid = TournamentParticipantID(UUID(participant_id))
+    except ValueError:
+        abort(404)
+
     result = tournament_participant_service.admin_remove_participant(
-        tournament.id, participant_id, initiator=g.user
+        tournament.id, participant_uuid, initiator=g.user
     )
 
     match result:
@@ -3884,23 +3923,32 @@ def _get_match_or_404(match_id) -> TournamentMatch:
 # matches
 
 
-def _is_match_ready(entry: dict) -> bool:
-    """A match is ready when it has 2+ contestants and is NOT confirmed."""
-    return (
-        len(entry['contestants']) >= 2
-        and entry['match'].confirmed_by is None
-    )
+def _admin_match_projections(tournament: Tournament) -> tuple[list[dict], dict]:
+    """Batch the backend's tournament scope without initializing any facts.
 
-
-def _is_match_open(entry: dict) -> bool:
-    """A match is open when it has 1+ contestant and is NOT confirmed.
-
-    This is a superset of ready — every ready match is also open.
+    Public display fields are allowlisted; history stays in privileged detail.
+    Contestant row order remains unchanged for scores and bracket feeders.
     """
-    return (
-        len(entry['contestants']) >= 1
-        and entry['match'].confirmed_by is None
+    matches = tournament_match_service.get_matches_for_tournament_ordered(
+        tournament.id
     )
+    contestants_by_match_id = (
+        tournament_match_service.get_contestants_for_tournament(tournament.id)
+    )
+    readiness_by_match_id = build_match_readiness_projections(
+        tournament, matches, contestants_by_match_id
+    )
+    return [
+        {
+            'match': match,
+            'contestants': contestants_by_match_id.get(match.id, []),
+            'readiness': readiness_by_match_id[match.id],
+            'readiness_display': serialize_public_match_readiness(
+                readiness_by_match_id[match.id]
+            ),
+        }
+        for match in matches
+    ], readiness_by_match_id
 
 
 @blueprint.get('/tournaments/<tournament_id>/matches')
@@ -3911,43 +3959,25 @@ def matches_for_tournament(tournament_id):
     tournament = _get_tournament_or_404(tournament_id)
     party = party_service.get_party(tournament.party_id)
 
-    only = request.args.get('only', 'open')
-
-    matches = tournament_match_service.get_matches_for_tournament_ordered(
-        tournament.id
+    match_data, readiness_by_match_id = _admin_match_projections(tournament)
+    matches = [entry['match'] for entry in match_data]
+    match_quantities = count_match_projections(
+        list(readiness_by_match_id.values())
     )
-
-    # Get contestants for each match
-    match_data = []
-    all_contestants = []
-    for match in matches:
-        contestants = tournament_match_service.get_contestants_for_match(
-            match.id
+    filter_options = match_filter_options(match_quantities)
+    only = active_match_filter(request.args.get('only', 'all'), filter_options)
+    selected_ids = {
+        projection.match_id for projection in filter_match_projections(
+            list(readiness_by_match_id.values()), only=only
         )
-        match_data.append(
-            {
-                'match': match,
-                'contestants': contestants,
-            }
-        )
-        all_contestants.append(contestants)
-
-    # Compute counts before filtering.
-    total_count = len(match_data)
-    ready_count = sum(1 for e in match_data if _is_match_ready(e))
-    open_count = sum(1 for e in match_data if _is_match_open(e))
-    match_quantities = {
-        'all': total_count,
-        'open': open_count,
-        'ready': ready_count,
     }
-
-    # Apply status filter.
-    if only == 'open':
-        match_data = [e for e in match_data if _is_match_open(e)]
-    elif only == 'ready':
-        match_data = [e for e in match_data if _is_match_ready(e)]
-    # 'all' → no filtering
+    match_data = [
+        entry for entry in match_data if entry['match'].id in selected_ids
+    ]
+    readiness_by_match_id = {
+        entry['match'].id: entry['readiness'] for entry in match_data
+    }
+    all_contestants = [entry['contestants'] for entry in match_data]
 
     teams_by_id, participants_by_id = build_contestant_name_lookups(
         tournament.id, all_contestants
@@ -3970,6 +4000,8 @@ def matches_for_tournament(tournament_id):
         'match_labels': match_labels,
         'only': only,
         'match_quantities': match_quantities,
+        'match_filter_options': filter_options,
+        'readiness_by_match_id': readiness_by_match_id,
         'teams_by_id': teams_by_id,
         'participants_by_id': participants_by_id,
         'seats_by_user_id': seats_by_user_id,
@@ -4069,6 +4101,21 @@ def view_match(match_id):
         else []
     )
 
+    readiness = build_match_readiness_projections(
+        tournament, [match], {match.id: contestants}
+    )[match.id]
+    # Resolve the sides from the pairing, never from association-row order.
+    readiness_contestants_by_side = {}
+    if readiness.pairing_valid:
+        pairing = tournament_repository.get_match_pairing(match.id)
+        if pairing is not None:
+            for contestant in real_contestants(contestants):
+                side = side_for_contestant(
+                    contestants, contestant.id, pairing=pairing
+                )
+                if side is not None:
+                    readiness_contestants_by_side[side] = contestant
+
     return {
         'party': party,
         'tournament': tournament,
@@ -4090,6 +4137,9 @@ def view_match(match_id):
         'downstream_impact': downstream_impact,
         'max_match_score': tournament_match_service.MAX_MATCH_SCORE,
         'can_unrelease': _playoff_release_can_be_undone(tournament, match),
+        'affected_downstream_matches': affected_downstream_matches,
+        'readiness': readiness,
+        'readiness_contestants_by_side': readiness_contestants_by_side,
     }
 
 
@@ -4318,24 +4368,12 @@ def bracket(tournament_id):
     tournament = _get_tournament_or_404(tournament_id)
     party = party_service.get_party(tournament.party_id)
 
-    matches = tournament_match_service.get_matches_for_tournament_ordered(
-        tournament.id
+    match_data, readiness_by_match_id = _admin_match_projections(tournament)
+    all_contestants = [entry['contestants'] for entry in match_data]
+    match_labels = (
+        phase_match_labels(tournament, [entry['match'] for entry in match_data])
+        if tournament.has_playoffs else {}
     )
-
-    # Get contestants for each match.
-    match_data = []
-    all_contestants = []
-    for match in matches:
-        contestants = tournament_match_service.get_contestants_for_match(
-            match.id
-        )
-        match_data.append(
-            {
-                'match': match,
-                'contestants': contestants,
-            }
-        )
-        all_contestants.append(contestants)
 
     teams_by_id, participants_by_id = build_contestant_name_lookups(
         tournament.id, all_contestants
@@ -4418,7 +4456,7 @@ def bracket(tournament_id):
             _ffa_all_contestants,
             ffa_latest_round,
             ffa_all_confirmed,
-        ) = _build_ffa_round_data(tournament.id)
+        ) = _build_ffa_round_data(tournament.id, match_data=match_data)
 
         # DE: compute per-pool standings and pool status.
         if ffa_view == 'de':
@@ -4441,6 +4479,8 @@ def bracket(tournament_id):
         'tournament': tournament,
         'match_data': match_data,
         'bracket_match_data': bracket_match_data,
+        'readiness_by_match_id': readiness_by_match_id,
+        'match_labels': match_labels,
         'bracket_mode': (
             tournament_domain_service.elimination_mode_for_phase(tournament, 2)
             if tournament.has_playoffs
@@ -4685,23 +4725,21 @@ def _build_ffa_match_data_list(tournament_id: TournamentID):
     return match_data
 
 
-def _build_ffa_round_data(tournament_id: TournamentID):
+def _build_ffa_round_data(tournament_id: TournamentID, *, match_data=None):
     """Build per-round and cumulative FFA standings from match data.
 
     Returns (cumulative_standings, round_standings, match_data,
     all_contestants, latest_round, all_confirmed).
+    Bracket GET supplies its existing batch; other callers retain their reader.
     """
-    matches = tournament_match_service.get_matches_for_tournament_ordered(
-        tournament_id
-    )
+    if match_data is None:
+        match_data = _build_ffa_match_data_list(tournament_id)
 
     # Group matches by round.
     rounds_map: dict[int, list] = {}
-    match_data = []
     all_contestants: list[list] = []
-    for m in matches:
-        contestants = tournament_match_service.get_contestants_for_match(m.id)
-        match_data.append({'match': m, 'contestants': contestants})
+    for entry in match_data:
+        m, contestants = entry['match'], entry['contestants']
         all_contestants.append(contestants)
 
         rn = m.round if m.round is not None else 0

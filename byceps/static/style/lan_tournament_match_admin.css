@@ -4,6 +4,15 @@
    Bracket position, correction cascade ledger and correction form.
    ================================================================ */
 
+:root {
+  /* Match filter tabs: the admin has no variable for body ink or the icon grey. */
+  --ltc-tab-ink: #333333;
+  --ltc-tab-icon: #777777;
+  --ltc-tab-hover: var(--color-disabled, #aaaaaa);
+  --ltc-tab-current: var(--color-info, #2196f3);
+  --ltc-tab-count: var(--dimmed-color, #888888);
+}
+
 .lt-cascade {
   --ltc-edge: 3px;
   /* Translucent, to show on both warning and danger backgrounds. */
@@ -600,4 +609,52 @@
 
 .lt-request-page .lt-edit .button-row {
   justify-content: flex-start;
+}
+
+
+/* ────────────────────────────────────────────────────────────────
+   Match filter tabs, match list and tournament overview
+   ──────────────────────────────────────────────────────────────── */
+
+.lt-match-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1.125rem;
+  margin-bottom: 0.875rem;
+}
+
+.lt-match-tabs a {
+  align-items: center;
+  border-bottom: 2px solid transparent;
+  color: var(--ltc-tab-ink);
+  display: inline-flex;
+  font-size: 0.8125rem; /* 13px / 16px */
+  gap: 0.375rem;
+  min-height: 44px;
+  padding: 0 0.25rem;
+  text-decoration: none;
+}
+
+.lt-match-tabs a:hover {
+  border-bottom-color: var(--ltc-tab-hover);
+}
+
+.lt-match-tabs a[aria-current] {
+  border-bottom-color: var(--ltc-tab-current);
+}
+
+.lt-match-tabs__icon {
+  color: var(--ltc-tab-icon);
+}
+
+.lt-match-tabs__count {
+  color: var(--ltc-tab-count);
+}
+
+.lt-match-tabs--compact {
+  gap: 0 0.75rem;
+}
+
+.lt-match-tabs--compact a {
+  font-size: 0.75rem; /* 12px / 16px */
 }

@@ -152,7 +152,7 @@ def make_world():
             tournament or _tournament(),
             [_pid(i) for i in range(1, n + 1)],
         )
-        repo.get_tournament.side_effect = lambda tid: world.tournament
+        repo.get_tournament.side_effect = lambda tid, *, fresh=False: world.tournament
         repo.get_participants_for_tournament.side_effect = world.participants
         users.get_users_indexed_by_id.side_effect = world.users
         seeding_repo.find_seeding.side_effect = world.find
@@ -1028,6 +1028,7 @@ def test_generate_refuses_a_draft_of_another_structure(make_world):
     make_world.logs.assert_not_called()
     make_world.repo.commit_session.assert_not_called()
     make_world.repo.rollback_session.assert_called()
+    make_world.repo.get_tournament.assert_called_with(TOURNAMENT_ID, fresh=True)
 
 
 def test_the_structure_change_does_not_stale_a_locked_board(make_world):

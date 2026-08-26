@@ -1082,12 +1082,13 @@ def test_correct_match_result_confirmed_downstream_requires_ack(
     _confirm_match_with_scores(final, participants, admin_user)
 
     target = feeders[0]
-    target_participants = {
-        c.participant_id
-        for c in tournament_match_service.get_contestants_for_match(
-            target.id
-        )
-    }
+    target_contestants = tournament_match_service.get_contestants_for_match(
+        target.id
+    )
+    target_participants = {c.participant_id for c in target_contestants}
+    original_winner = max(
+        target_contestants, key=lambda c: c.score
+    ).participant_id
 
     # Without acknowledgement: refused, nothing changes.
     result = tournament_match_service.correct_match_result(
@@ -1101,10 +1102,11 @@ def test_correct_match_result_confirmed_downstream_requires_ack(
     still_confirmed = tournament_match_service.get_match(target.id)
     assert still_confirmed.confirmed_by is not None
 
-    # With acknowledgement: proceeds, applies corrected scores.
+    # With acknowledgement: proceeds, applies corrected scores. The
+    # winner changes; a correction that keeps it is written in place.
     corrected_scores = {
-        participant_id: 13 if i == 0 else 9
-        for i, participant_id in enumerate(sorted(target_participants))
+        participant_id: 9 if participant_id == original_winner else 13
+        for participant_id in target_participants
     }
     result_ack = tournament_match_service.correct_match_result(
         target.id,

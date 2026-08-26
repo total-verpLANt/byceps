@@ -21,12 +21,17 @@ from wtforms.validators import (
 )
 
 from byceps.services.lan_tournament import tournament_request_domain_service
+from byceps.services.lan_tournament.blueprints.readiness_forms import (
+    MatchReadyClaimForm as MatchReadyClaimForm,
+    MatchReadyRevokeForm as MatchReadyRevokeForm,
+)
 from byceps.services.lan_tournament.form_validators import SafeNumberRange
 from byceps.services.lan_tournament.models.elimination_mode import (
     EliminationMode,
 )
 from byceps.services.lan_tournament.models.game_format import GameFormat
 from byceps.util.l10n import LocalizedForm
+
 
 
 class SiteTeamCreateForm(LocalizedForm):

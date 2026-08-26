@@ -53,6 +53,18 @@ def _create_user(user_id, *, deleted=False) -> User:
     )
 
 
+def _track_revocation_calls(
+    tournament_repo, orga_repo, log_service, signals, db
+):
+    calls = Mock()
+    calls.attach_mock(tournament_repo, 'tournament_repo')
+    calls.attach_mock(orga_repo, 'orga_repo')
+    calls.attach_mock(log_service, 'audit')
+    calls.attach_mock(db.session, 'session')
+    calls.attach_mock(signals.tournament_orga_revoked, 'signal')
+    return calls
+
+
 # -------------------------------------------------------------------- #
 # assign_orga
 # -------------------------------------------------------------------- #
@@ -180,14 +192,18 @@ def test_assign_orga_writes_audit_entry(
 @patch(f'{MOCK_PREFIX}.signals')
 @patch(f'{MOCK_PREFIX}.tournament_log_service')
 @patch(f'{MOCK_PREFIX}.tournament_orga_repository')
+@patch(f'{MOCK_PREFIX}.tournament_repository')
 def test_revoke_orga_removes_assignment(
-    mock_repo, mock_log_service, mock_signals, mock_db
+    mock_tournament_repo, mock_repo, mock_log_service, mock_signals, mock_db
 ):
     user_id = UserID(generate_uuid())
     initiator_id = UserID(generate_uuid())
     orga = _create_orga(user_id=user_id)
 
     mock_repo.find_orga_for_tournament_and_user.return_value = orga
+    calls = _track_revocation_calls(
+        mock_tournament_repo, mock_repo, mock_log_service, mock_signals, mock_db
+    )
 
     result = tournament_orga_service.revoke_orga(
         TOURNAMENT_ID, user_id, initiator_id
@@ -201,19 +217,42 @@ def test_revoke_orga_removes_assignment(
     mock_repo.delete_orga.assert_called_once_with(orga.id)
     mock_signals.tournament_orga_revoked.send.assert_called_once()
     mock_db.session.commit.assert_called_once()
+    mock_tournament_repo.lock_tournament_for_update.assert_called_once_with(
+        TOURNAMENT_ID
+    )
+    assert [c[0] for c in calls.method_calls] == [
+        'tournament_repo.lock_tournament_for_update',
+        'orga_repo.find_orga_for_tournament_and_user',
+        'orga_repo.delete_orga',
+        'audit.create_log_entry',
+        'session.commit',
+        'signal.send',
+    ]
+    mock_tournament_repo.rollback_session.assert_not_called()
+    mock_db.session.rollback.assert_not_called()
+    event = mock_signals.tournament_orga_revoked.send.call_args.kwargs['event']
+    assert event.tournament_id == TOURNAMENT_ID
+    assert event.user_id == user_id
+    mock_signals.tournament_orga_revoked.send.assert_called_once_with(
+        None, event=event
+    )
 
 
 @patch(f'{MOCK_PREFIX}.db')
 @patch(f'{MOCK_PREFIX}.signals')
 @patch(f'{MOCK_PREFIX}.tournament_log_service')
 @patch(f'{MOCK_PREFIX}.tournament_orga_repository')
+@patch(f'{MOCK_PREFIX}.tournament_repository')
 def test_revoke_orga_when_absent_returns_err(
-    mock_repo, mock_log_service, mock_signals, mock_db
+    mock_tournament_repo, mock_repo, mock_log_service, mock_signals, mock_db
 ):
     user_id = UserID(generate_uuid())
     initiator_id = UserID(generate_uuid())
 
     mock_repo.find_orga_for_tournament_and_user.return_value = None
+    calls = _track_revocation_calls(
+        mock_tournament_repo, mock_repo, mock_log_service, mock_signals, mock_db
+    )
 
     result = tournament_orga_service.revoke_orga(
         TOURNAMENT_ID, user_id, initiator_id
@@ -226,20 +265,36 @@ def test_revoke_orga_when_absent_returns_err(
     mock_log_service.create_log_entry.assert_not_called()
     mock_signals.tournament_orga_revoked.send.assert_not_called()
     mock_db.session.commit.assert_not_called()
+    mock_tournament_repo.lock_tournament_for_update.assert_called_once_with(
+        TOURNAMENT_ID
+    )
+    mock_repo.find_orga_for_tournament_and_user.assert_called_once_with(
+        TOURNAMENT_ID, user_id
+    )
+    mock_tournament_repo.rollback_session.assert_called_once_with()
+    assert [c[0] for c in calls.method_calls] == [
+        'tournament_repo.lock_tournament_for_update',
+        'orga_repo.find_orga_for_tournament_and_user',
+        'tournament_repo.rollback_session',
+    ]
 
 
 @patch(f'{MOCK_PREFIX}.db')
 @patch(f'{MOCK_PREFIX}.signals')
 @patch(f'{MOCK_PREFIX}.tournament_log_service')
 @patch(f'{MOCK_PREFIX}.tournament_orga_repository')
+@patch(f'{MOCK_PREFIX}.tournament_repository')
 def test_revoke_orga_writes_audit_entry(
-    mock_repo, mock_log_service, mock_signals, mock_db
+    mock_tournament_repo, mock_repo, mock_log_service, mock_signals, mock_db
 ):
     user_id = UserID(generate_uuid())
     initiator_id = UserID(generate_uuid())
     orga = _create_orga(user_id=user_id)
 
     mock_repo.find_orga_for_tournament_and_user.return_value = orga
+    calls = _track_revocation_calls(
+        mock_tournament_repo, mock_repo, mock_log_service, mock_signals, mock_db
+    )
 
     result = tournament_orga_service.revoke_orga(
         TOURNAMENT_ID, user_id, initiator_id
@@ -254,6 +309,20 @@ def test_revoke_orga_writes_audit_entry(
         data={'user_id': str(user_id)},
         commit=False,
     )
+    mock_tournament_repo.lock_tournament_for_update.assert_called_once_with(
+        TOURNAMENT_ID
+    )
+    assert [c[0] for c in calls.method_calls] == [
+        'tournament_repo.lock_tournament_for_update',
+        'orga_repo.find_orga_for_tournament_and_user',
+        'orga_repo.delete_orga',
+        'audit.create_log_entry',
+        'session.commit',
+        'signal.send',
+    ]
+    mock_db.session.commit.assert_called_once_with()
+    mock_db.session.rollback.assert_not_called()
+    mock_tournament_repo.rollback_session.assert_not_called()
 
 
 # -------------------------------------------------------------------- #
@@ -459,11 +528,15 @@ def test_assign_orga_rolls_back_on_non_integrity_failure(
 @patch(f'{MOCK_PREFIX}.signals')
 @patch(f'{MOCK_PREFIX}.tournament_log_service')
 @patch(f'{MOCK_PREFIX}.tournament_orga_repository')
+@patch(f'{MOCK_PREFIX}.tournament_repository')
 def test_revoke_orga_rolls_back_on_failure(
-    mock_repo, mock_log_service, mock_signals, mock_db
+    mock_tournament_repo, mock_repo, mock_log_service, mock_signals, mock_db
 ):
     mock_repo.find_orga_for_tournament_and_user.return_value = _create_orga()
     mock_db.session.commit.side_effect = OperationalError('', {}, Exception())
+    calls = _track_revocation_calls(
+        mock_tournament_repo, mock_repo, mock_log_service, mock_signals, mock_db
+    )
 
     with pytest.raises(OperationalError):
         tournament_orga_service.revoke_orga(
@@ -472,18 +545,35 @@ def test_revoke_orga_rolls_back_on_failure(
 
     mock_db.session.rollback.assert_called_once()
     mock_signals.tournament_orga_revoked.send.assert_not_called()
+    mock_tournament_repo.lock_tournament_for_update.assert_called_once_with(
+        TOURNAMENT_ID
+    )
+    assert [c[0] for c in calls.method_calls] == [
+        'tournament_repo.lock_tournament_for_update',
+        'orga_repo.find_orga_for_tournament_and_user',
+        'orga_repo.delete_orga',
+        'audit.create_log_entry',
+        'session.commit',
+        'session.rollback',
+    ]
+    mock_db.session.commit.assert_called_once_with()
+    assert mock_log_service.create_log_entry.call_args.kwargs['commit'] is False
 
 
 @patch(f'{MOCK_PREFIX}.db')
 @patch(f'{MOCK_PREFIX}.signals')
 @patch(f'{MOCK_PREFIX}.tournament_log_service')
 @patch(f'{MOCK_PREFIX}.tournament_orga_repository')
+@patch(f'{MOCK_PREFIX}.tournament_repository')
 def test_revoke_orga_rolls_back_when_audit_entry_raises(
-    mock_repo, mock_log_service, mock_signals, mock_db
+    mock_tournament_repo, mock_repo, mock_log_service, mock_signals, mock_db
 ):
     mock_repo.find_orga_for_tournament_and_user.return_value = _create_orga()
     mock_log_service.create_log_entry.side_effect = OperationalError(
         '', {}, Exception()
+    )
+    calls = _track_revocation_calls(
+        mock_tournament_repo, mock_repo, mock_log_service, mock_signals, mock_db
     )
 
     with pytest.raises(OperationalError):
@@ -494,3 +584,14 @@ def test_revoke_orga_rolls_back_when_audit_entry_raises(
     mock_db.session.rollback.assert_called_once()
     mock_db.session.commit.assert_not_called()
     mock_signals.tournament_orga_revoked.send.assert_not_called()
+    mock_tournament_repo.lock_tournament_for_update.assert_called_once_with(
+        TOURNAMENT_ID
+    )
+    assert [c[0] for c in calls.method_calls] == [
+        'tournament_repo.lock_tournament_for_update',
+        'orga_repo.find_orga_for_tournament_and_user',
+        'orga_repo.delete_orga',
+        'audit.create_log_entry',
+        'session.rollback',
+    ]
+    assert mock_log_service.create_log_entry.call_args.kwargs['commit'] is False

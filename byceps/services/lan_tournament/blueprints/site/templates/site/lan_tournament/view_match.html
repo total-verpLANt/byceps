@@ -68,8 +68,11 @@
         site without that CSS renders exactly as before. -#}
     <div class='lt-match-main'>
 
+    {# Canonical outcomes/format take precedence; controls stay above scores.
+       FFA placement and correction presentation below remains unchanged. #}
+    {% include 'site/lan_tournament/_match_readiness.html' %}
+
     {%- if is_ffa %}
-    {# ── FFA Placement Display ─────────────────────────────────── #}
     {%- set placed_contestants = contestants|selectattr('placement')|sort(attribute='placement')|list %}
     {%- if match.confirmed_by and placed_contestants %}
     <div class='ffa-match-box'>

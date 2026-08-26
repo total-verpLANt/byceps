@@ -65,9 +65,9 @@ def test_create_team_normalizes_tag(
     mock_domain.validate_team_count.return_value = Ok(None)
     mock_repo.find_active_team_by_name.return_value = None
     mock_repo.find_active_team_by_tag.return_value = None
-    mock_repo.find_participant_by_user.return_value = (
-        _create_participant(user_id=captain_id)
-    )
+    captain = _create_participant(user_id=captain_id)
+    mock_repo.find_participant_by_user.return_value = captain
+    mock_repo.get_participant_for_update.return_value = captain
 
     result = tournament_team_service.create_team(
         TOURNAMENT_ID,
@@ -79,6 +79,14 @@ def test_create_team_normalizes_tag(
     assert result.is_ok()
     team, _event = result.unwrap()
     assert team.tag == expected_tag
+    mock_repo.get_participant_for_update.assert_called_once_with(captain.id)
+    updated_captain = mock_repo.update_participant_flush.call_args.args[0]
+    assert updated_captain.id == captain.id
+    assert updated_captain.team_id == team.id
+    assert captain.team_id is None
+    mock_repo.update_participant_flush.assert_called_once()
+    mock_repo.update_participant.assert_not_called()
+    mock_repo.commit_session.assert_called_once_with()
 
 
 @patch(f'{MOCK_PREFIX}.signals')
@@ -98,9 +106,9 @@ def test_create_team_empty_tag_skips_duplicate_check(
     mock_repo.get_teams_for_tournament.return_value = []
     mock_domain.validate_team_count.return_value = Ok(None)
     mock_repo.find_active_team_by_name.return_value = None
-    mock_repo.find_participant_by_user.return_value = (
-        _create_participant(user_id=captain_id)
-    )
+    captain = _create_participant(user_id=captain_id)
+    mock_repo.find_participant_by_user.return_value = captain
+    mock_repo.get_participant_for_update.return_value = captain
 
     result = tournament_team_service.create_team(
         TOURNAMENT_ID,
@@ -343,7 +351,9 @@ def test_create_team_integrity_error_returns_err(
     mock_domain.validate_team_count.return_value = Ok(None)
     mock_repo.find_active_team_by_name.return_value = None
     mock_repo.find_active_team_by_tag.return_value = None
-    mock_repo.find_participant_by_user.return_value = Mock(team_id=None)
+    captain = _create_participant(user_id=captain_id)
+    mock_repo.find_participant_by_user.return_value = captain
+    mock_repo.get_participant_for_update.return_value = captain
 
     orig = Mock(
         constraint_name='uq_lan_tournament_teams_active_name_ci',
@@ -380,7 +390,9 @@ def test_create_team_integrity_error_tag_returns_err(
     mock_domain.validate_team_count.return_value = Ok(None)
     mock_repo.find_active_team_by_name.return_value = None
     mock_repo.find_active_team_by_tag.return_value = None
-    mock_repo.find_participant_by_user.return_value = Mock(team_id=None)
+    captain = _create_participant(user_id=captain_id)
+    mock_repo.find_participant_by_user.return_value = captain
+    mock_repo.get_participant_for_update.return_value = captain
 
     orig = Mock(
         constraint_name='uq_lan_tournament_teams_active_tag_ci',
@@ -418,7 +430,9 @@ def test_create_team_integrity_error_unknown_constraint_reraises(
     mock_domain.validate_team_count.return_value = Ok(None)
     mock_repo.find_active_team_by_name.return_value = None
     mock_repo.find_active_team_by_tag.return_value = None
-    mock_repo.find_participant_by_user.return_value = Mock(team_id=None)
+    captain = _create_participant(user_id=captain_id)
+    mock_repo.find_participant_by_user.return_value = captain
+    mock_repo.get_participant_for_update.return_value = captain
 
     orig = Mock(constraint_name='some_other_constraint')
     mock_repo.create_team.side_effect = IntegrityError('', {}, orig)
@@ -429,6 +443,9 @@ def test_create_team_integrity_error_unknown_constraint_reraises(
             'Team Alpha',
             captain_id,
         )
+    mock_db.session.rollback.assert_called_once_with()
+    mock_repo.rollback_session.assert_called_once_with()
+    mock_repo.commit_session.assert_not_called()
 
 
 # -------------------------------------------------------------------- #
@@ -592,6 +609,170 @@ def test_update_team_unchanged_name_skips_name_duplicate_check(
 
     assert result.is_ok()
     mock_repo.find_active_team_by_name.assert_not_called()
+
+
+# -------------------------------------------------------------------- #
+# acting captain (site captain routes)
+# -------------------------------------------------------------------- #
+
+NOT_CAPTAIN = 'Only the team captain can update this team.'
+
+
+def _roster_world(mock_repo):
+    captain_user_id = UserID(generate_uuid())
+    member = _create_participant()
+    other = _create_participant()
+    team = _create_team(captain_user_id=captain_user_id)
+    mock_repo.find_team.return_value = team
+    mock_repo.get_team_for_update.return_value = team
+    mock_repo.get_participants_for_team.return_value = [member, other]
+    return team, captain_user_id, member, other
+
+
+def _call(operation, team, other, **kwargs):
+    if operation == 'transfer':
+        return tournament_team_service.transfer_captain(
+            team.id, other.user_id, **kwargs
+        )
+    return tournament_team_service.remove_team_member(
+        team.id, other.user_id, **kwargs
+    )
+
+
+@pytest.mark.parametrize('operation', ['transfer', 'remove'])
+@patch(f'{MOCK_PREFIX}._lock_roster_matches_flush', return_value=[])
+@patch(f'{MOCK_PREFIX}.signals')
+@patch(f'{MOCK_PREFIX}.tournament_repository')
+def test_acting_captain_without_a_roster_row_is_refused(
+    mock_repo, mock_signals, mock_lock, operation
+):
+    """The captaincy alone is not enough: the captain must still be a member."""
+    team, captain_user_id, _member, other = _roster_world(mock_repo)
+
+    result = _call(operation, team, other, acting_captain_id=captain_user_id)
+
+    assert result.unwrap_err() == NOT_CAPTAIN
+    mock_repo.update_team_captain_flush.assert_not_called()
+    mock_repo.update_participant_flush.assert_not_called()
+    mock_repo.commit_session.assert_not_called()
+    mock_repo.rollback_session.assert_called_once_with()
+
+
+@pytest.mark.parametrize('operation', ['transfer', 'remove'])
+@patch(f'{MOCK_PREFIX}._lock_roster_matches_flush', return_value=[])
+@patch(f'{MOCK_PREFIX}.signals')
+@patch(f'{MOCK_PREFIX}.tournament_repository')
+def test_acting_user_who_is_not_the_captain_is_refused(
+    mock_repo, mock_signals, mock_lock, operation
+):
+    team, _captain_user_id, member, other = _roster_world(mock_repo)
+
+    result = _call(operation, team, other, acting_captain_id=member.user_id)
+
+    assert result.unwrap_err() == NOT_CAPTAIN
+    mock_repo.update_team_captain_flush.assert_not_called()
+    mock_repo.update_participant_flush.assert_not_called()
+
+
+@patch(f'{MOCK_PREFIX}._refresh_roster_matches_flush')
+@patch(f'{MOCK_PREFIX}._lock_roster_matches_flush', return_value=[])
+@patch(f'{MOCK_PREFIX}.signals')
+@patch(f'{MOCK_PREFIX}.tournament_repository')
+def test_a_sitting_captain_may_transfer(
+    mock_repo, mock_signals, mock_lock, mock_refresh
+):
+    team, _captain_user_id, member, other = _roster_world(mock_repo)
+    sitting = _create_participant(user_id=team.captain_user_id)
+    mock_repo.get_participants_for_team.return_value = [sitting, member, other]
+    mock_refresh.return_value = Ok(())
+
+    result = tournament_team_service.transfer_captain(
+        team.id, other.user_id, acting_captain_id=team.captain_user_id
+    )
+
+    assert result.is_ok()
+    mock_repo.update_team_captain_flush.assert_called_once_with(
+        team.id, other.user_id
+    )
+
+
+# -------------------------------------------------------------------- #
+# update_team — the captain is re-checked after the tournament lock
+# -------------------------------------------------------------------- #
+
+
+def _update(team, **kwargs):
+    return tournament_team_service.update_team(
+        team.id,
+        name='New name',
+        tag=None,
+        description=None,
+        image_url=None,
+        join_code=None,
+        **kwargs,
+    )
+
+
+@patch(f'{MOCK_PREFIX}.tournament_repository')
+def test_update_team_rereads_the_captain_under_the_lock(mock_repo):
+    """A captain demoted while the call waited for the lock is refused."""
+    old_captain = UserID(generate_uuid())
+    stale = _create_team(captain_user_id=old_captain)
+    fresh = _create_team(id=stale.id, captain_user_id=UserID(generate_uuid()))
+    mock_repo.get_team.return_value = stale
+    mock_repo.get_team_for_update.return_value = fresh
+    mock_repo.get_participants_for_team.return_value = [
+        _create_participant(user_id=old_captain, team_id=stale.id),
+        _create_participant(user_id=fresh.captain_user_id, team_id=stale.id),
+    ]
+    mock_repo.find_active_team_by_name.return_value = None
+
+    result = _update(stale, current_user_id=old_captain)
+
+    assert result.unwrap_err() == NOT_CAPTAIN
+    mock_repo.update_team.assert_not_called()
+    mock_repo.rollback_session.assert_called_once_with()
+
+
+@patch(f'{MOCK_PREFIX}.tournament_repository')
+def test_update_team_refuses_a_captain_without_a_roster_row(mock_repo):
+    team = _create_team()
+    mock_repo.get_team.return_value = team
+    mock_repo.get_team_for_update.return_value = team
+    mock_repo.get_participants_for_team.return_value = [_create_participant()]
+
+    result = _update(team, current_user_id=team.captain_user_id)
+
+    assert result.unwrap_err() == NOT_CAPTAIN
+    mock_repo.update_team.assert_not_called()
+
+
+@patch(f'{MOCK_PREFIX}.tournament_repository')
+def test_update_team_accepts_a_sitting_captain(mock_repo):
+    team = _create_team()
+    mock_repo.get_team.return_value = team
+    mock_repo.get_team_for_update.return_value = team
+    mock_repo.get_participants_for_team.return_value = [
+        _create_participant(user_id=team.captain_user_id, team_id=team.id)
+    ]
+    mock_repo.find_active_team_by_name.return_value = None
+
+    result = _update(team, current_user_id=team.captain_user_id)
+
+    assert result.is_ok()
+    mock_repo.update_team.assert_called_once()
+
+
+@patch(f'{MOCK_PREFIX}.tournament_repository')
+def test_update_team_admin_bypass_skips_the_captain_check(mock_repo):
+    team = _create_team()
+    mock_repo.get_team.return_value = team
+    mock_repo.find_active_team_by_name.return_value = None
+
+    result = _update(team)
+
+    assert result.is_ok()
+    mock_repo.get_team_for_update.assert_not_called()
 
 
 # -------------------------------------------------------------------- #

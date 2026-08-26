@@ -1,7 +1,14 @@
 from datetime import UTC, datetime
 from unittest.mock import Mock, call, patch
 
+import pytest
+
 from byceps.services.lan_tournament import tournament_match_service
+from byceps.services.lan_tournament.models.match_readiness import (
+    MatchReadiness,
+    ReadinessDisplayStatus,
+)
+from byceps.services.lan_tournament.models.readiness_change import ReadinessChange
 from byceps.services.lan_tournament.models.tournament import (
     Tournament,
     TournamentID,
@@ -41,6 +48,36 @@ NOW = datetime(2025, 6, 15, 14, 0, 0, tzinfo=UTC)
 TOURNAMENT_ID = TournamentID(generate_uuid())
 PARTY_ID = PartyID('lan-2025')
 INITIATOR_ID = UserID(generate_uuid())
+
+
+@pytest.fixture(autouse=True)
+def readiness_collaborators():
+    """Isolate the new external refresh/audit collaborators only."""
+    def refresh(match_id, *, occurred_at):
+        assert occurred_at.tzinfo is None
+        return Ok(ReadinessChange(
+            match=_create_match(match_id=match_id), actor_role=None,
+            readiness=MatchReadiness(
+                status=ReadinessDisplayStatus.NOT_YET_OCCUPIED,
+                ready_sides=(), match_id=match_id,
+            ),
+        ))
+
+    with (
+        patch('byceps.services.lan_tournament.tournament_readiness_service'
+              '.refresh_pairing_and_invitations_flush', side_effect=refresh),
+        patch('byceps.services.lan_tournament.tournament_match_service'
+              '.create_log_entry') as audit,
+    ):
+        yield
+        assert all(c.kwargs.get('commit') is False for c in audit.call_args_list)
+
+
+def _stub_pairing_reads(repo, matches):
+    """Known live rows have no pairing/claims yet; no audit transition."""
+    by_id = {match.id: match for match in matches}
+    repo.find_match.side_effect = by_id.get
+    repo.get_match.side_effect = by_id.__getitem__
 
 
 # -------------------------------------------------------------------- #
@@ -91,6 +128,7 @@ def test_defwin_participant_sole_opponent_advances(mock_repo):
     mock_repo.find_contestant_entries_for_participant_in_tournament.return_value = [
         (contestant, match)
     ]
+    _stub_pairing_reads(mock_repo, [match])
     # After deletion, only the opponent remains
     mock_repo.get_contestants_for_match.return_value = [opponent]
     # Next match has no contestants yet
@@ -113,7 +151,7 @@ def test_defwin_participant_sole_opponent_advances(mock_repo):
 
     # Contestant was deleted from the original match
     mock_repo.delete_contestant_from_match.assert_called_once_with(
-        match_id, participant_id=participant_id
+        match_id, team_id=None, participant_id=participant_id
     )
     # Opponent was advanced to next match
     mock_repo.create_match_contestant.assert_called_once()
@@ -143,6 +181,7 @@ def test_defwin_participant_terminal_no_advance_no_initiator(mock_repo):
     mock_repo.find_contestant_entries_for_participant_in_tournament.return_value = [
         (contestant, match)
     ]
+    _stub_pairing_reads(mock_repo, [match])
     mock_repo.get_contestants_for_match.return_value = [opponent]
 
     result = tournament_match_service.handle_defwin_for_removed_participant(
@@ -174,6 +213,7 @@ def test_defwin_participant_both_removed_no_advance(mock_repo):
     mock_repo.find_contestant_entries_for_participant_in_tournament.return_value = [
         (contestant, match)
     ]
+    _stub_pairing_reads(mock_repo, [match])
     # After deletion, no contestants remain
     mock_repo.get_contestants_for_match.return_value = []
 
@@ -214,6 +254,7 @@ def test_defwin_participant_already_advanced_skips(mock_repo):
     mock_repo.find_contestant_entries_for_participant_in_tournament.return_value = [
         (contestant, match)
     ]
+    _stub_pairing_reads(mock_repo, [match])
     mock_repo.get_contestants_for_match.side_effect = lambda mid: (
         [opponent] if mid == match_id else [opponent_in_next]
     )
@@ -263,6 +304,7 @@ def test_defwin_participant_multiple_matches(mock_repo):
         (contestant1, match1),
         (contestant2, match2),
     ]
+    _stub_pairing_reads(mock_repo, [match1, match2])
 
     def get_contestants(mid):
         if mid == match1_id:
@@ -327,6 +369,7 @@ def test_defwin_team_sole_opponent_advances(mock_repo):
     mock_repo.find_contestant_entries_for_team_in_tournament.return_value = [
         (contestant, match)
     ]
+    _stub_pairing_reads(mock_repo, [match])
     mock_repo.get_contestants_for_match.side_effect = lambda mid: (
         [opponent] if mid == match_id else []
     )
@@ -373,6 +416,7 @@ def test_defwin_participant_with_initiator_calls_confirm_match(mock_repo):
     mock_repo.find_contestant_entries_for_participant_in_tournament.return_value = [
         (contestant, match)
     ]
+    _stub_pairing_reads(mock_repo, [match])
     mock_repo.get_contestants_for_match.side_effect = lambda mid: (
         [opponent] if mid == match_id else []
     )
@@ -420,6 +464,7 @@ def test_defwin_participant_terminal_with_initiator_confirms(
     mock_repo.find_contestant_entries_for_participant_in_tournament.return_value = [
         (contestant, match)
     ]
+    _stub_pairing_reads(mock_repo, [match])
     mock_repo.get_contestants_for_match.return_value = [opponent]
 
     # get_tournament() is called for auto-complete check on terminal matches.
@@ -490,6 +535,7 @@ def test_defwin_participant_multiple_matches_with_initiator(mock_repo):
         (contestant1, match1),
         (contestant2, match2),
     ]
+    _stub_pairing_reads(mock_repo, [match1, match2])
 
     def get_contestants(mid):
         if mid == match1_id:
@@ -533,6 +579,7 @@ def test_defwin_team_with_initiator_calls_confirm_match(mock_repo):
     mock_repo.find_contestant_entries_for_team_in_tournament.return_value = [
         (contestant, match)
     ]
+    _stub_pairing_reads(mock_repo, [match])
     mock_repo.get_contestants_for_match.side_effect = lambda mid: (
         [opponent] if mid == match_id else []
     )
@@ -578,6 +625,7 @@ def test_defwin_terminal_no_initiator_no_confirm(mock_repo):
     mock_repo.find_contestant_entries_for_participant_in_tournament.return_value = [
         (contestant, match)
     ]
+    _stub_pairing_reads(mock_repo, [match])
     mock_repo.get_contestants_for_match.return_value = [opponent]
 
     result = tournament_match_service.handle_defwin_for_removed_participant(
@@ -613,6 +661,7 @@ def test_defwin_terminal_elimination_triggers_auto_complete(mock_repo):
     mock_repo.find_contestant_entries_for_participant_in_tournament.return_value = [
         (contestant, match)
     ]
+    _stub_pairing_reads(mock_repo, [match])
     mock_repo.get_contestants_for_match.return_value = [opponent]
 
     # SE mode → auto-complete should trigger.
@@ -676,6 +725,7 @@ def test_defwin_terminal_rr_completes_plain_round_robin(
     mock_repo.find_contestant_entries_for_participant_in_tournament.return_value = [
         (contestant, match)
     ]
+    _stub_pairing_reads(mock_repo, [match])
     mock_repo.get_contestants_for_match.return_value = [opponent]
 
     mock_tournament = _create_tournament(game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.ROUND_ROBIN)
@@ -727,6 +777,7 @@ def test_defwin_both_removed_terminal_no_confirm(mock_repo):
     mock_repo.find_contestant_entries_for_participant_in_tournament.return_value = [
         (contestant, match)
     ]
+    _stub_pairing_reads(mock_repo, [match])
     mock_repo.get_contestants_for_match.return_value = []
 
     result = tournament_match_service.handle_defwin_for_removed_participant(
@@ -776,7 +827,8 @@ def test_clear_bracket_deletes_all_wired_matches(mock_repo, mock_signals):
         _create_match(match_id=m4_id),
     ]
 
-    mock_repo.get_matches_for_tournament.return_value = matches
+    mock_repo.get_matches_for_tournament_ordered_fresh.return_value = matches
+    _stub_pairing_reads(mock_repo, matches)
 
     events = tournament_match_service.clear_bracket(TOURNAMENT_ID)
 
@@ -784,14 +836,18 @@ def test_clear_bracket_deletes_all_wired_matches(mock_repo, mock_signals):
     # deletion.  Order matters because deleting matches before
     # NULLing self-referential FKs causes IntegrityError on PostgreSQL.
     expected_repo_calls = [
-        call.get_matches_for_tournament(TOURNAMENT_ID),
+        call.lock_tournament_for_update(TOURNAMENT_ID),
+        call.get_matches_for_tournament_ordered_fresh(TOURNAMENT_ID),
+        call.lock_matches_for_update([m1_id, m2_id, m3_id, m4_id]),
         call.get_contestants_for_matches([]),
         call.null_self_referential_fks(TOURNAMENT_ID),
     ]
     for mid in [m1_id, m2_id, m3_id, m4_id]:
         expected_repo_calls += [
             call.delete_comments_for_match_flush(mid),
+            call.get_match(mid),
             call.delete_contestants_for_match_flush(mid),
+            call.get_match(mid),
             call.delete_match_flush(mid),
         ]
 
@@ -810,7 +866,7 @@ def test_clear_bracket_deletes_all_wired_matches(mock_repo, mock_signals):
 )
 def test_clear_bracket_returns_ok_on_empty(mock_repo, _mock_signals):
     """`clear_bracket` without matches returns no events."""
-    mock_repo.get_matches_for_tournament.return_value = []
+    mock_repo.get_matches_for_tournament_ordered_fresh.return_value = []
 
     result = tournament_match_service.clear_bracket(TOURNAMENT_ID)
 

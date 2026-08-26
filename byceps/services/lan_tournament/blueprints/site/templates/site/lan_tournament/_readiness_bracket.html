@@ -1,0 +1,52 @@
+{# Read-only presentation of the shared projection, never contestant occupancy. #}
+{% macro render_readiness_status(readiness) -%}
+  {%- if readiness.outcome == 'confirmed' -%}
+    {{ _('Confirmed') }}
+  {%- elif readiness.outcome == 'defwin' -%}
+    {{ _('DEFWIN') }}
+  {%- elif readiness.outcome == 'completed' -%}
+    {{ _('Completed') }}
+  {%- elif readiness.outcome == 'cancelled' -%}
+    {{ _('Cancelled') }}
+  {%- elif not readiness.supports_readiness -%}
+    {{ _('Readiness unavailable for this format') }}
+  {%- elif readiness.status.value == 'both_ready' -%}
+    {{ _('Both ready') }} · {{ _('Side A ready') }} · {{ _('Side B ready') }}
+  {%- elif readiness.status.value == 'partially_ready' -%}
+    {{ _('Partially ready') }} ·
+    {%- if readiness.ready_sides[0].value == 'a' %}
+      {{ _('Side A ready') }} · {{ _('Side B not ready') }}
+    {%- else %}
+      {{ _('Side B ready') }} · {{ _('Side A not ready') }}
+    {%- endif -%}
+  {%- elif readiness.assignment_complete -%}
+    {{ _('Not ready') }}
+  {%- else -%}
+    {{ _('Waiting for opponent') }}
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro render_readiness_index(match_data, readiness_by_match_id, phase_view) -%}
+<section aria-label='{{ _("Match readiness") }}' data-lt-readiness-index>
+  <h2>{{ _('Match readiness') }}</h2>
+  <ul class='lt-ml'>
+    {%- for entry in match_data if not phase_view or entry.match.phase == phase_view %}
+    {%- set match = entry.match %}
+    {%- set readiness = readiness_by_match_id[match.id] %}
+    <li data-lt-readiness-match='{{ match.id }}'>
+      <a href='{{ url_for("lan_tournament.view_match", match_id=match.id) }}'>
+        {{ _('Match %(num)s', num=loop.index) }}
+        {%- if match.bracket and match.bracket.value == 'P3' %} · {{ _('Third-place match') }}
+        {%- elif match.bracket and match.bracket.value == 'GF' %} · {{ _('Grand Final') }}
+        {%- else %}
+          {%- if match.bracket %} · {{ match.bracket.value }}{% endif %} · {{ _('Round %(num)s', num=(match.round or 0) + 1) }}
+        {%- endif %}
+      </a>
+      <span class='lt-ml__status'>{{ render_readiness_status(readiness) }}</span>
+    </li>
+    {%- else %}
+    <li>{{ _('No matches have been created yet.') }}</li>
+    {%- endfor %}
+  </ul>
+</section>
+{%- endmacro %}

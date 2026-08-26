@@ -9,8 +9,17 @@ submission cost.
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+from byceps.services.lan_tournament.models.match_readiness import (
+    MatchReadiness,
+    ReadinessDisplayStatus,
+)
+from byceps.services.lan_tournament.models.readiness_change import ReadinessChange
 from byceps.services.lan_tournament.models.tournament_match import (
+    MatchInvitationID,
     CorrectionCase,
+    TournamentMatch,
     TournamentMatchID,
 )
 from byceps.services.lan_tournament.models.tournament_match_to_contestant import (
@@ -33,21 +42,50 @@ USER_ID = generate_uuid()
 PARTICIPANT_A = TournamentParticipantID(generate_uuid())
 
 
-def _make_match(*, confirmed: bool) -> MagicMock:
-    m = MagicMock()
-    m.id = MATCH_ID
-    m.tournament_id = TOURNAMENT_ID
-    m.confirmed_by = USER_ID if confirmed else None
-    m.next_match_id = None
-    m.loser_next_match_id = None
-    m.bracket = None
-    return m
+@pytest.fixture(autouse=True)
+def readiness_reset():
+    pending_ids: tuple[MatchInvitationID, ...] = (MatchInvitationID(generate_uuid()),)
+    def reset(match_id, *, occurred_at):
+        assert occurred_at.tzinfo is None
+        dispatch.assert_not_called()
+        match = TournamentMatch(
+            id=match_id, tournament_id=TOURNAMENT_ID, group_order=None,
+            match_order=0, round=None, next_match_id=None, confirmed_by=None,
+            created_at=occurred_at,
+        )
+        return Ok(ReadinessChange(
+            match=match, actor_role=None,
+            readiness=MatchReadiness(
+                status=ReadinessDisplayStatus.NOT_YET_OCCUPIED,
+                ready_sides=(), match_id=match_id,
+            ),
+        ))
+
+    with (
+        patch('byceps.services.lan_tournament.tournament_readiness_service'
+              '.reset_readiness_flush', side_effect=reset),
+        patch('byceps.services.lan_tournament.tournament_readiness_service'
+              '.reconcile_invitations_flush', return_value=Ok(pending_ids)),
+        patch('byceps.services.lan_tournament.tournament_readiness_service'
+              '.dispatch_pending_invitations', return_value=Ok(None)) as dispatch,
+    ):
+        yield
 
 
-def _played_pair() -> list[MagicMock]:
+def _make_match(*, confirmed: bool) -> TournamentMatch:
+    return TournamentMatch(
+        id=MATCH_ID, tournament_id=TOURNAMENT_ID, group_order=None,
+        match_order=0, round=None, next_match_id=None,
+        confirmed_by=USER_ID if confirmed else None, created_at=datetime.now(UTC),
+    )
+
+
+def _played_pair() -> list[TournamentMatchToContestant]:
     """A played match; fewer real contestants is a walkover."""
     return [
-        MagicMock(
+        TournamentMatchToContestant(
+            id=TournamentMatchToContestantID(generate_uuid()),
+            tournament_match_id=MATCH_ID, created_at=datetime.now(UTC),
             participant_id=TournamentParticipantID(generate_uuid()),
             team_id=None,
             score=score,

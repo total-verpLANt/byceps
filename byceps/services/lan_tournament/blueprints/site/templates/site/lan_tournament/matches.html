@@ -1,6 +1,4 @@
 {% extends 'layout/site/lan_tournament.html' %}
-{% from 'macros/icons.html' import render_icon %}
-{% from 'macros/misc.html' import render_tag %}
 {% from 'macros/lan_tournament.html' import render_hover_name, render_match_ref, render_tournament_subnav %}
 {% set page_title = [_('Matches'), tournament.name] %}
 
@@ -17,37 +15,29 @@
 
   {{ render_tournament_subnav(tournament, active_tab) }}
 
-  {%- if match_quantities %}
-  <div class='match-filter-bar'>
-    <a href='{{ url_for('.matches', tournament_id=tournament.id, only='ready') }}'
-       class='button secondary{{ ' active' if only == 'ready' else '' }}'>
-      {{ render_icon('success') }} {{ _('Ready') }}
-      <span class='dimmed' style='margin-left: 0.3rem;'>{{ match_quantities.ready }}</span>
-    </a>
-    <a href='{{ url_for('.matches', tournament_id=tournament.id, only='open') }}'
-       class='button secondary{{ ' active' if only == 'open' else '' }}'>
-      {{ render_icon('pending') }} {{ _('Open') }}
-      <span class='dimmed' style='margin-left: 0.3rem;'>{{ match_quantities.open }}</span>
-    </a>
-    <a href='{{ url_for('.matches', tournament_id=tournament.id, only='all') }}'
-       class='button secondary{{ ' active' if only == 'all' else '' }}'>
-      {{ render_icon('view') }} {{ _('All') }}
-      <span class='dimmed' style='margin-left: 0.3rem;'>{{ match_quantities.all }}</span>
-    </a>
-
-    {%- if current_user_participant and match_data %}
-    <button type='button' id='match-filter-mine' class='button secondary'
+  <nav class='match-filter-bar' aria-label='{{ _('Filter matches') }}'>
+    {%- for key, label, count in match_filter_options %}
+    <a class='button match-filter-bar__item'
+       href='{{ url_for('.matches', tournament_id=tournament.id, only=key) }}'
+       {%- if key == only %} aria-current='page'{% endif %}>
+      {{- label }}<span class='match-filter-bar__count'>{{ count }}</span></a>
+    {%- endfor %}
+    {%- if current_user_participant %}
+    <button type='button' id='match-filter-mine' class='button match-filter-bar__mine'
             aria-pressed='false'
             data-user-team-id='{{ current_user_participant.team_id or "" }}'
             data-user-participant-id='{{ current_user_participant.id or "" }}'>
-      {{ render_icon('user') }} {{ _('My Matches') }}
-    </button>
+      {{- _('My Matches') }}</button>
     {%- endif %}
-  </div>
-  {%- endif %}
+  </nav>
 
-  {%- if match_data %}
   <div class='match-table'>
+    <div class='match-row match-row--head'>
+      <span>{{ _('Match') }}</span>
+      <span>{{ _('Participants') }}</span>
+      <span>{{ _('Result') }}</span>
+      <span>{{ _('Status') }}</span>
+    </div>
     {%- for data in match_data %}
     {%- set match = data.match %}
     {%- set contestants = data.contestants %}
@@ -88,32 +78,45 @@
           {%- endfor %}
         </div>
         <div class='match-list-status'>
-          {%- if match.confirmed_by and contestants|selectattr('team_id')|list|length + contestants|selectattr('participant_id')|list|length < 2 %}
-            {{ render_tag(_('DEFWIN'), class='color-info') }}
-          {%- elif match.confirmed_by %}
-            {{ render_tag(_('Confirmed'), class='color-success') }}
+          {%- set readiness = data.readiness %}
+          {%- set bucket = readiness.filter_bucket %}
+          {%- if bucket == 'finished' %}
+          <span class='readiness-badge readiness-badge--done'>
+            {{- _('DEFWIN') if readiness.outcome == 'defwin'
+                else _('Confirmed') if readiness.outcome == 'confirmed'
+                else _('Completed') if readiness.outcome == 'completed'
+                else _('Cancelled') if readiness.outcome == 'cancelled'
+                else _('Finished') -}}
+          </span>
+          {%- elif bucket == 'no_readiness' %}
+          <span class='readiness-badge readiness-badge--ffa'>{{ _('Open (no readiness)') }}</span>
+          {%- elif bucket == 'both_ready' %}
+          <span class='readiness-badge readiness-badge--both'><span aria-hidden='true'>✓</span> {{ _('Both ready') }}</span>
+          {%- elif bucket == 'partially_ready' %}
+          <span class='readiness-badge readiness-badge--part'><span aria-hidden='true'>◐</span> {{ _('Partially ready') }}</span>
+          {%- if readiness.ready_sides[0].value == 'a' %}
+          <small class='readiness-badge__detail'>{{ _('Side A ready') }} · {{ _('Side B not ready') }}</small>
           {%- else %}
-            {{ render_tag(_('Pending'), class='color-warning') }}
+          <small class='readiness-badge__detail'>{{ _('Side B ready') }} · {{ _('Side A not ready') }}</small>
+          {%- endif %}
+          {%- elif bucket == 'not_ready' %}
+          <span class='readiness-badge readiness-badge--none'><span aria-hidden='true'>○</span> {{ _('Not ready') }}</span>
+          {%- else %}
+          <span class='readiness-badge readiness-badge--wait'>{{ _('Waiting for opponent') }}</span>
           {%- endif %}
         </div>
       </div>
     </a>
     {%- endfor %}
-  </div>
-  {%- else %}
-  <p class='dimmed'>
-    {%- if only == 'ready' %}
-      {%- if current_user_participant %}
-        {{ _('No matches are ready for you yet.') }}
-      {%- else %}
-        {{ _('No ready matches.') }}
-      {%- endif %}
-    {%- elif only == 'open' %}
-      {{ _('No open matches.') }}
-    {%- else %}
+    {%- if not match_data %}
+    <p class='match-list-empty'>
+      {%- if only == 'all' %}
       {{ _('No matches have been created yet.') }}
+      {%- else %}
+      {{ _('No matches with this readiness state.') }}
+      {%- endif %}
+    </p>
     {%- endif %}
-  </p>
-  {%- endif %}
+  </div>
 
 {%- endblock %}

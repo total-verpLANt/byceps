@@ -11,6 +11,9 @@ from byceps.services.lan_tournament import (
     tournament_participant_service,
     tournament_qualification_repository,
     tournament_qualification_service,
+    tournament_readiness_authorization_service,
+    tournament_readiness_service,
+    tournament_repository,
     tournament_request_domain_service,
     tournament_request_service,
     tournament_score_service,
@@ -18,13 +21,26 @@ from byceps.services.lan_tournament import (
     tournament_service,
     tournament_team_service,
 )
+from byceps.services.lan_tournament.blueprints.readiness_csrf import (
+    get_readiness_csrf_token,
+    validate_readiness_csrf_token,
+)
+from byceps.services.lan_tournament.models.match_readiness import (
+    derive_match_readiness,
+    real_contestants,
+    side_for_contestant,
+)
 from byceps.services.lan_tournament.models.bracket import Bracket
 from byceps.services.lan_tournament.models.tournament import (
     Tournament,
     TournamentID,
 )
 from byceps.services.lan_tournament.models.tournament_match import (
+    MatchSide,
     TournamentMatchID,
+)
+from byceps.services.lan_tournament.models.tournament_match_to_contestant import (
+    TournamentMatchToContestant,
 )
 from byceps.services.lan_tournament.models.tournament_team import (
     TournamentTeam,
@@ -39,18 +55,23 @@ from byceps.services.lan_tournament.models.tournament_request import (
 )
 from byceps.services.lan_tournament.lan_tournament_view_helpers import (
     _resolve_contestant_name,
+    active_match_filter,
     build_contestant_name_lookups,
     build_ffa_standings,
     build_hover_lookups,
+    build_match_readiness_projections,
     build_round_robin_standings,
     build_seat_lookup,
     compute_feed_counts,
+    count_match_projections,
+    filter_match_projections,
     contestant_names,
     ffa_elimination_mode,
     ffa_grand_final_offer,
     ffa_grand_final_refusal,
     ffa_phase,
     is_walkover_match,
+    match_filter_options,
     match_uses_placements,
     parse_match_ids,
     parse_int,
@@ -95,6 +116,7 @@ from byceps.services.party import party_service
 from byceps.services.ticketing import ticket_service
 from byceps.services.user import user_service
 from byceps.services.user.models import UserID
+from byceps.util.authz import get_permissions_for_user
 from byceps.util.framework.blueprint import create_blueprint
 from byceps.util.framework.flash import (
     flash_error,
@@ -111,6 +133,8 @@ from .forms import (
     MatchCommentForm,
     OrgaMatchCorrectionForm,
     OrgaMatchUnconfirmForm,
+    MatchReadyRevokeForm,
+    MatchReadyClaimForm,
     SiteTeamCreateForm,
     SiteTeamUpdateForm,
     TournamentProposeForm,
@@ -230,6 +254,9 @@ def view(tournament_id):
         tournament.id
     )
 
+    match_data, readiness_by_match_id = _site_match_projections(tournament)
+    match_quantities = _site_match_quantities(match_data)
+
     return {
         'tournament': tournament,
         'participants': participants,
@@ -261,6 +288,10 @@ def view(tournament_id):
             else None
         ),
         'orgas': orgas,
+        'match_quantities': match_quantities,
+        'match_filter_options': match_filter_options(match_quantities),
+        'only': 'all',
+        'readiness_by_match_id': readiness_by_match_id,
         'ffa_phase': ffa_phase(tournament),
         'elimination_mode_label': (
             request_mode_label(tournament.elimination_mode)
@@ -338,7 +369,7 @@ def leave(tournament_id):
             flash_error(
                 gettext(
                     'Could not leave: %(error)s',
-                    error=error_message,
+                    error=gettext(error_message),
                 )
             )
 
@@ -561,7 +592,7 @@ def join_team(team_id):
     join_code = request.form.get('join_code', '').strip() or None
 
     match tournament_team_service.join_team(
-        current_user_participant.id, team_id, join_code=join_code
+        current_user_participant.id, team.id, join_code=join_code
     ):
         case Ok(_event):
             flash_success(
@@ -574,7 +605,7 @@ def join_team(team_id):
             flash_error(
                 gettext(
                     'Could not join team: %(error)s',
-                    error=error_message,
+                    error=gettext(error_message),
                 )
             )
 
@@ -626,7 +657,7 @@ def leave_team(team_id):
             flash_error(
                 gettext(
                     'Could not leave team: %(error)s',
-                    error=error_message,
+                    error=gettext(error_message),
                 )
             )
 
@@ -670,6 +701,7 @@ def _is_captain_management_allowed(tournament) -> bool:
 def _require_team_captain(tournament, team):
     """Abort with 403 if the current user is not the team captain.
 
+    A captain whose participant row was removed no longer counts.
     Also aborts if captain management is not allowed for the current
     tournament status (flashes an error in that case).
     """
@@ -677,6 +709,9 @@ def _require_team_captain(tournament, team):
         abort(403)
 
     if g.user.id != team.captain_user_id:
+        abort(403)
+
+    if g.user.id not in _get_team_member_user_ids(team.id):
         abort(403)
 
     if not _is_captain_management_allowed(tournament):
@@ -811,7 +846,7 @@ def site_transfer_captain(tournament_id, team_id):
         return redirect_to('.view_team', team_id=team.id)
 
     match tournament_team_service.transfer_captain(
-        team.id, new_captain_user_id
+        team.id, new_captain_user_id, acting_captain_id=g.user.id
     ):
         case Ok(_updated_team):
             flash_success(
@@ -821,7 +856,7 @@ def site_transfer_captain(tournament_id, team_id):
             flash_error(
                 gettext(
                     'Could not transfer captain: %(error)s',
-                    error=error_message,
+                    error=gettext(error_message),
                 )
             )
 
@@ -863,7 +898,10 @@ def site_remove_member(tournament_id, team_id):
         return redirect_to('.view_team', team_id=team.id)
 
     match tournament_team_service.remove_team_member(
-        team.id, user_id, initiator_id=g.user.id
+        team.id,
+        user_id,
+        initiator_id=g.user.id,
+        acting_captain_id=g.user.id,
     ):
         case Ok(_event):
             flash_success(
@@ -931,33 +969,26 @@ def _get_team_or_404(team_id) -> TournamentTeam:
 # matches
 
 
-def _is_match_ready(entry: dict) -> bool:
-    """A match is ready when it has 2+ contestants and is NOT confirmed."""
-    return (
-        len(entry['contestants']) >= 2
-        and entry['match'].confirmed_by is None
+def _site_match_projections(tournament):
+    """Read matches, contestants and current pairs in fixed batches, without writes."""
+    matches = tournament_match_service.get_matches_for_tournament_ordered(tournament.id)
+    contestants_by_match = tournament_match_service.get_contestants_for_tournament(tournament.id)
+    readiness_by_match_id = build_match_readiness_projections(
+        tournament, matches, contestants_by_match
     )
+    return [
+        {
+            'match': match,
+            'contestants': contestants_by_match.get(match.id, []),
+            'readiness': readiness_by_match_id[match.id],
+        }
+        for match in matches
+    ], readiness_by_match_id
 
 
-def _is_match_open(entry: dict) -> bool:
-    """A match is open when it has 1+ contestant and is NOT confirmed.
-
-    This is a superset of ready — every ready match is also open.
-    """
-    return (
-        len(entry['contestants']) >= 1
-        and entry['match'].confirmed_by is None
-    )
-
-
-def _is_user_match(entry: dict, participant) -> bool:
-    """Check if any contestant in the match belongs to this participant."""
-    for c in entry['contestants']:
-        if c.team_id and participant.team_id and c.team_id == participant.team_id:
-            return True
-        if c.participant_id and c.participant_id == participant.id:
-            return True
-    return False
+def _site_match_quantities(match_data):
+    """Count every readiness bucket over all matches of the tournament."""
+    return count_match_projections([entry['readiness'] for entry in match_data])
 
 
 @blueprint.get('/<tournament_id>/matches')
@@ -973,26 +1004,7 @@ def matches(tournament_id):
     ):
         abort(404)
 
-    matches = tournament_match_service.get_matches_for_tournament_ordered(
-        tournament.id
-    )
-
-    # Bulk-fetch all contestants for the tournament in one query (not N).
-    contestants_by_match = (
-        tournament_match_service.get_contestants_for_tournament(tournament.id)
-    )
-
-    match_data = []
-    all_contestants = []
-    for match in matches:
-        contestants = contestants_by_match.get(match.id, [])
-        match_data.append(
-            {
-                'match': match,
-                'contestants': contestants,
-            }
-        )
-        all_contestants.append(contestants)
+    match_data, readiness_by_match_id = _site_match_projections(tournament)
 
     # Fetch participants once, share across both helpers.
     participants = (
@@ -1001,7 +1013,6 @@ def matches(tournament_id):
         )
     )
 
-    # Determine current participant early — needed for personal-scope filtering.
     current_user_participant = None
     if g.user.authenticated:
         for p in participants:
@@ -1009,38 +1020,20 @@ def matches(tournament_id):
                 current_user_participant = p
                 break
 
-    # Apply status filter based on ?only= param (all users).
-    only = request.args.get('only', 'ready')
-
-    if current_user_participant:
-        # Participant: ready count is personal-scoped (my matches only).
-        ready_count = sum(
-            1 for e in match_data
-            if _is_match_ready(e) and _is_user_match(e, current_user_participant)
+    match_quantities = _site_match_quantities(match_data)
+    filter_options = match_filter_options(match_quantities)
+    only = active_match_filter(request.args.get('only', 'all'), filter_options)
+    selected_ids = {
+        projection.match_id for projection in filter_match_projections(
+            [entry['readiness'] for entry in match_data], only=only
         )
-    else:
-        # Anonymous / non-participant: ready count is tournament-wide.
-        ready_count = sum(1 for e in match_data if _is_match_ready(e))
-
-    open_count = sum(1 for e in match_data if _is_match_open(e))
-    total_count = len(match_data)
-    match_quantities = {
-        'ready': ready_count,
-        'open': open_count,
-        'all': total_count,
     }
-
-    if only == 'ready':
-        if current_user_participant:
-            match_data = [
-                e for e in match_data
-                if _is_match_ready(e) and _is_user_match(e, current_user_participant)
-            ]
-        else:
-            match_data = [e for e in match_data if _is_match_ready(e)]
-    elif only == 'open':
-        match_data = [e for e in match_data if _is_match_open(e)]
-    # 'all' → no filtering
+    match_data = [entry for entry in match_data if entry['match'].id in selected_ids]
+    # Public context/lookup maps contain only the rows the filter selects.
+    readiness_by_match_id = {
+        entry['match'].id: entry['readiness'] for entry in match_data
+    }
+    all_contestants = [entry['contestants'] for entry in match_data]
 
     teams_by_id, participants_by_id = build_contestant_name_lookups(
         tournament.id, all_contestants, participants=participants
@@ -1056,6 +1049,8 @@ def matches(tournament_id):
         'match_data': match_data,
         'only': only,
         'match_quantities': match_quantities,
+        'match_filter_options': filter_options,
+        'readiness_by_match_id': readiness_by_match_id,
         'teams_by_id': teams_by_id,
         'participants_by_id': participants_by_id,
         'seats_by_user_id': seats_by_user_id,
@@ -1198,6 +1193,45 @@ def view_match(match_id):
         else None
     )
 
+    # F-04 readiness display (shared derivation) + controls.
+    effective_format = tournament_domain_service.game_format_for_phase(
+        tournament, match.phase
+    )
+    readiness = build_match_readiness_projections(
+        tournament, [match], {match.id: contestants}
+    )[match.id]
+    is_orga = g.user.authenticated and (
+        'lan_tournament.administrate' in get_permissions_for_user(g.user.id)
+        or tournament_orga_service.is_orga_for_tournament(g.user.id, tournament.id)
+    )
+    readiness_sides = set()
+    readiness_contestants_by_side: dict[MatchSide, TournamentMatchToContestant] = {}
+    if readiness.pairing_valid:
+        pairing = tournament_repository.get_match_pairing(match.id)
+        # Recheck the fetched snapshot's pointer, generation and full membership;
+        # never use association-row order as logical readiness side identity.
+        if derive_match_readiness(
+            match, contestants, pairing=pairing,
+            supports_readiness=effective_format == GameFormat.ONE_V_ONE,
+        ).pairing_valid:
+            readiness_contestants_by_side = {
+                side_for_contestant(contestants, contestant.id, pairing=pairing): contestant
+                for contestant in real_contestants(contestants)
+            }
+            if g.user.authenticated and readiness.mutation_available:
+                sides_result = tournament_readiness_authorization_service.get_user_readiness_sides(
+                    tournament.id, pairing, g.user.id
+                )
+                if sides_result.is_ok():
+                    readiness_sides = set(sides_result.unwrap())
+    controls_enabled = readiness.mutation_available and bool(readiness_sides)
+    csrf_token = get_readiness_csrf_token(g.user.id) if g.user.authenticated else None
+    form_data = {
+        'csrf_token': csrf_token,
+        'expected_pairing_generation': readiness.pairing_generation,
+        'expected_readiness_revision': readiness.readiness_revision,
+    }
+
     return {
         'tournament': tournament,
         'match': match,
@@ -1225,6 +1259,15 @@ def view_match(match_id):
         'affected_downstream_matches': affected_downstream_matches,
         'ack_match_ids': ack_match_ids,
         'max_match_score': tournament_match_service.MAX_MATCH_SCORE,
+        'readiness': readiness,
+        'readiness_sides': readiness_sides,
+        'readiness_contestants_by_side': readiness_contestants_by_side,
+        'is_orga': is_orga,
+        'readiness_controls_enabled': controls_enabled,
+        'effective_match_format': effective_format,
+        'readiness_csrf_token': csrf_token,
+        'claim_form': MatchReadyClaimForm(data=form_data),
+        'revoke_form': MatchReadyRevokeForm(data=form_data),
         'active_tab': 'matches',
     }
 
@@ -1281,6 +1324,86 @@ def set_score(match_id):
         flash_error(gettext(result.unwrap_err()))
     else:
         flash_success(gettext('Match result submitted.'))
+    return redirect_to('.view_match', match_id=match_id)
+
+
+@blueprint.post('/matches/<match_id>/ready/claim')
+@login_required
+def claim_ready(match_id):
+    """Claim readiness for one side of a match (player/captain/orga)."""
+    return _mutate_readiness(match_id, revoke=False)
+
+
+@blueprint.post('/matches/<match_id>/ready/revoke')
+@login_required
+def revoke_ready(match_id):
+    """Withdraw per-side readiness."""
+    return _mutate_readiness(match_id, revoke=True)
+
+
+def _mutate_readiness(match_id, *, revoke):
+    # Validate token and bounded fields before even looking up the subject.
+    token_result = validate_readiness_csrf_token(
+        request.form.get('csrf_token'), g.user.id
+    )
+    if token_result.is_err() or len(request.form.getlist('csrf_token')) != 1:
+        abort(403)
+    form = (MatchReadyRevokeForm if revoke else MatchReadyClaimForm)(request.form)
+    if not form.validate() or len(request.form.getlist('side')) != 1:
+        flash_error(gettext('Invalid form data.'))
+        return redirect_to('.view_match', match_id=match_id)
+
+    try:
+        match_id_obj = TournamentMatchID(uuid.UUID(match_id))
+        match = tournament_match_service.get_match(match_id_obj)
+    except ValueError:
+        abort(404)
+
+    tournament = _get_tournament_or_404(match.tournament_id)
+    if tournament.tournament_status == TournamentStatus.DRAFT:
+        abort(404)
+    if tournament.tournament_status != TournamentStatus.ONGOING:
+        tournament_repository.rollback_session()
+        flash_error(gettext('Tournament is not in progress.'))
+        return redirect_to('.view_match', match_id=match_id)
+
+    revisions = {
+        'expected_pairing_generation': form.expected_pairing_generation.data,
+        'expected_readiness_revision': form.expected_readiness_revision.data,
+    }
+    try:
+        if revoke:
+            result = tournament_readiness_service.revoke_ready_flush(
+                match_id_obj, MatchSide(form.side.data), g.user.id,
+                **revisions,
+            )
+        else:
+            result = tournament_readiness_service.claim_ready_flush(
+                match_id_obj, MatchSide(form.side.data), g.user.id, **revisions,
+            )
+    except Exception:
+        tournament_repository.rollback_session()
+        raise
+    if result.is_err():
+        tournament_repository.rollback_session()
+        if result.unwrap_err() == 'readiness_forbidden':
+            abort(403)
+        flash_error(gettext(result.unwrap_err()))
+        return redirect_to('.view_match', match_id=match_id)
+    change = result.unwrap()
+    try:
+        tournament_repository.commit_session()
+    except Exception:
+        tournament_repository.rollback_session()
+        raise
+    # Dispatch errors cannot undo committed facts. The dispatcher logs failures.
+    dispatch_result = tournament_readiness_service.dispatch_readiness_effects(change)
+    if dispatch_result.is_err():
+        flash_error(gettext(dispatch_result.unwrap_err()))
+    if revoke:
+        flash_success(gettext('Readiness revoked.'))
+    else:
+        flash_success(gettext('Readiness claimed.'))
     return redirect_to('.view_match', match_id=match_id)
 
 
@@ -2166,26 +2289,8 @@ def bracket(tournament_id):
 
     may_administrate = may_administrate_tournament(g.user, tournament.id)
 
-    matches = tournament_match_service.get_matches_for_tournament_ordered(
-        tournament.id
-    )
-
-    # Bulk-fetch all contestants for the tournament in one query (not N).
-    contestants_by_match = (
-        tournament_match_service.get_contestants_for_tournament(tournament.id)
-    )
-
-    match_data = []
-    all_contestants = []
-    for match in matches:
-        contestants = contestants_by_match.get(match.id, [])
-        match_data.append(
-            {
-                'match': match,
-                'contestants': contestants,
-            }
-        )
-        all_contestants.append(contestants)
+    match_data, readiness_by_match_id = _site_match_projections(tournament)
+    all_contestants = [entry['contestants'] for entry in match_data]
 
     # Fetch participants once, share across both helpers.
     participants = (
@@ -2275,6 +2380,7 @@ def bracket(tournament_id):
                     match_id=m.id,
                 ),
                 origin_labels=origin_labels,
+                readiness_by_match_id=readiness_by_match_id,
             )
     elif tournament.elimination_mode in (
         EliminationMode.SINGLE_ELIMINATION,
@@ -2294,6 +2400,7 @@ def bracket(tournament_id):
                 tournament_id=tournament.id,
                 match_id=m.id,
             ),
+            readiness_by_match_id=readiness_by_match_id,
         )
 
     # Round-robin: compute standings table.
@@ -2340,6 +2447,7 @@ def bracket(tournament_id):
         'standings': standings,
         'ffa_standings': ffa_standings,
         'bracket_json': bracket_json,
+        'readiness_by_match_id': readiness_by_match_id,
         'teams_by_id': teams_by_id,
         'participants_by_id': participants_by_id,
         'seats_by_user_id': seats_by_user_id,

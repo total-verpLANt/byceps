@@ -655,10 +655,22 @@ def _make_team_groups(make_tournament, users, mode):
     return tournament, teams
 
 
+def _orphan_the_captaincy(team, captain):
+    """Rebuild legacy data: a team whose removed captain kept the role.
+
+    An admin removal moves the captaincy now. Teams orphaned before that
+    still exist, and only they reach the empty-team branch of
+    `remove_team_member`.
+    """
+    tournament_repository.update_team_captain_flush(team.id, captain.user_id)
+    tournament_repository.commit_session()
+
+
 def _empty_the_weakest_team(tournament, teams, admin, initiator_id):
     """Leave the weakest team of group 0 with one open match, then empty it.
 
-    The captain leaves first; removing the last member empties the team.
+    The captain leaves first (legacy data: the captaincy stays on them);
+    removing the last member empties the team.
     Return the open match and the weakest team's ID.
     """
     group = _group_members(tournament, 0)
@@ -670,6 +682,7 @@ def _empty_the_weakest_team(tournament, teams, admin, initiator_id):
         tournament.id, team.captain_user_id
     )
     _remove(tournament, captain.id, admin)
+    _orphan_the_captaincy(team, captain)
     (member,) = tournament_repository.get_participants_for_team(team.id)
     assert tournament_repository.find_match(open_match.id).confirmed_by is None
 

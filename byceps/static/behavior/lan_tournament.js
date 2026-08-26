@@ -157,7 +157,8 @@ function enableBracketPan(scrollEl) {
  *
  * Toggles visibility of match rows based on whether the current
  * user's team or participant ID appears in the row's data attributes.
- * State persists via ?my_matches=1 URL query param.
+ * State persists via ?my_matches=1 URL query param, which the readiness
+ * filter links carry along so that switching filters keeps the toggle.
  */
 function initMatchFilter() {
   var btn = document.getElementById('match-filter-mine');
@@ -173,6 +174,18 @@ function initMatchFilter() {
     active = true;
     btn.setAttribute('aria-pressed', 'true');
     btn.classList.add('active');
+  }
+
+  function syncFilterLinks() {
+    document.querySelectorAll('.match-filter-bar__item').forEach(function(link) {
+      var target = new URL(link.getAttribute('href'), window.location.href);
+      if (active) {
+        target.searchParams.set('my_matches', '1');
+      } else {
+        target.searchParams.delete('my_matches');
+      }
+      link.setAttribute('href', target.pathname + target.search + target.hash);
+    });
   }
 
   function applyFilter() {
@@ -197,13 +210,14 @@ function initMatchFilter() {
     });
 
     // Persist state to URL without page reload
-    var url = new URL(window.location);
+    var url = new URL(window.location.href);
     if (active) {
       url.searchParams.set('my_matches', '1');
     } else {
       url.searchParams.delete('my_matches');
     }
     history.replaceState(null, '', url);
+    syncFilterLinks();
   }
 
   btn.addEventListener('click', function() {

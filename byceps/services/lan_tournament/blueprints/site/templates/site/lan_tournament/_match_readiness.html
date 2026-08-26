@@ -1,0 +1,125 @@
+{# Native16 context: canonical readiness, verified typed contestant-side map,
+   set[MatchSide] capabilities and
+   prefilled LocalizedForms. Private actor facts never belong here. #}
+{% set ready_sides = readiness.ready_sides | map(attribute='value') | list %}
+{% set can_change = readiness_controls_enabled and readiness.mutation_available
+                    and tournament.tournament_status.name == 'ONGOING' %}
+{# Design states: wait, none, part, both. Outcomes and unsupported formats
+   keep a plain label without a modifier. #}
+{% if readiness.outcome or not readiness.supports_readiness %}
+  {% set state = '' %}
+  {% set state_symbol = '✓' if readiness.outcome == 'confirmed' else '○' %}
+{% else %}
+  {% if readiness.assignment_complete and not readiness_contestants_by_side %}
+    {% set state = 'none' %}
+  {% else %}
+    {% set state = {'not_yet_occupied': 'wait', 'open': 'none', 'partially_ready': 'part', 'both_ready': 'both'}[readiness.status.value] %}
+  {% endif %}
+  {% set state_symbol = {'none': '○', 'part': '◐', 'both': '✓'}.get(state, '') %}
+{% endif %}
+<section class="readiness-card" aria-labelledby="readiness-title-{{ match.id }}"
+     data-match-id="{{ match.id }}"
+     data-readiness-status="{{ readiness.display_status }}"
+     data-original-occupied-since="{{ readiness.original_occupied_since.isoformat() if readiness.original_occupied_since else '' }}"
+     data-pairing-started-at="{{ readiness.pairing_started_at.isoformat() if readiness.pairing_started_at else '' }}"
+     data-side-a-ready-at="{{ readiness.ready_at_a.isoformat() if readiness.ready_at_a else '' }}"
+     data-side-b-ready-at="{{ readiness.ready_at_b.isoformat() if readiness.ready_at_b else '' }}">
+  <h2 id="readiness-title-{{ match.id }}" class="title readiness-card__title">{{ _('Readiness') }}</h2>
+  <p class="readiness-state{{ (' readiness-state--' ~ state) if state else '' }}">
+    {% if state_symbol %}
+    <span class="readiness-state__sym" aria-hidden="true">{{ state_symbol }}</span>
+    {% endif %}
+    <span>
+    {% if readiness.outcome == 'confirmed' %}
+      {{ _('Confirmed') }}
+    {% elif readiness.outcome == 'defwin' %}
+      {{ _('DEFWIN') }}
+    {% elif readiness.outcome == 'bye' %}
+      {{ _('Bye') }}
+    {% elif readiness.outcome == 'completed' %}
+      {{ _('Tournament completed') }}
+    {% elif readiness.outcome == 'cancelled' %}
+      {{ _('Tournament cancelled') }}
+    {% elif not readiness.supports_readiness %}
+      {{ _('Readiness is not available for this match format.') }}
+    {% elif state == 'wait' %}
+      {{ _('Waiting for opponent') }}
+    {% elif state == 'none' %}
+      {{ _('Not ready') }}
+    {% elif state == 'part' %}
+      {{ _('Partially ready') }} — {{ _('Side A ready') if 'a' in ready_sides else _('Side B ready') }}
+    {% elif state == 'both' %}
+      {{ _('Both ready') }}
+    {% endif %}
+    </span>
+  </p>
+  {% if readiness.supports_readiness and not readiness.outcome and state != 'wait' %}
+  <p class="readiness-hint">{{ _('Assignment does not indicate physical presence or that play has started.') }}</p>
+  {% endif %}
+  {% if state != 'wait' %}
+  {% for label, timestamp, kind in [
+      (_('Originally occupied since'), readiness.original_occupied_since, 'original'),
+      (_('Current pairing since'), readiness.pairing_started_at, 'pairing')] %}
+    {% if timestamp %}
+  <p class="readiness-occupied-since" data-occupancy-kind="{{ kind }}">
+    {{ label }}: <time class="readiness-timestamp" datetime="{{ timestamp.isoformat() }}">{{ timestamp|dateformat }}, {{ timestamp|timeformat('short') }}</time>
+  </p>
+    {% endif %}
+  {% endfor %}
+  {% endif %}
+  {% if readiness_contestants_by_side %}
+  <ul class="readiness-sides">
+    {% for declared_side in readiness_contestants_by_side | sort(attribute='value') %}
+    {% set c = readiness_contestants_by_side[declared_side] %}
+    {% set side = declared_side.value %}
+    {% set side_ready_at = readiness.ready_at_a if side == 'a' else readiness.ready_at_b %}
+    <li class="readiness-side{{ ' readiness-side--ready' if side_ready_at else '' }}" data-side="{{ side }}">
+      <div class="readiness-side__who">
+        <span class="readiness-side__label">{{ _('Side A') if side == 'a' else _('Side B') }}</span>
+        <span class="readiness-side__name">
+          {% set team = teams_by_id.get(c.team_id) if c.team_id else none %}
+          {% set participant = participants_by_id.get(c.participant_id) if c.participant_id else none %}
+          {{ team.name if team else participant.screen_name if participant else (c.team_id or c.participant_id)|string }}
+        </span>
+        <span class="readiness-side__state"><span aria-hidden="true">{{ '✓' if side_ready_at else '○' }}</span> {{ _('Ready') if side_ready_at else _('Not ready') }}</span>
+        {% if side_ready_at %}
+        <span class="readiness-side__since">{{ _('Ready since') }}:
+          <time class="readiness-timestamp" datetime="{{ side_ready_at.isoformat() }}">{{ side_ready_at|dateformat }}, {{ side_ready_at|timeformat('short') }}</time>
+        </span>
+        {% endif %}
+      </div>
+      {% if can_change and declared_side in readiness_sides %}
+        {% set form = revoke_form if side_ready_at else claim_form %}
+        {% set form_id = 'readiness-' ~ match.id ~ '-' ~ side %}
+      <form method="post" class="{{ 'readiness-revoke-form' if side_ready_at else 'readiness-claim-form' }}"
+            aria-label="{{ _('Side A') if side == 'a' else _('Side B') }}"
+            action="{{ url_for('.revoke_ready' if side_ready_at else '.claim_ready', match_id=match.id) }}">
+        {{ form.side(value=side, id=form_id ~ '-side') }}
+        {{ form.csrf_token(id=form_id ~ '-csrf') }}
+        {{ form.expected_pairing_generation(id=form_id ~ '-generation') }}
+        {{ form.expected_readiness_revision(id=form_id ~ '-revision') }}
+        {% if side_ready_at %}
+        <button type="submit" class="button secondary readiness-btn">
+          {{ _('Not ready (on behalf of this side)') if is_orga else _('I am not ready') }}
+        </button>
+        {% else %}
+        <button type="submit" class="button readiness-btn readiness-btn--claim">
+          {{ _('Ready (on behalf of this side)') if is_orga else _('I am ready') }}
+        </button>
+        {% endif %}
+      </form>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if tournament.tournament_status.name == 'PAUSED' %}
+  <p class="readiness-hint">{{ _('Tournament paused; readiness is read-only.') }}</p>
+  {% elif tournament.tournament_status.name in ('COMPLETED', 'CANCELLED') %}
+  <p class="readiness-hint">{{ _('Tournament ended; readiness is read-only.') }}</p>
+  {% elif readiness.outcome %}
+  <p class="readiness-hint">{{ _('This match is finished; readiness is read-only.') }}</p>
+  {% elif readiness.assignment_complete and readiness.supports_readiness and not readiness_contestants_by_side %}
+  <p class="readiness-hint">{{ _('Current pairing is unavailable; readiness is read-only.') }}</p>
+  {% endif %}
+</section>

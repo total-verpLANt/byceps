@@ -420,25 +420,30 @@ def generate_from_seeding(
     ):
         return Err(ERR_UNKNOWN_TARGET)
 
-    tournament_repository.lock_tournament_for_update(tournament_id)
-    result = _generate_locked(
-        tournament_id,
-        target,
-        expected_version,
-        initiator_id,
-        require_released=True,
-        skip_unchanged=True,
-    )
-    if result.is_err():
-        tournament_repository.rollback_session()
-        return Err(result.unwrap_err())
+    try:
+        tournament_repository.lock_tournament_for_update(tournament_id)
+        result = _generate_locked(
+            tournament_id,
+            target,
+            expected_version,
+            initiator_id,
+            require_released=True,
+            skip_unchanged=True,
+        )
+        if result.is_err():
+            tournament_repository.rollback_session()
+            return Err(result.unwrap_err())
 
-    outcome = result.unwrap()
-    if outcome.unchanged:
-        tournament_repository.rollback_session()
-        return Ok(GENERATION_UNCHANGED)
+        outcome = result.unwrap()
+        if outcome.unchanged:
+            tournament_repository.rollback_session()
+            return Ok(GENERATION_UNCHANGED)
 
-    tournament_repository.commit_session()
+        tournament_repository.commit_session()
+    except Exception:
+        tournament_repository.rollback_session()
+        raise
+
     tournament_match_service.dispatch_generation_events(tournament_id, outcome)
     if outcome.completed_event is not None:
         return Ok('completed')
@@ -761,7 +766,7 @@ def _generate_locked(
     confirmer_id: UserID | None = None,
     skip_unchanged: bool = False,
 ) -> Result[tournament_match_service.GenerationOutcome, str]:
-    tournament = tournament_repository.get_tournament(tournament_id)
+    tournament = tournament_repository.get_tournament(tournament_id, fresh=True)
     view = _TargetView(tournament, target)
     is_playoff = target == PLAYOFF_TARGET
     ffa_round = view.ffa_round
@@ -899,7 +904,9 @@ def _generate_locked(
         },
         commit=False,
     )
-    return outcome_result
+    return Ok(tournament_match_service.collect_generation_invitations_flush(
+        outcome_result.unwrap(),
+    ))
 
 
 def _run_generator(

@@ -1,21 +1,23 @@
 import json
 import logging
-from collections.abc import Sequence
-from datetime import datetime
+from collections.abc import Collection, Sequence
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import TYPE_CHECKING, TypeVar, cast
 from uuid import UUID
 
-from sqlalchemy import and_, delete, func, or_, select, update
+from sqlalchemy import and_, case, delete, func, or_, select, tuple_, update
 
 from byceps.database import db
 from byceps.services.party.models import PartyID
 from byceps.services.user.models import UserID
 from byceps.util.result import Err, Ok, Result
+from byceps.util.uuid import uuid7
 
 from .dbmodels.match import DbTournamentMatch
 from .dbmodels.match_comment import DbTournamentMatchComment
 from .dbmodels.match_contestant import DbTournamentMatchToContestant
+from .dbmodels.match_readiness import DbMatchInvitation, DbMatchPairing
 from .dbmodels.participant import DbTournamentParticipant
 from .dbmodels.score_submission import DbScoreSubmission
 from .dbmodels.team import DbTournamentTeam
@@ -23,10 +25,22 @@ from .dbmodels.tournament import DbTournament
 from .dbmodels.tournament_log_entry import DbTournamentLogEntry
 from .models.bracket import Bracket
 from .models.contestant_type import ContestantType
+from .models.match_readiness import (
+    ContestantIdentity,
+    InvitationStatus,
+    MatchInvitation,
+    MatchPairing,
+)
 from .models.tournament import Tournament, TournamentID
 from .models.tournament_image import TournamentImageID
 from .models.tournament_log_entry import TournamentLogEntry
-from .models.tournament_match import TournamentMatch, TournamentMatchID
+from .models.tournament_match import (
+    MatchInvitationID,
+    MatchPairingID,
+    MatchSide,
+    TournamentMatch,
+    TournamentMatchID,
+)
 from .models.tournament_match_comment import (
     TournamentMatchComment,
     TournamentMatchCommentID,
@@ -47,7 +61,6 @@ from .models.tournament_participant import (
 )
 from .models.tournament_status import TournamentStatus
 from .models.tournament_team import TournamentTeam, TournamentTeamID
-from .tournament_domain_service import derive_contestant_type
 
 if TYPE_CHECKING:
     from .models.tournament_request import TournamentRequestID
@@ -55,6 +68,24 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _E = TypeVar('_E')
+
+
+def _derive_contestant_type(
+    contestant_type: ContestantType | None,
+    max_players_in_team: int | None,
+    min_players_in_team: int | None,
+) -> ContestantType:
+    """Map legacy nullable contestant types without importing a service."""
+    if contestant_type is not None:
+        return contestant_type
+    team_size = (
+        max_players_in_team
+        if max_players_in_team is not None
+        else min_players_in_team
+    )
+    if team_size is not None and team_size > 1:
+        return ContestantType.TEAM
+    return ContestantType.SOLO
 
 
 # -- tournament --
@@ -392,7 +423,10 @@ def get_tournament_for_update(
     Raise an exception if not found.
     """
     db_tournament = db.session.execute(
-        select(DbTournament).filter_by(id=tournament_id).with_for_update()
+        select(DbTournament)
+        .filter_by(id=tournament_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
     ).scalar_one_or_none()
     if db_tournament is None:
         raise ValueError(f'Unknown tournament ID "{tournament_id}"')
@@ -515,7 +549,7 @@ def _db_tournament_to_tournament(
         max_teams=db_tournament.max_teams,
         min_players_in_team=db_tournament.min_players_in_team,
         max_players_in_team=db_tournament.max_players_in_team,
-        contestant_type=derive_contestant_type(
+        contestant_type=_derive_contestant_type(
             _safe_enum_lookup(ContestantType, db_tournament.contestant_type),
             db_tournament.max_players_in_team,
             db_tournament.min_players_in_team,
@@ -622,11 +656,20 @@ def update_team_captain(
     new_captain_user_id: UserID,
 ) -> None:
     """Update the captain of a team."""
+    update_team_captain_flush(team_id, new_captain_user_id)
+    db.session.commit()
+
+
+def update_team_captain_flush(
+    team_id: TournamentTeamID,
+    new_captain_user_id: UserID,
+) -> None:
+    """Update the captain; caller owns commit."""
     db_team = db.session.get(DbTournamentTeam, team_id)
     if db_team is None:
         raise ValueError(f'Unknown team ID "{team_id}"')
     db_team.captain_user_id = new_captain_user_id
-    db.session.commit()
+    db.session.flush()
 
 
 def delete_team(team_id: TournamentTeamID) -> None:
@@ -645,11 +688,17 @@ def delete_teams_for_tournament(
     tournament_id: TournamentID, *, commit: bool = True
 ) -> None:
     """Delete all teams for a tournament."""
+    delete_teams_for_tournament_flush(tournament_id)
+    if commit:
+        db.session.commit()
+
+
+def delete_teams_for_tournament_flush(tournament_id: TournamentID) -> None:
+    """Delete teams; caller owns commit and dependent-row cleanup."""
     db.session.execute(
         delete(DbTournamentTeam).filter_by(tournament_id=tournament_id)
     )
-    if commit:
-        db.session.commit()
+    db.session.flush()
 
 
 def find_team(
@@ -679,7 +728,10 @@ def get_team_for_update(team_id: TournamentTeamID) -> TournamentTeam:
     Raise an exception if not found.
     """
     db_team = db.session.execute(
-        select(DbTournamentTeam).filter_by(id=team_id).with_for_update()
+        select(DbTournamentTeam)
+        .filter_by(id=team_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
     ).scalar_one_or_none()
     if db_team is None:
         raise ValueError(f'Unknown team ID "{team_id}"')
@@ -792,6 +844,12 @@ def create_participant(
 
 def update_participant(participant: TournamentParticipant) -> None:
     """Update a participant in place (no delete/recreate)."""
+    update_participant_flush(participant)
+    db.session.commit()
+
+
+def update_participant_flush(participant: TournamentParticipant) -> None:
+    """Update membership; caller owns commit."""
     db_participant = db.session.get(DbTournamentParticipant, participant.id)
     if db_participant is None:
         raise ValueError(f'Unknown participant ID "{participant.id}"')
@@ -799,7 +857,7 @@ def update_participant(participant: TournamentParticipant) -> None:
     db_participant.substitute_player = participant.substitute_player
     db_participant.team_id = participant.team_id
 
-    db.session.commit()
+    db.session.flush()
 
 
 def delete_participant(
@@ -830,20 +888,22 @@ def delete_participants_for_tournament(
     tournament_id: TournamentID, *, commit: bool = True
 ) -> None:
     """Delete all participants for a tournament."""
-    db.session.execute(
-        delete(DbTournamentParticipant).filter_by(tournament_id=tournament_id)
-    )
+    delete_participants_for_tournament_flush(tournament_id)
     if commit:
         db.session.commit()
 
 
+def delete_participants_for_tournament_flush(tournament_id: TournamentID) -> None:
+    """Delete participants; caller owns commit and dependent-row cleanup."""
+    db.session.execute(
+        delete(DbTournamentParticipant).filter_by(tournament_id=tournament_id)
+    )
+    db.session.flush()
+
+
 def remove_team_from_participants(team_id: TournamentTeamID) -> None:
     """Set team_id to NULL for all participants in this team."""
-    db.session.execute(
-        db.update(DbTournamentParticipant)
-        .filter_by(team_id=team_id)
-        .values(team_id=None)
-    )
+    remove_team_from_participants_flush(team_id)
     db.session.commit()
 
 
@@ -898,6 +958,50 @@ def find_participant(
     if db_participant is None:
         return None
     return _db_participant_to_participant(db_participant)
+
+
+def find_participant_fresh(
+    participant_id: TournamentParticipantID,
+) -> TournamentParticipant | None:
+    """Reload membership after acquiring the owning tournament lock."""
+    row = db.session.get(
+        DbTournamentParticipant, participant_id, populate_existing=True
+    )
+    return _db_participant_to_participant(row) if row is not None else None
+
+
+def get_participant_for_update(
+    participant_id: TournamentParticipantID,
+) -> TournamentParticipant:
+    """Lock and refresh membership; caller must lock its tournament first."""
+    row = db.session.execute(
+        select(DbTournamentParticipant)
+        .filter_by(id=participant_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).scalar_one_or_none()
+    if row is None:
+        raise ValueError(f'Unknown participant ID "{participant_id}"')
+    return _db_participant_to_participant(row)
+
+
+def get_participants_for_update(
+    participant_ids: Collection[TournamentParticipantID],
+) -> list[TournamentParticipant]:
+    """Lock and refresh those participants in ID order; unknown IDs are
+    omitted. The caller must lock its tournament first.
+    """
+    ids = {UUID(str(participant_id)) for participant_id in participant_ids}
+    if not ids:
+        return []
+    rows = db.session.scalars(
+        select(DbTournamentParticipant)
+        .where(DbTournamentParticipant.id.in_(ids))
+        .order_by(DbTournamentParticipant.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).all()
+    return [_db_participant_to_participant(row) for row in rows]
 
 
 def find_active_participant_by_user(
@@ -1168,7 +1272,7 @@ def create_match(match: TournamentMatch) -> None:
 
 def delete_match(match_id: TournamentMatchID) -> None:
     """Delete a match."""
-    db.session.execute(delete(DbTournamentMatch).filter_by(id=match_id))
+    delete_match_flush(match_id)
     db.session.commit()
 
 
@@ -1197,6 +1301,7 @@ def get_matches_for_seeding_target(
 
 def delete_match_flush(match_id: TournamentMatchID) -> None:
     """Delete a match (flush only - caller owns commit)."""
+    _retire_match_pairing_flush(match_id)
     db.session.execute(
         delete(DbTournamentMatch).filter_by(id=match_id)
     )
@@ -1220,6 +1325,11 @@ def delete_matches_for_tournament(
     tournament_id: TournamentID, *, commit: bool = True
 ) -> None:
     """Delete all matches for a tournament."""
+    lock_tournament_for_update(tournament_id)
+    matches = get_matches_for_tournament_ordered_fresh(tournament_id)
+    lock_matches_for_update([match.id for match in matches])
+    for match in sorted(matches, key=lambda match: str(match.id)):
+        _retire_match_pairing_flush(match.id)
     null_self_referential_fks(tournament_id)
     db.session.execute(
         delete(DbTournamentMatch).filter_by(tournament_id=tournament_id)
@@ -1417,13 +1527,18 @@ def confirm_match(
     db.session.flush()
 
 
-def unconfirm_match(match_id: TournamentMatchID) -> None:
+def unconfirm_match(
+    match_id: TournamentMatchID, *, reset_readiness: bool = True,
+) -> None:
     """Reset the confirmed_by field on a match."""
     db_match = db.session.get(DbTournamentMatch, match_id)
     if db_match is None:
         raise ValueError(f'Unknown match ID "{match_id}"')
 
     db_match.confirmed_by = None
+    if reset_readiness:
+        clear_match_readiness_flush(match_id, increment_revision=True)
+        suppress_match_invitations_flush(match_id, reason='readiness_reset')
     db.session.flush()
 
 
@@ -1527,7 +1642,1030 @@ def _db_match_to_match(
         loser_next_match_id=db_match.loser_next_match_id,
         phase=db_match.phase,
         seeding_target=db_match.seeding_target,
+        occupied_since=db_match.occupied_since,
+        ready_at_a=db_match.ready_at_a,
+        ready_at_b=db_match.ready_at_b,
+        ready_by_a=db_match.ready_by_a,
+        ready_by_b=db_match.ready_by_b,
+        both_ready_notified_at=db_match.both_ready_notified_at,
+        pairing_generation=db_match.pairing_generation,
+        readiness_revision=db_match.readiness_revision,
+        pairing_id=db_match.pairing_id,
+        invitation_hold_a=db_match.invitation_hold_a,
+        invitation_hold_b=db_match.invitation_hold_b,
     )
+
+
+def _db_pairing_to_pairing(row: DbMatchPairing) -> MatchPairing:
+    return MatchPairing(
+        id=row.id,
+        match_id=row.match_id,
+        tournament_id=row.tournament_id,
+        generation=row.generation,
+        side_a=ContestantIdentity(kind=row.side_a_kind, id=row.side_a_id),
+        side_b=ContestantIdentity(kind=row.side_b_kind, id=row.side_b_id),
+        started_at=row.started_at,
+        ended_at=row.ended_at,
+    )
+
+
+def get_match_pairing(match_id: TournamentMatchID) -> MatchPairing | None:
+    """Return the live pairing pointer's snapshot, not the latest old pair."""
+    return get_match_pairings_for_matches([match_id]).get(match_id)
+
+
+def get_match_pairings_for_matches(
+    match_ids: Collection[TournamentMatchID],
+) -> dict[TournamentMatchID, MatchPairing]:
+    """Read current immutable side snapshots in one query (no lazy loads)."""
+    if not match_ids:
+        return {}
+    rows = db.session.scalars(
+        select(DbMatchPairing)
+        .join(
+            DbTournamentMatch, DbTournamentMatch.pairing_id == DbMatchPairing.id
+        )
+        .where(DbTournamentMatch.id.in_(match_ids))
+        .execution_options(populate_existing=True)
+    ).all()
+    return {row.match_id: _db_pairing_to_pairing(row) for row in rows}
+
+
+def get_match_pairing_history(match_id: TournamentMatchID) -> list[MatchPairing]:
+    """Read retained occupancy even after live match/log deletion."""
+    rows = db.session.scalars(
+        select(DbMatchPairing)
+        .where(DbMatchPairing.match_id == match_id)
+        .order_by(DbMatchPairing.generation, DbMatchPairing.id)
+        .execution_options(populate_existing=True)
+    ).all()
+    return [_db_pairing_to_pairing(row) for row in rows]
+
+
+def _clear_match_readiness(row: DbTournamentMatch) -> None:
+    row.ready_at_a = row.ready_at_b = None
+    row.ready_by_a = row.ready_by_b = None
+    row.invitation_hold_a = row.invitation_hold_b = False
+
+
+def clear_match_readiness_flush(
+    match_id: TournamentMatchID,
+    *,
+    increment_revision: bool,
+) -> None:
+    """Clear claim snapshots/holds without changing original occupancy."""
+    row = db.session.get(DbTournamentMatch, match_id)
+    if row is None:
+        raise ValueError(f'Unknown match ID "{match_id}"')
+    _clear_match_readiness(row)
+    if increment_revision:
+        row.readiness_revision += 1
+    db.session.flush()
+
+
+def set_readiness_revision_flush(
+    match_id: TournamentMatchID, revision: int,
+) -> None:
+    """Set an explicitly computed revision under the caller's locks."""
+    if revision < 0:
+        raise ValueError('readiness_revision_must_be_nonnegative')
+    row = db.session.get(DbTournamentMatch, match_id)
+    if row is None:
+        raise ValueError(f'Unknown match ID "{match_id}"')
+    row.readiness_revision = revision
+    db.session.flush()
+
+
+def set_side_invitation_hold_flush(
+    match_id: TournamentMatchID,
+    side: MatchSide,
+    held: bool,
+) -> None:
+    """Set a side's invitation hold; caller owns commit."""
+    if side not in (MatchSide.A, MatchSide.B):
+        raise ValueError('invalid_match_side')
+    row = db.session.get(DbTournamentMatch, match_id)
+    if row is None:
+        raise ValueError(f'Unknown match ID "{match_id}"')
+    if side == MatchSide.A:
+        row.invitation_hold_a = held
+    else:
+        row.invitation_hold_b = held
+    db.session.flush()
+
+
+def refresh_match_pairing_flush(
+    match_id: TournamentMatchID,
+    *,
+    occurred_at: datetime,
+) -> Result[bool, str]:
+    """Refresh logical opponents; caller holds tournament then match locks.
+
+    Identical reseating preserves A/B and generation. This stores facts only:
+    service orchestration owns audits, work invalidation and post-commit effects.
+    """
+    if occurred_at.tzinfo is not None:
+        occurred_at = occurred_at.astimezone(UTC).replace(tzinfo=None)
+    row = db.session.get(DbTournamentMatch, match_id, populate_existing=True)
+    if row is None:
+        return Err('match_not_found')
+    tournament = db.session.get(
+        DbTournament, row.tournament_id, populate_existing=True
+    )
+    if tournament is None:
+        return Err('tournament_not_found')
+    game_format = None
+    if row.phase == 1:
+        game_format = tournament.game_format
+    elif row.phase == 2:
+        game_format = tournament.playoff_game_format
+    contestants = db.session.scalars(
+        select(DbTournamentMatchToContestant)
+        .where(DbTournamentMatchToContestant.tournament_match_id == match_id)
+        .order_by(
+            DbTournamentMatchToContestant.created_at,
+            DbTournamentMatchToContestant.id,
+        )
+        .execution_options(populate_existing=True)
+    ).all()
+    identities = [
+        ContestantIdentity(kind='participant', id=c.participant_id)
+        if c.participant_id is not None
+        else ContestantIdentity(kind='team', id=c.team_id)
+        for c in contestants
+        if c.participant_id is not None or c.team_id is not None
+    ]
+    eligible = (
+        game_format == GameFormat.ONE_V_ONE.name
+        and len(identities) == 2
+        and identities[0] != identities[1]
+        and identities[0].kind == identities[1].kind
+    )
+    if eligible:
+        for identity in identities:
+            model = (
+                DbTournamentParticipant
+                if identity.kind == 'participant'
+                else DbTournamentTeam
+            )
+            member = db.session.get(model, identity.id, populate_existing=True)
+            if (
+                member is None
+                or member.tournament_id != row.tournament_id
+                or member.removed_at is not None
+            ):
+                eligible = False
+                break
+    old = (
+        db.session.get(DbMatchPairing, row.pairing_id, populate_existing=True)
+        if row.pairing_id else None
+    )
+    if old is not None and eligible and old.ended_at is None:
+        old_identities = {
+            ContestantIdentity(kind=old.side_a_kind, id=old.side_a_id),
+            ContestantIdentity(kind=old.side_b_kind, id=old.side_b_id),
+        }
+        if old_identities == set(identities):
+            return Ok(False)
+    if old is None and not eligible:
+        return Ok(False)
+    if old is not None:
+        if old.started_at is not None and occurred_at < old.started_at:
+            return Err('pairing_time_before_start')
+        old.ended_at = occurred_at
+        suppress_match_invitations_flush(match_id, reason='pairing_retired')
+    row.pairing_id = None
+    row.pairing_generation += 1
+    row.readiness_revision += 1
+    _clear_match_readiness(row)
+    if eligible:
+        side_a, side_b = identities
+        pairing_id = MatchPairingID(uuid7())
+        db.session.add(
+            DbMatchPairing(
+                pairing_id, match_id, row.tournament_id, row.pairing_generation,
+                side_a.kind, side_a.id, side_b.kind, side_b.id,
+                started_at=occurred_at,
+            )
+        )
+        # Insert retained snapshot before its live FK pointer is updated.
+        db.session.flush()
+        row.pairing_id = pairing_id
+        if row.occupied_since is None:
+            row.occupied_since = occurred_at
+    db.session.flush()
+    return Ok(True)
+
+
+def suppress_match_invitations_flush(
+    match_id: TournamentMatchID, *, reason: str,
+) -> None:
+    """Retire only retractable work; preserve acceptance and in-flight outcomes.
+
+    Caller holds tournament/match locks. CAS/worker handling of sending and
+    delivery_unknown belongs to the invitation service, not this backstop.
+    """
+    db.session.execute(
+        db.update(DbMatchInvitation)
+        .where(
+            DbMatchInvitation.match_id == match_id,
+            DbMatchInvitation.status.in_(
+                ['pending', 'dispatching', 'queued', 'failed', 'suppressed']
+            ),
+            or_(
+                DbMatchInvitation.last_error.is_(None),
+                DbMatchInvitation.last_error.not_in(
+                    _INVITATION_IRREVERSIBLE_REASONS
+                ),
+            ),
+        )
+        .values(
+            status='suppressed', dispatch_token=None, lease_until=None,
+            next_attempt_at=None, last_error=reason,
+            attempts=case(
+                (
+                    DbMatchInvitation.status.in_(['dispatching', 'queued']),
+                    func.greatest(DbMatchInvitation.attempts - 1, 0),
+                ),
+                else_=DbMatchInvitation.attempts,
+            ),
+        )
+    )
+    db.session.flush()
+
+
+INVITATION_MAX_ATTEMPTS = 3
+INVITATION_LEASE_SECONDS = 120
+INVITATION_RECOVERY_LIMIT = 100
+_INVITATION_FINAL_FACTS = {'accepted', 'sending', 'delivery_unknown'}
+_INVITATION_IRREVERSIBLE_REASONS = {'tournament_terminal', 'pairing_retired'}
+_INVITATION_RESUMABLE_REASONS = {
+    'readiness_hold', 'readiness_reset', 'readiness_revision_changed',
+    'tournament_paused', 'recipient_not_current',
+}
+
+
+class _InvitationScope:
+    """Per-call reads shared by the eligibility checks of many invitations."""
+
+    def __init__(self, tournament_id: TournamentID) -> None:
+        self.tournament_id = tournament_id
+        self._audiences: dict[TournamentMatchID, set[UserID]] = {}
+        self._tournament_read = False
+        self._tournament: DbTournament | None = None
+
+    @property
+    def tournament(self) -> DbTournament | None:
+        if not self._tournament_read:
+            self._tournament = db.session.get(
+                DbTournament, self.tournament_id, populate_existing=True
+            )
+            self._tournament_read = True
+        return self._tournament
+
+    def audience(self, match: DbTournamentMatch) -> set[UserID]:
+        if match.id not in self._audiences:
+            self._audiences[match.id] = _current_invitation_audience(
+                match, self.tournament
+            )
+        return self._audiences[match.id]
+
+
+def _invitation_time(value: datetime) -> datetime:
+    if value.tzinfo is not None:
+        return value.astimezone(UTC).replace(tzinfo=None)
+    return value
+
+
+def _db_invitation_to_invitation(row: DbMatchInvitation) -> MatchInvitation:
+    return MatchInvitation(
+        id=row.id, match_id=row.match_id, tournament_id=row.tournament_id,
+        pairing_generation=row.pairing_generation, recipient_id=row.recipient_id,
+        status=InvitationStatus(row.status),
+        expected_readiness_revision=row.expected_readiness_revision,
+        attempts=row.attempts, dispatch_token=row.dispatch_token,
+        next_attempt_at=row.next_attempt_at, lease_until=row.lease_until,
+        accepted_at=row.accepted_at, last_error=row.last_error,
+    )
+
+
+def get_match_invitation(
+    invitation_id: MatchInvitationID,
+) -> MatchInvitation | None:
+    row = db.session.get(DbMatchInvitation, invitation_id, populate_existing=True)
+    return _db_invitation_to_invitation(row) if row is not None else None
+
+
+def _lock_invitation_match(
+    match_id: TournamentMatchID,
+) -> DbTournamentMatch | None:
+    tournament_id = db.session.scalar(
+        select(DbTournamentMatch.tournament_id).where(DbTournamentMatch.id == match_id)
+    )
+    if tournament_id is None:
+        return None
+    lock_tournament_for_update(tournament_id)
+    lock_matches_for_update([match_id])
+    return db.session.get(DbTournamentMatch, match_id, populate_existing=True)
+
+
+def _lock_invitation(
+    invitation_id: MatchInvitationID,
+) -> tuple[DbMatchInvitation | None, DbTournamentMatch | None]:
+    subject = db.session.execute(
+        select(DbMatchInvitation.tournament_id, DbMatchInvitation.match_id)
+        .where(DbMatchInvitation.id == invitation_id)
+    ).first()
+    if subject is None:
+        return None, None
+    # Retained sending history can outlive either live row. Lock any surviving
+    # tournament before match/work, and never require a live FK for its outcome.
+    lock_tournament_for_update(subject.tournament_id)
+    lock_matches_for_update([subject.match_id])
+    match = db.session.get(
+        DbTournamentMatch, subject.match_id, populate_existing=True,
+    )
+    row = db.session.scalar(
+        select(DbMatchInvitation).where(DbMatchInvitation.id == invitation_id)
+        .with_for_update().execution_options(populate_existing=True)
+    )
+    return row, match
+
+
+def _current_invitation_audience(
+    match: DbTournamentMatch,
+    tournament: DbTournament | None,
+) -> set[UserID]:
+    """Scoped, fresh scalar roster queries; each recipient belongs to one side."""
+    pair = (
+        db.session.get(DbMatchPairing, match.pairing_id, populate_existing=True)
+        if match.pairing_id else None
+    )
+    if tournament is None or pair is None or (
+        pair.match_id != match.id
+        or pair.tournament_id != match.tournament_id
+        or pair.generation != match.pairing_generation
+        or pair.ended_at is not None
+    ):
+        return set()
+    game_format = tournament.game_format if match.phase == 1 else (
+        tournament.playoff_game_format if match.phase == 2 else None
+    )
+    if game_format != GameFormat.ONE_V_ONE.name:
+        return set()
+    sides = [ContestantIdentity(kind=pair.side_a_kind, id=pair.side_a_id),
+             ContestantIdentity(kind=pair.side_b_kind, id=pair.side_b_id)]
+    assignments = db.session.execute(
+        select(
+            DbTournamentMatchToContestant.participant_id,
+            DbTournamentMatchToContestant.team_id,
+        )
+        .where(DbTournamentMatchToContestant.tournament_match_id == match.id)
+    ).all()
+    identities = [
+        ContestantIdentity(kind='participant', id=p) if p is not None
+        else ContestantIdentity(kind='team', id=t)
+        for p, t in assignments if p is not None or t is not None
+    ]
+    if len(identities) != 2 or set(identities) != set(sides):
+        return set()
+    audiences = []
+    for side in sides:
+        if side.kind == 'participant':
+            audience = set(db.session.scalars(
+                select(DbTournamentParticipant.user_id).where(
+                    DbTournamentParticipant.id == side.id,
+                    DbTournamentParticipant.tournament_id == match.tournament_id,
+                    DbTournamentParticipant.removed_at.is_(None),
+                )
+            ))
+        else:
+            audience = set(db.session.scalars(
+                select(DbTournamentParticipant.user_id)
+                .join(
+                    DbTournamentTeam,
+                    DbTournamentParticipant.team_id == DbTournamentTeam.id,
+                )
+                .where(
+                    DbTournamentTeam.id == side.id,
+                    DbTournamentTeam.tournament_id == match.tournament_id,
+                    DbTournamentTeam.removed_at.is_(None),
+                    DbTournamentParticipant.tournament_id == match.tournament_id,
+                    DbTournamentParticipant.removed_at.is_(None),
+                )
+            ))
+        if not audience:
+            return set()
+        audiences.append(audience)
+    return audiences[0] ^ audiences[1]
+
+
+def _invitation_ineligibility(
+    row: DbMatchInvitation, match: DbTournamentMatch | None,
+    audience: set[UserID] | None = None,
+    scope: _InvitationScope | None = None,
+) -> str | None:
+    if row.last_error in _INVITATION_IRREVERSIBLE_REASONS:
+        return row.last_error
+    if (
+        match is None
+        or match.tournament_id != row.tournament_id
+        or match.pairing_generation != row.pairing_generation
+    ):
+        return 'pairing_retired'
+    if scope is None:
+        scope = _InvitationScope(row.tournament_id)
+    tournament = scope.tournament
+    if tournament is None or tournament.tournament_status in {'COMPLETED', 'CANCELLED'}:
+        return 'tournament_terminal'
+    if tournament.tournament_status != TournamentStatus.ONGOING.name:
+        return 'tournament_paused'
+    if match.confirmed_by is not None:
+        return 'match_confirmed'
+    if match.invitation_hold_a or match.invitation_hold_b:
+        return 'readiness_hold'
+    if audience is None:
+        audience = scope.audience(match)
+    if row.recipient_id not in audience:
+        return 'recipient_not_current'
+    if row.expected_readiness_revision != match.readiness_revision:
+        return 'readiness_revision_changed'
+    return None
+
+
+def _suppress_invitation(row: DbMatchInvitation, reason: str) -> None:
+    # Retirement is a fact about this work item, not the current live lifecycle.
+    # A later reopen/hold/pause/reset cannot replace it with a resumable reason.
+    if row.last_error in _INVITATION_IRREVERSIBLE_REASONS:
+        return
+    _release_attempt(row)
+    row.status = InvitationStatus.SUPPRESSED.value
+    row.dispatch_token = row.lease_until = row.next_attempt_at = None
+    row.last_error = reason[:500]
+
+
+def _release_attempt(row: DbMatchInvitation) -> None:
+    """Give back the attempt of a token retired before SENDING (once, as the
+    token dies with the status change that follows).
+    """
+    if row.status in {'dispatching', 'queued'} and row.attempts > 0:
+        row.attempts -= 1
+
+
+def _invitation_spent(row: DbMatchInvitation) -> bool:
+    """Resumable work that has no attempt left and can never be retried."""
+    return (
+        row.attempts >= INVITATION_MAX_ATTEMPTS
+        and row.last_error not in _INVITATION_IRREVERSIBLE_REASONS
+        and (
+            row.status == 'pending'
+            or (
+                row.status == 'suppressed'
+                and row.last_error in _INVITATION_RESUMABLE_REASONS
+            )
+        )
+    )
+
+
+def _exhaust_invitation(row: DbMatchInvitation) -> None:
+    row.status = InvitationStatus.FAILED.value
+    row.dispatch_token = row.lease_until = row.next_attempt_at = None
+    row.last_error = 'attempts_exhausted'
+
+
+def ensure_invitation_intents_flush(
+    match_id: TournamentMatchID,
+    recipient_ids: Collection[UserID],
+    *,
+    occurred_at: datetime,
+    historical_unknown: bool = False,
+) -> list[MatchInvitationID]:
+    """Reconcile unsent facts only; caller supplies audience, owns commit/effects."""
+    now = _invitation_time(occurred_at)
+    match = _lock_invitation_match(match_id)
+    if match is None:
+        return []
+    scope = _InvitationScope(match.tournament_id)
+    audience = scope.audience(match)
+    rows = db.session.scalars(
+        select(DbMatchInvitation).where(DbMatchInvitation.match_id == match_id)
+        .order_by(DbMatchInvitation.id).with_for_update()
+        .execution_options(populate_existing=True)
+    ).all()
+    current = {
+        r.recipient_id: r for r in rows
+        if r.pairing_generation == match.pairing_generation
+    }
+    for recipient_id in sorted(set(recipient_ids) & audience, key=str):
+        if recipient_id not in current:
+            row = DbMatchInvitation(
+                MatchInvitationID(uuid7()), match_id, match.tournament_id,
+                match.pairing_generation, recipient_id,
+                (InvitationStatus.DELIVERY_UNKNOWN if historical_unknown
+                 else InvitationStatus.PENDING).value,
+                match.readiness_revision,
+            )
+            db.session.add(row)
+            rows.append(row)
+            current[recipient_id] = row
+    eligible = []
+    for row in rows:
+        if (
+            row.status in _INVITATION_FINAL_FACTS
+            or row.last_error in _INVITATION_IRREVERSIBLE_REASONS
+        ):
+            continue
+        if _invitation_spent(row):
+            _exhaust_invitation(row)
+            continue
+        revision_changed = row.expected_readiness_revision != match.readiness_revision
+        reason = _invitation_ineligibility(row, match, audience, scope)
+        if row.pairing_generation == match.pairing_generation:
+            row.expected_readiness_revision = match.readiness_revision
+        if reason and reason != 'readiness_revision_changed':
+            # A temporary hold/pause/audience change must not erase a permanent
+            # failure or its retry delay. Selection/reservation still checks it.
+            if row.status == 'failed' and reason in _INVITATION_RESUMABLE_REASONS:
+                continue
+            _suppress_invitation(row, reason)
+            continue
+        if revision_changed and row.status in {'dispatching', 'queued'}:
+            _suppress_invitation(row, 'readiness_revision_changed')
+        if row.status == 'suppressed' and row.last_error in _INVITATION_RESUMABLE_REASONS:
+            row.status = InvitationStatus.PENDING.value
+            row.last_error = None
+        if _invitation_retryable(row, now):
+            eligible.append(row.id)
+    db.session.flush()
+    return sorted(eligible, key=str)
+
+
+def _invitation_retryable(row: DbMatchInvitation, now: datetime) -> bool:
+    return (
+        row.last_error not in _INVITATION_IRREVERSIBLE_REASONS
+        and row.status in {'pending', 'failed'}
+        and row.attempts < INVITATION_MAX_ATTEMPTS
+        and (row.status == 'pending' or row.next_attempt_at is not None)
+        and (row.next_attempt_at is None or row.next_attempt_at <= now)
+    )
+
+
+def _invitation_retryable_clause(now: datetime):
+    """SQL twin of `_invitation_retryable`; keep the two in step."""
+    return and_(
+        or_(
+            DbMatchInvitation.last_error.is_(None),
+            DbMatchInvitation.last_error.not_in(
+                _INVITATION_IRREVERSIBLE_REASONS
+            ),
+        ),
+        DbMatchInvitation.status.in_(['pending', 'failed']),
+        DbMatchInvitation.attempts < INVITATION_MAX_ATTEMPTS,
+        or_(
+            DbMatchInvitation.status == 'pending',
+            DbMatchInvitation.next_attempt_at.is_not(None),
+        ),
+        or_(
+            DbMatchInvitation.next_attempt_at.is_(None),
+            DbMatchInvitation.next_attempt_at <= now,
+        ),
+    )
+
+
+def _invitation_spent_clause():
+    """SQL twin of `_invitation_spent`."""
+    return and_(
+        DbMatchInvitation.attempts >= INVITATION_MAX_ATTEMPTS,
+        or_(
+            DbMatchInvitation.last_error.is_(None),
+            DbMatchInvitation.last_error.not_in(
+                _INVITATION_IRREVERSIBLE_REASONS
+            ),
+        ),
+        or_(
+            DbMatchInvitation.status == 'pending',
+            and_(
+                DbMatchInvitation.status == 'suppressed',
+                DbMatchInvitation.last_error.in_(_INVITATION_RESUMABLE_REASONS),
+            ),
+        ),
+    )
+
+
+def _lock_invitation_work(
+    invitation_id: MatchInvitationID,
+) -> DbMatchInvitation | None:
+    """Fresh work lock after the caller has locked tournament/ordered matches."""
+    return db.session.scalar(
+        select(DbMatchInvitation).where(DbMatchInvitation.id == invitation_id)
+        .with_for_update().execution_options(populate_existing=True)
+    )
+
+
+def claim_invitation_dispatch_flush(
+    invitation_id: MatchInvitationID,
+    *,
+    expected_token: UUID | None,
+    now: datetime,
+) -> Result[MatchInvitation, str]:
+    now = _invitation_time(now)
+    row, match = _lock_invitation(invitation_id)
+    if row is None:
+        return Err('invitation_not_found')
+    if row.dispatch_token != expected_token or not _invitation_retryable(row, now):
+        return Err('invitation_conflict')
+    reason = _invitation_ineligibility(row, match)
+    if reason:
+        return Err(reason)
+    row.status = InvitationStatus.DISPATCHING.value
+    row.dispatch_token = uuid7()
+    row.attempts += 1
+    row.lease_until = now + timedelta(seconds=INVITATION_LEASE_SECONDS)
+    row.next_attempt_at = row.last_error = None
+    db.session.flush()
+    return Ok(_db_invitation_to_invitation(row))
+
+
+def record_invitation_outcome_flush(
+    invitation_id: MatchInvitationID,
+    dispatch_token: UUID,
+    *,
+    status: InvitationStatus,
+    now: datetime,
+    error: str | None = None,
+    retryable: bool = False,
+) -> Result[None, str]:
+    """Token/stage CAS. Sending outcomes may affect only their retained record."""
+    now = _invitation_time(now)
+    row, match = _lock_invitation(invitation_id)
+    if row is None:
+        return Err('invitation_not_found')
+    if not isinstance(status, InvitationStatus):
+        return Err('invalid_invitation_status')
+    transitions = {
+        'dispatching': {
+            InvitationStatus.QUEUED, InvitationStatus.SENDING,
+            InvitationStatus.FAILED, InvitationStatus.SUPPRESSED,
+        },
+        'queued': {
+            InvitationStatus.SENDING, InvitationStatus.FAILED,
+            InvitationStatus.SUPPRESSED,
+        },
+        'sending': {
+            InvitationStatus.ACCEPTED, InvitationStatus.FAILED,
+            InvitationStatus.SUPPRESSED, InvitationStatus.DELIVERY_UNKNOWN,
+        },
+    }
+    if row.dispatch_token != dispatch_token or status not in transitions.get(row.status, set()):
+        return Err('invitation_conflict')
+    if row.status != 'sending':
+        # The matching token proves ownership; recovery retires an expired
+        # lease by clearing it, so a late job may still move on.
+        reason = _invitation_ineligibility(row, match)
+        if reason:
+            return Err(reason)
+    # Once sending lease expired, even a late claimed acceptance is ambiguous.
+    if row.status == 'sending' and row.lease_until <= now:
+        status = InvitationStatus.DELIVERY_UNKNOWN
+        error = 'sending_lease_expired'
+    row.status = status.value
+    row.last_error = error[:500] if error else None
+    row.accepted_at = now if status == InvitationStatus.ACCEPTED else None
+    row.next_attempt_at = None
+    if status in {InvitationStatus.QUEUED, InvitationStatus.SENDING}:
+        row.lease_until = now + timedelta(seconds=INVITATION_LEASE_SECONDS)
+    else:
+        row.lease_until = None
+        if (
+            status == InvitationStatus.FAILED
+            and retryable and row.attempts < INVITATION_MAX_ATTEMPTS
+        ):
+            row.next_attempt_at = now + timedelta(seconds=30 if row.attempts == 1 else 120)
+    db.session.flush()
+    return Ok(None)
+
+
+def _lock_invitation_matches(
+    match_ids: Collection[TournamentMatchID],
+) -> dict[TournamentMatchID, DbTournamentMatch]:
+    """Lock and refresh those matches in ID order, with one statement."""
+    if not match_ids:
+        return {}
+    rows = db.session.scalars(
+        select(DbTournamentMatch)
+        .where(DbTournamentMatch.id.in_(list(match_ids)))
+        .order_by(DbTournamentMatch.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).all()
+    return {row.id: row for row in rows}
+
+
+def _exhaust_spent_invitations_flush(
+    tournament_id: TournamentID,
+    limit: int,
+) -> None:
+    """Finalise resumable work without an attempt left; caller holds the
+    tournament lock, matches and rows are locked here in that order.
+    """
+    spent = db.session.execute(
+        select(DbMatchInvitation.id, DbMatchInvitation.match_id)
+        .where(
+            DbMatchInvitation.tournament_id == tournament_id,
+            _invitation_spent_clause(),
+        )
+        .order_by(DbMatchInvitation.match_id, DbMatchInvitation.id)
+        .limit(limit)
+    ).all()
+    if not spent:
+        return
+    lock_matches_for_update(sorted({r.match_id for r in spent}, key=str))
+    rows = db.session.scalars(
+        select(DbMatchInvitation)
+        .where(DbMatchInvitation.id.in_([r.id for r in spent]))
+        .order_by(DbMatchInvitation.match_id, DbMatchInvitation.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).all()
+    for row in rows:
+        if _invitation_spent(row):
+            _exhaust_invitation(row)
+    db.session.flush()
+
+
+def select_invitation_retry_ids_flush(
+    tournament_id: TournamentID,
+    *,
+    now: datetime,
+    limit: int = INVITATION_RECOVERY_LIMIT,
+) -> list[MatchInvitationID]:
+    """Select the pending or failed invitations that are due for dispatch.
+
+    Only due rows are read, page by page; spent work is finalised on the way.
+    """
+    now = _invitation_time(now)
+    batch = max(1, min(limit, INVITATION_RECOVERY_LIMIT))
+    lock_tournament_for_update(tournament_id)
+    _exhaust_spent_invitations_flush(tournament_id, batch)
+    scope = _InvitationScope(tournament_id)
+    tournament = scope.tournament
+    if (
+        tournament is None
+        or tournament.tournament_status != TournamentStatus.ONGOING.name
+    ):
+        return []
+    selected: list[MatchInvitationID] = []
+    after = None
+    while len(selected) < batch:
+        stmt = (
+            select(DbMatchInvitation.id, DbMatchInvitation.match_id)
+            .where(
+                DbMatchInvitation.tournament_id == tournament_id,
+                _invitation_retryable_clause(now),
+            )
+            .order_by(DbMatchInvitation.match_id, DbMatchInvitation.id)
+            .limit(batch)
+        )
+        if after is not None:
+            stmt = stmt.where(
+                tuple_(DbMatchInvitation.match_id, DbMatchInvitation.id) > after
+            )
+        page = db.session.execute(stmt).all()
+        if not page:
+            break
+        after = (page[-1].match_id, page[-1].id)
+        matches = _lock_invitation_matches({r.match_id for r in page})
+        rows = db.session.scalars(
+            select(DbMatchInvitation)
+            .where(DbMatchInvitation.id.in_([r.id for r in page]))
+            .order_by(DbMatchInvitation.match_id, DbMatchInvitation.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        ).all()
+        for row in rows:
+            match = matches.get(row.match_id)
+            if not _invitation_retryable(row, now):
+                continue
+            if _invitation_ineligibility(row, match, scope=scope):
+                continue
+            selected.append(row.id)
+            if len(selected) >= batch:
+                break
+        if len(page) < batch:
+            break
+    db.session.flush()
+    return selected
+
+
+def recover_expired_invitations_flush(
+    tournament_id: TournamentID,
+    *,
+    now: datetime,
+    limit: int = INVITATION_RECOVERY_LIMIT,
+) -> list[MatchInvitationID]:
+    now = _invitation_time(now)
+    lock_tournament_for_update(tournament_id)
+    rows = db.session.scalars(
+        select(DbMatchInvitation).where(
+            DbMatchInvitation.tournament_id == tournament_id,
+            DbMatchInvitation.status.in_(['dispatching', 'queued', 'sending']),
+            DbMatchInvitation.lease_until <= now,
+        ).order_by(DbMatchInvitation.match_id, DbMatchInvitation.id)
+        .limit(max(1, min(limit, INVITATION_RECOVERY_LIMIT)))
+        .execution_options(populate_existing=True)
+    ).all()
+    matches = _lock_invitation_matches({r.match_id for r in rows})
+    scope = _InvitationScope(tournament_id)
+    eligible = []
+    for candidate in rows:
+        row = _lock_invitation_work(candidate.id)
+        if (
+            row is None
+            or row.status not in {'dispatching', 'queued', 'sending'}
+            or row.lease_until > now
+        ):
+            continue
+        if row.status == 'sending':
+            row.status = InvitationStatus.DELIVERY_UNKNOWN.value
+            row.last_error = 'sending_lease_expired'
+            row.lease_until = row.next_attempt_at = None
+            continue
+        reason = _invitation_ineligibility(
+            row, matches.get(row.match_id), scope=scope
+        )
+        if reason:
+            _suppress_invitation(row, reason)
+        else:
+            # A dead claimer (`dispatching`) keeps its attempt spent so that
+            # it exhausts; only a slow worker (`queued`) gets it back.
+            if row.status == 'queued':
+                _release_attempt(row)
+            row.status = InvitationStatus.PENDING.value
+            row.dispatch_token = row.lease_until = row.next_attempt_at = None
+            row.last_error = 'pre_send_lease_expired'
+            if _invitation_spent(row):
+                _exhaust_invitation(row)
+            elif _invitation_retryable(row, now):
+                eligible.append(row.id)
+    db.session.flush()
+    return eligible
+
+
+def _lock_pairing_subjects(match_ids: Collection[TournamentMatchID]) -> None:
+    """Backstop locks before contestant writes, never match-before-tournament."""
+    subjects = get_matches_by_ids(list(match_ids))
+    for tournament_id in sorted({m.tournament_id for m in subjects}, key=str):
+        lock_tournament_for_update(tournament_id)
+    lock_matches_for_update([m.id for m in subjects])
+
+
+def _retire_match_pairing_flush(match_id: TournamentMatchID) -> None:
+    """Deletion backstop: retain history, clear capabilities and unsent work.
+
+    Facts only, never audit or commit. Engine/roster/lifecycle owners must audit
+    within their transaction. Original occupancy is deliberately untouched.
+    """
+    subject = find_match(match_id)
+    if subject is None:
+        return
+    lock_tournament_for_update(subject.tournament_id)
+    get_match_for_update(match_id)
+    row = db.session.get(DbTournamentMatch, match_id)
+    if row.pairing_id is not None:
+        pair = db.session.get(DbMatchPairing, row.pairing_id)
+        if pair is not None and pair.ended_at is None:
+            now = datetime.now(UTC).replace(tzinfo=None)
+            pair.ended_at = max(now, pair.started_at) if pair.started_at else now
+        row.pairing_id = None
+        row.pairing_generation += 1
+        row.readiness_revision += 1
+    elif row.ready_at_a or row.ready_at_b or row.invitation_hold_a or row.invitation_hold_b:
+        row.readiness_revision += 1
+    _clear_match_readiness(row)
+    suppress_match_invitations_flush(match_id, reason='pairing_retired')
+    db.session.flush()
+
+
+def set_side_ready_flush(
+    match_id: TournamentMatchID,
+    side: MatchSide,
+    ready_at: datetime,
+    ready_by: UserID,
+) -> None:
+    """Record a per-side readiness claim (flush only)."""
+    if side not in (MatchSide.A, MatchSide.B):
+        raise ValueError('invalid_match_side')
+    db_match = db.session.get(DbTournamentMatch, match_id)
+    if db_match is None:
+        raise ValueError(f'Unknown match ID "{match_id}"')
+    if side == MatchSide.A:
+        db_match.ready_at_a = ready_at
+        db_match.ready_by_a = ready_by
+    else:
+        db_match.ready_at_b = ready_at
+        db_match.ready_by_b = ready_by
+    db.session.flush()
+
+
+def clear_side_ready_flush(
+    match_id: TournamentMatchID,
+    side: MatchSide,
+) -> None:
+    """Remove a per-side readiness claim (flush only)."""
+    if side not in (MatchSide.A, MatchSide.B):
+        raise ValueError('invalid_match_side')
+    db_match = db.session.get(DbTournamentMatch, match_id)
+    if db_match is None:
+        raise ValueError(f'Unknown match ID "{match_id}"')
+    if side == MatchSide.A:
+        db_match.ready_at_a = None
+        db_match.ready_by_a = None
+    else:
+        db_match.ready_at_b = None
+        db_match.ready_by_b = None
+    db.session.flush()
+
+
+def set_both_ready_notified_flush(
+    match_id: TournamentMatchID,
+    notified_at: datetime | None,
+) -> None:
+    """Set or clear the both-ready notification marker (flush only).
+
+    Clearing the marker re-enables ready emails after a revocation.
+    """
+    db_match = db.session.get(DbTournamentMatch, match_id)
+    if db_match is None:
+        raise ValueError(f'Unknown match ID "{match_id}"')
+    db_match.both_ready_notified_at = notified_at
+    db.session.flush()
+
+
+def set_occupied_since_if_unset_flush(
+    match_id: TournamentMatchID,
+    occupied_since: datetime,
+) -> bool:
+    """Set ``occupied_since`` unless already set; flush only.
+
+    Return ``True`` if the value was set by this call.
+    """
+    db_match = db.session.get(DbTournamentMatch, match_id)
+    if db_match is None:
+        raise ValueError(f'Unknown match ID "{match_id}"')
+    if db_match.occupied_since is not None:
+        return False
+    db_match.occupied_since = occupied_since
+    db.session.flush()
+    return True
+
+
+def get_both_ready_unnotified_match_ids(
+    tournament_id: TournamentID,
+) -> list[TournamentMatchID]:
+    """Return IDs of unconfirmed matches with BOTH sides claimed ready
+    whose ready email has not been sent yet.
+
+    Matches whose readiness was revoked are excluded automatically:
+    revocation clears one side's claim, so they are no longer both-ready.
+    """
+    match_ids = (
+        db.session.execute(
+            select(DbTournamentMatch.id).where(
+                DbTournamentMatch.tournament_id == tournament_id,
+                DbTournamentMatch.confirmed_by.is_(None),
+                DbTournamentMatch.ready_at_a.is_not(None),
+                DbTournamentMatch.ready_at_b.is_not(None),
+                DbTournamentMatch.both_ready_notified_at.is_(None),
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return list(match_ids)
+
+
+def mark_matches_both_ready_notified(
+    match_ids: list[TournamentMatchID],
+    notified_at: datetime,
+    *,
+    commit: bool = True,
+) -> int:
+    """Set the both-ready notification marker on the given matches.
+
+    Return the number of updated rows.
+    """
+    if not match_ids:
+        return 0
+    result = db.session.execute(
+        update(DbTournamentMatch)
+        .where(DbTournamentMatch.id.in_(match_ids))
+        .values(both_ready_notified_at=notified_at)
+    )
+    if commit:
+        db.session.commit()
+    else:
+        db.session.flush()
+    return result.rowcount
 
 
 # -- match comment --
@@ -1672,6 +2810,29 @@ def create_match_contestant(
 
     db.session.add(db_contestant)
     db.session.flush()
+
+    # Occupancy starts once both sides of the match are fixed.
+    _mark_occupied_if_fully_occupied(db_contestant.tournament_match_id)
+
+
+def _mark_occupied_if_fully_occupied(
+    match_id: TournamentMatchID,
+) -> None:
+    """Set ``occupied_since`` on a match that just became fully
+    occupied (exactly 2 real contestants, marker still unset)."""
+    count = (
+        db.session.execute(
+            select(func.count())
+            .select_from(DbTournamentMatchToContestant)
+            .where(
+                DbTournamentMatchToContestant.tournament_match_id == match_id,
+                (DbTournamentMatchToContestant.participant_id.is_not(None))
+                | (DbTournamentMatchToContestant.team_id.is_not(None)),
+            )
+        ).scalar_one()
+    )
+    if count == 2:
+        set_occupied_since_if_unset_flush(match_id, datetime.now(UTC))
 
 
 def update_contestant_score(
@@ -1863,10 +3024,25 @@ def delete_match_contestant(
     contestant_id: TournamentMatchToContestantID,
 ) -> None:
     """Delete a match contestant."""
+    delete_match_contestant_flush(contestant_id)
+    db.session.commit()
+
+
+def delete_match_contestant_flush(
+    contestant_id: TournamentMatchToContestantID,
+) -> None:
+    """Delete a contestant; caller owns pairing cleanup and commit."""
+    match_ids = db.session.scalars(
+        select(DbTournamentMatchToContestant.tournament_match_id)
+        .filter_by(id=contestant_id)
+    ).all()
+    _lock_pairing_subjects(match_ids)
     db.session.execute(
         delete(DbTournamentMatchToContestant).filter_by(id=contestant_id)
     )
-    db.session.commit()
+    for match_id in match_ids:
+        _retire_match_pairing_flush(match_id)
+    db.session.flush()
 
 
 def find_contestant_entries_for_participant_in_tournament(
@@ -1941,17 +3117,16 @@ def delete_contestant_from_match(
         query = query.filter_by(participant_id=participant_id)
     else:
         raise ValueError('Either team_id or participant_id required.')
-    db.session.execute(query)
+    _lock_pairing_subjects([match_id])
+    deleted = db.session.scalars(query.returning(DbTournamentMatchToContestant.id)).all()
+    if deleted:
+        _retire_match_pairing_flush(match_id)
     db.session.flush()
 
 
 def delete_contestants_for_match(match_id: TournamentMatchID) -> None:
     """Delete all contestants for a match."""
-    db.session.execute(
-        delete(DbTournamentMatchToContestant).filter_by(
-            tournament_match_id=match_id
-        )
-    )
+    delete_contestants_for_match_flush(match_id)
     db.session.commit()
 
 
@@ -1959,6 +3134,7 @@ def delete_contestants_for_match_flush(
     match_id: TournamentMatchID,
 ) -> None:
     """Delete all contestants for a match (flush only)."""
+    _retire_match_pairing_flush(match_id)
     db.session.execute(
         delete(DbTournamentMatchToContestant).filter_by(
             tournament_match_id=match_id
@@ -1971,6 +3147,18 @@ def delete_contestants_for_tournament(
     tournament_id: TournamentID, *, commit: bool = True
 ) -> None:
     """Delete all contestants for all matches in a tournament."""
+    delete_contestants_for_tournament_flush(tournament_id)
+    if commit:
+        db.session.commit()
+
+
+def delete_contestants_for_tournament_flush(tournament_id: TournamentID) -> None:
+    """Delete all contestants; caller owns pairing cleanup and commit."""
+    lock_tournament_for_update(tournament_id)
+    matches = get_matches_for_tournament_ordered_fresh(tournament_id)
+    lock_matches_for_update([match.id for match in matches])
+    for match in sorted(matches, key=lambda match: str(match.id)):
+        _retire_match_pairing_flush(match.id)
     db.session.execute(
         delete(DbTournamentMatchToContestant).where(
             DbTournamentMatchToContestant.tournament_match_id.in_(
@@ -1980,16 +3168,31 @@ def delete_contestants_for_tournament(
             )
         )
     )
-    if commit:
-        db.session.commit()
+    db.session.flush()
 
 
 def remove_team_from_contestants(team_id: TournamentTeamID) -> None:
     """Delete all match contestants referencing this team."""
+    remove_team_from_contestants_flush(team_id)
+    db.session.commit()
+
+
+def remove_team_from_contestants_flush(team_id: TournamentTeamID) -> None:
+    """Delete team slots; caller owns pairing cleanup and commit."""
+    team = get_team(team_id)
+    lock_tournament_for_update(team.tournament_id)
+    match_ids = list(db.session.scalars(
+        select(DbTournamentMatchToContestant.tournament_match_id)
+        .where(DbTournamentMatchToContestant.team_id == team_id)
+        .distinct()
+    ))
+    lock_matches_for_update(match_ids)
+    for match_id in sorted(match_ids, key=str):
+        _retire_match_pairing_flush(match_id)
     db.session.execute(
         db.delete(DbTournamentMatchToContestant).filter_by(team_id=team_id)
     )
-    db.session.commit()
+    db.session.flush()
 
 
 # -- score submission --

@@ -337,11 +337,12 @@ All routes: `lan_tournament.administrate`. A seeding target is `initial` (defaul
 ### Match Management (Admin)
 
 #### List Matches for Tournament
-- **URL**: `/<tournament_id>/matches`
+- **URL**: `/lan-tournaments/tournaments/<tournament_id>/matches`
 - **Method**: GET
 - **Permission**: `lan_tournament.view`
-- **Description**: Lists all matches for a tournament with contestants
-- **Example**: `/lan-tournaments/tournaments/01234567-89ab-cdef-0123-456789abcdef/matches`
+- **Query**: `only` (optional): readiness bucket, default `all` (see Match List Filter)
+- **Description**: Lists the matches of a tournament with contestants and readiness status. The filter tabs and their counts are tournament-wide and equal to the site list
+- **Example**: `/lan-tournaments/tournaments/01234567-89ab-cdef-0123-456789abcdef/matches?only=partially_ready`
 
 #### View Match
 - **URL**: `/lan-tournaments/matches/<match_id>`
@@ -499,8 +500,9 @@ All routes: `lan_tournament.administrate`. A seeding target is `initial` (defaul
 - **URL**: `/lan-tournaments/<tournament_id>/matches`
 - **Method**: GET
 - **Authentication**: Not required
-- **Description**: Lists all matches for a tournament with contestants and scores
-- **Example**: `/lan-tournaments/01234567-89ab-cdef-0123-456789abcdef/matches`
+- **Query**: `only` (optional): readiness bucket, default `all` (see Match List Filter)
+- **Description**: Lists the matches of a tournament with contestants, scores and readiness status. The filter bar counts are tournament-wide. "Meine Partien" is a client-side toggle on the list, not a query parameter
+- **Example**: `/lan-tournaments/01234567-89ab-cdef-0123-456789abcdef/matches?only=not_ready`
 
 #### View Match
 - **URL**: `/lan-tournaments/matches/<match_id>`
@@ -515,6 +517,36 @@ All routes: `lan_tournament.administrate`. A seeding target is `initial` (defaul
 - **Authentication**: Not required
 - **Description**: Displays tournament bracket visualization for public viewing
 - **Example**: `/lan-tournaments/01234567-89ab-cdef-0123-456789abcdef/bracket`
+
+### Match Readiness (Site)
+
+Each side of a one-versus-one match reports itself ready or not ready. Both routes take the same guarded form; there is no reason field and no readiness history.
+
+#### Claim Readiness
+- **URL**: `/lan-tournaments/matches/<match_id>/ready/claim`
+- **Method**: POST
+- **Authentication**: Required (`@login_required`)
+- **Authorization**: Checked per side by the service: the participant of a solo side or the captain of a team side may act for their own side; a tournament orga or a holder of `lan_tournament.administrate` may act for either side. Anyone else gets 403
+- **Form Fields** (all exactly once):
+  - `csrf_token`: readiness token of the viewer (invalid or missing: 403)
+  - `side`: `a` or `b`
+  - `expected_pairing_generation`: pairing generation shown on the card
+  - `expected_readiness_revision`: readiness revision shown on the card
+- **Description**: Marks one side ready ("Ich bin bereit", orga: "Bereit (für diese Seite)"). Only while the tournament is ONGOING and the match has a valid current pairing. A stale generation or revision is refused with a flash. Writes the audit entry `match-ready-claimed`
+- **Response**: Redirect to View Match with the flash "Readiness claimed."
+- **Example**: `/lan-tournaments/matches/abcdef01-2345-6789-abcd-ef0123456789/ready/claim`
+
+#### Revoke Readiness (Un-ready)
+- **URL**: `/lan-tournaments/matches/<match_id>/ready/revoke`
+- **Method**: POST
+- **Authentication**: Required (`@login_required`)
+- **Authorization**: Same as Claim Readiness
+- **Form Fields**: Same as Claim Readiness. No `reason` field: a side just reports itself not ready
+- **Description**: Withdraws the readiness of one side ("Ich bin nicht bereit", orga: "Nicht bereit (für diese Seite)"). Writes the audit entry `match-ready-revoked`; the match keeps no revocation record
+- **Response**: Redirect to View Match with the flash "Readiness revoked."
+- **Example**: `/lan-tournaments/matches/abcdef01-2345-6789-abcd-ef0123456789/ready/revoke`
+
+The admin has no readiness routes: the admin match view shows the state of both sides read-only.
 
 ### Orga Seeding and Playoffs (Site)
 
@@ -535,6 +567,30 @@ Tournament orgas (and global administrators) run the seeding flow on the site. A
 | `/lan-tournaments/orga/tournaments/<tournament_id>/leaderboard/reopen` | POST | Reopen Leaderboard (`reason` required) |
 | `/lan-tournaments/orga/tournaments/<tournament_id>/advance_ffa_round` | POST | Advance FFA Round (Draft) |
 | `/lan-tournaments/orga/tournaments/<tournament_id>/generate_ffa_grand_final` | POST | Generate FFA Grand Final |
+
+---
+
+## Match List Filter
+
+The site list (`/lan-tournaments/<tournament_id>/matches`) and the admin list (`/lan-tournaments/tournaments/<tournament_id>/matches`) take the same `only` query parameter. The tournament page links to both lists with it. Every match is in exactly one bucket, so the bucket counts add up to `all`. Counts and lists use the whole tournament, never the viewer's own matches.
+
+| `only` | Matches in the bucket | Label (de) |
+|--------|-----------------------|------------|
+| `waiting` | No complete pairing yet (fewer than two contestants assigned), not finished | Wartet auf Gegner |
+| `not_ready` | Two contestants assigned, neither side ready | Nicht bereit |
+| `partially_ready` | Exactly one side ready | Teilweise bereit |
+| `both_ready` | Both sides ready | Beide bereit |
+| `no_readiness` | Two or more contestants in a format without per-side readiness (for example free-for-all), not finished. The option is listed only while its count is above 0 | Offen (ohne Bereitschaft) |
+| `finished` | Confirmed result or defwin, or the tournament is completed or cancelled | Beendet |
+| `all` (default) | Every match | Alle |
+
+The legacy values `ready`, `playable` and `open`, an empty value and any unknown value fall back to `all`; a stale link never hides a match.
+
+---
+
+## Match Invitations
+
+Each recipient of a match pairing has one work item per pairing generation. A mail that the SMTP server definitely rejects, or that fails to reach the queue, is retried automatically: up to 3 attempts in total, 30 seconds after the first and 120 seconds after the second. When a tournament starts or resumes (status ONGOING), a catch-up reconciles every match, recovers expired leases and sends the `pending` or `failed` work that is due, at most 100 items, and never repeats an `accepted` mail. A permanent failure (mail configuration or build error) or an exhausted retry cycle stays `failed`, and an ambiguous outcome stays `delivery_unknown`. As with every BYCEPS mail, a mail that failed stays failed: no admin or site route resends invitations.
 
 ---
 

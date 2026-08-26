@@ -1,0 +1,41 @@
+{# Public display allowlist from the canonical batch; never association-row sides. #}
+{%- from 'macros/lan_tournament.html' import render_match_ref %}
+<section aria-label='{{ _("Match readiness") }}' data-lt-readiness-index>
+  <h2>{{ _('Match readiness') }}</h2>
+  <ul>
+    {%- for entry in match_data %}
+    {%- set match = entry.match %}
+    {%- set readiness = readiness_by_match_id[match.id] %}
+    {%- set display = entry.readiness_display %}
+    {%- set phase_label = match_labels.get(match.id|string) %}
+    {%- set bracket = match.bracket.value if match.bracket else none %}
+    <li>
+      <a href='{{ url_for("lan_tournament_admin.view_match", match_id=match.id) }}'><b>
+        {{- _('Match %(number)s', number=render_match_ref(match)) }} ·
+        {%- if phase_label %} {{ phase_label }}
+        {%- elif bracket == 'P3' %} {{ _('Third-place match') }}
+        {%- elif bracket == 'GF' %} {{ _('Grand Final') }}
+        {%- else %} {{ _('Round %(num)s', num=(match.round or 0) + 1) }}
+        {%- endif -%}
+      </b></a> —
+      <span data-readiness-status='{{ display.status }}'>
+        {%- if not display.supported and not readiness.outcome %}
+          {{ _('Readiness is not available for this format.') }}
+        {%- else %}
+          {%- if display.status == 'open' %}
+            <span aria-hidden='true'>○</span> {{ display.label }}
+          {%- elif display.status == 'partially_ready' %}
+            <span aria-hidden='true'>◐</span> {{ _('Partially ready') }} · {{ display.label }} · {{ _('Side B not ready') if 'a' in display.ready_sides else _('Side A not ready') }}
+          {%- elif display.status == 'both_ready' %}
+            <span aria-hidden='true'>✓</span> {{ display.label }} · {{ display.side_labels.a }} · {{ display.side_labels.b }}
+          {%- else %}
+            {{ display.label }}
+          {%- endif %}
+        {%- endif %}
+      </span>
+    </li>
+    {%- else %}
+    <li>{{ _('No matches have been created yet.') }}</li>
+    {%- endfor %}
+  </ul>
+</section>

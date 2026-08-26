@@ -12,6 +12,19 @@ if TYPE_CHECKING:
     from .tournament_match_to_contestant import TournamentMatchToContestant
 
 TournamentMatchID = NewType('TournamentMatchID', UUID)
+MatchPairingID = NewType('MatchPairingID', UUID)
+MatchInvitationID = NewType('MatchInvitationID', UUID)
+
+
+class MatchSide(Enum):
+    """The two sides of a 1v1 match.
+
+    Side A is the contestant created first (lowest ``created_at``),
+    side B the second one.
+    """
+
+    A = 'a'
+    B = 'b'
 
 
 class CorrectionCase(Enum):
@@ -39,6 +52,17 @@ class TournamentMatch:
     loser_next_match_id: TournamentMatchID | None = None
     phase: int = 1
     seeding_target: str | None = None
+    occupied_since: datetime | None = None
+    ready_at_a: datetime | None = None
+    ready_at_b: datetime | None = None
+    ready_by_a: UserID | None = None
+    ready_by_b: UserID | None = None
+    both_ready_notified_at: datetime | None = None
+    pairing_generation: int = 0
+    readiness_revision: int = 0
+    pairing_id: MatchPairingID | None = None
+    invitation_hold_a: bool = False
+    invitation_hold_b: bool = False
 
 
 @dataclass(frozen=True, kw_only=True)

@@ -29,6 +29,11 @@ from byceps.services.lan_tournament import (
     tournament_team_service,
 )
 from byceps.services.lan_tournament.models.bracket import Bracket
+from byceps.services.lan_tournament.models.match_readiness import (
+    MatchReadiness,
+    READINESS_FILTER_BUCKETS,
+    derive_match_readiness,
+)
 from byceps.services.lan_tournament.models.contestant_type import (
     ContestantType,
 )
@@ -109,6 +114,105 @@ from byceps.services.party.models import Party, PartyID
 from byceps.services.user import user_service
 from byceps.services.user.models import User, UserID
 from byceps.util.result import Err, Ok, Result
+
+
+def build_match_readiness_projections(
+    tournament: Tournament,
+    matches: Sequence[TournamentMatch],
+    contestants_by_match_id: Mapping[
+        TournamentMatchID, Sequence[TournamentMatchToContestant]
+    ],
+) -> dict[TournamentMatchID, MatchReadiness]:
+    """Project already scoped rows with one batch read, without initialization.
+
+    Callers supply the existing contestant batch and apply viewer/personal scope
+    before deriving filters/counts. Actor IDs are scalar facts, never lazy users.
+    Mutation availability is lifecycle/pair capability, NOT user authorization.
+    """
+    pairings = tournament_repository.get_match_pairings_for_matches(
+        [match.id for match in matches]
+    )
+    projections = {}
+    for match in matches:
+        projection = derive_match_readiness(
+            match,
+            contestants_by_match_id.get(match.id, ()),
+            pairing=pairings.get(match.id),
+            supports_readiness=(
+                match.tournament_id == tournament.id
+                and game_format_for_phase(tournament, match.phase) is GameFormat.ONE_V_ONE
+            ),
+        )
+        terminal = tournament.tournament_status in {
+            TournamentStatus.COMPLETED, TournamentStatus.CANCELLED,
+        }
+        if terminal:
+            projection = replace(
+                projection,
+                outcome=projection.outcome or tournament.tournament_status.name.lower(),
+                mutation_available=False,
+            )
+        elif tournament.tournament_status is not TournamentStatus.ONGOING:
+            projection = replace(projection, mutation_available=False)
+        projections[match.id] = projection
+    return projections
+
+
+def normalize_match_projection_filter(only: str) -> str:
+    """Return a readiness bucket, or `all` for legacy and unknown values."""
+    if only in READINESS_FILTER_BUCKETS:
+        return only
+    return 'all'
+
+
+def filter_match_projections(
+    projections: Sequence[MatchReadiness], *, only: str,
+) -> list[MatchReadiness]:
+    """Filter scoped projections, preserving caller order (no database reads)."""
+    normalized = normalize_match_projection_filter(only)
+    if normalized == 'all':
+        return list(projections)
+    return [p for p in projections if p.filter_bucket == normalized]
+
+
+def count_match_projections(
+    projections: Sequence[MatchReadiness],
+) -> dict[str, int]:
+    """Count every bucket with the same predicate the filter uses."""
+    counts = {bucket: 0 for bucket in READINESS_FILTER_BUCKETS}
+    for projection in projections:
+        counts[projection.filter_bucket] += 1
+    return {'all': len(projections), **counts}
+
+
+def match_filter_options(
+    quantities: Mapping[str, int],
+) -> list[tuple[str, str, int]]:
+    """Return `(key, label, count)` filter options in design order."""
+    options = [
+        ('waiting', gettext('Waiting for opponent')),
+        ('not_ready', gettext('Not ready')),
+        ('partially_ready', gettext('Partially ready')),
+        ('both_ready', gettext('Both ready')),
+        ('no_readiness', gettext('Open (no readiness)')),
+        ('finished', gettext('Finished')),
+        ('all', gettext('All')),
+    ]
+    return [
+        (key, label, quantities.get(key, 0))
+        for key, label in options
+        if key != 'no_readiness' or quantities.get(key, 0) > 0
+    ]
+
+
+def active_match_filter(
+    only: str, options: Sequence[tuple[str, str, int]],
+) -> str:
+    """Return the requested bucket if the bar offers it, else `all`."""
+    normalized = normalize_match_projection_filter(only)
+    if any(key == normalized for key, _, _ in options):
+        return normalized
+    return 'all'
 
 
 def build_contestant_name_lookups(
@@ -477,6 +581,46 @@ def compute_feed_counts(match_data: list[dict]) -> dict[str, int]:
     return feed_counts
 
 
+def serialize_public_match_readiness(readiness: MatchReadiness) -> dict:
+    """Allowlisted public facts; no actors, audit, authority or mail audience."""
+    labels = {
+        'not_yet_occupied': gettext('Waiting for opponent'),
+        'open': gettext('Not ready'),
+        'partially_ready': gettext('Partially ready'),
+        'both_ready': gettext('Both ready'),
+        'confirmed': gettext('Confirmed'),
+        'defwin': gettext('DEFWIN'),
+        'completed': gettext('Completed'),
+        'cancelled': gettext('Cancelled'),
+    }
+    side_labels = {
+        'a': gettext('Side A ready'),
+        'b': gettext('Side B ready'),
+    }
+    sides = [side.value for side in readiness.ready_sides]
+    status = readiness.display_status
+    label = labels[status]
+    if status == 'partially_ready':
+        label = ' / '.join(side_labels[side] for side in sides)
+
+    def timestamp(value: datetime | None) -> str | None:
+        return value.isoformat() if value is not None else None
+
+    return {
+        'supported': readiness.supports_readiness,
+        'status': status,
+        'label': label,
+        'ready_sides': sides,
+        'side_labels': {side: side_labels[side] for side in sides},
+        'assignment_complete': readiness.assignment_complete,
+        'assigned_contestant_count': readiness.assigned_contestant_count,
+        'original_occupied_since': timestamp(readiness.original_occupied_since),
+        'pairing_started_at': timestamp(readiness.pairing_started_at),
+        'ready_at_a': timestamp(readiness.ready_at_a),
+        'ready_at_b': timestamp(readiness.ready_at_b),
+    }
+
+
 def serialize_bracket_json(
     tournament: Tournament,
     match_data: list[dict],
@@ -487,12 +631,15 @@ def serialize_bracket_json(
     *,
     url_builder: Callable[[TournamentMatch], str] | None = None,
     origin_labels: Mapping[str, str] | None = None,
+    readiness_by_match_id: Mapping[TournamentMatchID, MatchReadiness] | None = None,
 ) -> dict:
     """Serialize bracket data to a JSON-safe dict for client-side rendering.
 
     The payload is public: it carries the phase of a match and, with
     `origin_labels` (contestant ID to `A1`), where a contestant qualified
-    from, and never a seed, a tier, a code or a decision reason.
+    from, and never a seed, a tier, a code or a decision reason. Optional
+    canonical projections add an allowlisted ``readiness`` substate only for
+    supplied match IDs; omission preserves the legacy payload exactly.
     """
     # Compute incoming feed counts from the match graph so the
     # client can identify dead matches (0 feeds) without
@@ -537,6 +684,10 @@ def serialize_bracket_json(
                 'loser_next_match_id': str(match.loser_next_match_id) if match.loser_next_match_id else None,
                 'confirmed': match.confirmed_by is not None,
                 'incoming_feed_count': feed_counts.get(str(match.id), 0),
+                **({'readiness': serialize_public_match_readiness(
+                    readiness_by_match_id[match.id]
+                )} if readiness_by_match_id is not None
+                   and match.id in readiness_by_match_id else {}),
                 'contestants': [
                     {
                         'name': _resolve_contestant_name(c, teams_by_id, participants_by_id),

@@ -6,11 +6,16 @@ Unit tests for the admin match-result correction view.
 """
 
 from contextlib import contextmanager
+from datetime import UTC, datetime
+from html.parser import HTMLParser
+from pathlib import Path
+from types import MappingProxyType, SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 from flask import Flask
 from flask_babel import Babel
+from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from byceps.services.lan_tournament.models.bracket import Bracket
 from byceps.services.lan_tournament.models.contestant_type import (
@@ -20,12 +25,19 @@ from byceps.services.lan_tournament.models.elimination_mode import (
     EliminationMode,
 )
 from byceps.services.lan_tournament.models.game_format import GameFormat
+from byceps.services.lan_tournament.models.match_readiness import (
+    ContestantIdentity,
+    MatchPairing,
+    MatchReadiness,
+    ReadinessDisplayStatus,
+)
 from byceps.services.lan_tournament.models.tournament import (
     Tournament,
     TournamentID,
 )
 from byceps.services.lan_tournament.models.tournament_match import (
     CorrectionCase,
+    MatchSide,
     TournamentMatchID,
 )
 from byceps.services.lan_tournament.models.tournament_participant import (
@@ -53,6 +65,19 @@ PARTICIPANT_A = TournamentParticipantID(generate_uuid())
 PARTICIPANT_B = TournamentParticipantID(generate_uuid())
 
 _V = 'byceps.services.lan_tournament.blueprints.admin.views'
+VIEW_MATCH_TEMPLATE = (
+    Path(__file__).resolve().parents[4]
+    / 'byceps/services/lan_tournament/blueprints/admin/templates'
+    / 'admin/lan_tournament/view_match.html'
+)
+MACROS = (
+    Path(__file__).resolve().parents[4]
+    / 'byceps/services/core/blueprints/common/templates'
+)
+CATALOGUE = (
+    Path(__file__).resolve().parents[4]
+    / 'byceps/translations/de/LC_MESSAGES/messages.po'
+)
 
 
 # ------------------------------------------------------------------ #
@@ -453,18 +478,58 @@ def test_correction_error_is_translated_whole(app):
 # ------------------------------------------------------------------ #
 
 
-def _call_view_match(app):
+def _call_view_match(app, tournament, match, contestants):
     from byceps.services.lan_tournament.blueprints.admin import views
 
     raw_fn = views.view_match.__wrapped__.__wrapped__
 
-    mock_g = MagicMock()
-    mock_g.user.has_permission.return_value = True
-    mock_g.user.id = USER_ID
+    permissions = frozenset({
+        'lan_tournament.view', 'lan_tournament.administrate',
+    })
+    request_g = SimpleNamespace(user=SimpleNamespace(
+        id=USER_ID,
+        authenticated=True,
+        has_permission=permissions.__contains__,
+    ))
+    # These fixtures exercise confirmed corrections, not pairing persistence.
+    # No current pair is supplied and no side claims are manufactured.
+    count = sum(
+        c.participant_id is not None or c.team_id is not None
+        for c in contestants
+    )
+    supported = tournament.game_format is GameFormat.ONE_V_ONE
+    complete = supported and count == 2
+    outcome = 'defwin' if count < 2 else 'confirmed'
+    readiness = MatchReadiness(
+        match_id=match.id,
+        status=(
+            ReadinessDisplayStatus.OPEN if complete
+            else ReadinessDisplayStatus.NOT_YET_OCCUPIED
+        ),
+        ready_sides=(),
+        assigned_contestant_count=count,
+        assignment_complete=complete,
+        supports_readiness=supported,
+        outcome=outcome,
+    )
+    projections = MappingProxyType({match.id: readiness})
 
-    with app.test_request_context('/'):
-        with patch(f'{_V}.g', new=mock_g):
-            return raw_fn(MATCH_ID_STR)
+    with (
+        app.test_request_context('/'),
+        patch(f'{_V}.g', new=request_g),
+        patch(
+            f'{_V}.build_match_readiness_projections',
+            autospec=True, return_value=projections,
+        ) as mock_projection,
+    ):
+        context = raw_fn(str(match.id))
+
+    mock_projection.assert_called_once_with(
+        tournament, [match], {match.id: contestants},
+    )
+    assert context['readiness'] is readiness
+    assert context['readiness_contestants_by_side'] == {}
+    return context
 
 
 def test_view_match_query_count_independent_of_downstream_count(app):
@@ -505,7 +570,10 @@ def test_view_match_query_count_independent_of_downstream_count(app):
         ]
         mock_match_svc.get_contestants_for_matches.return_value = {}
 
-        context = _call_view_match(app)
+        context = _call_view_match(
+            app, mock_get_tournament.return_value, mock_get_match.return_value,
+            mock_match_svc.get_contestants_for_match.return_value,
+        )
 
     assert mock_match_svc.get_matches_by_ids.call_count == 1
     assert mock_match_svc.get_contestants_for_matches.call_count == 1
@@ -558,7 +626,10 @@ def test_view_match_preserves_bfs_order_when_fetch_returns_shuffled(app):
         ]
         mock_match_svc.get_contestants_for_matches.return_value = {}
 
-        context = _call_view_match(app)
+        context = _call_view_match(
+            app, mock_get_tournament.return_value, mock_get_match.return_value,
+            mock_match_svc.get_contestants_for_match.return_value,
+        )
 
     assert [
         row.match.id for row in context['downstream_impact']
@@ -573,14 +644,6 @@ def test_view_match_preserves_bfs_order_when_fetch_returns_shuffled(app):
 def _call_view_match_with_tournament(
     app, tournament, contestants=None, ffa_advanced=False
 ):
-    from byceps.services.lan_tournament.blueprints.admin import views
-
-    raw_fn = views.view_match.__wrapped__.__wrapped__
-
-    mock_g = MagicMock()
-    mock_g.user.has_permission.return_value = True
-    mock_g.user.id = USER_ID
-
     with (
         patch(f'{_V}.tournament_match_service') as mock_match_svc,
         patch(f'{_V}.party_service') as mock_party_svc,
@@ -607,9 +670,10 @@ def _call_view_match_with_tournament(
         mock_match_svc.get_contestants_for_matches.return_value = {}
         mock_match_svc.ffa_round_already_advanced.return_value = ffa_advanced
 
-        with app.test_request_context('/'):
-            with patch(f'{_V}.g', new=mock_g):
-                context = raw_fn(MATCH_ID_STR)
+        context = _call_view_match(
+            app, tournament, mock_get_match.return_value,
+            mock_match_svc.get_contestants_for_match.return_value,
+        )
 
         return context, mock_match_svc
 
@@ -704,10 +768,6 @@ def _call_view_match_for(
     contestants=None,
 ):
     """Run view_match over a match of a given bracket position."""
-    from byceps.services.lan_tournament.blueprints.admin import views
-
-    raw_fn = views.view_match.__wrapped__.__wrapped__
-
     tournament = _make_tournament()
     tournament.elimination_mode = elimination_mode
     tournament.tournament_status = tournament_status
@@ -715,10 +775,6 @@ def _call_view_match_for(
     match = _make_match()
     match.bracket = bracket
     match.next_match_id = next_match_id
-
-    mock_g = MagicMock()
-    mock_g.user.has_permission.return_value = True
-    mock_g.user.id = USER_ID
 
     with (
         patch(f'{_V}.tournament_match_service') as mock_match_svc,
@@ -745,9 +801,10 @@ def _call_view_match_for(
         mock_match_svc.get_matches_by_ids.return_value = []
         mock_match_svc.get_contestants_for_matches.return_value = {}
 
-        with app.test_request_context('/'):
-            with patch(f'{_V}.g', new=mock_g):
-                return raw_fn(MATCH_ID_STR)
+        return _call_view_match(
+            app, tournament, match,
+            mock_match_svc.get_contestants_for_match.return_value,
+        )
 
 
 @pytest.mark.parametrize(
@@ -1206,12 +1263,6 @@ def test_view_match_lists_the_matches_the_acknowledgement_covers(app):
     pending = MagicMock(id=TournamentMatchID(generate_uuid()))
     pending.confirmed_by = None
 
-    from byceps.services.lan_tournament.blueprints.admin import views
-
-    raw_fn = views.view_match.__wrapped__.__wrapped__
-    mock_g = MagicMock()
-    mock_g.user.has_permission.return_value = True
-
     with (
         patch(f'{_V}.tournament_match_service') as mock_match_svc,
         patch(f'{_V}.party_service'),
@@ -1234,8 +1285,276 @@ def test_view_match_lists_the_matches_the_acknowledgement_covers(app):
         mock_match_svc.get_matches_by_ids.return_value = [confirmed, pending]
         mock_match_svc.get_contestants_for_matches.return_value = {}
 
-        with app.test_request_context('/'):
-            with patch(f'{_V}.g', new=mock_g):
-                context = raw_fn(MATCH_ID_STR)
+        context = _call_view_match(
+            app, mock_get_tournament.return_value, mock_get_match.return_value,
+            mock_match_svc.get_contestants_for_match.return_value,
+        )
 
     assert context['ack_match_ids'] == [str(confirmed.id)]
+
+
+# ------------------------------------------------------------------ #
+# readiness box
+# ------------------------------------------------------------------ #
+
+OCCUPIED_SINCE = datetime(2026, 10, 7, 9, 41, tzinfo=UTC)
+PAIRING_SINCE = datetime(2026, 10, 7, 9, 42, tzinfo=UTC)
+READY_SINCE = datetime(2026, 10, 7, 9, 47, tzinfo=UTC)
+
+
+class _Box(HTMLParser):
+    """Collect the elements and the text of a rendered readiness box."""
+
+    def __init__(self, html):
+        super().__init__()
+        self.tags = []
+        self.rows = []
+        self.hidden_symbols = []
+        self.state_line = None
+        self._open = []
+        self.feed(html)
+
+    def handle_starttag(self, tag, attrs):
+        attributes = dict(attrs)
+        self.tags.append(tag)
+        self._open.append((tag, attributes, []))
+
+    def handle_data(self, data):
+        for _tag, _attributes, texts in self._open:
+            texts.append(data)
+
+    def handle_endtag(self, tag):
+        while self._open:
+            open_tag, attributes, texts = self._open.pop()
+            text = ' '.join(''.join(texts).split())
+            if open_tag == 'dd':
+                self.rows.append((attributes, text))
+            if open_tag == 'p' and 'readiness-status' in attributes.get(
+                'class', ''
+            ):
+                self.state_line = text
+            if open_tag == 'span' and 'aria-hidden' in attributes:
+                self.hidden_symbols.append(text)
+            if open_tag == tag:
+                break
+
+
+def _render_readiness_box(
+    readiness, by_side=None, names=None, status=TournamentStatus.ONGOING
+):
+    """Render the readiness section of the shipped template."""
+    source = VIEW_MATCH_TEMPLATE.read_text(encoding='utf-8')
+    start = source.index('{% set ready_sides')
+    end = source.index('</section>', start) + len('</section>')
+    env = Environment(undefined=StrictUndefined, autoescape=True)
+    env.filters['dateformat'] = lambda value: value.date().isoformat()
+    env.filters['timeformat'] = lambda value, *args: value.strftime('%H:%M')
+    return env.from_string(source[start:end]).render(
+        _=lambda message: message,
+        readiness=readiness,
+        readiness_contestants_by_side=by_side or {},
+        teams_by_id={},
+        participants_by_id={
+            participant_id: SimpleNamespace(screen_name=name)
+            for participant_id, name in (names or {}).items()
+        },
+        tournament=SimpleNamespace(tournament_status=status),
+    )
+
+
+def _readiness(
+    status=ReadinessDisplayStatus.PARTIALLY_READY,
+    ready_sides=(MatchSide.B,),
+    **overrides,
+):
+    fields = dict(
+        match_id=MATCH_ID,
+        status=status,
+        ready_sides=ready_sides,
+        assigned_contestant_count=2,
+        assignment_complete=True,
+        original_occupied_since=OCCUPIED_SINCE,
+        pairing_started_at=PAIRING_SINCE,
+        ready_at_a=READY_SINCE if MatchSide.A in ready_sides else None,
+        ready_at_b=READY_SINCE if MatchSide.B in ready_sides else None,
+        supports_readiness=True,
+        pairing_valid=True,
+    )
+    fields.update(overrides)
+    return MatchReadiness(**fields)
+
+
+def _by_side():
+    return {
+        MatchSide.A: _make_contestant(participant_id=PARTICIPANT_A),
+        MatchSide.B: _make_contestant(participant_id=PARTICIPANT_B),
+    }
+
+
+NAMES = {PARTICIPANT_A: 'Test_User_1', PARTICIPANT_B: 'Test_User_4'}
+
+
+def test_admin_readiness_box_lists_side_states():
+    html = _render_readiness_box(_readiness(), _by_side(), NAMES)
+    box = _Box(html)
+
+    side_rows = [
+        text for attributes, text in box.rows if 'data-side-state' in attributes
+    ]
+    assert side_rows == [
+        'Test_User_1 · ○ Not ready',
+        'Test_User_4 · ✓ Ready',
+    ]
+    # The ready-since row exists for the ready side only.
+    since_rows = [
+        (attributes['data-side'], text)
+        for attributes, text in box.rows
+        if 'data-ready-at' in attributes
+    ]
+    assert since_rows == [('b', '2026-10-07, 09:47')]
+    assert 'Side A ready since' not in html
+    assert 'Side B ready since' in html
+    # Symbols are decorative; the translated words carry the state.
+    assert box.hidden_symbols == ['◐', '○', '✓']
+    assert 'form' not in box.tags
+    assert 'button' not in box.tags
+    assert 'readiness-history' not in html
+
+
+# fmt: off
+@pytest.mark.parametrize('kwargs, state_line', [
+    ({'status': ReadinessDisplayStatus.OPEN, 'ready_sides': ()},
+     '○ Not ready'),
+    ({'ready_sides': (MatchSide.A,)},
+     '◐ Partially ready — Side A ready'),
+    ({'ready_sides': (MatchSide.B,)},
+     '◐ Partially ready — Side B ready'),
+    ({'status': ReadinessDisplayStatus.BOTH_READY,
+      'ready_sides': (MatchSide.A, MatchSide.B)},
+     '✓ Both ready'),
+])
+# fmt: on
+def test_admin_readiness_state_line_has_symbol_and_side(kwargs, state_line):
+    html = _render_readiness_box(_readiness(**kwargs), _by_side(), NAMES)
+
+    assert _Box(html).state_line == state_line
+
+
+def test_admin_readiness_box_unassigned_has_no_symbol_or_sides():
+    readiness = _readiness(
+        status=ReadinessDisplayStatus.NOT_YET_OCCUPIED,
+        ready_sides=(),
+        assigned_contestant_count=1,
+        assignment_complete=False,
+        original_occupied_since=None,
+        pairing_started_at=None,
+        pairing_valid=False,
+    )
+    html = _render_readiness_box(readiness)
+    box = _Box(html)
+
+    assert box.state_line == 'Waiting for opponent'
+    assert box.hidden_symbols == []
+    assert box.rows == []
+    assert 'Assignment does not indicate' not in html
+
+
+def test_view_match_maps_sides_from_the_pairing_not_row_order(app):
+    from byceps.services.lan_tournament.blueprints.admin import views
+
+    raw_fn = views.view_match.__wrapped__.__wrapped__
+    tournament = _make_tournament()
+    match = _make_match()
+    match.confirmed_by = None
+    contestant_a = _make_contestant(participant_id=PARTICIPANT_A)
+    contestant_b = _make_contestant(participant_id=PARTICIPANT_B)
+    contestants = [contestant_a, contestant_b]
+    # The pairing declares B as side A; the row order must not matter.
+    pairing = MatchPairing(
+        id=generate_uuid(),
+        match_id=MATCH_ID,
+        tournament_id=TOURNAMENT_ID,
+        generation=1,
+        side_a=ContestantIdentity(kind='participant', id=PARTICIPANT_B),
+        side_b=ContestantIdentity(kind='participant', id=PARTICIPANT_A),
+    )
+    projections = MappingProxyType(
+        {match.id: _readiness(ready_sides=(), status=ReadinessDisplayStatus.OPEN)}
+    )
+    request_g = SimpleNamespace(
+        user=SimpleNamespace(
+            id=USER_ID,
+            authenticated=True,
+            has_permission=lambda _: True,
+        )
+    )
+
+    with (
+        app.test_request_context('/'),
+        patch(f'{_V}.g', new=request_g),
+        patch(f'{_V}.tournament_match_service') as mock_match_svc,
+        patch(f'{_V}.party_service'),
+        patch(f'{_V}.user_service') as mock_user_svc,
+        patch(f'{_V}.build_contestant_name_lookups', return_value=({}, {})),
+        patch(f'{_V}.build_hover_lookups', return_value=({}, {})),
+        patch(f'{_V}._get_match_or_404', return_value=match),
+        patch(f'{_V}._get_tournament_or_404', return_value=tournament),
+        patch(
+            f'{_V}.build_match_readiness_projections',
+            autospec=True, return_value=projections,
+        ),
+        patch(
+            f'{_V}.tournament_repository.get_match_pairing',
+            autospec=True, return_value=pairing,
+        ) as mock_pairing,
+    ):
+        mock_user_svc.get_users_indexed_by_id.return_value = {}
+        mock_match_svc.get_contestants_for_match.return_value = contestants
+        mock_match_svc.get_comments_from_match.return_value = []
+        context = raw_fn(str(match.id))
+
+    mock_pairing.assert_called_once_with(match.id)
+    assert context['readiness_contestants_by_side'] == {
+        MatchSide.A: contestant_b,
+        MatchSide.B: contestant_a,
+    }
+
+
+def _render_heading(match, translate=lambda message: message):
+    """Render the page heading of the shipped template with the real macro."""
+    source = VIEW_MATCH_TEMPLATE.read_text(encoding='utf-8')
+    start = source.index("<h1 class='title'>")
+    end = source.index('</h1>', start) + len('</h1>')
+    env = Environment(
+        loader=FileSystemLoader(MACROS),
+        undefined=StrictUndefined,
+        autoescape=True,
+    )
+    env.filters['dateformat'] = lambda value: value
+    env.filters['timeformat'] = lambda value, *args: value
+    return env.from_string(
+        "{% from 'macros/lan_tournament.html' import render_match_ref %}"
+        + source[start:end]
+    ).render(_=translate, match=match)
+
+
+# fmt: off
+@pytest.mark.parametrize('bracket, round_, order, ref', [
+    (None, 0, 1, 'R1 M2'),
+    (Bracket.WINNERS, 1, 0, 'WB R2 M1'),
+])
+# fmt: on
+def test_admin_match_heading_is_prefixed_with_the_word_match(
+    bracket, round_, order, ref
+):
+    match = SimpleNamespace(bracket=bracket, round=round_, match_order=order)
+
+    assert _render_heading(match) == f"<h1 class='title'>Match {ref}</h1>"
+    german = _render_heading(match, {'Match': 'Partie'}.get)
+    assert german == f"<h1 class='title'>Partie {ref}</h1>"
+
+
+def test_the_match_heading_msgid_has_a_german_translation():
+    assert 'msgid "Match"\nmsgstr "Partie"\n' in CATALOGUE.read_text(
+        encoding='utf-8'
+    )

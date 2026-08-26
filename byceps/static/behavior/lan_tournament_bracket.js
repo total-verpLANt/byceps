@@ -360,6 +360,8 @@ function parseBracketData(json) {
       roundNo: parsed.round || ((m.round || 0) + 1),
       matchNo: parsed.match || ((m.match_order || 0) + 1),
       confirmed: !!m.confirmed,
+      // Canonical server facts only; never derive claims from entrants or time.
+      readiness: m.readiness || null,
       topResolved: {
         entrant: entrantTop,
         sourceRef: null,
@@ -1260,11 +1262,17 @@ function buildTeamRow(entrant, isWinner, score, dims, matchRef, hoverData, place
     '</div></div>';
 }
 
+/** Readiness statuses that are outcomes: the status tag speaks, not readiness. */
+var _LT_READINESS_OUTCOMES = {confirmed: 1, defwin: 1, completed: 1, cancelled: 1};
+
 /**
  * Create a complete match card element.
  *
  * If a URL is available for this match in matchUrls, it becomes
  * a clickable <a> tag. Otherwise it's a <div>.
+ *
+ * A card carries one status tag: the readiness badge for an unfinished
+ * match of a readiness format, the match status tag otherwise.
  */
 function createMatchEl(match, dims, options, matchUrls) {
   // Look up URL by ref first, then by UUID
@@ -1309,6 +1317,21 @@ function createMatchEl(match, dims, options, matchUrls) {
     ? '<span class="lt-match-stage" title="' + _ltEscapeHtml(options.stageText) + '">' + _ltEscapeHtml(options.stageText) + '</span>'
     : '';
   var statusTag = '<span class="lt-match-status lt-match-status--' + _ltEscapeHtml(statusMeta.key) + '" title="' + _t('status', 'Status') + ': ' + _ltEscapeHtml(statusMeta.label) + '">' + _ltEscapeHtml(statusMeta.label) + '</span>';
+  var readinessTag = '';
+  var readiness = match.readiness;
+  var showReadiness = !!(readiness && readiness.supported && readiness.label &&
+    !Object.prototype.hasOwnProperty.call(_LT_READINESS_OUTCOMES, readiness.status));
+  if (showReadiness) {
+    statusTag = '';
+    el.setAttribute('data-readiness-status', readiness.status);
+    el.setAttribute('data-ready-sides', (readiness.ready_sides || []).join(','));
+    readinessTag = '<span class="lt-match-readiness" data-readiness-status="' +
+      _ltEscapeHtml(readiness.status) + '" data-ready-sides="' +
+      _ltEscapeHtml((readiness.ready_sides || []).join(',')) + '">' +
+      _ltEscapeHtml(readiness.label) + '</span>';
+    el.title += ' - ' + readiness.label;
+    el.setAttribute('aria-label', el.getAttribute('aria-label') + ' (' + readiness.label + ')');
+  }
 
   el.innerHTML =
     '<div class="lt-match-label" style="font-size:' + (0.72 * dims.fontScale) + 'rem">' +
@@ -1316,7 +1339,7 @@ function createMatchEl(match, dims, options, matchUrls) {
     '<span class="lt-match-state-dot lt-match-state-dot--' + _ltEscapeHtml(statusMeta.key) + '" aria-hidden="true"></span>' +
     '<span class="lt-match-ref-text">' + _ltEscapeHtml(matchRefDisplay) + '</span>' +
     '</span>' +
-    '<span class="lt-match-meta">' + stageText + statusTag + '</span>' +
+    '<span class="lt-match-meta">' + stageText + statusTag + readinessTag + '</span>' +
     '</div>' +
     buildTeamRow(match.topResolved.entrant, match.winnerIndex === 1, match.scores[0], dims, match.ref, options.hoverData, match.topPlacement || null, match.trophyMatch) +
     buildTeamRow(match.bottomResolved.entrant, match.winnerIndex === 2, match.scores[1], dims, match.ref, options.hoverData, match.bottomPlacement || null, match.trophyMatch);

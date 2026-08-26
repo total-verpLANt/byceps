@@ -43,6 +43,9 @@ from byceps.services.lan_tournament.models.tournament_participant import (
 from byceps.services.lan_tournament.models.tournament_status import (
     TournamentStatus,
 )
+from byceps.services.lan_tournament.tournament_qualification_domain_service import (
+    TieKind,
+)
 from byceps.services.party.models import PartyID
 from byceps.util.uuid import generate_uuid7
 
@@ -119,6 +122,10 @@ def test_all_team_removal_signals_precede_release(make_tournament, users, monkey
         tournament_participant_service.admin_remove_participant(
             tournament.id, captain.id, initiator=users[0]
         ).unwrap()
+        if removal == 'last-member':
+            # Legacy data: only a team orphaned before the handover reaches
+            # the empty-team branch of remove_team_member.
+            removed._orphan_the_captaincy(team, captain)
     members = tournament_repository.get_participants_for_team(team.id)
     order = []
     def member_left(sender, **kwargs):
@@ -243,13 +250,15 @@ def _contestants(match):
     ]
 
 
-def _open_match_with_weakest(tournament):
+def _open_match_with_weakest(tournament, *, group=0):
     """Return the match of a group's strongest and weakest contestant.
 
     The strongest ID wins every match, so the weakest is no qualifier.
+    Group 0's scoreless walkover leaves distinct crossover metrics. In
+    group 1 it instead ties the two winners (9 points, 6–0, 3 played).
+    Match retrieval is unordered; never infer this scenario from its first row.
     """
     matches = _group_matches(tournament)
-    group = matches[0].group_order
     members = sorted(
         {
             cid
@@ -323,6 +332,62 @@ def test_removal_settling_last_group_match_makes_release_due(
 
     assert all(m.confirmed_by for m in _group_matches(tournament))
     _assert_due(tournament, mode)
+
+
+@pytest.mark.parametrize('mode', MODES, ids=['manual', 'automatic'])
+def test_removal_settling_last_match_preserves_unresolved_crossover_tie(
+    make_tournament, users, mode
+):
+    """Settling all matches is not enough when playoff seeds still tie."""
+    admin = users[0]
+    tournament = _make_groups_tournament(make_tournament, users, mode)
+    open_match, weakest = _open_match_with_weakest(tournament, group=1)
+    for match in _group_matches(tournament):
+        if match.id != open_match.id:
+            _confirm(match, admin)
+    before = tournament_qualification_service.get_qualification(
+        tournament.id
+    ).unwrap()
+    assert before.open_match_count == 1
+    assert not before.ready
+    assert not _has_draft(tournament)
+    assert not _released(tournament)
+
+    removed = tournament_participant_service.admin_remove_participant(
+        tournament.id, TournamentParticipantID(UUID(weakest)), initiator=admin
+    )
+    assert removed.is_ok(), removed.unwrap_err()
+    assert all(m.confirmed_by for m in _group_matches(tournament))
+    state = tournament_qualification_service.get_qualification(
+        tournament.id
+    ).unwrap()
+    assert state.open_match_count == 0
+    assert not state.ready
+    assert state.seed_order is None
+    (tie,) = state.blockers
+    assert tie.scope == 'crossover'
+    assert tie.kind is TieKind.SEEDING
+    assert not tie.decided
+    winners = tuple(ranking.entries[0] for ranking in state.rankings)
+    assert set(tie.contestant_ids) == {entry.contestant_id for entry in winners}
+    assert all(
+        (entry.row.played, entry.row.points, entry.row.score_for, entry.row.score_against)
+        == (3, 9, 6, 0)
+        for entry in winners
+    )
+    assert not _has_draft(tournament)
+    assert not _released(tournament)
+    assert not any(
+        match.phase == 2
+        for match in tournament_repository.get_matches_for_tournament(tournament.id)
+    )
+    retried = tournament_qualification_service.try_auto_release(
+        tournament.id, triggered_by=admin.id
+    )
+    assert retried.is_ok(), retried.unwrap_err()
+    assert retried.unwrap() is False
+    assert not _has_draft(tournament)
+    assert not _released(tournament)
 
 
 @pytest.mark.parametrize('mode', MODES, ids=['manual', 'automatic'])

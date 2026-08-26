@@ -26,6 +26,9 @@ match_deleted      = lan_tournament_signals.signal('match-deleted')
 match_confirmed    = lan_tournament_signals.signal('match-confirmed')
 match_unconfirmed  = lan_tournament_signals.signal('match-unconfirmed')
 match_ready        = lan_tournament_signals.signal('match-ready')
+match_ready_claimed = lan_tournament_signals.signal('match-ready-claimed')
+match_both_ready   = lan_tournament_signals.signal('match-both-ready')
+match_ready_revoked = lan_tournament_signals.signal('match-ready-revoked')
 
 contestant_advanced = lan_tournament_signals.signal('contestant-advanced')
 

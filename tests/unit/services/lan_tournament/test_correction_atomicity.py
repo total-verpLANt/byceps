@@ -7,10 +7,14 @@ transaction; `unconfirm_match` and `admin_set_and_confirm_match` keep
 their own commit and dispatch.
 """
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass, field
 from unittest.mock import MagicMock, patch
 
 from byceps.services.lan_tournament.models.tournament_match import (
     CorrectionCase,
+    MatchInvitationID,
     TournamentMatchID,
 )
 from byceps.services.lan_tournament.models.tournament_participant import (
@@ -22,11 +26,18 @@ from tests.helpers import generate_uuid
 
 
 _S = 'byceps.services.lan_tournament.tournament_match_service'
+_R = 'byceps.services.lan_tournament.tournament_readiness_service'
 
 MATCH_ID = TournamentMatchID(generate_uuid())
+READY_MATCH_ID = TournamentMatchID(generate_uuid())
+DELETED_MATCH_ID = TournamentMatchID(generate_uuid())
 TOURNAMENT_ID = generate_uuid()
 USER_ID = generate_uuid()
 PARTICIPANT_A = TournamentParticipantID(generate_uuid())
+PENDING_INVITATION_IDS = (
+    MatchInvitationID(generate_uuid()),
+    MatchInvitationID(generate_uuid()),
+)
 
 
 def _make_match() -> MagicMock:
@@ -64,6 +75,58 @@ def _patched_correction() -> MagicMock:
     return mock_repo
 
 
+def _record(calls: list[str], tag: str):
+    """Return a signal `send` stand-in that logs `tag` on the timeline."""
+
+    def send(*args, **kwargs):
+        calls.append(tag)
+
+    return send
+
+
+@dataclass
+class _InvitationBoundary:
+    reconciled: list[set[TournamentMatchID]] = field(default_factory=list)
+    dispatched: list[tuple[MatchInvitationID, ...]] = field(
+        default_factory=list
+    )
+
+
+@contextmanager
+def _invitation_boundary(calls: list[str]) -> Iterator[_InvitationBoundary]:
+    """Isolate the readiness service's invitation reconcile and dispatch.
+
+    Reconcile returns the typed ID tuple of the real function. Both
+    calls land on the caller's timeline, so a test can pin that
+    reconcile runs before the commit and dispatch after it.
+    """
+    boundary = _InvitationBoundary()
+
+    def reconcile(match_ids, *, occurred_at):
+        calls.append('reconcile_invitations')
+        boundary.reconciled.append(set(match_ids))
+        return Ok(PENDING_INVITATION_IDS)
+
+    def dispatch(invitation_ids):
+        calls.append('dispatch_invitations')
+        boundary.dispatched.append(tuple(invitation_ids))
+        return Ok(None)
+
+    with (
+        patch(
+            f'{_R}.reconcile_invitations_flush',
+            autospec=True,
+            side_effect=reconcile,
+        ),
+        patch(
+            f'{_R}.dispatch_pending_invitations',
+            autospec=True,
+            side_effect=dispatch,
+        ),
+    ):
+        yield boundary
+
+
 # ------------------------------------------------------------------ #
 # success: one commit, every event dispatched only after it
 # ------------------------------------------------------------------ #
@@ -76,15 +139,16 @@ def test_success_path_commits_once_and_dispatches_every_event_after_it():
     mock_repo = _patched_correction()
     mock_repo.commit_session.side_effect = lambda: calls.append('commit')
 
-    retract_event = MagicMock(name='retract_event')
-    deleted_event = MagicMock(name='deleted_event')
+    retract_event = MagicMock(name='retract_event', match_id=MATCH_ID)
+    deleted_event = MagicMock(name='deleted_event', match_id=DELETED_MATCH_ID)
     confirmed_event = MagicMock(name='confirmed_event')
     completed_event = MagicMock(name='completed_event')
     adv_event = MagicMock(name='adv_event')
     created_event = MagicMock(name='created_event')
-    ready_event = MagicMock(name='ready_event')
+    ready_event = MagicMock(name='ready_event', match_id=READY_MATCH_ID)
 
     with (
+        _invitation_boundary(calls) as invitations,
         patch(f'{_S}.tournament_repository', mock_repo),
         patch(f'{_S}.classify_result_correction') as mock_classify,
         patch(f'{_S}._validate_match_scores') as mock_validate,
@@ -111,9 +175,7 @@ def test_success_path_commits_once_and_dispatches_every_event_after_it():
             (sig_created, 'created'),
             (sig_ready, 'ready'),
         ):
-            sig.send.side_effect = (
-                lambda tag: lambda *a, **kw: calls.append(tag)
-            )(tag)
+            sig.send.side_effect = _record(calls, tag)
 
         mock_classify.return_value = Ok((CorrectionCase.NO_DOWNSTREAM, []))
         mock_validate.return_value = Ok({'row': 3})
@@ -140,10 +202,11 @@ def test_success_path_commits_once_and_dispatches_every_event_after_it():
         )
 
     assert result.is_ok()
-    assert calls[0] == 'commit'
+    # Invitations are reconciled in the transaction, then the one commit.
+    assert calls[:2] == ['reconcile_invitations', 'commit']
     assert calls.count('commit') == 1
     # Every collected event dispatched, all strictly after the commit.
-    assert set(calls[1:]) == {
+    assert set(calls[2:-1]) == {
         'unconfirmed',
         'deleted',
         'uncompleted',
@@ -153,6 +216,11 @@ def test_success_path_commits_once_and_dispatches_every_event_after_it():
         'created',
         'ready',
     }
+    # The reconciled invitations are dispatched last, after the events.
+    assert calls[-1] == 'dispatch_invitations'
+    # Retracted and newly ready matches, minus the deleted one.
+    assert invitations.reconciled == [{MATCH_ID, READY_MATCH_ID}]
+    assert invitations.dispatched == [PENDING_INVITATION_IDS]
     sig_unconfirmed.send.assert_called_once_with(None, event=retract_event)
     sig_confirmed.send.assert_called_once_with(None, event=confirmed_event)
 
@@ -165,9 +233,10 @@ def test_success_path_without_corrected_scores_dispatches_only_retraction_events
     mock_repo = _patched_correction()
     mock_repo.commit_session.side_effect = lambda: calls.append('commit')
 
-    retract_event = MagicMock(name='retract_event')
+    retract_event = MagicMock(name='retract_event', match_id=MATCH_ID)
 
     with (
+        _invitation_boundary(calls) as invitations,
         patch(f'{_S}.tournament_repository', mock_repo),
         patch(f'{_S}.classify_result_correction') as mock_classify,
         patch(f'{_S}._unconfirm_match_flush') as mock_unconfirm_flush,
@@ -189,7 +258,14 @@ def test_success_path_without_corrected_scores_dispatches_only_retraction_events
 
     assert result.is_ok()
     assert result.unwrap() == (CorrectionCase.NO_DOWNSTREAM, False)
-    assert calls == ['commit', 'unconfirmed']
+    assert calls == [
+        'reconcile_invitations',
+        'commit',
+        'unconfirmed',
+        'dispatch_invitations',
+    ]
+    assert invitations.reconciled == [{MATCH_ID}]
+    assert invitations.dispatched == [PENDING_INVITATION_IDS]
     mock_apply_impl.assert_not_called()
     sig_confirmed.send.assert_not_called()
 
@@ -301,9 +377,10 @@ def test_unconfirm_match_still_owns_a_single_commit_and_dispatch():
     mock_repo = MagicMock()
     mock_repo.commit_session.side_effect = lambda: calls.append('commit')
 
-    unconfirmed_event = MagicMock()
+    unconfirmed_event = MagicMock(match_id=MATCH_ID)
 
     with (
+        _invitation_boundary(calls) as invitations,
         patch(f'{_S}.tournament_repository', mock_repo),
         patch(f'{_S}._lock_reachable_matches'),
         patch(f'{_S}._unconfirm_match_flush') as mock_flush,
@@ -319,7 +396,14 @@ def test_unconfirm_match_still_owns_a_single_commit_and_dispatch():
         result = tournament_match_service.unconfirm_match(MATCH_ID, USER_ID)
 
     assert result.is_ok()
-    assert calls == ['commit', 'dispatch']
+    assert calls == [
+        'reconcile_invitations',
+        'commit',
+        'dispatch',
+        'dispatch_invitations',
+    ]
+    assert invitations.reconciled == [{MATCH_ID}]
+    assert invitations.dispatched == [PENDING_INVITATION_IDS]
     sig_unconfirmed.send.assert_called_once_with(
         None, event=unconfirmed_event
     )

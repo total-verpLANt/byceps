@@ -23,6 +23,7 @@ from byceps.services.snippet.models import SnippetScope
 from byceps.services.user import user_service
 from byceps.services.user.models import User, UserID
 from byceps.util.l10n import get_default_locale
+from byceps.util.result import Err, Ok, Result
 
 from . import tournament_participant_service, tournament_repository
 from .models.tournament import TournamentID
@@ -130,6 +131,64 @@ def send_match_ready_emails(
                 )
 
 
+def build_match_invitation_message(
+    tournament_id: TournamentID,
+    match_id: TournamentMatchID,
+    recipient_id: UserID,
+) -> Result[Message, str]:
+    """Build one invitation without enqueueing or sending it.
+
+    Only current contestants' recipients are eligible (all active team
+    members, not just captains). Lifecycle/pairing locking and delivery
+    bookkeeping belong to the caller. Missing mail prerequisites return
+    explicit errors; unrelated lookup failures still propagate.
+    """
+    tournament = tournament_repository.get_tournament(tournament_id)
+    match = tournament_repository.get_match(match_id)
+    if match.tournament_id != tournament_id:
+        return Err('match_tournament_mismatch')
+
+    contestants = tournament_repository.get_contestants_for_match(match_id)
+    if len(contestants) != 2:
+        return Err('match_requires_two_contestants')
+
+    audiences = [
+        _resolve_user_ids_for_contestant(contestant)
+        for contestant in contestants
+    ]
+    recipient_sides = [
+        index for index, user_ids in enumerate(audiences)
+        if recipient_id in user_ids
+    ]
+    if len(recipient_sides) != 1:
+        return Err('recipient_not_on_unique_match_side')
+
+    party = party_service.get_party(tournament.party_id)
+    brand = brand_service.get_brand(party.brand_id)
+    try:
+        email_config = email_config_service.get_config(party.brand_id)
+    except email_config_service.UnknownEmailConfigIdError:
+        return Err('email_config_missing')
+    if not email_config.sender.address:
+        return Err('email_config_missing')
+
+    all_user_ids = {user_id for audience in audiences for user_id in audience}
+    seats = tournament_participant_service.get_seats_for_users(
+        all_user_ids, tournament.party_id
+    )
+    opponent = contestants[1 - recipient_sides[0]]
+    return _build_match_ready_message(
+        user_id=recipient_id,
+        sender=email_config.sender,
+        brand=brand,
+        tournament_name=tournament.name,
+        match_round=match.round,
+        opponent_name=_build_opponent_display_name(opponent),
+        opponent_seat=_get_opponent_seat(opponent, seats),
+        your_seat=seats.get(recipient_id, '?'),
+    )
+
+
 def _resolve_user_ids_for_contestant(
     contestant: TournamentMatchToContestant,
 ) -> list[UserID]:
@@ -204,10 +263,10 @@ def _fetch_email_content_for_language(
     notification_label: str,
     log_fields: dict[str, str],
     quiet: bool,
-) -> tuple[str, str, str] | None:
+) -> Result[tuple[str, str, str], str]:
     """Fetch the body/subject snippets and footer for one language.
 
-    Returns `None` if any of the three is missing for that language, so
+    Returns an error if any of the three is missing for that language, so
     a caller trying several languages never mixes templates from
     different ones within a single email. Failures are logged unless
     `quiet` -- used while a further fallback language is still to be
@@ -226,7 +285,7 @@ def _fetch_email_content_for_language(
                 error=str(body_result.unwrap_err()),
                 **log_fields,
             )
-        return None
+        return Err('email_body_snippet_missing')
 
     subject_result = snippet_service.get_snippet_body(
         scope, subject_snippet_name, language_code
@@ -241,7 +300,7 @@ def _fetch_email_content_for_language(
                 error=str(subject_result.unwrap_err()),
                 **log_fields,
             )
-        return None
+        return Err('email_subject_snippet_missing')
 
     footer_result = email_footer_service.get_footer(brand, language_code)
     if footer_result.is_err():
@@ -253,16 +312,18 @@ def _fetch_email_content_for_language(
                 language_code=language_code,
                 **log_fields,
             )
-        return None
+        return Err('email_footer_missing')
 
-    return (
-        body_result.unwrap(),
-        subject_result.unwrap(),
-        footer_result.unwrap(),
+    return Ok(
+        (
+            body_result.unwrap(),
+            subject_result.unwrap(),
+            footer_result.unwrap(),
+        )
     )
 
 
-def _send_formatted_email(
+def _build_formatted_message(
     *,
     user_id: UserID,
     sender: NameAndAddress,
@@ -272,9 +333,9 @@ def _send_formatted_email(
     format_kwargs: dict[str, str],
     notification_label: str,
     extra_log_fields: dict[str, str] | None = None,
-) -> None:
+) -> Result[Message, str]:
     """Fetch the body/subject snippets and footer for one user, format
-    them, and enqueue the resulting email.
+    them, and return the resulting email without delivery side effects.
 
     Shared tail of the match-ready and tournament-request-decision
     email paths. Tries the recipient's own language first, falling
@@ -296,7 +357,7 @@ def _send_formatted_email(
             user_id=str(user_id),
             **log_fields,
         )
-        return
+        return Err('email_address_missing')
 
     locale = user_service.find_locale(user_id) or get_default_locale()
     language_code = locale.language
@@ -308,10 +369,12 @@ def _send_formatted_email(
 
     scope = SnippetScope.for_brand(brand.id)
 
-    content = None
+    content_result: Result[tuple[str, str, str], str] = Err(
+        'email_body_snippet_missing'
+    )
     for index, candidate_language_code in enumerate(language_codes_to_try):
         is_last_attempt = index == len(language_codes_to_try) - 1
-        content = _fetch_email_content_for_language(
+        content_result = _fetch_email_content_for_language(
             brand=brand,
             scope=scope,
             body_snippet_name=body_snippet_name,
@@ -321,13 +384,13 @@ def _send_formatted_email(
             log_fields=log_fields,
             quiet=not is_last_attempt,
         )
-        if content is not None:
+        if content_result.is_ok():
             break
 
-    if content is None:
-        return
+    if content_result.is_err():
+        return Err(content_result.unwrap_err())
 
-    body_template, subject_template, footer = content
+    body_template, subject_template, footer = content_result.unwrap()
 
     try:
         body = body_template.format(footer=footer, **format_kwargs)
@@ -346,7 +409,7 @@ def _send_formatted_email(
             error=str(exc),
             **log_fields,
         )
-        return
+        return Err('email_template_formatting_failed')
 
     message = Message(
         sender=sender,
@@ -354,7 +417,66 @@ def _send_formatted_email(
         subject=subject,
         body=body,
     )
-    email_service.enqueue_message(message)
+    return Ok(message)
+
+
+def _send_formatted_email(
+    *,
+    user_id: UserID,
+    sender: NameAndAddress,
+    brand: Brand,
+    body_snippet_name: str,
+    subject_snippet_name: str,
+    format_kwargs: dict[str, str],
+    notification_label: str,
+    extra_log_fields: dict[str, str] | None = None,
+) -> None:
+    """Legacy sending contract: log/skip rendering errors, enqueue success."""
+    result = _build_formatted_message(
+        user_id=user_id,
+        sender=sender,
+        brand=brand,
+        body_snippet_name=body_snippet_name,
+        subject_snippet_name=subject_snippet_name,
+        format_kwargs=format_kwargs,
+        notification_label=notification_label,
+        extra_log_fields=extra_log_fields,
+    )
+    if result.is_ok():
+        email_service.enqueue_message(result.unwrap())
+
+
+def _build_match_ready_message(
+    *,
+    user_id: UserID,
+    sender: NameAndAddress,
+    brand: Brand,
+    tournament_name: str,
+    match_round: int | None,
+    opponent_name: str,
+    opponent_seat: str,
+    your_seat: str,
+) -> Result[Message, str]:
+    """Assemble one match-ready email for a single user."""
+    round_display = str(match_round) if match_round is not None else '?'
+
+    format_kwargs = {
+        'tournament_name': _escape_format_braces(tournament_name),
+        'match_round': round_display,
+        'opponent_name': _escape_format_braces(opponent_name),
+        'opponent_seat': _escape_format_braces(opponent_seat),
+        'your_seat': _escape_format_braces(your_seat),
+    }
+
+    return _build_formatted_message(
+        user_id=user_id,
+        sender=sender,
+        brand=brand,
+        body_snippet_name=SNIPPET_NAME_BODY,
+        subject_snippet_name=SNIPPET_NAME_SUBJECT,
+        format_kwargs=format_kwargs,
+        notification_label='match-ready',
+    )
 
 
 def _send_email_to_user(
@@ -368,26 +490,19 @@ def _send_email_to_user(
     opponent_seat: str,
     your_seat: str,
 ) -> None:
-    """Assemble and enqueue one match-ready email for a single user."""
-    round_display = str(match_round) if match_round is not None else '?'
-
-    format_kwargs = {
-        'tournament_name': _escape_format_braces(tournament_name),
-        'match_round': round_display,
-        'opponent_name': _escape_format_braces(opponent_name),
-        'opponent_seat': _escape_format_braces(opponent_seat),
-        'your_seat': _escape_format_braces(your_seat),
-    }
-
-    _send_formatted_email(
+    """Legacy match notification helper; enqueue only a successful build."""
+    result = _build_match_ready_message(
         user_id=user_id,
         sender=sender,
         brand=brand,
-        body_snippet_name=SNIPPET_NAME_BODY,
-        subject_snippet_name=SNIPPET_NAME_SUBJECT,
-        format_kwargs=format_kwargs,
-        notification_label='match-ready',
+        tournament_name=tournament_name,
+        match_round=match_round,
+        opponent_name=opponent_name,
+        opponent_seat=opponent_seat,
+        your_seat=your_seat,
     )
+    if result.is_ok():
+        email_service.enqueue_message(result.unwrap())
 
 
 def send_request_accepted_email(

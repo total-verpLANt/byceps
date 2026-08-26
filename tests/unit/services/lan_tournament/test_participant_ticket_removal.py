@@ -148,6 +148,7 @@ def test_remove_ticketless_solo_returns_count(
     mock_repo.get_tournament.return_value = tournament
     mock_repo.get_participants_for_tournament.return_value = [p1, p2]
     # Only user1 has a ticket
+    _mock_locked_roster(mock_repo, [p1, p2])
     mock_ticket.select_ticket_users_for_party.return_value = {user1}
 
     result = tournament_participant_service.remove_participants_without_tickets(
@@ -185,6 +186,7 @@ def test_remove_ticketless_all_have_tickets(
     mock_repo.get_tournament.return_value = tournament
     mock_repo.get_participants_for_tournament.return_value = [p1]
     mock_ticket.select_ticket_users_for_party.return_value = {user1}
+    _mock_locked_roster(mock_repo, [p1])
 
     result = tournament_participant_service.remove_participants_without_tickets(
         TOURNAMENT_ID, PARTY_ID
@@ -273,6 +275,7 @@ def test_remove_ticketless_ongoing_triggers_defwins(
     mock_repo.get_tournament.return_value = tournament
     mock_repo.get_participants_for_tournament.return_value = [p1, p2]
     mock_ticket.select_ticket_users_for_party.return_value = set()
+    _mock_locked_roster(mock_repo, [p1, p2])
 
     def handle_defwin(*args, **kwargs):
         mock_repo.soft_delete_participants_by_ids.assert_called_once()
@@ -300,6 +303,7 @@ def test_remove_ticketless_ongoing_triggers_defwins(
     mock_repo.soft_delete_participants_by_ids.assert_called_once()
     mock_repo.delete_participants_by_ids.assert_not_called()
     _assert_removals_staged(audit_log, result.unwrap())
+    mock_repo.commit_session.assert_called_once_with()
 
 
 # -------------------------------------------------------------------- #
@@ -342,6 +346,7 @@ def test_remove_ticketless_team_transfers_captain(
     # Only member has a ticket
     mock_ticket.select_ticket_users_for_party.return_value = {member_user_id}
     mock_repo.get_teams_by_ids.return_value = [team]
+    _mock_locked_roster(mock_repo, [captain, member], [team])
 
     result = tournament_participant_service.remove_participants_without_tickets(
         TOURNAMENT_ID, PARTY_ID
@@ -349,10 +354,61 @@ def test_remove_ticketless_team_transfers_captain(
 
     assert result.is_ok()
     assert result.unwrap() == 1
-    mock_repo.update_team_captain.assert_called_once_with(
+    mock_repo.update_team_captain_flush.assert_called_once_with(
         team_id, member_user_id
     )
+    mock_repo.update_team_captain.assert_not_called()
+    mock_repo.commit_session.assert_called_once_with()
     _assert_removals_staged(audit_log, result.unwrap())
+
+
+@patch('byceps.services.lan_tournament.tournament_participant_service.signals')
+@patch(
+    'byceps.services.lan_tournament.tournament_participant_service.tournament_match_service'
+)
+@patch(
+    'byceps.services.lan_tournament.tournament_participant_service.ticket_service'
+)
+@patch(
+    'byceps.services.lan_tournament.tournament_participant_service.tournament_repository'
+)
+def test_remove_ticketless_captain_handover_is_announced_after_the_commit(
+    mock_repo, mock_ticket, mock_match_svc, mock_signals
+):
+    """The handover event goes out once, and only after the commit."""
+    team_id = TournamentTeamID(generate_uuid())
+    captain_user_id = UserID(generate_uuid())
+    member_user_id = UserID(generate_uuid())
+    tournament = _create_tournament(
+        tournament_status=TournamentStatus.REGISTRATION_OPEN,
+        contestant_type=ContestantType.TEAM,
+    )
+    captain = _create_participant(user_id=captain_user_id, team_id=team_id)
+    member = _create_participant(user_id=member_user_id, team_id=team_id)
+    team = _create_team(team_id=team_id, captain_user_id=captain_user_id)
+    mock_repo.get_tournament.return_value = tournament
+    mock_repo.get_participants_for_tournament.return_value = [captain, member]
+    mock_ticket.select_ticket_users_for_party.return_value = {member_user_id}
+    mock_repo.get_teams_by_ids.return_value = [team]
+    _mock_locked_roster(mock_repo, [captain, member], [team])
+    order = []
+    mock_repo.commit_session.side_effect = lambda: order.append('commit')
+    mock_signals.captain_transferred.send.side_effect = lambda *a, **kw: (
+        order.append('captain_transferred')
+    )
+
+    result = tournament_participant_service.remove_participants_without_tickets(
+        TOURNAMENT_ID, PARTY_ID
+    )
+
+    assert result.unwrap() == 1
+    assert order == ['commit', 'captain_transferred']
+    (call,) = mock_signals.captain_transferred.send.call_args_list
+    event = call.kwargs['event']
+    assert event.team_id == team_id
+    assert event.old_captain_user_id == captain_user_id
+    assert event.new_captain_user_id == member_user_id
+    assert event.initiator is None
 
 
 @patch('byceps.services.lan_tournament.tournament_participant_service.signals')
@@ -383,6 +439,7 @@ def test_remove_ticketless_team_all_members_ticketless_deletes_team(
     mock_repo.get_participants_for_tournament.return_value = [captain]
     mock_ticket.select_ticket_users_for_party.return_value = set()
     mock_repo.get_teams_by_ids.return_value = [team]
+    _mock_locked_roster(mock_repo, [captain], [team])
 
     result = tournament_participant_service.remove_participants_without_tickets(
         TOURNAMENT_ID, PARTY_ID
@@ -392,6 +449,8 @@ def test_remove_ticketless_team_all_members_ticketless_deletes_team(
     assert result.unwrap() == 1
     mock_repo.delete_team_flush.assert_called_once_with(team_id)
     mock_repo.soft_delete_team_flush.assert_not_called()
+    mock_repo.remove_team_from_participants_flush.assert_called_once_with(team_id)
+    mock_repo.commit_session.assert_called_once_with()
     _assert_removals_staged(audit_log, result.unwrap())
 
 
@@ -427,6 +486,7 @@ def test_remove_ticketless_team_ongoing_soft_deletes(
     mock_repo.get_participants_for_tournament.return_value = [captain]
     mock_ticket.select_ticket_users_for_party.return_value = set()
     mock_repo.get_teams_by_ids.return_value = [team]
+    _mock_locked_roster(mock_repo, [captain], [team])
 
     def handle_defwin(*args, **kwargs):
         mock_repo.soft_delete_participants_by_ids.assert_called_once()
@@ -449,6 +509,8 @@ def test_remove_ticketless_team_ongoing_soft_deletes(
     mock_repo.soft_delete_participants_by_ids.assert_called_once()
     mock_repo.delete_participants_by_ids.assert_not_called()
     _assert_removals_staged(audit_log, result.unwrap())
+    mock_repo.remove_team_from_participants_flush.assert_called_once_with(team_id)
+    mock_repo.commit_session.assert_called_once_with()
 
 
 # -------------------------------------------------------------------- #
@@ -544,6 +606,7 @@ def test_team_captain_not_removed_no_transfer(
     # Only captain has a ticket; member does not
     mock_ticket.select_ticket_users_for_party.return_value = {captain_user_id}
     mock_repo.get_teams_by_ids.return_value = [team]
+    _mock_locked_roster(mock_repo, [captain, member], [team])
 
     result = tournament_participant_service.remove_participants_without_tickets(
         TOURNAMENT_ID, PARTY_ID
@@ -553,6 +616,8 @@ def test_team_captain_not_removed_no_transfer(
     assert result.unwrap() == 1
     # Captain is not being removed, so no transfer
     mock_repo.update_team_captain.assert_not_called()
+    mock_repo.update_team_captain_flush.assert_not_called()
+    mock_repo.commit_session.assert_called_once_with()
     # Team is not empty so no deletion
     mock_repo.delete_team_flush.assert_not_called()
     _assert_removals_staged(audit_log, result.unwrap())
@@ -675,8 +740,116 @@ def test_teams_below_minimum_returns_empty_when_no_min(mock_repo):
 
 
 # -------------------------------------------------------------------- #
+# remove_participants_without_tickets — lock hygiene
+# -------------------------------------------------------------------- #
+
+
+@patch('byceps.services.lan_tournament.tournament_participant_service.signals')
+@patch(
+    'byceps.services.lan_tournament.tournament_participant_service.tournament_match_service'
+)
+@patch(
+    'byceps.services.lan_tournament.tournament_participant_service.ticket_service'
+)
+@patch(
+    'byceps.services.lan_tournament.tournament_participant_service.tournament_repository'
+)
+def test_remove_ticketless_locks_the_participants_in_one_statement(
+    mock_repo, mock_ticket, mock_match_svc, mock_signals
+):
+    """One ordered bulk lock, however many participants are removed."""
+    tournament = _create_tournament(
+        tournament_status=TournamentStatus.REGISTRATION_OPEN,
+        contestant_type=ContestantType.SOLO,
+    )
+    users = [UserID(generate_uuid()) for _ in range(5)]
+    everyone = [_create_participant(user_id=u) for u in users]
+    mock_repo.get_tournament.return_value = tournament
+    mock_repo.get_participants_for_tournament.return_value = everyone
+    _mock_locked_roster(mock_repo, everyone)
+    mock_ticket.select_ticket_users_for_party.return_value = {users[0]}
+
+    result = tournament_participant_service.remove_participants_without_tickets(
+        TOURNAMENT_ID, PARTY_ID
+    )
+
+    assert result.unwrap() == 4
+    mock_repo.get_participants_for_update.assert_called_once()
+    (locked_ids,) = mock_repo.get_participants_for_update.call_args.args
+    assert sorted(locked_ids) == sorted(p.id for p in everyone)
+    mock_repo.get_participant_for_update.assert_not_called()
+
+
+@pytest.mark.parametrize('everyone_has_a_ticket', [False, True])
+@patch('byceps.services.lan_tournament.tournament_participant_service.signals')
+@patch(
+    'byceps.services.lan_tournament.tournament_participant_service.ticket_service'
+)
+@patch(
+    'byceps.services.lan_tournament.tournament_participant_service.tournament_repository'
+)
+def test_remove_ticketless_releases_the_locks_before_returning_zero(
+    mock_repo, mock_ticket, mock_signals, everyone_has_a_ticket
+):
+    """`Ok(0)` is no failure for the decorator, so the lock must go here."""
+    tournament = _create_tournament(
+        tournament_status=TournamentStatus.REGISTRATION_OPEN,
+        contestant_type=ContestantType.SOLO,
+    )
+    user = UserID(generate_uuid())
+    participant = _create_participant(user_id=user)
+    mock_repo.get_tournament.return_value = tournament
+    mock_repo.get_participants_for_tournament.return_value = (
+        [participant] if everyone_has_a_ticket else []
+    )
+    _mock_locked_roster(mock_repo, [participant])
+    mock_ticket.select_ticket_users_for_party.return_value = {user}
+
+    result = tournament_participant_service.remove_participants_without_tickets(
+        TOURNAMENT_ID, PARTY_ID
+    )
+
+    assert result.unwrap() == 0
+    mock_repo.rollback_session.assert_called_once_with()
+    mock_repo.commit_session.assert_not_called()
+
+
+# -------------------------------------------------------------------- #
 # helpers
 # -------------------------------------------------------------------- #
+
+
+def _mock_locked_roster(mock_repo, participants, teams=()):
+    """Return scoped frozen snapshots for every fresh membership lock."""
+    participants_by_id = {p.id: p for p in participants}
+    teams_by_id = {t.id: t for t in teams}
+
+    def locked_participants(participant_ids):
+        found = [participants_by_id[i] for i in sorted(participant_ids)]
+        assert all(p.tournament_id == TOURNAMENT_ID for p in found)
+        mock_repo.lock_tournament_for_update.assert_called_once_with(
+            TOURNAMENT_ID
+        )
+        return found
+
+    def locked_team(team_id):
+        team = teams_by_id[team_id]
+        assert team.tournament_id == TOURNAMENT_ID
+        mock_repo.lock_tournament_for_update.assert_called_once_with(TOURNAMENT_ID)
+        return team
+
+    def team_members(team_id):
+        assert team_id in teams_by_id
+        return [p for p in participants if p.team_id == team_id]
+
+    mock_repo.get_participants_for_update.side_effect = locked_participants
+    mock_repo.get_team_for_update.side_effect = locked_team
+    mock_repo.get_participants_for_team.side_effect = team_members
+    # These fixtures have no generated match assignments to refresh.
+    mock_repo.get_contestants_for_tournament.return_value = {}
+    mock_repo.get_matches_for_tournament.return_value = []
+    mock_repo.find_contestant_entries_for_participant_in_tournament.return_value = []
+    mock_repo.find_contestant_entries_for_team_in_tournament.return_value = []
 
 
 def _create_tournament(**kwargs) -> Tournament:

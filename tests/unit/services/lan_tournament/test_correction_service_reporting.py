@@ -87,6 +87,7 @@ def test_correct_match_result_error_states_nothing_changed_on_apply_failure():
         mock_classify.return_value = Ok((CorrectionCase.NO_DOWNSTREAM, []))
         mock_validate.return_value = Ok({})
         mock_repo.get_match.return_value = _make_match()
+        mock_repo.find_match_fresh.return_value = _make_match()
         mock_repo.get_contestants_for_match.return_value = _played_pair()
         mock_unconfirm_flush.return_value = Ok(
             ([], [], False, TOURNAMENT_ID)

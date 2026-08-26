@@ -22,7 +22,7 @@
 
 {% block body %}
 
-  <h1 class='title'>{{ render_match_ref(match) }}</h1>
+  <h1 class='title'>{{ _('Match') }} {{ render_match_ref(match) }}</h1>
   <p class='lt-match__position'>{{ match_label }}</p>
 
   {# Match status #}
@@ -38,6 +38,66 @@
       {{ render_tag(_('FFA'), class='color-info') }}
     {%- endif %}
   </div>
+
+  {% set ready_sides = readiness.ready_sides | map(attribute='value') | list %}
+  <section class="box block" aria-labelledby="readiness-title"
+           data-readiness-status="{{ readiness.display_status }}"
+           data-original-occupied-since="{{ readiness.original_occupied_since.isoformat() if readiness.original_occupied_since else '' }}"
+           data-pairing-started-at="{{ readiness.pairing_started_at.isoformat() if readiness.pairing_started_at else '' }}">
+    <h2 id="readiness-title">{{ _('Readiness') }}</h2>
+    <p class="readiness-status readiness-status--{{ readiness.display_status }}">
+      {% if readiness.outcome == 'confirmed' %}{{ _('Confirmed') }}
+      {% elif readiness.outcome == 'defwin' %}{{ _('DEFWIN') }}
+      {% elif readiness.outcome == 'bye' %}{{ _('Bye') }}
+      {% elif readiness.outcome == 'completed' %}{{ _('Tournament completed') }}
+      {% elif readiness.outcome == 'cancelled' %}{{ _('Tournament cancelled') }}
+      {% elif not readiness.supports_readiness %}{{ _('Readiness is not available for this match format.') }}
+      {% elif readiness.status.value == 'not_yet_occupied' %}{{ _('Waiting for opponent') }}
+      {% elif readiness.status.value == 'open' %}<span aria-hidden="true">○</span> {{ _('Not ready') }}
+      {% elif readiness.status.value == 'partially_ready' %}<span aria-hidden="true">◐</span> {{ _('Partially ready') }} — {{ _('Side A ready') if 'a' in ready_sides else _('Side B ready') }}
+      {% elif readiness.status.value == 'both_ready' %}<span aria-hidden="true">✓</span> {{ _('Both ready') }}
+      {% endif %}
+    </p>
+    {% if readiness.supports_readiness and readiness.assignment_complete and not readiness.outcome %}
+    <p class="readiness-hint">{{ _('Assignment does not indicate physical presence or that play has started.') }}</p>
+    {% endif %}
+    {% if readiness.original_occupied_since or readiness.pairing_started_at or readiness_contestants_by_side %}
+    <dl class="readiness-details lt-seed-dl">
+      {% for label, timestamp in [
+          (_('Originally occupied since'), readiness.original_occupied_since),
+          (_('Current pairing since'), readiness.pairing_started_at)] %}
+        {% if timestamp %}
+      <dt>{{ label }}</dt>
+      <dd><time datetime="{{ timestamp.isoformat() }}">{{ timestamp|dateformat }}, {{ timestamp|timeformat('short') }}</time></dd>
+        {% endif %}
+      {% endfor %}
+      {% for declared_side in readiness_contestants_by_side | sort(attribute='value') %}
+        {% set c = readiness_contestants_by_side[declared_side] %}
+        {% set side = declared_side.value %}
+        {% set side_ready_at = readiness.ready_at_a if side == 'a' else readiness.ready_at_b %}
+        {% set team = teams_by_id.get(c.team_id) if c.team_id else none %}
+        {% set participant = participants_by_id.get(c.participant_id) if c.participant_id else none %}
+      <dt>{{ _('Side A') if side == 'a' else _('Side B') }}</dt>
+      <dd data-side-state="{{ side }}">{{ team.name if team else participant.screen_name if participant else (c.team_id or c.participant_id)|string }} · <span aria-hidden="true">{{ '✓' if side_ready_at else '○' }}</span> {{ _('Ready') if side_ready_at else _('Not ready') }}</dd>
+      {% endfor %}
+      {% if readiness.supports_readiness and readiness.pairing_valid %}
+        {% for side, label, timestamp in [
+            ('a', _('Side A ready since'), readiness.ready_at_a),
+            ('b', _('Side B ready since'), readiness.ready_at_b)] %}
+          {% if timestamp %}
+      <dt>{{ label }}</dt>
+      <dd data-side="{{ side }}" data-ready-at="{{ timestamp.isoformat() }}"><time datetime="{{ timestamp.isoformat() }}">{{ timestamp|dateformat }}, {{ timestamp|timeformat('short') }}</time></dd>
+          {% endif %}
+        {% endfor %}
+      {% endif %}
+    </dl>
+    {% endif %}
+    {% if tournament.tournament_status.name == 'PAUSED' %}
+    <p>{{ _('Tournament paused; readiness is read-only.') }}</p>
+    {% elif readiness.outcome %}
+    <p>{{ _('This match is finished; readiness is read-only.') }}</p>
+    {% endif %}
+  </section>
 
   {%- if is_ffa %}
   {# ── FFA Placement Entry ───────────────────────────────────── #}

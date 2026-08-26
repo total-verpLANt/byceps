@@ -358,12 +358,16 @@ def release_playoffs(
     `expected_version` is the version of the playoff draft the orga saw.
     On `Err`, the session has been rolled back.
     """
-    tournament_repository.lock_tournament_for_update(tournament_id)
-    result = _release_locked(
-        tournament_id,
-        expected_version=expected_version,
-        initiator_id=initiator_id,
-    )
+    try:
+        tournament_repository.lock_tournament_for_update(tournament_id)
+        result = _release_locked(
+            tournament_id,
+            expected_version=expected_version,
+            initiator_id=initiator_id,
+        )
+    except Exception:
+        tournament_repository.rollback_session()
+        raise
     return _finish_release(tournament_id, result)
 
 
@@ -409,17 +413,22 @@ def try_auto_release(
     if not _auto_release_due(tournament):
         return Ok(False)
 
-    tournament_repository.lock_tournament_for_update(tournament_id)
-    result = _auto_release_locked(tournament_id, triggered_by)
-    if result.is_err():
-        tournament_repository.rollback_session()
-        return Err(result.unwrap_err())
-    outcome = result.unwrap()
-    if outcome is None:
-        tournament_repository.rollback_session()
-        return Ok(False)
+    try:
+        tournament_repository.lock_tournament_for_update(tournament_id)
+        result = _auto_release_locked(tournament_id, triggered_by)
+        if result.is_err():
+            tournament_repository.rollback_session()
+            return Err(result.unwrap_err())
+        outcome = result.unwrap()
+        if outcome is None:
+            tournament_repository.rollback_session()
+            return Ok(False)
 
-    tournament_repository.commit_session()
+        tournament_repository.commit_session()
+    except Exception:
+        tournament_repository.rollback_session()
+        raise
+
     tournament_match_service.dispatch_generation_events(tournament_id, outcome)
     return Ok(True)
 
@@ -442,13 +451,18 @@ def unrelease_playoffs(
         case Ok(clean_reason):
             pass
 
-    tournament_repository.lock_tournament_for_update(tournament_id)
-    result = _unrelease_locked(tournament_id, clean_reason, initiator_id)
-    if result.is_err():
-        tournament_repository.rollback_session()
-        return Err(result.unwrap_err())
+    try:
+        tournament_repository.lock_tournament_for_update(tournament_id)
+        result = _unrelease_locked(tournament_id, clean_reason, initiator_id)
+        if result.is_err():
+            tournament_repository.rollback_session()
+            return Err(result.unwrap_err())
 
-    tournament_repository.commit_session()
+        tournament_repository.commit_session()
+    except Exception:
+        tournament_repository.rollback_session()
+        raise
+
     for event in result.unwrap():
         signals.match_deleted.send(None, event=event)
     return Ok(None)
@@ -708,7 +722,11 @@ def _finish_release(
         return Err(result.unwrap_err())
 
     outcome = result.unwrap()
-    tournament_repository.commit_session()
+    try:
+        tournament_repository.commit_session()
+    except Exception:
+        tournament_repository.rollback_session()
+        raise
     tournament_match_service.dispatch_generation_events(tournament_id, outcome)
     return Ok(outcome.count)
 
@@ -749,7 +767,7 @@ def _auto_release_locked(
     tournament_id: TournamentID, triggered_by: UserID
 ) -> Result[tournament_match_service.GenerationOutcome | None, str]:
     """Release if still due under the lock; `Ok(None)` if nothing to do."""
-    tournament = tournament_repository.find_tournament(tournament_id)
+    tournament = _find_locked_tournament(tournament_id)
     if tournament is None:
         return Err('Tournament not found.')
     if not _auto_release_due(tournament):
@@ -799,7 +817,7 @@ def _release_locked(
     the draft as it finds it. The automatic release has no
     `initiator_id`; `triggered_by` confirms the byes instead.
     """
-    tournament = tournament_repository.find_tournament(tournament_id)
+    tournament = _find_locked_tournament(tournament_id)
     if tournament is None:
         return Err('Tournament not found.')
     if tournament.playoff_released_at is not None:
@@ -893,7 +911,9 @@ def _release_locked(
             },
             commit=False,
         )
-    return Ok(outcome)
+    return Ok(tournament_match_service.collect_generation_invitations_flush(
+        outcome,
+    ))
 
 
 def _can_unrelease_status(tournament: Tournament) -> bool:
@@ -913,10 +933,17 @@ def _terminal_decision_error(tournament: Tournament) -> str | None:
     return None
 
 
+def _find_locked_tournament(tournament_id: TournamentID) -> Tournament | None:
+    """Read current state after the owning caller acquired the tournament lock."""
+    if tournament_repository.find_tournament(tournament_id) is None:
+        return None
+    return tournament_repository.get_tournament(tournament_id, fresh=True)
+
+
 def _unrelease_locked(
     tournament_id: TournamentID, reason: str, initiator_id: UserID
 ) -> Result[list[MatchDeletedEvent], str]:
-    tournament = tournament_repository.find_tournament(tournament_id)
+    tournament = _find_locked_tournament(tournament_id)
     if tournament is None:
         return Err('Tournament not found.')
     if tournament.playoff_released_at is None:

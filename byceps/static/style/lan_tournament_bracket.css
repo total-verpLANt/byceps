@@ -395,6 +395,50 @@
   border-color: color-mix(in srgb, var(--lt-brand-success) 34%, white);
 }
 
+.lt-match-readiness {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 16px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 900;
+  line-height: 1.12;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  border: 1px solid color-mix(in srgb, var(--lt-white) 14%, transparent);
+  white-space: nowrap;
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+}
+
+.lt-match-readiness[data-readiness-status="both_ready"] {
+  color: color-mix(in srgb, var(--lt-brand-success) 90%, var(--lt-white));
+  background: color-mix(in srgb, var(--lt-brand-success) 14%, color-mix(in srgb, var(--lt-white) 4%, transparent));
+  border-color: color-mix(in srgb, var(--lt-brand-success) 34%, white);
+}
+
+.lt-match-readiness[data-readiness-status="partially_ready"] {
+  color: color-mix(in srgb, var(--lt-brand-blue) 84%, var(--lt-white));
+  background: color-mix(in srgb, var(--lt-brand-blue) 16%, color-mix(in srgb, var(--lt-white) 4%, transparent));
+  border-color: color-mix(in srgb, var(--lt-brand-blue) 34%, white);
+}
+
+.lt-match-readiness[data-readiness-status="open"] {
+  color: color-mix(in srgb, var(--lt-brand-orange) 84%, var(--lt-white));
+  background: color-mix(in srgb, var(--lt-brand-orange) 14%, color-mix(in srgb, var(--lt-white) 4%, transparent));
+  border-color: color-mix(in srgb, var(--lt-brand-orange) 34%, white);
+}
+
+.lt-match-readiness[data-readiness-status="not_yet_occupied"] {
+  color: var(--lt-muted);
+  background: color-mix(in srgb, var(--lt-white) 4%, transparent);
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--lt-muted) 60%, transparent);
+}
+
 
 /* ------------------------------------------------------------
    2g. Team / contestant rows
@@ -1157,7 +1201,9 @@
   .lt-match-status--open,
   .lt-match-status--pending,
   .lt-match-status--done,
-  .lt-match-status--auto {
+  .lt-match-status--auto,
+  .lt-match-readiness,
+  .lt-match-readiness[data-readiness-status] {
     color: #333;
     background: #eee;
     border-color: #999;

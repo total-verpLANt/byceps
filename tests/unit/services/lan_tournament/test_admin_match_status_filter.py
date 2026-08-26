@@ -1,229 +1,294 @@
 """
 tests.unit.services.lan_tournament.test_admin_match_status_filter
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Unit tests for the admin match status filter (open / ready / all)
-applied in ``admin/views.matches_for_tournament()``.
+Unit tests for the admin match status filter applied in
+``admin/views.matches_for_tournament()``.
 
-Status definitions:
-  - **ready**: 2+ contestants AND not confirmed (can be played now)
-  - **open**: 1+ contestant AND not confirmed (superset of ready)
-  - **all**: unfiltered
-
-The ``_is_match_ready()`` and ``_is_match_open()`` helpers mirror the
-predicates in ``admin/views.py``.
+Every match is in exactly one readiness bucket (``waiting``, ``not_ready``,
+``partially_ready``, ``both_ready``, ``no_readiness``, ``finished``).
+``all`` is the unfiltered default; the legacy ``open``, ``ready`` and
+``playable`` values and unknown values fall back to it.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import UTC, datetime
-from typing import Any
+from types import SimpleNamespace
 from uuid import uuid4
 
+from flask import Flask
+from flask_babel import Babel
 import pytest
 
-from byceps.services.lan_tournament.models.tournament_match import (
-    TournamentMatch,
-    TournamentMatchID,
+from byceps.services.lan_tournament.blueprints.admin import views as admin
+from byceps.services.lan_tournament.models.match_readiness import (
+    MatchReadiness,
+    READINESS_FILTER_BUCKETS,
+    ReadinessDisplayStatus,
 )
-from byceps.services.lan_tournament.models.tournament import TournamentID
-from byceps.services.user.models import UserID
+from byceps.services.lan_tournament.models.tournament_match import MatchSide
 
 
 # -- helpers ----------------------------------------------------------------
 
 
-def _make_match(*, confirmed: bool = False) -> TournamentMatch:
-    """Create a minimal TournamentMatch for filter testing."""
-    return TournamentMatch(
-        id=TournamentMatchID(uuid4()),
-        tournament_id=TournamentID(uuid4()),
-        group_order=None,
-        match_order=1,
-        round=1,
-        next_match_id=None,
-        confirmed_by=UserID(uuid4()) if confirmed else None,
-        created_at=datetime.now(UTC),
+def _projection(
+    status: ReadinessDisplayStatus,
+    *,
+    count: int,
+    ready_sides: tuple[MatchSide, ...] = (),
+    outcome: str | None = None,
+    supports_readiness: bool = True,
+) -> MatchReadiness:
+    return MatchReadiness(
+        match_id=uuid4(),
+        status=status,
+        ready_sides=ready_sides,
+        assigned_contestant_count=count,
+        supports_readiness=supports_readiness,
+        outcome=outcome,
     )
 
 
-def _make_contestant() -> dict[str, Any]:
-    """Minimal stand-in for a TournamentMatchToContestant."""
-    return {'id': uuid4()}
+# One match for each way into a bucket, in list order.
+# fmt: off
+_PROJECTIONS = {
+    'empty': (
+        'waiting',
+        _projection(ReadinessDisplayStatus.NOT_YET_OCCUPIED, count=0),
+    ),
+    'one contestant': (
+        'waiting',
+        _projection(ReadinessDisplayStatus.NOT_YET_OCCUPIED, count=1),
+    ),
+    'nobody ready': (
+        'not_ready',
+        _projection(ReadinessDisplayStatus.OPEN, count=2),
+    ),
+    'one side ready': (
+        'partially_ready',
+        _projection(
+            ReadinessDisplayStatus.PARTIALLY_READY,
+            count=2,
+            ready_sides=(MatchSide.A,),
+        ),
+    ),
+    'both sides ready': (
+        'both_ready',
+        _projection(
+            ReadinessDisplayStatus.BOTH_READY,
+            count=2,
+            ready_sides=(MatchSide.A, MatchSide.B),
+        ),
+    ),
+    'free for all': (
+        'no_readiness',
+        _projection(
+            ReadinessDisplayStatus.OPEN, count=3, supports_readiness=False
+        ),
+    ),
+    'confirmed': (
+        'finished',
+        _projection(
+            ReadinessDisplayStatus.BOTH_READY,
+            count=2,
+            ready_sides=(MatchSide.A, MatchSide.B),
+            outcome='confirmed',
+        ),
+    ),
+    'confirmed defwin': (
+        'finished',
+        _projection(
+            ReadinessDisplayStatus.NOT_YET_OCCUPIED,
+            count=1,
+            outcome='defwin',
+        ),
+    ),
+}
+# fmt: on
 
 
-def _is_match_ready(entry: dict) -> bool:
-    """Reproduce the exact helper from admin/views.py."""
-    return (
-        len(entry['contestants']) >= 2
-        and entry['match'].confirmed_by is None
+@pytest.fixture
+def list_matches(monkeypatch):
+    """Return the context of the real admin list view for a query string."""
+    tournament = SimpleNamespace(
+        id=uuid4(), party_id=uuid4(), has_playoffs=False
     )
-
-
-def _is_match_open(entry: dict) -> bool:
-    """Reproduce the exact helper from admin/views.py."""
-    return (
-        len(entry['contestants']) >= 1
-        and entry['match'].confirmed_by is None
-    )
-
-
-def _apply_filter(match_data: list[dict], only: str = 'open') -> list[dict]:
-    """Reproduce the admin filter logic from views.matches_for_tournament()."""
-    if only == 'open':
-        return [e for e in match_data if _is_match_open(e)]
-    elif only == 'ready':
-        return [e for e in match_data if _is_match_ready(e)]
-    return list(match_data)  # 'all'
-
-
-def _compute_quantities(match_data: list[dict]) -> dict[str, int]:
-    """Reproduce the count computation from the view."""
-    total = len(match_data)
-    ready = sum(1 for e in match_data if _is_match_ready(e))
-    open_ = sum(1 for e in match_data if _is_match_open(e))
-    return {
-        'all': total,
-        'open': open_,
-        'ready': ready,
+    entries = [
+        {
+            'match': SimpleNamespace(id=projection.match_id),
+            'contestants': [],
+            'readiness': projection,
+            'readiness_display': {},
+        }
+        for _, projection in _PROJECTIONS.values()
+    ]
+    readiness_by_match_id = {
+        entry['match'].id: entry['readiness'] for entry in entries
     }
+    monkeypatch.setattr(admin, '_get_tournament_or_404', lambda _: tournament)
+    monkeypatch.setattr(
+        admin.party_service,
+        'get_party',
+        lambda _: SimpleNamespace(id=tournament.party_id),
+    )
+    monkeypatch.setattr(
+        admin,
+        '_admin_match_projections',
+        lambda _: (entries, readiness_by_match_id),
+    )
+    monkeypatch.setattr(
+        admin, 'build_contestant_name_lookups', lambda *a, **kw: ({}, {})
+    )
+    monkeypatch.setattr(admin, 'build_hover_lookups', lambda *a, **kw: ({}, {}))
+    app = Flask(__name__)
+    app.config.update(TESTING=True, BABEL_DEFAULT_LOCALE='en')
+    Babel(app)
+
+    def list_matches(query: str = '') -> dict:
+        with app.test_request_context('/' + query):
+            return admin.matches_for_tournament.__wrapped__.__wrapped__(
+                str(tournament.id)
+            )
+
+    return list_matches
+
+
+def _listed_ids(context: dict) -> list:
+    return [entry['match'].id for entry in context['match_data']]
+
+
+def _ids_in(*buckets: str) -> list:
+    return [
+        projection.match_id
+        for bucket, projection in _PROJECTIONS.values()
+        if bucket in buckets
+    ]
 
 
 # -- tests ------------------------------------------------------------------
 
 
 class TestAdminMatchStatusFilter:
-    """Admin match status filter for open / ready / all."""
+    """Admin match status filter over the disjoint readiness buckets."""
 
-    def test_open_filter_shows_matches_with_fewer_than_two_contestants(self):
-        """Open filter includes partial (1 contestant) but not empty (0)."""
-        empty = {'match': _make_match(), 'contestants': []}
-        partial = {'match': _make_match(), 'contestants': [_make_contestant()]}
-        result = _apply_filter([empty, partial], only='open')
-        assert len(result) == 1
-        assert partial in result
-        assert empty not in result
+    def test_default_filter_is_all(self, list_matches):
+        """Without `only=` every match is listed and `all` is current."""
+        context = list_matches()
 
-    def test_open_filter_excludes_ready_matches(self):
-        """Open filter still shows ready matches (open is superset of ready)."""
-        entry = {
-            'match': _make_match(),
-            'contestants': [_make_contestant(), _make_contestant()],
-        }
-        # A 2-contestant unconfirmed match is both ready AND open
-        result = _apply_filter([entry], only='open')
-        assert len(result) == 1
-        assert result[0] is entry
-
-    def test_open_filter_excludes_confirmed_defwin(self):
-        """Open filter hides confirmed defwin matches."""
-        entry = {
-            'match': _make_match(confirmed=True),
-            'contestants': [_make_contestant()],
-        }
-        assert _apply_filter([entry], only='open') == []
-
-    def test_open_filter_excludes_empty_matches(self):
-        """Open filter excludes matches with 0 contestants."""
-        entry = {'match': _make_match(), 'contestants': []}
-        assert _apply_filter([entry], only='open') == []
-
-    def test_open_filter_includes_ready_matches(self):
-        """Open is a superset of ready — every ready match is also open."""
-        ready_entry = {
-            'match': _make_match(),
-            'contestants': [_make_contestant(), _make_contestant()],
-        }
-        partial_entry = {
-            'match': _make_match(),
-            'contestants': [_make_contestant()],
-        }
-        result = _apply_filter([ready_entry, partial_entry], only='open')
-        assert len(result) == 2
-        assert ready_entry in result
-        assert partial_entry in result
-
-    def test_ready_filter_shows_matches_with_two_contestants(self):
-        """Ready filter includes unconfirmed matches with 2+ contestants."""
-        entry = {
-            'match': _make_match(),
-            'contestants': [_make_contestant(), _make_contestant()],
-        }
-        result = _apply_filter([entry], only='ready')
-        assert len(result) == 1
-        assert result[0] is entry
-
-    def test_ready_filter_excludes_confirmed_defwin(self):
-        """Ready filter excludes confirmed defwin (confirmed → not ready)."""
-        entry = {
-            'match': _make_match(confirmed=True),
-            'contestants': [_make_contestant()],
-        }
-        result = _apply_filter([entry], only='ready')
-        assert len(result) == 0
-
-    def test_ready_filter_excludes_confirmed_match(self):
-        """Ready filter excludes confirmed 2-contestant match."""
-        entry = {
-            'match': _make_match(confirmed=True),
-            'contestants': [_make_contestant(), _make_contestant()],
-        }
-        result = _apply_filter([entry], only='ready')
-        assert len(result) == 0
-
-    def test_ready_filter_excludes_open_matches(self):
-        """Ready filter hides matches with 0 contestants, not confirmed."""
-        entry = {'match': _make_match(), 'contestants': []}
-        assert _apply_filter([entry], only='ready') == []
-
-    def test_all_filter_shows_everything(self):
-        """All filter returns every match regardless of status."""
-        open_match = {'match': _make_match(), 'contestants': []}
-        ready_match = {
-            'match': _make_match(),
-            'contestants': [_make_contestant(), _make_contestant()],
-        }
-        defwin = {
-            'match': _make_match(confirmed=True),
-            'contestants': [_make_contestant()],
-        }
-        result = _apply_filter([open_match, ready_match, defwin], only='all')
-        assert len(result) == 3
-
-    def test_default_filter_is_open(self):
-        """When only= defaults to 'open', open matches are shown."""
-        empty = {'match': _make_match(), 'contestants': []}
-        partial = {'match': _make_match(), 'contestants': [_make_contestant()]}
-        ready_match = {
-            'match': _make_match(),
-            'contestants': [_make_contestant(), _make_contestant()],
-        }
-        result = _apply_filter([empty, partial, ready_match])  # default='open'
-        assert len(result) == 2
-        assert partial in result
-        assert ready_match in result
-        assert empty not in result
-
-    def test_counts_computed_before_filtering(self):
-        """Quantities reflect the unfiltered totals."""
-        entries = [
-            {'match': _make_match(), 'contestants': []},  # neither open nor ready
-            {'match': _make_match(), 'contestants': []},  # neither open nor ready
-            {
-                'match': _make_match(),
-                'contestants': [_make_contestant(), _make_contestant()],
-            },  # ready (and open)
-            {
-                'match': _make_match(confirmed=True),
-                'contestants': [_make_contestant()],
-            },  # confirmed defwin — neither open nor ready
+        assert context['only'] == 'all'
+        assert _listed_ids(context) == [
+            projection.match_id for _, projection in _PROJECTIONS.values()
         ]
-        quantities = _compute_quantities(entries)
-        assert quantities == {'all': 4, 'open': 1, 'ready': 1}
 
-        # After filtering, the counts should still reflect pre-filter state
-        filtered = _apply_filter(entries, only='open')
-        assert len(filtered) == 1
-        # But quantities remain unchanged (computed before filtering)
-        assert quantities['all'] == 4
+    @pytest.mark.parametrize('only', ['open', 'ready', 'playable', 'bogus', ''])
+    def test_legacy_and_unknown_filters_show_all(self, list_matches, only):
+        """Removed nested filters never hide a match."""
+        context = list_matches(f'?only={only}')
+
+        assert context['only'] == 'all'
+        assert len(context['match_data']) == len(_PROJECTIONS)
+
+    @pytest.mark.parametrize('bucket', READINESS_FILTER_BUCKETS)
+    def test_bucket_filter_shows_only_its_matches(self, list_matches, bucket):
+        """A bucket filter lists exactly the matches in that bucket."""
+        context = list_matches(f'?only={bucket}')
+
+        assert context['only'] == bucket
+        assert _listed_ids(context) == _ids_in(bucket)
+
+    def test_buckets_are_disjoint_and_cover_every_match(self, list_matches):
+        """No match is in two buckets, and no match is in none."""
+        listed = []
+        for bucket in READINESS_FILTER_BUCKETS:
+            listed += _listed_ids(list_matches(f'?only={bucket}'))
+
+        assert sorted(listed) == sorted(_ids_in(*READINESS_FILTER_BUCKETS))
+        assert len(listed) == len(set(listed)) == len(_PROJECTIONS)
+
+    def test_confirmed_matches_leave_the_readiness_buckets(self, list_matches):
+        """A confirmed result or defwin is finished, whatever the claims."""
+        finished = _listed_ids(list_matches('?only=finished'))
+        others = [
+            match_id
+            for bucket in READINESS_FILTER_BUCKETS
+            if bucket != 'finished'
+            for match_id in _listed_ids(list_matches(f'?only={bucket}'))
+        ]
+
+        assert finished == _ids_in('finished')
+        assert not set(finished) & set(others)
+
+    def test_hidden_bucket_request_marks_all_current(
+        self, list_matches, monkeypatch
+    ):
+        """`no_readiness` is hidden at count 0, so it falls back to `all`."""
+        kept = [
+            projection
+            for bucket, projection in _PROJECTIONS.values()
+            if bucket != 'no_readiness'
+        ]
+        entries = [
+            {
+                'match': SimpleNamespace(id=projection.match_id),
+                'contestants': [],
+                'readiness': projection,
+                'readiness_display': {},
+            }
+            for projection in kept
+        ]
+        monkeypatch.setattr(
+            admin,
+            '_admin_match_projections',
+            lambda _: (
+                entries,
+                {entry['match'].id: entry['readiness'] for entry in entries},
+            ),
+        )
+
+        context = list_matches('?only=no_readiness')
+
+        assert context['match_quantities']['no_readiness'] == 0
+        assert 'no_readiness' not in [
+            key for key, _, _ in context['match_filter_options']
+        ]
+        assert context['only'] == 'all'
+        assert _listed_ids(context) == [p.match_id for p in kept]
+
+    def test_listed_bucket_stays_selected(self, list_matches):
+        """A bucket the bar offers is not replaced by `all`."""
+        context = list_matches('?only=no_readiness')
+
+        assert 'no_readiness' in [
+            key for key, _, _ in context['match_filter_options']
+        ]
+        assert context['only'] == 'no_readiness'
+        assert _listed_ids(context) == _ids_in('no_readiness')
+
+    def test_all_filter_shows_everything(self, list_matches):
+        """The `all` filter returns every match regardless of status."""
+        context = list_matches('?only=all')
+
+        assert context['only'] == 'all'
+        assert len(context['match_data']) == len(_PROJECTIONS)
+
+    def test_counts_computed_before_filtering(self, list_matches):
+        """Quantities reflect the unfiltered totals and add up to `all`."""
+        expected = {
+            'all': 8,
+            'waiting': 2,
+            'not_ready': 1,
+            'partially_ready': 1,
+            'both_ready': 1,
+            'no_readiness': 1,
+            'finished': 2,
+        }
+
+        context = list_matches('?only=both_ready')
+
+        assert len(context['match_data']) == 1
+        assert context['match_quantities'] == expected
+        assert (
+            sum(expected[bucket] for bucket in READINESS_FILTER_BUCKETS)
+            == expected['all']
+        )

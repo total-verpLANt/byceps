@@ -2,12 +2,14 @@
 {% from 'macros/icons.html' import render_icon %}
 {% from 'macros/misc.html' import render_notification_block, render_tag %}
 {% from 'admin/lan_tournament/_subnav.html' import render_admin_subnav %}
+{% from 'macros/lan_tournament.html' import render_match_ref %}
 {% set current_page_party = party %}
 {% set current_tab = 'tournaments' %}
 {% set page_title = [_('Tournament'), party.title] %}
 
 {% block head %}
 {{ super() }}
+<link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_match_admin.css') }}">
 <style>
   .lt-start-gate {
     display: inline-flex;
@@ -273,6 +275,69 @@
   </div>
 
   {{ render_admin_subnav(tournament, active_tab) }}
+
+  <section class="box block" data-match-readiness-overview>
+    <h2>{{ _('Matches') }}</h2>
+    {%- set tab_icons = {
+      'waiting': '⧗', 'not_ready': '○', 'partially_ready': '◐',
+      'both_ready': '✓', 'no_readiness': '⧗', 'finished': '■', 'all': '◉',
+    } %}
+    <nav class="lt-match-tabs lt-match-tabs--compact" aria-label="{{ _('Filter matches') }}">
+      {%- for key, label, count in match_filter_options %}
+      <a href="{{ url_for('.matches_for_tournament', tournament_id=tournament.id, only=key) }}"
+         {%- if key == only %} aria-current="page"{% endif %}>
+        <span class="lt-match-tabs__icon" aria-hidden="true">{{ tab_icons[key] }}</span>
+        {{ label }}
+        <span class="lt-match-tabs__count">{{ count }}</span>
+      </a>
+      {%- endfor %}
+    </nav>
+    {%- if match_data %}
+    <ul>
+      {%- for data in match_data %}
+      {%- set names = [] %}
+      {%- for contestant in data.contestants %}
+        {%- if contestant.team_id %}
+          {%- set contestant_team = teams_by_id.get(contestant.team_id) %}
+          {%- set unused = names.append(contestant_team.name if contestant_team else contestant.team_id|string) %}
+        {%- elif contestant.participant_id %}
+          {%- set contestant_user = participants_by_id.get(contestant.participant_id) %}
+          {%- set unused = names.append(contestant_user.screen_name if contestant_user else contestant.participant_id|string) %}
+        {%- else %}
+          {%- set unused = names.append('—') %}
+        {%- endif %}
+      {%- endfor %}
+      {%- for slot in range(names|length, 2) %}
+        {%- set unused = names.append('—') %}
+      {%- endfor %}
+      {%- set bucket = data.readiness.filter_bucket %}
+      <li data-readiness-status="{{ data.readiness_display.status }}">
+        <b><a href="{{ url_for('.view_match', match_id=data.match.id) }}">{{ render_match_ref(data.match) }}</a>
+        {%- set match_label = match_labels.get(data.match.id|string) %}
+        {%- if match_label %} · {{ match_label }}{% endif %}:</b>
+        {{ names|join(' vs ') }} —
+        {%- if bucket == 'finished' %}
+          {{ data.readiness_display.label }}
+        {%- elif bucket == 'waiting' %}
+          {{ _('Waiting for opponent') }}
+        {%- elif bucket == 'no_readiness' %}
+          {{ _('Open (no readiness)') }}
+        {%- elif bucket == 'not_ready' %}
+          <span aria-hidden="true">○</span> {{ _('Not ready') }}
+        {%- elif bucket == 'partially_ready' %}
+          <span aria-hidden="true">◐</span> {{ _('Partially ready') }}
+          · {{ data.readiness_display.label }}
+          · {{ _('Side B not ready') if 'a' in data.readiness_display.ready_sides else _('Side A not ready') }}
+        {%- else %}
+          <span aria-hidden="true">✓</span> {{ _('Both ready') }}
+        {%- endif %}
+      </li>
+      {%- endfor %}
+    </ul>
+    {%- else %}
+    <p class="dimmed">{{ _('No matches have been created yet.') }}</p>
+    {%- endif %}
+  </section>
 
   {# Basic info #}
   <div class="row row--space-between row--wrap block">

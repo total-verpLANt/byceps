@@ -56,6 +56,17 @@
 
   {{ render_orga_tournament_status_actions(tournament, may_administrate, start_gate, grand_final=grand_final, winner_tie=winner_tie) }}
 
+  <div class="match-filter-nav">
+    <span class="match-filter-nav__label">{{ _('Matches') }}</span>
+    <nav class="match-filter-bar" aria-label="{{ _('Filter matches') }}">
+      {%- for key, label, count in match_filter_options %}
+      <a class="button match-filter-bar__item" href="{{ url_for('.matches', tournament_id=tournament.id, only=key) }}"
+         {%- if key == only %} aria-current="page"{% endif %}>
+        {{- label }}<span class="match-filter-bar__count">{{ count }}</span></a>
+      {%- endfor %}
+    </nav>
+  </div>
+
   {%- if tournament.tournament_status and tournament.tournament_status.name == 'COMPLETED' and winner_name %}
   {%- set is_ffa = ffa_phase is defined and ffa_phase is not none %}
   <div class="ffa-match-box">

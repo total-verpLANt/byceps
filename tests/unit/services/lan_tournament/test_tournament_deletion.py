@@ -5,13 +5,17 @@ tests.unit.services.lan_tournament.test_tournament_deletion
 Unit tests for CASCADE deletion behavior in tournament service layer.
 """
 
+from dataclasses import replace
+from datetime import datetime
 from unittest.mock import MagicMock, call, patch
 
 import pytest
 
 
-from byceps.services.lan_tournament.models.tournament import TournamentID
+from byceps.services.lan_tournament.models.contestant_type import ContestantType
+from byceps.services.lan_tournament.models.tournament import Tournament, TournamentID
 from byceps.services.lan_tournament.models.tournament_match import (
+    MatchInvitationID,
     TournamentMatchID,
 )
 from byceps.services.lan_tournament.models.tournament_participant import (
@@ -21,9 +25,50 @@ from byceps.services.lan_tournament.models.tournament_team import (
     TournamentTeam,
     TournamentTeamID,
 )
+from byceps.services.lan_tournament.models.tournament_status import TournamentStatus
+from byceps.services.party.models import PartyID
 from byceps.services.user.models import UserID
+from byceps.util.result import Ok
 
 from tests.helpers import generate_uuid
+
+
+def _tournament_with_winning_team(team):
+    return Tournament(
+        id=team.tournament_id, party_id=PartyID('test-party'),
+        name='Team winner cleanup', game=None, description=None,
+        image_url=None, ruleset=None, start_time=None, created_at=datetime(2025, 6, 15),
+        min_players=None, max_players=None, min_teams=None, max_teams=None,
+        min_players_in_team=None, max_players_in_team=None,
+        contestant_type=ContestantType.TEAM,
+        tournament_status=TournamentStatus.REGISTRATION_OPEN,
+        game_format=None, elimination_mode=None, winner_team_id=team.id,
+    )
+
+
+@pytest.fixture(autouse=True)
+def invitation_dispatch():
+    pending_ids: tuple[MatchInvitationID, ...] = ()
+    with patch(
+        'byceps.services.lan_tournament.tournament_readiness_service'
+        '.dispatch_pending_invitations', return_value=Ok(None),
+    ) as dispatch:
+        yield dispatch, pending_ids
+
+
+@pytest.fixture
+def roster_lock_reads():
+    """Explicit empty assignments for the imported roster locking collaborator."""
+    prefix = 'byceps.services.lan_tournament.tournament_participant_service.tournament_repository'
+    with (
+        patch(f'{prefix}.get_team_for_update') as team,
+        patch(f'{prefix}.get_participants_for_team', return_value=[]) as members,
+        patch(f'{prefix}.get_contestants_for_tournament', return_value={}) as assignments,
+        patch(f'{prefix}.get_matches_for_tournament', return_value=[]) as matches,
+        patch(f'{prefix}.get_participants_for_update') as participant,
+        patch(f'{prefix}.lock_matches_for_update') as lock,
+    ):
+        yield team, members, assignments, matches, participant, lock
 
 
 @pytest.fixture(autouse=True)
@@ -76,6 +121,22 @@ def test_delete_tournament_cascades_all_dependencies(
     tournament_id = TournamentID(generate_uuid())
     mock_request_repository.unlink_created_tournament_flush.return_value = []
 
+    order = []
+
+    def record_audit(*args, **kwargs):
+        assert mock_repository.method_calls == [
+            call.lock_tournament_for_update(tournament_id),
+            call.get_tournament(tournament_id, fresh=True),
+        ]
+        assert kwargs['commit'] is False
+        order.append('audit')
+
+    mock_create_log_entry.side_effect = record_audit
+    mock_repository.commit_session.side_effect = lambda: order.append('commit')
+    mock_signals.tournament_deleted.send.side_effect = (
+        lambda *args, **kwargs: order.append('signal')
+    )
+
     # Execute deletion
     tournament_service.delete_tournament(tournament_id)
 
@@ -83,7 +144,7 @@ def test_delete_tournament_cascades_all_dependencies(
     # parent). Log entries are not deleted.
     expected_calls = [
         call.lock_tournament_for_update(tournament_id),
-        call.get_tournament(tournament_id),
+        call.get_tournament(tournament_id, fresh=True),
         call.delete_submissions_for_tournament(tournament_id, commit=False),
         call.delete_comments_for_tournament(tournament_id, commit=False),
         call.delete_contestants_for_tournament(tournament_id, commit=False),
@@ -120,6 +181,9 @@ def test_delete_tournament_cascades_all_dependencies(
 
     # Verify event emitted
     assert mock_signals.tournament_deleted.send.called
+    mock_signals.tournament_deleted.send.assert_called_once()
+    assert order == ['audit', 'commit', 'signal']
+    mock_repository.rollback_session.assert_not_called()
 
 
 @patch(
@@ -276,6 +340,9 @@ def test_delete_tournament_writes_tournament_deleted_entry(
         },
         commit=False,
     )
+    mock_repository.get_tournament.assert_called_once_with(
+        tournament_id, fresh=True
+    )
 
 
 @patch(
@@ -395,7 +462,7 @@ def test_delete_tournament_rolls_back_on_failure(
 )
 @patch('byceps.services.lan_tournament.tournament_team_service.signals')
 def test_delete_team_removes_references_before_deletion(
-    mock_signals, mock_repository
+    mock_signals, mock_repository, roster_lock_reads, invitation_dispatch
 ):
     """Test that delete_team() sets team_id to NULL on participants and contestants."""
     from datetime import datetime
@@ -419,6 +486,16 @@ def test_delete_team_removes_references_before_deletion(
         created_at=datetime(2025, 6, 15, 14, 0, 0),
     )
     mock_repository.find_team.return_value = mock_team
+    mock_repository.get_team_for_update.return_value = mock_team
+    mock_repository.get_tournament.return_value = _tournament_with_winning_team(mock_team)
+    mock_repository.get_tournament_for_update.return_value = mock_repository.get_tournament.return_value
+    roster_lock_reads[0].return_value = mock_team
+
+    order = []
+    dispatch = invitation_dispatch[0]
+    mock_repository.commit_session.side_effect = lambda: order.append('commit')
+    mock_signals.team_deleted.send.side_effect = lambda *a, **kw: order.append('signal')
+    dispatch.side_effect = lambda ids: order.append('dispatch') or Ok(None)
 
     # Execute deletion (admin bypass - no current_user_id check)
     result = tournament_team_service.delete_team(team_id)
@@ -429,16 +506,26 @@ def test_delete_team_removes_references_before_deletion(
     # Verify deletion calls in correct order
     expected_calls = [
         call.find_team(team_id),
-        call.remove_team_from_participants(team_id),
-        call.remove_team_from_contestants(team_id),
-        call.clear_winner_team_reference(team_id),
-        call.delete_team(team_id),
+        call.get_tournament_for_update(tournament_id),
+        call.get_team_for_update(team_id),
+        call.remove_team_from_participants_flush(team_id),
+        call.remove_team_from_contestants_flush(team_id),
+        call.get_tournament(tournament_id, fresh=True),
+        call.clear_winner_for_tournament(tournament_id, commit=False),
+        call.delete_team_flush(team_id),
+        call.commit_session(),
     ]
 
     assert mock_repository.method_calls == expected_calls
 
     # Verify event emitted
     assert mock_signals.team_deleted.send.called
+    roster_lock_reads[0].assert_called_once_with(team_id)
+    roster_lock_reads[2].assert_called_once_with(tournament_id)
+    roster_lock_reads[5].assert_called_once_with([])
+    invitation_dispatch[0].assert_called_once_with(())
+    assert order == ['commit', 'signal', 'dispatch']
+    mock_repository.rollback_session.assert_not_called()
 
 
 
@@ -447,7 +534,7 @@ def test_delete_team_removes_references_before_deletion(
 )
 @patch('byceps.services.lan_tournament.tournament_team_service.signals')
 def test_delete_team_clears_winner_reference_before_deletion(
-    mock_signals, mock_repository
+    mock_signals, mock_repository, roster_lock_reads
 ):
     """Test that clear_winner_team_reference() is called before
     delete_team() to avoid FK violations when the team is the winner."""
@@ -471,13 +558,17 @@ def test_delete_team_clears_winner_reference_before_deletion(
         created_at=datetime(2025, 6, 15, 14, 0, 0),
     )
     mock_repository.find_team.return_value = mock_team
+    mock_repository.get_team_for_update.return_value = mock_team
+    mock_repository.get_tournament.return_value = _tournament_with_winning_team(mock_team)
+    mock_repository.get_tournament_for_update.return_value = mock_repository.get_tournament.return_value
+    roster_lock_reads[0].return_value = mock_team
 
     tournament_team_service.delete_team(team_id)
 
     method_names = [c[0] for c in mock_repository.method_calls]
 
-    clear_idx = method_names.index('clear_winner_team_reference')
-    delete_idx = method_names.index('delete_team')
+    clear_idx = method_names.index('clear_winner_for_tournament')
+    delete_idx = method_names.index('delete_team_flush')
 
     assert clear_idx < delete_idx, (
         'clear_winner_team_reference must precede delete_team'
@@ -511,6 +602,7 @@ def test_delete_team_enforces_captain_authorization(mock_repository):
         created_at=datetime(2025, 6, 15, 14, 0, 0),
     )
     mock_repository.find_team.return_value = mock_team
+    mock_repository.get_team_for_update.return_value = mock_team
 
     # Execute deletion as non-captain
     result = tournament_team_service.delete_team(
@@ -523,6 +615,7 @@ def test_delete_team_enforces_captain_authorization(mock_repository):
 
     # Verify NO deletion occurred
     mock_repository.delete_team.assert_not_called()
+    mock_repository.delete_team_flush.assert_not_called()
 
 
 @patch(
@@ -530,7 +623,7 @@ def test_delete_team_enforces_captain_authorization(mock_repository):
 )
 @patch('byceps.services.lan_tournament.tournament_participant_service.signals')
 def test_admin_remove_participant_clears_winner_before_hard_delete(
-    mock_signals, mock_repository, mock_participant_audit_log
+    mock_signals, mock_repository, mock_participant_audit_log, invitation_dispatch
 ):
     """Test that clear_winner_participant_reference_flush() is called before
     hard-deleting a participant to avoid FK violations on winner_participant_id."""
@@ -563,6 +656,11 @@ def test_admin_remove_participant_clears_winner_before_hard_delete(
         created_at=datetime(2025, 6, 15, 14, 0, 0),
     )
     mock_repository.find_participant.return_value = mock_participant
+    mock_repository.find_participant_fresh.return_value = mock_participant
+    mock_repository.get_participant_for_update.return_value = mock_participant
+    mock_repository.get_contestants_for_tournament.return_value = {}
+    mock_repository.get_matches_for_tournament.return_value = []
+    mock_repository.find_contestant_entries_for_participant_in_tournament.return_value = []
 
     # COMPLETED status → bracket_is_active=False → hard-delete path
     mock_tournament = Tournament(
@@ -588,9 +686,31 @@ def test_admin_remove_participant_clears_winner_before_hard_delete(
     )
     mock_repository.get_tournament_for_update.return_value = mock_tournament
 
-    tournament_participant_service.admin_remove_participant(
+    order = []
+    dispatch = invitation_dispatch[0]
+
+    def cleanup(participant_id):
+        mock_repository.commit_session.assert_not_called()
+        dispatch.assert_not_called()
+        order.append('clear')
+
+    mock_repository.clear_winner_participant_reference_flush.side_effect = cleanup
+    mock_repository.delete_participants_by_ids.side_effect = lambda ids: order.append('delete')
+    mock_repository.commit_session.side_effect = lambda: order.append('commit')
+    mock_signals.participant_left.send.side_effect = lambda *a, **kw: order.append('signal')
+    dispatch.side_effect = lambda ids: order.append('dispatch') or Ok(None)
+
+    result = tournament_participant_service.admin_remove_participant(
         tournament_id, participant_id
     )
+    assert result.is_ok()
+    mock_repository.find_participant_fresh.assert_called_once_with(participant_id)
+    mock_repository.clear_winner_participant_reference_flush.assert_called_once_with(participant_id)
+    mock_repository.delete_participants_by_ids.assert_called_once_with({participant_id})
+    mock_repository.commit_session.assert_called_once_with()
+    mock_repository.rollback_session.assert_not_called()
+    dispatch.assert_called_once_with(())
+    assert order == ['clear', 'delete', 'commit', 'signal', 'dispatch']
 
     method_names = [c[0] for c in mock_repository.method_calls]
 
@@ -608,7 +728,7 @@ def test_admin_remove_participant_clears_winner_before_hard_delete(
 )
 @patch('byceps.services.lan_tournament.tournament_team_service.signals')
 def test_leave_team_auto_delete_clears_winner_reference(
-    mock_signals, mock_repository
+    mock_signals, mock_repository, roster_lock_reads, invitation_dispatch
 ):
     """Test that leave_team() clears winner_team_id before auto-deleting
     an empty team to avoid FK violations."""
@@ -639,6 +759,7 @@ def test_leave_team_auto_delete_clears_winner_reference(
         created_at=datetime(2025, 6, 15, 14, 0, 0),
     )
     mock_repository.find_participant.return_value = mock_participant
+    mock_repository.find_participant_fresh.return_value = mock_participant
 
     mock_team = TournamentTeam(
         id=team_id,
@@ -652,6 +773,10 @@ def test_leave_team_auto_delete_clears_winner_reference(
         created_at=datetime(2025, 6, 15, 14, 0, 0),
     )
     mock_repository.get_team.return_value = mock_team
+    mock_repository.get_team_for_update.return_value = mock_team
+    roster_lock_reads[0].return_value = mock_team
+    roster_lock_reads[1].return_value = [mock_participant]
+    roster_lock_reads[4].return_value = mock_participant
 
     mock_tournament = Tournament(
         id=tournament_id,
@@ -675,6 +800,8 @@ def test_leave_team_auto_delete_clears_winner_reference(
         elimination_mode=None,
     )
     mock_repository.get_tournament.return_value = mock_tournament
+    mock_tournament = replace(mock_tournament, winner_team_id=team_id)
+    mock_repository.get_tournament.return_value = mock_tournament
 
     # First call (captain check): 1 member → captain can leave
     # Second call (auto-delete check): 0 remaining → trigger delete
@@ -687,12 +814,21 @@ def test_leave_team_auto_delete_clears_winner_reference(
 
     method_names = [c[0] for c in mock_repository.method_calls]
 
-    clear_idx = method_names.index('clear_winner_team_reference')
-    delete_idx = method_names.index('delete_team')
+    clear_idx = method_names.index('clear_winner_for_tournament')
+    delete_idx = method_names.index('delete_team_flush')
 
     assert clear_idx < delete_idx, (
         'clear_winner_team_reference must precede delete_team in leave_team'
     )
+    mock_repository.clear_winner_for_tournament.assert_called_once_with(
+        tournament_id, commit=False,
+    )
+    mock_repository.update_participant_flush.assert_called_once_with(
+        replace(mock_participant, team_id=None),
+    )
+    mock_repository.commit_session.assert_called_once_with()
+    roster_lock_reads[4].assert_called_once_with([participant_id])
+    invitation_dispatch[0].assert_called_once_with(())
 
 
 @patch(
@@ -722,20 +858,68 @@ def test_delete_match_cascades_comments_and_contestants(mock_repository):
         created_at=datetime(2025, 6, 15, 14, 0, 0),
     )
     mock_repository.get_match.return_value = mock_match
+    mock_repository.get_match_for_update.return_value = mock_match
 
     # Execute deletion
-    tournament_match_service.delete_match(match_id)
+    order = []
+    mock_repository.commit_session.side_effect = lambda: order.append('commit')
+    with patch('byceps.services.lan_tournament.signals.match_deleted') as signal:
+        signal.send.side_effect = lambda *a, **kw: order.append('signal')
+        tournament_match_service.delete_match(match_id)
+    assert order == ['commit', 'signal']
+    assert signal.send.call_args.kwargs['event'].match_id == match_id
 
     # Verify deletion calls in correct order (children first, then parent)
     expected_calls = [
         call.get_match(match_id),
-        call.delete_comments_for_match(match_id),
-        call.delete_contestants_for_match(match_id),
-        call.delete_match(match_id),
+        call.lock_tournament_for_update(tournament_id),
+        call.get_match_for_update(match_id),
+        call.delete_comments_for_match_flush(match_id),
+        call.get_match(match_id),
+        call.delete_contestants_for_match_flush(match_id),
+        call.get_match(match_id),
+        call.delete_match_flush(match_id),
+        call.commit_session(),
     ]
 
     assert mock_repository.method_calls == expected_calls
-    # Note: Event emission testing skipped because signals is imported locally
+    mock_repository.rollback_session.assert_not_called()
+
+
+# fmt: off
+@pytest.mark.parametrize('failure', [
+    'delete_comments_for_match_flush', 'delete_contestants_for_match_flush',
+    'delete_match_flush', 'commit_session',
+])
+# fmt: on
+def test_delete_match_failure_rolls_back_without_signal(failure):
+    from datetime import datetime
+
+    from byceps.services.lan_tournament import tournament_match_service
+    from byceps.services.lan_tournament.models.tournament_match import TournamentMatch
+
+    match_id = TournamentMatchID(generate_uuid())
+    match = TournamentMatch(
+        id=match_id, tournament_id=TournamentID(generate_uuid()),
+        group_order=None, match_order=0, round=None, next_match_id=None,
+        confirmed_by=None, created_at=datetime(2025, 6, 15),
+    )
+    with (
+        patch('byceps.services.lan_tournament.tournament_match_service'
+              '.tournament_repository') as repo,
+        patch('byceps.services.lan_tournament.signals.match_deleted') as signal,
+    ):
+        repo.get_match.return_value = match
+        repo.get_match_for_update.return_value = match
+        getattr(repo, failure).side_effect = RuntimeError('delete unavailable')
+        with pytest.raises(RuntimeError, match='delete unavailable'):
+            tournament_match_service.delete_match(match_id)
+    repo.rollback_session.assert_called_once_with()
+    signal.send.assert_not_called()
+    if failure != 'commit_session':
+        repo.commit_session.assert_not_called()
+    else:
+        repo.commit_session.assert_called_once_with()
 
 
 # Repository bulk deletion tests
