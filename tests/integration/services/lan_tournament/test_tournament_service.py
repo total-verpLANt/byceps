@@ -1,9 +1,6 @@
 """
 tests.integration.services.lan_tournament.test_tournament_service
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-:Copyright: 2014-2026 Jochen Kupperschmidt
-:License: Revised BSD (see `LICENSE` file for details)
 """
 
 import pytest
@@ -11,7 +8,8 @@ import pytest
 from byceps.services.lan_tournament import tournament_service
 from byceps.services.lan_tournament.models import (
     ContestantType,
-    TournamentMode,
+    EliminationMode,
+    GameFormat,
     TournamentStatus,
 )
 from byceps.services.party.models import PartyID
@@ -25,33 +23,41 @@ def party(make_party, brand):
     return make_party(brand, PARTY_ID, 'LAN Party 2024')
 
 
+def _create_ok(*args, **kwargs):
+    result = tournament_service.create_tournament(*args, **kwargs)
+    assert result.is_ok()
+    return result.unwrap()
+
+
 def test_create_tournament(party):
     title = 'Test Tournament 1'
     max_players = 16
 
-    tournament, event = tournament_service.create_tournament(
+    tournament, event = _create_ok(
         PARTY_ID,
         title,
         max_players=max_players,
-        tournament_mode=TournamentMode.SINGLE_PLAYER,
-        contestant_type=ContestantType.PLAYER,
+        game_format=GameFormat.ONE_V_ONE,
+        elimination_mode=EliminationMode.SINGLE_ELIMINATION,
+        contestant_type=ContestantType.SOLO,
+        tournament_status=TournamentStatus.DRAFT,
     )
 
     assert tournament is not None
     assert tournament.party_id == PARTY_ID
     assert tournament.name == title
-    assert tournament.tournament_mode == TournamentMode.SINGLE_PLAYER
+    assert tournament.game_format == GameFormat.ONE_V_ONE
+    assert tournament.elimination_mode == EliminationMode.SINGLE_ELIMINATION
     assert tournament.max_players == max_players
-    assert tournament.tournament_status == TournamentStatus.SCHEDULED
+    assert tournament.tournament_status == TournamentStatus.DRAFT
 
 
 def test_find_tournament(party):
     title = 'Test Tournament 2'
 
-    created, _ = tournament_service.create_tournament(
+    created, _ = _create_ok(
         PARTY_ID,
         title,
-        tournament_mode=TournamentMode.TEAMS,
         contestant_type=ContestantType.TEAM,
         max_teams=8,
     )
@@ -67,12 +73,8 @@ def test_get_tournaments_for_party(party):
     title1 = 'Test Tournament 3a'
     title2 = 'Test Tournament 3b'
 
-    tournament1, _ = tournament_service.create_tournament(
-        PARTY_ID, title1, max_players=16
-    )
-    tournament2, _ = tournament_service.create_tournament(
-        PARTY_ID, title2, max_teams=8
-    )
+    tournament1, _ = _create_ok(PARTY_ID, title1, max_players=16)
+    tournament2, _ = _create_ok(PARTY_ID, title2, max_teams=8)
 
     tournaments = tournament_service.get_tournaments_for_party(PARTY_ID)
 
@@ -86,22 +88,26 @@ def test_update_tournament(party):
     title = 'Test Tournament 4'
     new_title = 'Updated Tournament 4'
 
-    tournament, _ = tournament_service.create_tournament(
-        PARTY_ID, title, max_players=16
-    )
+    tournament, _ = _create_ok(PARTY_ID, title, max_players=16)
 
-    updated = tournament_service.update_tournament(
+    result = tournament_service.update_tournament(
         tournament.id,
         name=new_title,
         max_players=32,
         min_players_in_team=2,
         max_players_in_team=4,
-        tournament_mode=TournamentMode.TEAMS,
+        game_format=GameFormat.ONE_V_ONE,
+        elimination_mode=EliminationMode.SINGLE_ELIMINATION,
+        contestant_type=ContestantType.TEAM,
     )
+    assert result.is_ok()
+    updated = result.unwrap()
 
     assert updated.id == tournament.id
     assert updated.name == new_title
-    assert updated.tournament_mode == TournamentMode.TEAMS
+    assert updated.game_format == GameFormat.ONE_V_ONE
+    assert updated.elimination_mode == EliminationMode.SINGLE_ELIMINATION
+    assert updated.contestant_type == ContestantType.TEAM
     assert updated.max_players == 32
     assert updated.min_players_in_team == 2
     assert updated.max_players_in_team == 4
@@ -110,11 +116,7 @@ def test_update_tournament(party):
 def test_change_status(party):
     title = 'Test Tournament 5'
 
-    tournament, _ = tournament_service.create_tournament(
-        PARTY_ID, title, max_players=16
-    )
-
-    assert tournament.tournament_status == TournamentStatus.SCHEDULED
+    tournament, _ = _create_ok(PARTY_ID, title, max_players=16)
 
     # Change to REGISTRATION_OPEN
     result = tournament_service.change_status(
@@ -133,12 +135,22 @@ def test_change_status(party):
     assert updated.tournament_status == TournamentStatus.REGISTRATION_CLOSED
 
 
+def _advance_to_closed(tournament_id):
+    for status in (
+        TournamentStatus.REGISTRATION_OPEN,
+        TournamentStatus.REGISTRATION_CLOSED,
+    ):
+        result = tournament_service.change_status(tournament_id, status)
+        assert result.is_ok()
+
+
 def test_start_tournament(party):
     title = 'Test Tournament 6'
 
-    tournament, _ = tournament_service.create_tournament(
-        PARTY_ID, title, max_players=16
-    )
+    tournament, _ = _create_ok(PARTY_ID, title, max_players=16)
+
+    # Start requires registration to be closed first.
+    _advance_to_closed(tournament.id)
 
     result = tournament_service.start_tournament(tournament.id)
     assert result.is_ok()
@@ -149,11 +161,10 @@ def test_start_tournament(party):
 def test_pause_tournament(party):
     title = 'Test Tournament 7'
 
-    tournament, _ = tournament_service.create_tournament(
-        PARTY_ID, title, max_players=16
-    )
+    tournament, _ = _create_ok(PARTY_ID, title, max_players=16)
 
     # Start first
+    _advance_to_closed(tournament.id)
     tournament_service.start_tournament(tournament.id)
 
     # Then pause
@@ -166,11 +177,10 @@ def test_pause_tournament(party):
 def test_resume_tournament(party):
     title = 'Test Tournament 8'
 
-    tournament, _ = tournament_service.create_tournament(
-        PARTY_ID, title, max_players=16
-    )
+    tournament, _ = _create_ok(PARTY_ID, title, max_players=16)
 
     # Start, pause, then resume
+    _advance_to_closed(tournament.id)
     tournament_service.start_tournament(tournament.id)
     tournament_service.pause_tournament(tournament.id)
 
@@ -183,11 +193,10 @@ def test_resume_tournament(party):
 def test_end_tournament(party):
     title = 'Test Tournament 9'
 
-    tournament, _ = tournament_service.create_tournament(
-        PARTY_ID, title, max_players=16
-    )
+    tournament, _ = _create_ok(PARTY_ID, title, max_players=16)
 
     # Start first
+    _advance_to_closed(tournament.id)
     tournament_service.start_tournament(tournament.id)
 
     # Then end
@@ -200,9 +209,7 @@ def test_end_tournament(party):
 def test_delete_tournament(party):
     title = 'Test Tournament 10'
 
-    tournament, _ = tournament_service.create_tournament(
-        PARTY_ID, title, max_players=16
-    )
+    tournament, _ = _create_ok(PARTY_ID, title, max_players=16)
 
     tournament_id = tournament.id
 
