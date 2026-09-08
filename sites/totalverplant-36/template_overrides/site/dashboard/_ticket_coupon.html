@@ -1,0 +1,184 @@
+{#- "Bestellschein" — a clipped newspaper mail-order coupon shown at the top of
+    the dashboard for logged-in members who do not own a ticket yet. Carries the
+    live ticket availability and a buy button to shop_order.order_form.
+
+    Included from site/dashboard/index.html behind `{% if not tickets %}` (the
+    current user's tickets, already loaded by the dashboard view). This partial
+    derives its own figures from `ticket_sale_stats` (injected on every non-
+    intranet site page by ticketing.inject_ticket_sale_stats), so it does not
+    depend on variables set in layout/base.html and stays self-contained.
+
+    Renders nothing unless tickets_max is set (a storefront/limit exists), which
+    guarantees url_for('shop_order.order_form') resolves — same guard the mobile
+    homepage Kartenschalter uses. All colours are theme tokens, so the Spätaus-
+    gabe (dark mode) follows automatically. -#}
+{%- set _has_stats = (ticket_sale_stats is defined and ticket_sale_stats is not none and ticket_sale_stats.tickets_max is not none) %}
+{%- set _max = ticket_sale_stats.tickets_max if _has_stats else 0 %}
+{%- if _max > 0 %}
+{%- set _sold = ticket_sale_stats.tickets_sold if _has_stats else 0 %}
+{%- set _avail = [_max - _sold, 0]|max %}
+{%- set _pct = [(_sold / _max * 100), 100]|min|round(0) %}
+{%- set _nearly = (_pct >= 90) %}
+<style>
+  .ds-coupon {
+    position: relative;
+    margin: 0 0 clamp(22px, 3vw, 32px);
+    padding: clamp(18px, 2.8vw, 24px) clamp(16px, 3vw, 26px);
+    background:
+      repeating-linear-gradient(135deg, transparent 0 11px, var(--stripe) 11px 12px),
+      var(--paperLite);
+    border: 2px dashed var(--ink);
+    box-shadow: 6px 6px 0 var(--ink);
+    animation: ds-coupon-in 0.5s ease both;
+  }
+  @keyframes ds-coupon-in {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ds-coupon { animation: none; }
+  }
+
+  /* "cut here" tab riding the perforated edge */
+  .ds-coupon__tab {
+    position: absolute;
+    top: -0.78em;
+    left: 16px;
+    padding: 0 9px;
+    background: var(--paper);
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--inkSoft);
+    white-space: nowrap;
+  }
+
+  .ds-coupon__inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: clamp(16px, 3vw, 30px);
+    flex-wrap: wrap;
+  }
+  .ds-coupon__lead { flex: 1 1 260px; min-width: 0; }
+
+  .ds-coupon__kicker {
+    margin: 0 0 7px;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--redDeep);
+  }
+  .ds-coupon__head {
+    margin: 0 0 9px;
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: clamp(22px, 2.9vw, 31px);
+    line-height: 1.02;
+    color: var(--ink);
+  }
+  .ds-coupon__head em { font-style: italic; color: var(--redDeep); }
+
+  .ds-coupon__sub {
+    margin: 0;
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 3px 13px;
+  }
+  .ds-coupon__num {
+    font-family: var(--display);
+    font-style: italic;
+    font-weight: 700;
+    font-size: clamp(34px, 5vw, 46px);
+    line-height: 0.78;
+    color: var(--redDeep);
+  }
+  .ds-coupon__free {
+    font-family: var(--display);
+    font-style: italic;
+    font-size: clamp(16px, 2vw, 21px);
+    color: var(--ink);
+  }
+  .ds-coupon__flag {
+    font-family: var(--display);
+    font-style: italic;
+    font-size: clamp(16px, 2vw, 21px);
+    color: var(--red);
+  }
+  .ds-coupon__meta {
+    flex: 1 1 100%;
+    margin-top: 2px;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--inkSoft);
+  }
+
+  .ds-coupon__buy {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 15px clamp(20px, 2.6vw, 28px);
+    background: var(--redDeep);
+    color: var(--paper);
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    text-decoration: none;
+    white-space: nowrap;
+    border-radius: var(--bote-stamp-radius);
+    box-shadow: 4px 4px 0 var(--ink);
+    transition: transform 0.08s ease, box-shadow 0.08s ease, background 0.12s ease;
+  }
+  .ds-coupon__buy:hover { background: var(--red); }
+  .ds-coupon__buy:active {
+    transform: translate(2px, 2px);
+    box-shadow: 1px 1px 0 var(--ink);
+  }
+  .ds-coupon__buy .tic { font-size: 16px; line-height: 1; }
+
+  @media (max-width: 560px) {
+    .ds-coupon__buy { width: 100%; justify-content: center; }
+  }
+</style>
+
+<aside class="ds-coupon" aria-label="{{ _('Tickets sichern') }}">
+  <span class="ds-coupon__tab" aria-hidden="true">✂ Ausschneiden</span>
+  <div class="ds-coupon__inner">
+    <div class="ds-coupon__lead">
+      <p class="ds-coupon__kicker">Bestellschein · Kartenschalter</p>
+      {%- if _avail > 0 %}
+      <p class="ds-coupon__head">Noch kein Ticket im <em>Vereinskonto</em>.</p>
+      <p class="ds-coupon__sub">
+        <span class="ds-coupon__num">{{ _avail }}</span>
+        <span class="ds-coupon__free">{{ ngettext('Platz frei', 'Plätze frei', _avail) }}</span>
+        {%- if _nearly %}
+        <span class="ds-coupon__flag">· fast ausverkauft</span>
+        {%- endif %}
+        <span class="ds-coupon__meta">ab 30 € · 16.–18. Okt · Großsporthalle Brake</span>
+      </p>
+      {%- else %}
+      <p class="ds-coupon__head">Leider <em>ausverkauft</em>.</p>
+      <p class="ds-coupon__sub">
+        <span class="ds-coupon__meta">{{ _max }} / {{ _max }} Plätze vergeben · Warteliste an der Pforte</span>
+      </p>
+      {%- endif %}
+    </div>
+    {%- if _avail > 0 %}
+    <a class="ds-coupon__buy" href="{{ url_for('shop_order.order_form') }}">
+      <span class="tic" aria-hidden="true">🎟</span>
+      <span>Tickets sichern</span>
+    </a>
+    {%- endif %}
+  </div>
+</aside>
+{%- endif %}

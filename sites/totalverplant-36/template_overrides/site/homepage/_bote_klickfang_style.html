@@ -1,0 +1,96 @@
+<style>
+  /* ============================================================
+     KLICKFANG — the over-the-top popup ad, layered over the live
+     frontpage. The overlay is position:fixed across the whole
+     viewport and themed via site tokens (light/dark follow
+     html[data-theme]). Accent maps to var(--redDeep).
+     ============================================================ */
+  .kf-overlay{position:fixed;inset:0;z-index:9000;display:grid;place-items:center;
+    background:rgba(20,17,13,.55);backdrop-filter:blur(1.5px);overflow:hidden;
+    padding:clamp(12px,4vw,40px);}
+  html[data-theme="dark"] .kf-overlay{background:rgba(4,3,2,.66);}
+
+  .kf-pop{animation:kf-pop .42s cubic-bezier(.2,1.5,.4,1) both;}
+  @keyframes kf-pop{0%{transform:scale(.7) rotate(-5deg)}70%{transform:scale(1.04) rotate(1.5deg)}100%{transform:scale(1) rotate(0)}}
+
+  /* popup window */
+  .kf-fenster{--kf-accent:var(--redDeep);
+    position:relative;width:min(500px,94vw);max-height:92vh;overflow:auto;
+    background:var(--paper);color:var(--ink);
+    border:2.5px solid var(--ink);box-shadow:0 24px 50px -12px rgba(0,0,0,.7),10px 10px 0 var(--ink);}
+  .kf-titlebar{display:flex;align-items:center;gap:6px;padding:7px 10px;background:var(--kf-accent);color:var(--paper);position:sticky;top:0;}
+  .kf-tb-dot{width:9px;height:9px;border-radius:50%;background:rgba(255,255,255,.55);flex:0 0 auto;}
+  .kf-tb-title{margin-left:8px;font-family:var(--mono);font-size:11px;letter-spacing:.04em;
+    color:rgba(255,255,255,.95);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .kf-fenster-body{position:relative;padding:14px 20px 18px;text-align:center;}
+
+  /* shared ad innards */
+  .kf-badge-row{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin-bottom:5px;}
+  .kf-1mil{font-family:var(--body);font-style:italic;font-size:16px;color:var(--ink);}
+  .kf-1mil b{color:var(--kf-accent);font-style:normal;}
+  .kf-blink{animation:kf-blink 1s steps(2,start) infinite;}
+  @keyframes kf-blink{50%{opacity:.18}}
+
+  .kf-laufband{overflow:hidden;border-top:1.5px solid var(--ink);border-bottom:1.5px solid var(--ink);
+    padding:3px 0;margin:5px 0 7px;}
+  .kf-laufband-track{display:inline-flex;white-space:nowrap;font-family:var(--display);font-weight:900;
+    font-style:italic;font-size:19px;letter-spacing:.02em;animation:kf-laufband linear infinite;}
+  @keyframes kf-laufband{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+
+  .kf-head{font-family:var(--display);font-weight:900;font-style:italic;letter-spacing:-.02em;line-height:.95;
+    color:var(--kf-accent);
+    font-size:clamp(25px,4.6vw,37px);margin:3px 0 4px;animation:kf-shake .3s ease-in-out infinite;}
+  @keyframes kf-shake{0%,100%{transform:translate(0,0) rotate(0)}20%{transform:translate(-2px,1px) rotate(-1.2deg)}
+    60%{transform:translate(2px,-1px) rotate(1.2deg)}}
+  .kf-sub{font-family:var(--body);font-style:italic;font-size:16px;color:var(--inkSoft);margin:0 0 7px;}
+  .kf-sub b{color:var(--kf-accent);font-style:normal;}
+
+  .kf-prize{display:flex;align-items:center;gap:13px;text-align:left;border:2.5px dashed var(--kf-accent);
+    background:var(--paperLite);padding:9px 12px;margin:0 0 8px;}
+  .kf-prize-glyph{font-size:44px;line-height:1;flex:0 0 auto;animation:kf-bob 2s ease-in-out infinite;}
+  @keyframes kf-bob{0%,100%{transform:translateY(0) rotate(-4deg)}50%{transform:translateY(-6px) rotate(4deg)}}
+  .kf-prize-name{font-family:var(--display);font-weight:900;font-style:italic;font-size:21px;line-height:1.02;letter-spacing:-.01em;}
+  .kf-prize-sub{font-family:var(--body);font-size:14.5px;font-style:italic;color:var(--inkSoft);line-height:1.25;margin-top:3px;}
+  .kf-prize-worth{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--paper);background:var(--ink);display:inline-block;padding:3px 7px;margin-top:6px;}
+
+  .kf-count{display:flex;flex-direction:column;align-items:center;gap:1px;margin:0 0 8px;}
+  .kf-count-label{font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--inkSoft);}
+  .kf-count-clock{font-family:var(--mono);font-weight:700;font-size:24px;letter-spacing:.06em;color:var(--kf-accent);}
+
+  .kf-cta{display:inline-flex;align-items:center;justify-content:center;gap:8px;position:relative;
+    font-family:var(--mono);font-weight:700;font-size:14.5px;letter-spacing:.08em;color:var(--paper);
+    background:var(--kf-accent);
+    border:2.5px solid var(--ink);padding:12px 18px;cursor:pointer;box-shadow:5px 5px 0 var(--ink);
+    animation:kf-pulse 1s ease-in-out infinite;text-transform:uppercase;width:100%;}
+  .kf-cta:active{transform:translate(3px,3px);box-shadow:2px 2px 0 var(--ink);}
+  @keyframes kf-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.035)}}
+  .kf-cta--wob{animation:kf-pulse .55s ease-in-out infinite,kf-hue 3s linear infinite;}
+  @keyframes kf-hue{to{filter:hue-rotate(40deg)}}
+  .kf-cta-hand{position:absolute;right:-2px;bottom:-16px;font-size:22px;animation:kf-point .7s ease-in-out infinite;}
+  @keyframes kf-point{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+
+  .kf-fine{font-family:var(--body);font-style:italic;font-size:12px;line-height:1.4;color:var(--inkMute);
+    margin:9px 0 0;text-align:left;}
+
+  /* runaway close */
+  .kf-x{position:absolute;z-index:6;width:30px;height:30px;display:grid;place-items:center;
+    background:var(--paper);border:2px solid var(--ink);font-family:var(--mono);font-weight:700;font-size:14px;
+    cursor:pointer;transition:left .14s ease,top .14s ease;line-height:1;padding:0;}
+  .kf-x:hover{background:var(--ink);color:var(--paper)!important;}
+
+  /* confetti */
+  .kf-confetti{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:5;}
+  .kf-confetti span{position:absolute;top:-16px;display:block;
+    animation-name:kf-fall;animation-timing-function:linear;animation-iteration-count:infinite;
+    transform:rotate(var(--r0));}
+  @keyframes kf-fall{
+    0%{transform:translate(0,-16px) rotate(var(--r0));opacity:0}
+    8%{opacity:1}
+    100%{transform:translate(var(--sway),520px) rotate(720deg);opacity:.9}
+  }
+
+  /* the ad slot on the page that summons the popup on hover */
+  .kf-trigger{position:relative;cursor:pointer;outline:none;transition:box-shadow .15s,transform .15s;}
+  .kf-trigger:hover,.kf-trigger.is-armed{box-shadow:5px 5px 0 var(--redDeep);transform:translate(-2px,-2px);}
+</style>

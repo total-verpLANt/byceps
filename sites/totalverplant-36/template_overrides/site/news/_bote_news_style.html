@@ -1,0 +1,324 @@
+<style>
+  /* ============================================================
+     NEWS — „Aus der Redaktion" newspaper-article treatment.
+
+     The stock news pages (site/news/index.html, view.html,
+     archive.html) had no .bote-page wrapper, so they ran full-bleed
+     and slid under the sticky masthead — the same problem the
+     dashboard / gallery / tickets / shop / board pages had.
+
+     Worse: the stock site/news/_item.html renders each item with
+     class="news-item", which totalverplant-36.css already styles as
+     a date-chip GRID (that rule was written for the homepage
+     teasers). So a real article got crammed into a narrow column —
+     headline, image and body all squeezed to the left edge.
+
+     Each news template now wraps its body in the centered 1320px
+     paper sheet (.bote-page .news-page) with a .page-folio +
+     .page-head, and pulls in this shared style block from the head
+     block. We re-set the stock .news-item / .featured-image /
+     figure / .meta / .body markup as a proper newspaper article:
+     a display headline, a ruled mono dateline, a framed sepia photo
+     plate (blooms to colour on hover, mirroring the gallery), and a
+     justified serif body. Markup, endpoints and
+     the rendered body/featured-image HTML are UNCHANGED from the
+     stock templates — only the wrapper + page classes were added.
+     Every colour is a theme token, so „Spätausgabe" (dark) is
+     handled automatically.
+     ============================================================ */
+
+  .news-page{ --col: 768px; }
+
+  /* breadcrumb (view) re-set as a mono dateline */
+  .news-page .breadcrumbs{ margin:0 0 14px; }
+  .news-page .breadcrumbs ol{
+    list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:4px 10px;
+    font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--inkMute);
+  }
+  .news-page .breadcrumbs a{ color:var(--redDeep);text-decoration:none;border-bottom:1px dashed transparent; }
+  .news-page .breadcrumbs a::before{ content:"‹ "; }
+  .news-page .breadcrumbs a:hover{ border-bottom-color:var(--redDeep); }
+
+  /* ===========================================================
+     The article container. Cancel the inherited homepage-teaser
+     grid and re-flow as a single editorial column with explicit
+     source-order control.
+     =========================================================== */
+  .news-page .news-item{
+    display:flex;
+    flex-direction:column;
+    grid-template-columns:none;     /* kill the inherited grid */
+    gap:0;
+    max-width:var(--col);
+    margin:0 auto;
+    padding:0;
+    border-top:0;                   /* kill the inherited dashed rule */
+  }
+  .news-page .news-item:first-of-type{ border-top:0; }
+
+  /* re-order stock children: headline · dateline · photo · body
+     (stock DOM order is photo · headline · dateline · body) */
+  .news-page .news-item .featured-image{ order:3; }
+  .news-page .news-item > .title{ order:1; }
+  .news-page .news-item > .meta{ order:2; }
+  .news-page .news-item > .body{ order:4; }
+
+  /* ---- headline ---- */
+  .news-page .news-item > .title{
+    font-family:var(--display);
+    font-weight:900;
+    letter-spacing:-.025em;
+    line-height:.94;
+    color:var(--ink);
+    margin:0;
+    text-wrap:balance;
+  }
+  .news-page .news-item > .title a{
+    color:inherit;text-decoration:none;
+    background-image:linear-gradient(var(--redDeep),var(--redDeep));
+    background-size:0% 2px;background-repeat:no-repeat;background-position:0 92%;
+    transition:background-size .25s ease,color .2s ease;
+  }
+  .news-page .news-item > .title a:hover{ color:var(--redDeep);background-size:100% 2px; }
+
+  /* ---- dateline / byline (stock footer.meta) ---- */
+  .news-page .news-item > .meta{
+    font-family:var(--mono);
+    font-style:normal;
+    font-size:11px;
+    font-weight:700;
+    letter-spacing:.18em;
+    text-transform:uppercase;
+    color:var(--redDeep);
+    margin:14px 0 0;
+    padding:11px 0 12px;
+    border-top:1px solid var(--ink);
+    border-bottom:1px solid var(--ink);
+  }
+  /* the render_tag('Draft') pill, when an item is unpublished */
+  .news-page .news-item > .meta .tag{
+    display:inline-block;font-family:var(--mono);font-size:8.5px;font-weight:700;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--paper);background:var(--inkSoft);padding:3px 7px;border-radius:0;
+    vertical-align:middle;
+  }
+
+  /* ---- featured photo plate (frames the figure inside .featured-image) ---- */
+  .news-page .featured-image{ margin:clamp(20px,3vw,30px) 0 0; }
+  .news-page figure{ margin:0; }
+  .news-page .featured-image figure > img,
+  .news-page .featured-image > img{
+    display:block;width:100%;height:auto;
+    border:1.5px solid var(--ink);
+    background:var(--paperLite);
+    box-shadow:5px 5px 0 var(--ink);
+    filter:grayscale(1) sepia(.30) contrast(1.06) brightness(1.02);
+    transition:filter .5s ease;
+  }
+  .news-page .featured-image:hover figure > img,
+  .news-page .featured-image:hover > img{ filter:none; }
+
+  /* ---- figcaption (stock: .row--space-between → caption + credit) ---- */
+  .news-page figcaption{
+    margin-top:9px;padding-top:7px;
+    border-top:1px solid var(--ink);
+    font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--inkSoft);
+  }
+  .news-page figcaption .row--space-between{
+    display:flex;justify-content:space-between;align-items:baseline;gap:8px 18px;flex-wrap:wrap;
+  }
+  .news-page figcaption small{ font-size:10px;color:var(--inkMute);letter-spacing:.04em; }
+
+  /* ===========================================================
+     BODY PROSE — justified newsprint
+     =========================================================== */
+  .news-page .news-item > .body{
+    margin-top:clamp(18px,2.4vw,26px);
+    font-family:var(--body);
+    font-weight:600;
+    font-size:19.5px;
+    line-height:1.6;
+    color:var(--ink);
+    text-align:justify;
+    hyphens:auto;
+  }
+  .news-page .body p{ margin:0 0 1.05em;text-wrap:pretty; }
+  .news-page .body p:last-child{ margin-bottom:0; }
+
+  .news-page .body h2,
+  .news-page .body h3{
+    font-family:var(--display);font-weight:700;letter-spacing:-.01em;line-height:1.12;
+    color:var(--ink);text-align:left;margin:1.4em 0 .4em;
+  }
+  .news-page .body h2{ font-size:1.5em; }
+  .news-page .body h3{ font-size:1.25em;font-style:italic; }
+
+  .news-page .body a{
+    color:var(--redDeep);text-decoration:none;border-bottom:1px dashed var(--redDeep);
+  }
+  .news-page .body a:hover{ background:var(--redDeep);color:var(--paper);border-bottom-color:var(--redDeep); }
+
+  .news-page .body strong{ font-weight:800; }
+  .news-page .body em{ font-style:italic; }
+
+  .news-page .body ul,
+  .news-page .body ol{ margin:0 0 1.05em;padding-left:1.3em;text-align:left; }
+  .news-page .body li{ margin:0 0 .3em; }
+  .news-page .body li::marker{ color:var(--redDeep); }
+
+  .news-page .body blockquote{
+    margin:1.2em 0;padding:4px 0 4px 22px;border-left:3px solid var(--redDeep);
+    font-family:var(--display);font-style:italic;font-weight:500;font-size:1.18em;line-height:1.3;
+    color:var(--ink);text-align:left;
+  }
+  .news-page .body blockquote p{ margin:0 0 .4em; }
+
+  .news-page .body hr{
+    border:0;border-top:3px double var(--ink);margin:1.6em 0;
+  }
+
+  /* images embedded in the body markdown */
+  .news-page .body figure{ margin:clamp(18px,2.4vw,26px) 0; }
+  .news-page .body figure > img,
+  .news-page .body img{
+    display:block;max-width:100%;height:auto;
+    border:1.5px solid var(--ink);background:var(--paperLite);box-shadow:4px 4px 0 var(--ink);
+    filter:grayscale(1) sepia(.30) contrast(1.05);transition:filter .5s ease;
+  }
+  .news-page .body figure:hover > img,
+  .news-page .body img:hover{ filter:none; }
+
+  .news-page .body code{
+    font-family:var(--mono);font-size:.82em;background:var(--paperDark);padding:1px 5px;border:1px solid var(--paperDark);
+  }
+  .news-page .body pre{
+    font-family:var(--mono);font-size:.8em;line-height:1.5;background:var(--paperDark);
+    border:1.5px solid var(--ink);padding:14px 16px;overflow:auto;text-align:left;
+  }
+  .news-page .body pre code{ background:none;border:0;padding:0; }
+
+  /* danger notification (render error fallback) */
+  .news-page .notification{
+    display:flex;gap:12px;align-items:flex-start;border:1.5px solid var(--red);
+    border-left:7px solid var(--red);background:var(--paperLite);padding:13px 18px;
+    box-shadow:4px 4px 0 var(--ink);border-radius:0;max-width:var(--col);margin:0 auto 18px;
+  }
+  .news-page .notification .block-with-icon-icon{ color:var(--red);font-size:18px;flex:0 0 auto; }
+  .news-page .notification .block-with-icon-body{ font-family:var(--body);font-style:italic;font-size:17px;color:var(--ink); }
+
+  /* ===========================================================
+     INDEX FEED — stacked articles with double-rule separators
+     =========================================================== */
+  .news-feed{ margin-top:4px; }
+  .news-feed .news-item{
+    padding:clamp(26px,3.4vw,40px) 0;
+    border-top:3px double var(--ink);
+  }
+  .news-feed .news-item:first-of-type{ border-top:0;padding-top:0; }
+  .news-feed .news-item > .title{ font-size:clamp(1.7rem,3.2vw,2.7rem); }
+
+  /* on the feed, leave the photo above the headline order? No — keep
+     the same headline-first reading order, but lighten the plate. */
+  .news-feed .featured-image figure > img,
+  .news-feed .featured-image > img{ box-shadow:4px 4px 0 var(--ink); }
+
+  /* footer block: "Archive" link + pagination */
+  .news-page .block.centered{
+    max-width:var(--col);margin:clamp(22px,3vw,32px) auto 0;text-align:center;
+  }
+  .news-page .block.centered a{
+    font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;font-weight:700;
+    color:var(--ink);text-decoration:none;display:inline-flex;align-items:center;gap:9px;
+    padding:11px 22px;border:1.5px solid var(--ink);background:var(--paperLite);box-shadow:3px 3px 0 var(--ink);
+    transition:transform .15s ease,box-shadow .15s ease,background-color .15s,color .15s;
+  }
+  .news-page .block.centered a::after{ content:"→"; }
+  .news-page .block.centered a:hover{
+    transform:translate(-2px,-2px);box-shadow:5px 5px 0 var(--ink);background:var(--ink);color:var(--paper);
+  }
+
+  /* the single view's headline is the page title — make it bigger */
+  .news-article .news-item > .title{ font-size:clamp(2.1rem,5vw,3.6rem); }
+
+  /* ===========================================================
+     PAGINATION (stock render_pagination_nav)
+     =========================================================== */
+  .news-page .pagination{ max-width:var(--col);margin:clamp(24px,3vw,34px) auto 0; }
+  .news-page .pagination ol{
+    list-style:none;margin:0;padding:14px 0 0;border-top:3px double var(--ink);
+    display:flex;justify-content:center;flex-wrap:wrap;gap:7px;align-items:center;
+  }
+  .news-page .pagination-item a,
+  .news-page .pagination-item span{
+    display:inline-flex;align-items:center;justify-content:center;min-width:38px;height:38px;padding:0 11px;
+    font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:.04em;
+    border:1.5px solid var(--ink);background:var(--paperLite);color:var(--ink);text-decoration:none;
+    transition:background-color .14s,color .14s;
+  }
+  .news-page .pagination-item a:hover{ background:var(--ink);color:var(--paper); }
+  .news-page .pagination--current span{ background:var(--redDeep);color:var(--paper);border-color:var(--redDeep); }
+  .news-page .pagination .icon{ width:1em;height:1em; }
+  .news-page .pagination ol > li:not(.pagination-item){
+    font-family:var(--mono);color:var(--inkMute);padding:0 4px;
+  }
+
+  /* ===========================================================
+     ARCHIVE LEDGER (stock table.itemlist)
+     =========================================================== */
+  .news-archive .itemlist{ width:100%;border-collapse:collapse;margin:0;max-width:var(--col);margin-inline:auto; }
+  .news-archive .itemlist thead th{
+    font-family:var(--mono);font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;
+    color:var(--inkMute);font-weight:700;text-align:left;padding:10px 14px 9px;
+    border-bottom:3px double var(--ink);white-space:nowrap;
+  }
+  .news-archive .itemlist tbody td{
+    font-family:var(--body);font-size:18px;color:var(--ink);padding:14px;
+    border-bottom:1px solid var(--paperDark);vertical-align:baseline;
+  }
+  .news-archive .itemlist tbody tr:last-child td{ border-bottom:1.5px solid var(--ink); }
+  .news-archive .itemlist tbody tr:hover td{ background:var(--paperLite); }
+  .news-archive .itemlist td:first-child{
+    font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--inkSoft);
+    white-space:nowrap;width:1%;
+  }
+  .news-archive .itemlist td a{
+    font-family:var(--display);font-style:italic;font-weight:700;font-size:21px;color:var(--ink);
+    text-decoration:none;border-bottom:1px dashed transparent;
+  }
+  .news-archive .itemlist td a:hover{ color:var(--redDeep);border-bottom-color:var(--redDeep); }
+  .news-archive .itemlist .tag{
+    display:inline-block;font-family:var(--mono);font-size:8.5px;font-weight:700;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--paper);background:var(--inkSoft);padding:3px 7px;
+  }
+
+  /* ===========================================================
+     PREV / NEXT article nav (view.html bottom row)
+     =========================================================== */
+  .news-page .news-nav{
+    max-width:var(--col);margin:clamp(26px,3.4vw,40px) auto 0;padding-top:18px;
+    border-top:3px double var(--ink);
+    display:grid;grid-template-columns:1fr 1fr;gap:16px;
+  }
+  .news-page .news-nav .nn-card{
+    display:flex;align-items:center;gap:14px;text-decoration:none;color:var(--ink);
+    border:1.5px solid var(--ink);background:var(--paperLite);padding:14px 16px;
+    box-shadow:3px 3px 0 var(--ink);
+    transition:transform .15s ease,box-shadow .15s ease;
+  }
+  .news-page .news-nav .nn-card:hover{ transform:translate(-2px,-2px);box-shadow:5px 5px 0 var(--ink); }
+  .news-page .news-nav .nn-next{ text-align:right; }
+  .news-page .news-nav .nn-next{ justify-content:flex-end; }
+  .news-page .news-nav .nn-arrow{ font-family:var(--mono);font-size:24px;font-weight:700;color:var(--redDeep);line-height:1;flex:0 0 auto; }
+  .news-page .news-nav .nn-kicker{
+    font-family:var(--mono);font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--inkMute);margin-bottom:4px;
+  }
+  .news-page .news-nav .nn-title{ font-family:var(--display);font-style:italic;font-weight:700;font-size:18px;line-height:1.1;color:var(--ink); }
+  .news-page .news-nav .nn-date{ font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--inkSoft);margin-top:4px; }
+
+  @media (max-width:720px){
+    .news-page .news-item > .body{ text-align:left; }
+    .news-page .news-nav{ grid-template-columns:1fr; }
+    .news-page .news-nav .nn-next,
+    .news-page .news-nav .nn-next .nn-body{ text-align:left; }
+    .news-page .news-nav .nn-next{ justify-content:flex-start;flex-direction:row-reverse; }
+  }
+</style>

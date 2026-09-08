@@ -1,0 +1,69 @@
+{% extends 'layout/base_auto.html' %}
+{% set page_title = _('Access Denied') %}
+{% set current_page = 'error_forbidden' %}
+
+{% block head %}
+{% include 'error/_bote_error_style.html' %}
+{%- endblock %}
+
+{% block body %}
+<div class="bote-page error-page error-403">
+
+  <div class="page-folio">
+    <span class="pf-ressort">Pforte · Zugangskontrolle</span>
+    <span>Der Rentenbote · Ausgabe 36</span>
+  </div>
+
+  <header class="page-head">
+    <h1 class="ph-title">Hier ist <em>geschlossene</em> Gesellschaft</h1>
+    <p class="ph-standfirst">Der Zutritt zu dieser Seite wurde verweigert. Entweder fehlt der passende Mitgliedsausweis — oder der Pförtner hat heute schlicht keine Lust.</p>
+  </header>
+
+  <div class="error-shell">
+    <div class="error-main">
+      <div class="error-plate">
+        <div class="plate-art">
+          <span class="stamp">Gesperrt</span>
+          <p class="code">4<em>0</em>3</p>
+          <p class="code-sub">Zutritt verweigert</p>
+        </div>
+        <div class="plate-cap">
+          <span class="pc-red">Sperrvermerk Nº 403</span>
+          <span>Kein Durchgang</span>
+        </div>
+      </div>
+
+      <div class="error-notice">
+        <div class="notice-head">
+          <span class="nh-kicker">Aushang · vom Pförtner</span>
+          <span class="nh-no">{{ page_title }}</span>
+        </div>
+        <div class="notice-body">
+          <p class="lead">Halt, wer da! {{ _('Sorry, access to the requested page has been denied.') }} Diese Seite ist dem geneigten Stammtisch vorbehalten — ohne gültigen Mitgliedsausweis bleibt die Tür leider zu.</p>
+          <p>Wer meint, hier zu Recht eingelassen zu werden, melde sich am Lesepult an oder klopfe bei der Schriftleitung an. Reklamationen werden nach dem Mittagsschlaf entgegengenommen.</p>
+
+          <div class="error-help">
+            <span class="eh-label">Was nun?</span>
+            <ul>
+              {%- if not g.user.authenticated %}
+              <li><span class="eh-no">01</span><a href="{{ url_for('authn_login.log_in_form') }}">Am Lesepult anmelden</a><span class="eh-note">mit Ausweis</span></li>
+              {%- endif %}
+              <li><span class="eh-no">{% if g.user.authenticated %}01{% else %}02{% endif %}</span><a href="/">Zur Titelseite</a><span class="eh-note">unverfänglich</span></li>
+            </ul>
+          </div>
+
+          <div class="error-actions">
+            {%- if not g.user.authenticated %}
+            <a class="button color-primary" href="{{ url_for('authn_login.log_in_form') }}"><span>Jetzt anmelden</span></a>
+            <a class="button" href="/"><span>Zurück zur Titelseite</span></a>
+            {%- else %}
+            <a class="button color-primary" href="/"><span>Zurück zur Titelseite</span></a>
+            {%- endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+{%- endblock %}

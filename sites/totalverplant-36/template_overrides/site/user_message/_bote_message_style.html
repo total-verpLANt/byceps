@@ -1,0 +1,125 @@
+<style>
+  /* ============================================================
+     LESERPOST — "Briefkasten" treatment for the user-to-user
+     message form (site/user_message/create_form.html).
+
+     The stock page extends layout/base.html with
+     simple_layout = true and rendered the raw BYCEPS
+     form controls — a pure-white textarea with black text and a
+     mint submit button — full-bleed under the sticky masthead
+     (the screenshot that prompted this). In dark mode the white
+     textarea glared and, more importantly, any control that
+     inherited the page colour would have shown light text on a
+     light field. This partial re-sets every control with explicit
+     theme tokens so text colour is correct in BOTH themes:
+     .form-control uses color:var(--ink) on background:var(--paper),
+     both of which flip under html[data-theme="dark"].
+
+     The same template backs two journeys, so it carries the gag
+     for both: composing a fresh note to a member ("send"), and
+     replying through the contact link printed on your profile
+     after you have READ a member's note ("read"/reply). The
+     recipient is set as an inked address chit and the body becomes a
+     sheet of letter paper. Markup, field names, the POST
+     endpoint and render_user_avatar_and_link are UNCHANGED — only
+     the .bote-page wrapper + classes were added.
+     ============================================================ */
+
+  /* centered letter column */
+  .msg-page .msg-shell{ max-width:42rem; margin-inline:auto; width:100%; }
+
+  /* ===== the letter card (stock .main-body-box) ===== */
+  .msg-page .main-body-box{
+    border:1.5px solid var(--ink); background:var(--paperLite);
+    box-shadow:6px 6px 0 var(--ink); border-radius:0;
+    padding:0; margin:0; overflow:hidden;
+  }
+  .msg-page .msg-cardhead{
+    display:flex; justify-content:space-between; align-items:baseline; gap:10px 18px;
+    flex-wrap:wrap; padding:11px clamp(18px,2.4vw,26px) 10px;
+    border-bottom:3px double var(--ink); background:var(--paper);
+    font-family:var(--mono); font-size:9.5px; letter-spacing:.2em; text-transform:uppercase;
+    color:var(--inkSoft);
+  }
+  .msg-page .msg-cardhead .mh-form{ color:var(--redDeep); font-weight:700; }
+  .msg-page .msg-cardhead .mh-no{ color:var(--inkMute); }
+  .msg-page .msg-cardbody{ padding:clamp(20px,2.6vw,30px) clamp(18px,2.4vw,28px); }
+
+  /* ===== recipient address chit (stock .form-label + .mb avatar/link) ===== */
+  .msg-page .msg-cardbody > .form-label{
+    display:block; font-family:var(--mono); font-size:9.5px; font-weight:700;
+    letter-spacing:.18em; text-transform:uppercase; color:var(--inkSoft); margin:0 0 8px;
+  }
+  .msg-page .mb{
+    display:inline-flex; align-items:center; gap:11px;
+    border:1.5px solid var(--ink); background:var(--paper);
+    padding:8px 16px 8px 8px; box-shadow:3px 3px 0 var(--ink);
+    margin:0 0 24px;
+  }
+  .msg-page .mb .nowrap{ display:inline-flex; align-items:center; gap:11px; white-space:nowrap; }
+  .msg-page .mb .avatar{ width:40px; height:40px; flex:0 0 auto; border:1.5px solid var(--ink);
+    background:var(--paperDark); overflow:hidden; filter:sepia(.35) contrast(1.02); }
+  .msg-page .mb .avatar img{ width:100%; height:100%; object-fit:cover; display:block; }
+  .msg-page .mb a,
+  .msg-page .mb .nowrap > a{
+    font-family:var(--display); font-weight:800; font-style:italic; font-size:22px;
+    letter-spacing:-.01em; color:var(--ink); text-decoration:none;
+    border-bottom:1.5px solid transparent;
+  }
+  .msg-page .mb a:hover{ color:var(--redDeep); border-bottom-color:var(--redDeep); }
+
+  /* ===== message body (stock form_field -> textarea.form-control) ===== */
+  .msg-page .form-control-block{ margin-bottom:0; }
+  .msg-page .form-label{
+    display:block; font-family:var(--mono); font-size:9.5px; font-weight:700;
+    letter-spacing:.18em; text-transform:uppercase; color:var(--inkSoft); margin-bottom:7px;
+  }
+  .msg-page .form-control{
+    width:100%; font-family:var(--body); font-size:19px; line-height:1.55; color:var(--ink);
+    background:var(--paper); border:1.5px solid var(--ink); border-radius:0; padding:14px 16px;
+  }
+  .msg-page textarea.form-control{
+    appearance:none; -webkit-appearance:none; min-height:240px; resize:vertical;
+    /* faint ruled-paper lines, theme-aware */
+    background-image:repeating-linear-gradient(
+      var(--paper), var(--paper) 33px,
+      color-mix(in srgb, var(--inkMute) 22%, transparent) 33px,
+      color-mix(in srgb, var(--inkMute) 22%, transparent) 34px);
+    background-attachment:local;
+  }
+  .msg-page .form-control::placeholder{ color:var(--inkMute); font-style:italic; }
+  .msg-page .form-control:hover{ border-color:var(--redDeep); }
+  .msg-page .form-control:focus{ outline:none; border-color:var(--redDeep); box-shadow:3px 3px 0 var(--redDeep); }
+  .msg-page .form-caption{
+    font-family:var(--body); font-style:italic; font-size:14px; color:var(--inkMute); margin-top:8px;
+  }
+  .msg-page .form-control-block.invalid .form-control{ border-color:var(--red); box-shadow:3px 3px 0 var(--red); }
+  .msg-page .form-errors{
+    list-style:none; margin:8px 0 0; padding:0; font-family:var(--mono); font-size:10.5px;
+    letter-spacing:.06em; color:var(--red);
+  }
+  .msg-page .form-errors strong{ text-transform:uppercase; letter-spacing:.12em; }
+
+  /* ===== submit / cancel (form_buttons) ===== */
+  .msg-page .button-row{ display:flex; gap:12px; flex-wrap:wrap; margin:24px 0 0; align-items:center; justify-content:flex-end; }
+  .msg-page .button-row.is-hcentered{ justify-content:flex-end; }
+  .msg-page .button{
+    display:inline-flex; align-items:center; justify-content:center; gap:10px;
+    font-family:var(--mono); font-size:12px; font-weight:700; letter-spacing:.2em; text-transform:uppercase;
+    padding:15px 32px; border:1.5px solid var(--ink); background:var(--paperLite); color:var(--ink);
+    text-decoration:none; cursor:pointer; border-radius:0; box-shadow:4px 4px 0 var(--ink);
+    transition:transform .14s ease, box-shadow .14s ease, background-color .14s, color .14s, filter .14s;
+  }
+  .msg-page .button:hover{ transform:translate(-2px,-2px); box-shadow:6px 6px 0 var(--ink); }
+  .msg-page .button:active{ transform:translate(0,0); box-shadow:2px 2px 0 var(--ink); }
+  .msg-page .button.color-primary{
+    background:var(--green); color:#fff; border-color:transparent; box-shadow:4px 4px 0 var(--ink);
+  }
+  .msg-page .button.color-primary:hover{ filter:brightness(1.08); }
+  .msg-page .button.is-outlined{ background:transparent; }
+  .msg-page .button .icon{ width:1em; height:1em; }
+
+  @media (max-width:600px){
+    .msg-page .button.color-primary{ flex:1 1 100%; }
+  }
+</style>

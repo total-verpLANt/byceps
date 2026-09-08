@@ -1,0 +1,119 @@
+{% extends 'layout/base.html' %}
+{% from 'macros/icons.html' import render_icon %}
+{% from 'macros/misc.html' import render_notification %}
+{% from 'macros/pagination.html' import render_pagination_nav %}
+{% from 'macros/subnav.html' import render_subnav_for_menu_id %}
+{% set current_page = 'board' %}
+{% set page_title = [_('Board'), topic.title] %}
+
+{% block subnav %}
+  {%- if subnav_menu_id|default %}
+{{ render_subnav_for_menu_id(subnav_menu_id, current_page) }}
+  {%- endif %}
+{% endblock %}
+
+{% block head %}
+{% include 'site/board/_bote_board_style.html' %}
+{%- endblock %}
+
+{% block body %}
+<div class="bote-page board-page board-topic-page">
+
+  <div class="page-folio">
+    <span class="pf-ressort">{{ _('Leserforum') }} · {{ _('Leserbriefe') }}</span>
+    <span>Der Rentenbote · Ausgabe 36</span>
+  </div>
+
+  <nav class="breadcrumbs">
+    <ol>
+      <li><a href="{{ url_for('.category_index') }}">{{ _('Board') }}</a></li>
+      <li><a href="{{ url_for('.category_view', slug=topic.category.slug) }}">{{ topic.category.title }}</a></li>
+    </ol>
+  </nav>
+
+  <header class="page-head">
+    <h1 class="ph-title"><a href="{{ url_for('.topic_view', topic_id=topic.id) }}">{{ topic.title }}</a></h1>
+  </header>
+
+  {%- if topic.hidden %}
+{{ render_notification(_('This topic is hidden.'), category='info', icon='hidden') }}
+  {%- endif %}
+
+  {%- if g.user.has_any_permission('board.hide', 'board_topic.lock', 'board_topic.move', 'board_topic.pin') %}
+  <div class="button-row is-right-aligned">
+    <a class="button is-compact" href="{{ url_for('.topic_moderate_form', topic_id=topic.id) }}" title="{{ _('Moderate topic') }}">{{ render_icon('moderate') }} <span>{{ _('Moderate') }}</span></a>
+  </div>
+  {%- endif %}
+
+{{ render_pagination_nav(postings, 'board.topic_view', {'topic_id': topic.id}) }}
+
+  <div class="user-comments">
+
+  {%- for posting in postings.items %}
+{% include 'site/board/_posting_view.html' %}
+  {%- endfor %}
+
+  {%- if topic.posting_limited_to_moderators %}
+    {%- call render_event_row('announce') %}
+      {{ _('This topic is meant for announcements. Only <strong>moderators</strong> are allowed to add posts to it.') }}
+    {%- endcall %}
+  {%- endif %}
+
+  {%- if topic.locked %}
+    {%- call render_event_row('lock') %}
+      {{ _('This topic is <strong>locked</strong>. No more posts can be added.') }}
+    {%- endcall %}
+  {%- endif %}
+
+  </div>
+
+  {%- set current_user_may_reply_generally = g.user.has_permission('board_posting.create') %}
+
+  {%- if not current_user_may_reply_generally %}
+  <small>
+    <p style="text-align: right;">{{ _('You have to be <a href="%(url)s">logged in</a> to be able to reply.', url=url_for('authn_login.log_in_form')) }}</p>
+  </small>
+  {%- elif topic.locked or (topic.posting_limited_to_moderators and not g.user.has_permission('board.announce')) %}
+  <div class="button-row is-right-aligned">
+    <span class="button is-disabled">{{ render_icon('reply') }} <span>{{ _('Reply') }}</span></span>
+  </div>
+  {%- elif is_last_page %}
+{% include 'site/board/_posting_inline_create_form.html' %}
+  {%- else %}
+  <div class="button-row is-right-aligned">
+    <a class="button color-primary" href="{{ url_for('.posting_create_form', topic_id=topic.id) }}">{{ render_icon('reply') }} <span>{{ _('Reply') }}</span></a>
+  </div>
+  {%- endif %}
+
+{{ render_pagination_nav(postings, 'board.topic_view', {'topic_id': topic.id}) }}
+
+  <nav class="breadcrumbs is-compact">
+    <ol>
+      <li><a href="{{ url_for('.category_index') }}">{{ _('Board') }}</a></li>
+      <li><a href="{{ url_for('.category_view', slug=topic.category.slug) }}">{{ topic.category.title }}</a></li>
+      <li>{{ topic.title }}</li>
+    </ol>
+  </nav>
+
+</div>
+{%- endblock %}
+
+{% block scripts %}
+    <script src="{{ url_for('static', filename='behavior/board.js') }}"></script>
+{%- endblock %}
+
+{% macro render_event_row(icon, timestamp=None) -%}
+  <div class="event-row">
+    <div class="event-column">
+      <span class="event-icon-container">{{ render_icon(icon) }}</span>
+    </div>
+    <div class="event-column">
+      <span class="event-description">{{ caller() }}</span>
+    </div>
+    {%- if timestamp %}
+    <div class="event-column">
+      <span class="event-timestamp">{{ timestamp|dateformat }}, {{ timestamp|timeformat('short') }}</span>
+    </div>
+    {%- endif %}
+  </div>
+{%- endmacro %}

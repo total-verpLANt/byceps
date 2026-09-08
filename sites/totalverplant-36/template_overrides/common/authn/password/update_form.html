@@ -1,0 +1,43 @@
+{% extends 'layout/base_auto.html' %}
+{% from 'macros/forms.html' import form_buttons, form_field %}
+{% set simple_layout = true %}
+{% set current_page = 'authn_password_update' %}
+{% set page_title = _('Change password') %}
+
+{% block head %}
+{% include 'site/authn/_bote_auth_style.html' %}
+{%- endblock %}
+
+{% block body %}
+<div class="bote-page auth-page auth-password-change">
+
+  <div class="page-folio">
+    <span class="pf-ressort">Konto · Passwort-Respawn</span>
+    <span>Der Rentenbote · Ausgabe 36</span>
+  </div>
+
+  <header class="page-head">
+    <h1 class="ph-title">Passwort <em>neu spawnen</em></h1>
+    <p class="ph-standfirst">Erst den alten Zugangscode zur Kontrolle eintippen, dann den neuen zweimal sauber setzen — der Stammtisch-Server spielt den Patch sofort ein. Gut merken und für niemanden sichtbar lassen: ein Passwort teilt man so wenig wie die eigene CD-Key-Hülle.</p>
+  </header>
+
+  <div class="auth-shell">
+    <form action="{{ url_for('.update') }}" method="post">
+      <div class="main-body-box">
+        <div class="auth-cardhead">
+          <span class="ah-form">Patch S · Zugangscode am Stammtisch-Server neu aufspielen</span>
+          <span class="ah-no">Nº 36</span>
+        </div>
+        <div class="auth-cardbody">
+          {{ form_field(form.old_password, maxlength=100, autofocus='autofocus') }}
+          {{ form_field(form.new_password) }}
+          {{ form_field(form.new_password_confirmation) }}
+        </div>
+      </div>
+
+      {{ form_buttons(_('Change'), cancel_url=url_for('user_settings.view') if g.app_mode.is_site() else None) }}
+    </form>
+  </div>
+
+</div>
+{%- endblock %}

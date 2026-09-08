@@ -1,0 +1,113 @@
+{% extends 'layout/base.html' %}
+{% from 'macros/misc.html' import render_tag %}
+{% from 'macros/subnav.html' import render_subnav_for_menu_id %}
+{% set current_page = 'gallery' %}
+{% set page_title = [gallery.title, _('Galleries')] %}
+
+{% block head %}
+  {%- if gallery.title_image %}
+    <meta property="og:title" content="{{ gallery.title }} &middot; {{ _('Galleries') }}">
+    <meta property="og:type" content="website">
+    <meta property="og:image" content="{{ request.url_root }}{{ gallery.title_image.url_path_preview }}">
+    <meta property="og:url" content="{{ url_for('.view', slug=gallery.slug, _external=True) }}">
+  {%- endif %}
+<style>
+  /* ============================================================
+     Einzel-Galerie — the image grid for one gallery, framed to
+     match the Bildarchiv overview. Wrapped in the 1320px paper
+     sheet; breadcrumb back to the archive; thumbnails are mounted
+     ink-framed prints, printed sepia, blooming to colour on hover.
+     fslightbox stays wired (see scripts block).
+     ============================================================ */
+  .gallery-page .gallery-crumbs {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--inkSoft);
+    margin: 0 0 10px;
+  }
+  .gallery-page .gallery-crumbs a {
+    color: var(--redDeep);
+    text-decoration: none;
+    border-bottom: 1px dashed var(--redDeep);
+  }
+  .gallery-page .gallery-crumbs a::before { content: '‹ '; }
+
+  .gallery-page .gallery-images {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
+    gap: clamp(14px, 1.8vw, 22px);
+    margin-top: 4px;
+  }
+  .gallery-page .gallery-images > a {
+    display: block;
+    border: 1.5px solid var(--ink);
+    background: var(--paperLite);
+    padding: 6px;
+    box-shadow: 3px 3px 0 var(--ink);
+    transition: transform .18s ease, box-shadow .18s ease;
+  }
+  .gallery-page .gallery-images > a:hover,
+  .gallery-page .gallery-images > a:focus-visible {
+    transform: translate(-2px, -2px);
+    box-shadow: 6px 6px 0 var(--ink);
+  }
+  .gallery-page .gallery-images img {
+    display: block;
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+    border: 1px solid var(--ink);
+    filter: grayscale(1) sepia(.30) contrast(1.06) brightness(1.02);
+    transition: filter .45s ease, transform .45s ease;
+  }
+  .gallery-page .gallery-images > a:hover img,
+  .gallery-page .gallery-images > a:focus-visible img {
+    filter: none;
+    transform: scale(1.04);
+  }
+</style>
+{% endblock %}
+
+{% block subnav %}
+  {%- if subnav_menu_id|default %}
+{{ render_subnav_for_menu_id(subnav_menu_id, current_page) }}
+  {%- endif %}
+{% endblock %}
+
+{% block body %}
+<div class="bote-page gallery-page">
+
+  <div class="page-folio">
+    <span class="pf-ressort">Fotoalbum · Bildarchiv</span>
+    <span>Der Rentenbote · Ausgabe 36</span>
+  </div>
+
+  <nav class="gallery-crumbs">
+    <a href="{{ url_for('.index') }}">{{ _('Galleries') }}</a>
+  </nav>
+
+  <header class="page-head">
+    <h1 class="ph-title">{{ gallery.title }}{% if gallery.hidden %} {{ render_tag(_('hidden')) }}{% endif %}</h1>
+    {%- if gallery.images %}
+    <div class="ph-meta"><span class="ico">▸</span> {{ gallery.images|length }} {{ _('Aufnahmen') }} · {{ _('zum Vergrößern anklicken') }}</div>
+    {%- endif %}
+  </header>
+
+  {%- if gallery.images %}
+  <div class="gallery-images">
+    {%- for image in gallery.images|sort(attribute='position') %}
+    <a data-fslightbox="gallery-images" href="{{ image.url_path_full }}"><img src="{{ image.url_path_preview }}" loading="lazy"></a>
+    {%- endfor %}
+  </div>
+  {%- else %}
+  <p class="dimmed">{{ _('No images available.') }}</p>
+  {%- endif %}
+
+</div>
+{%- endblock %}
+
+{%- block scripts %}
+  <script src="{{ url_for('static', filename='behavior/vendor/fslightbox.js') }}"></script>
+{%- endblock %}

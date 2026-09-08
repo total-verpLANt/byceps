@@ -1,0 +1,214 @@
+<style>
+  /* ============================================================
+     TURNIERE — "Spielplan / Turnierbüro" treatment.
+
+     Used by site/lan_tournament/index.html.
+
+     Stock rendered a bare <h1 class="title"> + a .main-body-box
+     holding either a list of .tournament-card rows or, when empty,
+     <p class="dimmed">No tournaments found.</p> — full-bleed under
+     the sticky masthead (no .bote-page wrapper), exactly the
+     unstyled state the rest of this patch fixes (the "No tournaments
+     found." screenshot that prompted this pass). The override now
+     wraps the body in the centered paper sheet (.bote-page
+     .tournament-page) with a .page-folio + .page-head and pulls in
+     this partial from the page head block.
+
+     EMPTY STATE ("noch keine, aber bald"): the stock empty <p> is
+     re-set as an editorial "Aushang vom Turnierbüro" — a hatched
+     "leeres Turnierraster" plate carrying an empty single-elim
+     bracket (drawn with rules only) awaiting the draw + a rotated
+     "Demnächst" rubber stamp, hinged to a notice card with a ruled
+     header band, a drop-cap announcement, a "Wo erfahre ich's?"
+     link register (News · Discord · Event Infos) and back actions.
+
+     POPULATED STATE: the unchanged stock .tournament-card markup is
+     re-flowed as a register of ruled "Spielplan" entries — an inked
+     trophy/sepia-media chip, serif name + mono game/meta, and the
+     stock status render_tag re-set as a stamped flag.
+
+     Every colour is a theme token, so "Spätausgabe" (dark) is
+     automatic. .bote-page / .page-folio / .page-head / .button come
+     from totalverplant-36.css — only the .tournament-* furniture
+     lives here.
+     ============================================================ */
+
+  .tournament-page .main-body-box{ background:transparent; border:0; box-shadow:none; padding:0; margin:0; }
+
+  /* =====================================================================
+     EMPTY STATE
+     ===================================================================== */
+  .tournament-page .tourney-empty{ max-width:64rem; margin-inline:auto; width:100%; }
+  .tournament-page .te-main{
+    display:grid; grid-template-columns:minmax(0,1.04fr) minmax(0,.96fr);
+    gap:clamp(18px,2.6vw,34px); align-items:stretch;
+  }
+
+  /* ----- the "empty draw" printing plate ----- */
+  .tournament-page .te-plate{
+    position:relative; border:1.5px solid var(--ink); background:var(--paperLite);
+    box-shadow:6px 6px 0 var(--ink); display:flex; flex-direction:column; overflow:hidden;
+  }
+  .tournament-page .plate-art{
+    flex:1 1 auto; min-height:320px; position:relative; display:grid; place-content:center;
+    padding:38px 30px; border-bottom:1.5px solid var(--ink);
+    background-color:var(--paper);
+    background-image:repeating-linear-gradient(45deg,transparent 0 13px,rgba(26,24,18,.07) 13px 14px);
+  }
+  html[data-theme="dark"] .tournament-page .plate-art{
+    background-image:repeating-linear-gradient(45deg,transparent 0 13px,rgba(236,227,205,.07) 13px 14px);
+  }
+
+  /* empty single-elimination bracket, drawn with rules only */
+  .tournament-page .bracket{ display:flex; align-items:stretch; gap:0; }
+  .tournament-page .bracket .round{
+    display:flex; flex-direction:column; justify-content:space-around; flex:1 1 0; min-width:0;
+  }
+  .tournament-page .bracket .match{
+    display:flex; flex-direction:column; justify-content:center; gap:6px;
+    margin:7px 0; position:relative;
+  }
+  .tournament-page .bracket .slot{
+    height:26px; border:1.5px dashed var(--inkMute); background:transparent; border-radius:0;
+    display:flex; align-items:center; padding-left:9px;
+    font-family:var(--mono); font-size:11px; letter-spacing:.16em; color:var(--inkMute);
+  }
+  .tournament-page .bracket .slot::before{ content:'—'; opacity:.55; }
+  .tournament-page .bracket .round.final .slot{
+    border-style:solid; border-color:var(--redDeep); color:var(--redDeep);
+    box-shadow:3px 3px 0 var(--ink); background:var(--paperLite);
+  }
+  .tournament-page .bracket .round.final .slot::before{ content:'🏆'; font-size:12px; opacity:.9; }
+  .tournament-page .bracket .round.r2 .match,
+  .tournament-page .bracket .round.r3 .match{ padding-left:22px; }
+  .tournament-page .bracket .round.r2 .match::before,
+  .tournament-page .bracket .round.r3 .match::before{
+    content:''; position:absolute; left:0; top:50%; width:22px; height:1.5px;
+    background:var(--inkMute); transform:translateY(-.75px);
+  }
+  .tournament-page .bracket-cap{
+    text-align:center; font-family:var(--mono); font-size:9.5px; letter-spacing:.24em;
+    text-transform:uppercase; color:var(--inkSoft); margin-top:26px;
+  }
+
+  .tournament-page .plate-art .stamp{
+    position:absolute; top:18px; right:-6px; transform:rotate(8deg);
+    font-family:var(--mono); font-weight:700; font-size:13px; letter-spacing:.22em; text-transform:uppercase;
+    color:var(--red); border:2.5px solid var(--red); border-radius:3px; padding:6px 12px;
+    box-shadow:inset 0 0 0 1.5px var(--red); opacity:.82; background:transparent;
+  }
+  .tournament-page .plate-cap{
+    display:flex; justify-content:space-between; gap:10px; padding:9px 14px;
+    font-family:var(--mono); font-size:9.5px; letter-spacing:.2em; text-transform:uppercase; color:var(--inkSoft);
+  }
+  .tournament-page .plate-cap .pc-red{ color:var(--redDeep); font-weight:700; }
+
+  /* ----- the notice / "Aushang vom Turnierbüro" card ----- */
+  .tournament-page .te-notice{
+    border:1.5px solid var(--ink); background:var(--paperLite);
+    box-shadow:6px 6px 0 var(--ink); display:flex; flex-direction:column;
+  }
+  .tournament-page .notice-head{
+    display:flex; justify-content:space-between; align-items:baseline; gap:10px 18px; flex-wrap:wrap;
+    padding:11px clamp(16px,2.2vw,24px) 10px; border-bottom:3px double var(--ink); background:var(--paper);
+    font-family:var(--mono); font-size:9.5px; letter-spacing:.2em; text-transform:uppercase; color:var(--inkSoft);
+  }
+  .tournament-page .notice-head .nh-kicker{ color:var(--redDeep); font-weight:700; }
+  .tournament-page .notice-head .nh-no{ color:var(--inkMute); }
+  .tournament-page .notice-body{ padding:clamp(20px,2.6vw,30px) clamp(18px,2.4vw,28px); }
+  .tournament-page .notice-body p{ font-family:var(--body); font-size:19px; line-height:1.5; color:var(--ink); margin:0 0 14px; }
+  .tournament-page .notice-body p:last-of-type{ margin-bottom:0; }
+  .tournament-page .notice-body p.lead{ font-size:21px; }
+  .tournament-page .notice-body p.lead::first-letter{
+    font-family:var(--display); font-weight:900; float:left; font-size:64px;
+    line-height:.74; padding:5px 10px 0 0; color:var(--redDeep);
+  }
+  .tournament-page .notice-body em{ font-style:italic; }
+
+  .tournament-page .te-help{ margin-top:22px; border-top:3px double var(--ink); padding-top:6px; }
+  .tournament-page .te-help .eh-label{
+    font-family:var(--mono); font-size:9.5px; letter-spacing:.22em; text-transform:uppercase;
+    color:var(--redDeep); font-weight:700; padding:10px 0 6px; display:block;
+  }
+  .tournament-page .te-help ul{ list-style:none; margin:0; padding:0; }
+  .tournament-page .te-help li{
+    display:flex; align-items:baseline; gap:12px; padding:9px 2px; border-top:1px solid var(--ink);
+  }
+  .tournament-page .te-help li:first-child{ border-top:0; }
+  .tournament-page .te-help .eh-no{ font-family:var(--mono); font-size:11px; color:var(--inkMute); flex:0 0 auto; }
+  .tournament-page .te-help a{
+    font-family:var(--body); font-size:18px; color:var(--ink); text-decoration:none;
+    border-bottom:1px dashed var(--inkSoft);
+  }
+  .tournament-page .te-help a:hover{ color:var(--redDeep); border-bottom-color:var(--redDeep); }
+  .tournament-page .te-help .eh-note{ font-family:var(--body); font-style:italic; font-size:15px; color:var(--inkMute); margin-left:auto; }
+
+  .tournament-page .te-actions{ display:flex; gap:12px; flex-wrap:wrap; margin:26px 0 0; }
+
+  /* =====================================================================
+     POPULATED STATE — stock .tournament-card re-set as "Spielplan" rows
+     ===================================================================== */
+  .tournament-page .tournament-list{
+    border-top:3px double var(--ink); margin-top:4px;
+  }
+  .tournament-page .tournament-card{
+    display:grid; grid-template-columns:60px minmax(0,1fr) auto; gap:clamp(14px,2.2vw,26px);
+    align-items:center; padding:18px 4px; border-bottom:1px solid var(--ink);
+  }
+  .tournament-page .tournament-icon{
+    width:60px; height:60px; border:1.5px solid var(--ink); background:var(--paperLite);
+    display:grid; place-content:center; color:var(--redDeep); box-shadow:3px 3px 0 var(--ink);
+    overflow:hidden;
+  }
+  .tournament-page .tournament-icon svg{ width:28px; height:28px; }
+  .tournament-page .tournament-media{ width:100%; height:100%; }
+  .tournament-page .tournament-media img{
+    width:100%; height:100%; object-fit:cover; display:block;
+    filter:sepia(.45) saturate(.85) contrast(1.02); transition:filter .25s ease;
+  }
+  .tournament-page .tournament-card:hover .tournament-media img{ filter:none; }
+  .tournament-page .tournament-info .disguised{ text-decoration:none; color:inherit; display:block; }
+  .tournament-page .tournament-name{
+    font-family:var(--display); font-weight:800; font-size:clamp(20px,2.2vw,28px);
+    line-height:1.04; letter-spacing:-.01em; color:var(--ink);
+  }
+  .tournament-page .tournament-card:hover .tournament-name{ color:var(--redDeep); }
+  .tournament-page .tournament-game{
+    font-family:var(--mono); font-size:11px; letter-spacing:.16em; text-transform:uppercase;
+    color:var(--inkMute); margin-top:5px;
+  }
+  .tournament-page .tournament-info .tag{
+    display:inline-block; margin-top:9px; font-family:var(--mono); font-weight:700;
+    font-size:9.5px; letter-spacing:.18em; text-transform:uppercase; padding:4px 9px;
+    border:1.5px solid var(--ink); background:var(--paper); color:var(--ink); border-radius:0;
+  }
+  .tournament-page .tournament-info .tag.color-success{ background:var(--green); color:#fff; border-color:transparent; }
+  .tournament-page .tournament-info .tag.color-info{ color:var(--redDeep); border-color:var(--redDeep); }
+  .tournament-page .tournament-info .tag.color-danger{ color:var(--red); border-color:var(--red); }
+  .tournament-page .tournament-meta{ text-align:right; }
+  .tournament-page .tournament-participants{
+    font-family:var(--display); font-style:italic; font-size:18px; color:var(--ink);
+  }
+  .tournament-page .tournament-start{
+    font-family:var(--mono); font-size:10.5px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--inkSoft); margin-top:5px;
+  }
+
+  /* =====================================================================
+     RESPONSIVE
+     ===================================================================== */
+  @media (max-width:760px){
+    .tournament-page .te-main{ grid-template-columns:1fr; }
+    .tournament-page .plate-art{ min-height:240px; padding:28px 18px; }
+    .tournament-page .tournament-card{ grid-template-columns:48px minmax(0,1fr); }
+    .tournament-page .tournament-icon{ width:48px; height:48px; }
+    .tournament-page .tournament-meta{ grid-column:2; text-align:left; }
+    .tournament-page .tournament-start{ margin-top:3px; }
+  }
+  @media (max-width:560px){
+    .tournament-page .te-help .eh-note{ display:none; }
+    .tournament-page .te-actions .button{ flex:1 1 auto; }
+    .tournament-page .plate-art .stamp{ font-size:11px; letter-spacing:.18em; padding:5px 10px; }
+    .tournament-page .bracket .slot{ font-size:10px; }
+  }
+</style>

@@ -1,0 +1,105 @@
+{#- Mobile "Kartenschalter" — a prominent call-to-action banner at the top of
+    the page (right under the masthead) carrying the live ticket availability +
+    a full-width buy button. Shown only ≤720px, where the header collapses to
+    icons and the count would otherwise hide in the top-strip small print.
+    Reads `available` / `total` / `percentage` / `is_nearly_sold_out` computed
+    in layout/base.html, so the figure tracks real sales on every page. Only
+    rendered when `show_ticket_bar` is true (a storefront exists and tickets_max
+    is set), so `shop_order.order_form` always resolves. All colours are theme
+    tokens — the Spätausgabe (dark mode) is automatic. -#}
+<style>
+  .ticket-cta { display: none; }
+
+  @media (max-width: 720px) {
+    .ticket-cta {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 12px;
+      margin: 0 0 6px;
+      padding: 15px clamp(14px, 4vw, 20px) 17px;
+      background: rgba(168, 40, 28, 0.06);
+      border-top: 3px double var(--ink);
+      border-bottom: 3px double var(--ink);
+    }
+    .ticket-cta .tc-info {
+      display: flex;
+      align-items: center;
+      gap: 13px;
+      min-width: 0;
+    }
+    .ticket-cta .tc-num {
+      flex: 0 0 auto;
+      font-family: var(--display);
+      font-style: italic;
+      font-weight: 700;
+      font-size: 48px;
+      line-height: 0.78;
+      color: var(--redDeep);
+    }
+    .ticket-cta .tc-lines {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+    .ticket-cta .tc-lead {
+      font-family: var(--display);
+      font-style: italic;
+      font-size: 23px;
+      line-height: 1;
+      color: var(--ink);
+    }
+    .ticket-cta .tc-sub {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.13em;
+      text-transform: uppercase;
+      color: var(--inkSoft);
+    }
+    .ticket-cta.is-soldout .tc-num,
+    .ticket-cta.is-soldout .tc-lead { color: var(--inkSoft); }
+
+    .ticket-cta .tc-buy {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 15px 22px;
+      background: var(--redDeep);
+      color: var(--paper);
+      font-family: var(--mono);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      text-decoration: none;
+      white-space: nowrap;
+      box-shadow: 4px 4px 0 var(--ink);
+    }
+    .ticket-cta .tc-buy:active {
+      transform: translate(2px, 2px);
+      box-shadow: 1px 1px 0 var(--ink);
+    }
+  }
+</style>
+
+<aside class="ticket-cta{% if available <= 0 %} is-soldout{% endif %}" aria-label="{{ _('Kartenschalter') }}">
+  {%- if available > 0 %}
+  <div class="tc-info">
+    <span class="tc-num">{{ available }}</span>
+    <span class="tc-lines">
+      <span class="tc-lead">{% if is_nearly_sold_out %}Fast ausverkauft{% else %}{{ ngettext('Platz frei', 'Plätze frei', available) }}{% endif %}</span>
+      <span class="tc-sub">ab 30 € · 16.–18. Okt · Großsporthalle Brake</span>
+    </span>
+  </div>
+  <a class="tc-buy" href="{{ url_for('shop_order.order_form') }}">🎟 Tickets sichern</a>
+  {%- else %}
+  <div class="tc-info">
+    <span class="tc-lines">
+      <span class="tc-lead">Ausverkauft</span>
+      <span class="tc-sub">{{ total }} / {{ total }} Plätze vergeben · Warteliste an der Pforte</span>
+    </span>
+  </div>
+  {%- endif %}
+</aside>

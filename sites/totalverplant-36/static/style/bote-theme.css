@@ -1,0 +1,337 @@
+/* ============================================================================
+   Der Rentenbote — „Spätausgabe" (dark mode) for the totalverplant-36 site.
+   Loaded AFTER totalverplant-36.css so the html[data-theme="dark"] token swap
+   wins. Toggle + persistence handled by behavior/bote-theme.js.
+   ============================================================================ */
+
+:root {
+  color-scheme: light;
+  --tintCard: rgba(255, 255, 255, 0.20);
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --paper:     #1c1914;
+  --paperDark: #14110d;
+  --paperLite: #262219;
+  --ink:       #ece3cd;
+  --inkSoft:   #c0b598;
+  --inkMute:   #8d8268;
+  --red:       #e0664f;
+  --redDeep:   #d65a45;
+  --blue:      #8fa9d2;
+  --green:     #9cba80;
+  --tintCard:  rgba(255, 255, 255, 0.045);
+  --stripe:    rgba(236, 227, 205, 0.06);
+}
+
+/* Smooth the flip */
+body { transition: background-color 0.25s ease, color 0.25s ease; }
+
+/* ---------- Paper grain: dark vignette + faint light flecks ---------- */
+html[data-theme="dark"] body::before {
+  background-image:
+    radial-gradient(ellipse at center, transparent 58%, rgba(0,0,0,0.40) 100%),
+    radial-gradient(circle at 25% 25%, rgba(255,255,255,0.022) 1px, transparent 1.5px),
+    radial-gradient(circle at 75% 75%, rgba(255,255,255,0.022) 1px, transparent 1.5px);
+  background-size: auto, 8px 8px, 8px 8px;
+  mix-blend-mode: normal;
+  opacity: 1;
+}
+
+/* ---------- Plain panels inherit byceps core's hardcoded #ffffff
+   (common.css: `.box, .card, .notification { background-color:#ffffff }`).
+   That white survived the dark token swap, so cream --ink text/borders sat on
+   white = unreadable. Re-seat them on elevated dark paper (--paperLite, one
+   step lighter than the --paper desk) to keep the light-mode "clipping floats
+   above the paper" relationship. .box keeps its cream --ink border from the
+   base theme; .card/.notification keep their #ccc --border-color, which reads
+   fine on the dark panel. Listed before the tinted variants below; the colored
+   .box-* classes never combine with plain .box, so their tints are unaffected. */
+html[data-theme="dark"] :is(.box, .card, .notification) {
+  background-color: var(--paperLite);
+}
+
+/* ---------- Tinted panels — hardcoded rgba() in the base, re-tuned ---------- */
+html[data-theme="dark"] .event-banner { background: rgba(214, 90, 69, 0.07); }
+html[data-theme="dark"] .eb-status     { background: rgba(214, 90, 69, 0.12); }
+html[data-theme="dark"] .box-blue      { background: rgba(143, 169, 210, 0.08); }
+html[data-theme="dark"] .box-red       { background: rgba(214, 90, 69, 0.08); }
+html[data-theme="dark"] .box-green     { background: rgba(156, 186, 128, 0.08); }
+html[data-theme="dark"] .box-soft,
+html[data-theme="dark"] .news-list     { background: var(--tintCard); }
+html[data-theme="dark"] .halftone .cap { background: rgba(20, 17, 13, 0.88); }
+
+/* ---------- Sponsor „Klischee" plates ----------
+   Base theme inks the logos black (filter:brightness(0)); under the Spätausgabe
+   the plate sits on dark paper, so invert the ink to cream. Framed logos (own
+   colour panel) swap multiply→screen so the panel sinks into the dark sheet.
+   Hover still blooms to the real brand colour (filter:none / normal blend). */
+html[data-theme="dark"] .klischee img            { filter: brightness(0) invert(1); opacity: 0.88; }
+html[data-theme="dark"] .klischee.is-framed img  { filter: grayscale(1) invert(1) contrast(1.18); mix-blend-mode: screen; opacity: 1; }
+html[data-theme="dark"] a.sponsor-card:hover .klischee img           { filter: none; opacity: 1; }
+html[data-theme="dark"] a.sponsor-card:hover .klischee.is-framed img { mix-blend-mode: normal; }
+html[data-theme="dark"] .mobile-cta    { box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.55); }
+
+/* ---------- Logged-in account dropdown (header override) ----------
+   Uses the colour tokens, so it swaps automatically; only the offset
+   shadow needs softening against the dark desk. */
+html[data-theme="dark"] .nav-account .na-menu { box-shadow: 5px 5px 0 rgba(0,0,0,0.5); }
+
+/* ---------- Core byceps dropdowns (.dropdown-menu) — same treatment ----------
+   The Rentenbote skin (totalverplant-36.css) gives these a `5px 5px 0 var(--ink)`
+   hard shadow; under Spätausgabe --ink is cream, so soften to black like .na-menu. */
+html[data-theme="dark"] .dropdown-menu { box-shadow: 5px 5px 0 rgba(0,0,0,0.5); }
+
+/* ---------- Mobile menu rail footer ----------
+   In dark mode --redDeep lightens to #d65a45, so the cream label on the
+   primary (Anmelden/Abmelden) button loses contrast — flip it to dark ink. */
+html[data-theme="dark"] .nav-panel .mr-foot a.primary { color: #1c1914; }
+
+/* ---------- Inline-SVG line icons bake a #1a1812 stroke into the data-URI,
+   which would vanish on dark paper. Re-tint only the SVG-backed glyphs
+   (the Unicode dingbat icons inherit currentColor and need no help). ---------- */
+html[data-theme="dark"] :is(
+  .ico--sitemap, .ico--gamepad, .ico--plug, .ico--wifi, .ico--car,
+  .ico--truck, .ico--road, .ico--fire-extinguisher, .ico--wrench,
+  .ico--facebook, .ico--instagram
+)::before {
+  filter: invert(0.9) sepia(0.12) brightness(1.05);
+}
+
+/* ---------- Theme toggle button (Tages-/Spätausgabe) ---------- */
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border: 1.5px solid var(--ink);
+  background: var(--paperLite);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  font-style: normal;
+  /* Explicit line-box so the toggle height is deterministic and matches the
+     .nav-account summary exactly (both locked to 1.2 = 13.2px @ 11px); without
+     this the toggle relied on UA 'normal' while the summary inherited the body's
+     1.5, leaving the account box ~2.5px taller in the same toolbar row. */
+  line-height: 1.2;
+}
+.theme-toggle:hover { background: var(--ink); color: var(--paper); }
+
+/* Stack both editions in a single grid cell. Both remain rendered (the
+   inactive one only hidden via visibility), so the cell sizes to the widest
+   label and the button width is identical in Tages- and Spätausgabe. */
+.theme-toggle .tt-label,
+.theme-toggle .tt-label-short {
+  display: inline-grid;
+  justify-items: center;
+}
+.theme-toggle .tt-label-short { display: none; }
+.theme-toggle .tt-edition { grid-area: 1 / 1; }
+.theme-toggle .tt-edition--dark { visibility: hidden; }
+html[data-theme="dark"] .theme-toggle .tt-edition--light { visibility: hidden; }
+html[data-theme="dark"] .theme-toggle .tt-edition--dark { visibility: visible; }
+
+/* Keep the toggle visible next to the hamburger on phones — compact label
+   („☾ Spät") so the pinned bar holds just the toggle and the hamburger */
+@media (max-width: 720px) {
+  .navstrip .theme-toggle {
+    display: inline-flex;
+    /* Match the „Menü" hamburger box (8px vertical padding + 11px text + the
+       shared 1.5px border) so both controls render at the same height; the
+       tighter letter-spacing keeps the short label compact beside it. */
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    padding: 8px 12px;
+  }
+  .navstrip .theme-toggle .tt-label { display: none; }
+  .navstrip .theme-toggle .tt-label-short { display: inline-grid; }
+}
+
+/* ----------------------------------------------------------------------------
+   Header chrome (NOT dark-specific; applies to both themes). totalverplant-36.css
+   is not edited, so these layout corrections live here.
+
+   1) Navstrip breathing room. The masthead's .navstrip (crumbs + account/theme
+      controls) is the last child of .page-header-fixed, which closes with 0
+      bottom padding. Without a bottom padding on the navstrip itself the
+      crumbs/buttons row sits flush against that edge and the header reads
+      cramped. The design mock gives the navstrip a 14px bottom padding.
+
+   2) Sheet separation. The original design (preview-board.html) floats the
+      masthead, content (.bote-page) and footer as three separate paper cards,
+      each with its own border + drop shadow, set apart by a 14px gap on the
+      desk. totalverplant-36.css fused them into one continuous sheet
+      (margin:0 auto, side-only borders), so the header bled straight into the
+      content with no break. Restoring the 14px gap lets each sheet's existing
+      1px paperDark ring + drop shadow read as a distinct card again, exactly
+      as the design intends. Desktop only — at <=720px the sheets deliberately
+      fill the viewport edge-to-edge, so no gap there.
+   ---------------------------------------------------------------------------- */
+.navstrip { padding-bottom: 14px; }
+
+@media (min-width: 721px) {
+  /* Article pages (homepage, news) carry the sheet on .bote-page itself. */
+  .bote-page { margin-top: 14px; }
+  /* Every other page (login, party history, forms, DB pages, error pages)
+     carries the sheet on the byceps content-wrapper instead — the same selector
+     totalverplant-36.css uses to paint that sheet's paper/border/shadow. Without
+     the matching gap here those pages bled flush into the header (e.g.
+     /party_history). :not(:has(.bote-page)) keeps article pages, which nest a
+     .bote-page inside the wrapper, from double-counting the gap. */
+  .main-content > .content-wrapper:not(:has(.bote-page)) { margin-top: 14px; }
+  .page-footer-modern { margin-top: 14px; }
+}
+
+/* Navstrip action cluster height parity. The „Menü" hamburger was the one
+   control in the cluster left on the UA default `line-height: normal`, so its
+   line-box ran ~0.8px taller than the „Spät" theme-toggle (locked to 1.2)
+   sitting beside it — the two boxes misaligned on mobile. Lock the hamburger to
+   the same 1.2 (13.2px @ 11px); its 12px stacked-bars glyph stays under that,
+   so the text line-box governs the height and both boxes match. */
+.navstrip .nav-hamburger { line-height: 1.2; }
+
+@media (max-width: 720px) {
+  /* Surface the guest sign-in button in the pinned navstrip, immediately left
+     of „Menü" — previously a logged-out visitor could only reach login by
+     opening the rail. totalverplant-36.css hides .nav-login at <=720px ("lives
+     in the rail footer"); re-show it here and mirror the toggle's compact box
+     metrics (8px pad, 1.2 line-box via the base rule, tighter tracking) so the
+     three-up „Spät · Log in · Menü" cluster aligns. Guests only: when logged in
+     the template renders .nav-account instead, which stays rail-bound. */
+  .navstrip .nav-login {
+    display: inline-flex;
+    padding: 8px 12px;
+    letter-spacing: 0.12em;
+  }
+}
+
+/* Mobile menu scroll containment. The open .nav-panel rail scrolls its link
+   list (.mr-list) internally, but two leaks let the gesture move the page
+   behind it:
+     1) Scroll chaining — once .mr-list hits its top/bottom the scroll chains
+        to the document. overscroll-behavior: contain stops the chain at the
+        list boundary without disabling the list's own scrolling.
+     2) Gestures that start outside the list (home row, foot, navstrip) scroll
+        the document directly. bote-hamburger.js adds .nav-open to <html> while
+        the rail is open; lock the document scroll for its duration. Scoped to
+        the mobile breakpoint (the rail only exists there) and to the open
+        state, so desktop and the closed menu are untouched — and no
+        position:fixed is introduced, so the body-filter overlay trap does not
+        apply here. */
+.nav-panel .mr-list { overscroll-behavior: contain; }
+
+@media (max-width: 720px) {
+  html.nav-open { overflow: hidden; }
+}
+
+/* ============================================================================
+   Flashed messages — „Anschlag am Schwarzen Brett".
+   Re-skins the stock .notification.color-{category} rendered by the
+   layout/_notifications.html override into a newspaper notice slip. Lives here
+   (not in a per-page _bote_*_style.html) because flash messages are emitted on
+   EVERY page from layout/base.html, and the slip must align to the same 1320
+   "sheet on desk" column whether or not the page renders its own .bote-page.
+   ============================================================================ */
+:root                   { --bote-amber: #8a6a0e; }
+html[data-theme="dark"] { --bote-amber: #d6a948; }
+
+.bote-notices { display: flex; flex-direction: column; gap: 10px; }
+
+/* Align the notice stack to the 1320 column, mirroring the :has() split that
+   totalverplant-36.css uses for .content-wrapper: on pages whose body renders
+   its own .bote-page the wrapper is unframed (no padding) → pad + center here;
+   on unoverridden pages the wrapper IS the padded sheet → only space below. */
+.main-content > .content-wrapper:has(.bote-page) .bote-notices {
+  max-width: 1320px;
+  margin: 14px auto;
+  padding-inline: clamp(14px, 3vw, 44px);
+}
+.main-content > .content-wrapper:not(:has(.bote-page)) .bote-notices {
+  margin: 2px 0 clamp(18px, 3vw, 26px);
+}
+
+/* The notice slip */
+.bote-notices .notification.bote-notice {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 13px clamp(16px, 2vw, 22px) 14px 17px;
+  background: var(--paperLite);
+  border: 1.5px solid var(--ink);
+  border-left: 6px solid var(--ink);
+  border-radius: 0;
+  box-shadow: 4px 4px 0 var(--ink);
+  color: var(--ink);
+}
+
+/* kicker row: stamped mark · category word · hairline rule */
+.bote-notice .bote-notice-rail { display: flex; align-items: center; gap: 10px; }
+.bote-notice .bote-notice-mark {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  border: 1.5px solid currentColor;
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 900;
+  font-size: 15px;
+  line-height: 1;
+}
+.bote-notice .bote-notice-mark .icon { display: none; }  /* prefer the CSS glyph */
+.bote-notice .bote-notice-kicker {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+.bote-notice .bote-notice-rule { flex: 1 1 auto; border-top: 1px solid var(--inkSoft); opacity: 0.45; }
+
+/* serif message body — keeps common.css's first/last margin reset (same hook) */
+.bote-notice .bote-notice-body {
+  font-family: var(--body);
+  font-size: 19px;
+  line-height: 1.45;
+  color: var(--ink);
+}
+.bote-notice .bote-notice-body > :first-child { margin-top: 0; }
+.bote-notice .bote-notice-body > :last-child  { margin-bottom: 0; }
+.bote-notice .bote-notice-body a {
+  color: var(--redDeep);
+  text-decoration: none;
+  border-bottom: 1px dashed currentColor;
+}
+.bote-notice .bote-notice-body a:hover { color: var(--red); }
+
+/* category accents — left edge, kicker and stamp share one hue + glyph */
+.bote-notice.color-info    { border-left-color: var(--blue); }
+.bote-notice.color-info    .bote-notice-mark,
+.bote-notice.color-info    .bote-notice-kicker { color: var(--blue); }
+.bote-notice.color-info    .bote-notice-mark::before { content: "i"; }
+
+.bote-notice.color-success { border-left-color: var(--green); }
+.bote-notice.color-success .bote-notice-mark,
+.bote-notice.color-success .bote-notice-kicker { color: var(--green); }
+.bote-notice.color-success .bote-notice-mark::before { content: "✓"; font-style: normal; font-size: 13px; }
+
+.bote-notice.color-warning { border-left-color: var(--bote-amber); }
+.bote-notice.color-warning .bote-notice-mark,
+.bote-notice.color-warning .bote-notice-kicker { color: var(--bote-amber); }
+.bote-notice.color-warning .bote-notice-mark::before { content: "!"; }
+
+.bote-notice.color-danger  { border-left-color: var(--red); }
+.bote-notice.color-danger  .bote-notice-mark,
+.bote-notice.color-danger  .bote-notice-kicker { color: var(--red); }
+.bote-notice.color-danger  .bote-notice-mark::before { content: "✕"; font-style: normal; font-size: 12px; }
+
+/* no category supplied → neutral ink notice */
+.bote-notice:not([class*="color-"]) .bote-notice-mark::before { content: "✶"; font-style: normal; font-size: 13px; }

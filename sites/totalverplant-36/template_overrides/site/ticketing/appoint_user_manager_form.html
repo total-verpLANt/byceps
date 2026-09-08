@@ -1,0 +1,66 @@
+{% extends 'layout/base.html' %}
+{% from 'macros/forms.html' import form_buttons, form_field %}
+{% from 'macros/icons.html' import render_icon %}
+{% set simple_layout = true %}
+{% set current_page = 'ticket' %}
+{% set page_title = 'Nutzer-Verwaltung von Ticket %s an Benutzer zuweisen'|format(ticket.code) %}
+
+{% block head %}
+{% include 'site/ticketing/_bote_ticketing_style.html' %}
+{%- endblock %}
+
+{% block body %}
+<div class="bote-page ticket-appoint-page">
+
+  <div class="page-folio">
+    <span class="pf-ressort">{{ _('Kartenschalter') }} · {{ _('Umschreibung') }}</span>
+    <span>Der Rentenbote · Ausgabe 36</span>
+  </div>
+
+  <header class="page-head">
+    <h1 class="ph-title">{{ _('Nutzer-Verwaltung') }} <em>{{ _('übergeben') }}</em></h1>
+    <p class="ph-standfirst">{{ _('Übergeben Sie die Vollmacht, wer auf dieser Karte sitzen darf, an ein anderes Mitglied. Der Verwalter bestimmt fortan den Kartennutzer — der Besitz der Karte bleibt bei Ihnen.') }}</p>
+  </header>
+
+  <div class="appoint-shell">
+
+    {# ===== the ticket coupon being re-registered ===== #}
+    <div class="appoint-stub">
+      <div class="stub-code">
+        <span class="sc-kicker">{{ render_icon('ticket') }} {{ _('Eintrittskarte') }}</span>
+        <span class="sc-label">{{ _('Code') }}</span>
+        <span class="sc-value">{{ ticket.code }}</span>
+      </div>
+      <div class="stub-meta">
+        <span class="sm-op-label">{{ _('Vollmacht übergeben') }}</span>
+        <span class="sm-op">{{ _('Nutzer-Verwaltung') }}</span>
+        {%- if ticket.category %}
+        <span class="sm-cat">{{ _('Category') }}: <b>{{ ticket.category.title }}</b></span>
+        {%- endif %}
+      </div>
+    </div>
+
+    {# ===== the re-registration form (stock markup, unchanged) ===== #}
+    <form action="{{ url_for('.appoint_user_manager', ticket_id=ticket.id) }}" method="post">
+      <div class="main-body-box">
+        <div class="form-head">
+          <span class="fh-title">{{ _('Umschreibungsformular') }} · {{ _('Nutzer-Verwaltung') }}</span>
+          <span class="fh-no">Nº 36</span>
+        </div>
+        <div class="form-body">
+          <p class="form-intro">{{ _('Tragen Sie den <b>Benutzernamen</b> des künftigen Nutzer-Verwalters ein. Diese Person darf danach festlegen, wer die Karte benutzt.') }}</p>
+          {{ form_field(form.user, maxlength=40, autofocus='autofocus') }}
+        </div>
+      </div>
+
+      {{ form_buttons(_('Assign')) }}
+    </form>
+
+    <p class="appoint-back">
+      <span>{{ _('Doch nicht?') }}</span>
+      <a href="{{ url_for('.index_mine') }}">{{ render_icon('arrow-left') }} {{ _('Zurück zu den Karten') }}</a>
+    </p>
+
+  </div>
+</div>
+{%- endblock %}

@@ -1,0 +1,41 @@
+{% extends 'layout/base.html' %}
+{% from 'macros/forms.html' import form_buttons, form_field %}
+{% set simple_layout = true %}
+{% set current_page = 'user_email_address.request_confirmation_email' %}
+{% set page_title = _('Request verification email again') %}
+
+{% block head %}
+{% include 'site/authn/_bote_auth_style.html' %}
+{%- endblock %}
+
+{% block body %}
+<div class="bote-page auth-page auth-confirm">
+
+  <div class="page-folio">
+    <span class="pf-ressort">Pförtnerloge · Zustelldienst</span>
+    <span>Der Rentenbote · Ausgabe 36</span>
+  </div>
+
+  <header class="page-head">
+    <h1 class="ph-title">Bestätigungs<em>brief</em> erneut</h1>
+    <p class="ph-standfirst">Benutzernamen eintragen — dann macht sich der Bote gleich noch einmal auf den Weg, diesmal etwas flotter. Falls der erste Brief beim Nachbarn oder im Spam-Ordner gelandet ist.</p>
+  </header>
+
+  <div class="auth-shell">
+    <form action="{{ url_for('.request_confirmation_email') }}" method="post">
+      <div class="main-body-box">
+        <div class="auth-cardhead">
+          <span class="ah-form">Formular Z · Erneute Zustellung</span>
+          <span class="ah-no">Nº 36</span>
+        </div>
+        <div class="auth-cardbody">
+          {{ form_field(form.screen_name, maxlength=40, autofocus='autofocus') }}
+        </div>
+      </div>
+
+      {{ form_buttons(_('Request')) }}
+    </form>
+  </div>
+
+</div>
+{%- endblock %}

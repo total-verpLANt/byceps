@@ -1,0 +1,163 @@
+<style>
+  /* ============================================================
+     KARTENSCHALTER · UMSCHREIBUNG — ticket re-registration counter.
+
+     Shared by the three single-field "appoint" forms in
+     services/ticketing/.../site/ticketing/ :
+
+       appoint_user_form.html          (Karte an Benutzer übertragen)
+       appoint_user_manager_form.html  (Nutzer-Verwaltung übergeben)
+       appoint_seat_manager_form.html  (Sitzplatz-Verwaltung übergeben)
+
+     Each stock template sets `simple_layout = true` with a
+     bare `<h1 class="title">` + a `.main-body-box` holding one
+     `form_field(form.user)` and a `form_buttons(_('Assign'))` mint
+     button — so it rendered full-bleed under the sticky masthead
+     with raw white inputs (the screenshot that prompted this), the
+     same problem the login / ticket / shop pages had.
+
+     Each template now wraps its body in the centered paper sheet
+     (.bote-page .ticket-appoint-page) with a .page-folio +
+     .page-head, prints the ticket as a torn-stub coupon at the
+     "Umschreibepult" (re-registration desk) — mirroring the
+     admission coupon on /tickets — and re-sets the stock form as a
+     stamped "Umschreibungsformular": a ruled header band, a mono
+     field label, a serif username input and a green stamp button.
+     Markup, field names, endpoints, autofocus/maxlength and the
+     disable-on-submit behaviour are UNCHANGED from stock — only the
+     wrapper + classes were added. Every colour is a theme token, so
+     "Spätausgabe" (dark) is automatic.
+     ============================================================ */
+
+  .ticket-appoint-page .appoint-shell{ max-width:42rem; margin-inline:auto; width:100%; }
+
+  /* ===== the ticket coupon stub being re-registered ===== */
+  .ticket-appoint-page .appoint-stub{
+    display:grid; grid-template-columns:auto 1fr; align-items:stretch;
+    border:1.5px solid var(--ink); background:var(--paperLite);
+    box-shadow:5px 5px 0 var(--ink); margin:0 0 26px; position:relative;
+  }
+  .ticket-appoint-page .stub-code{
+    position:relative; display:flex; flex-direction:column; gap:9px; justify-content:center;
+    padding:20px 28px; background:var(--redDeep); color:var(--paper);
+    border-right:2px dashed var(--paper);
+  }
+  /* punched notches on the perforation */
+  .ticket-appoint-page .stub-code::before,
+  .ticket-appoint-page .stub-code::after{
+    content:""; position:absolute; right:-9px; width:16px; height:16px; border-radius:50%;
+    background:var(--paper); border:1.5px solid var(--ink);
+  }
+  .ticket-appoint-page .stub-code::before{ top:-9px; }
+  .ticket-appoint-page .stub-code::after{ bottom:-9px; }
+  .ticket-appoint-page .stub-code .sc-kicker{
+    display:flex; align-items:center; gap:8px;
+    font-family:var(--mono); font-size:9px; font-weight:700; letter-spacing:.22em; text-transform:uppercase;
+    color:rgba(241,234,212,.82);
+  }
+  .ticket-appoint-page .stub-code .sc-kicker .icon{ width:1.4em; height:1.4em; }
+  .ticket-appoint-page .stub-code .sc-label{
+    font-family:var(--mono); font-size:8.5px; letter-spacing:.2em; text-transform:uppercase;
+    color:rgba(241,234,212,.7); margin-bottom:-4px;
+  }
+  .ticket-appoint-page .stub-code .sc-value{
+    font-family:var(--mono); font-weight:700; font-size:clamp(26px,4vw,34px); letter-spacing:.05em;
+    line-height:1; color:var(--paper); word-break:break-all;
+  }
+  .ticket-appoint-page .stub-meta{
+    display:flex; flex-direction:column; justify-content:center; gap:6px; padding:18px clamp(18px,2.4vw,26px);
+  }
+  .ticket-appoint-page .stub-meta .sm-op-label{
+    font-family:var(--mono); font-size:9px; letter-spacing:.2em; text-transform:uppercase; color:var(--inkMute);
+  }
+  .ticket-appoint-page .stub-meta .sm-op{
+    font-family:var(--display); font-weight:900; font-style:italic; letter-spacing:-.02em; line-height:1;
+    font-size:clamp(1.4rem,2.4vw,1.9rem); color:var(--ink);
+  }
+  .ticket-appoint-page .stub-meta .sm-cat{
+    display:flex; flex-wrap:wrap; gap:5px 9px; align-items:baseline; margin-top:4px;
+    font-family:var(--body); font-style:italic; font-size:17px; color:var(--inkSoft);
+  }
+  .ticket-appoint-page .stub-meta .sm-cat b{ font-style:normal; color:var(--ink); }
+
+  /* ===== the form card (stock .main-body-box) ===== */
+  .ticket-appoint-page .main-body-box{
+    border:1.5px solid var(--ink); background:var(--paperLite);
+    box-shadow:6px 6px 0 var(--ink); border-radius:0; padding:0; margin:0; overflow:hidden;
+  }
+  .ticket-appoint-page .form-head{
+    display:flex; justify-content:space-between; align-items:baseline; gap:10px 18px; flex-wrap:wrap;
+    padding:11px clamp(18px,2.4vw,26px) 10px; border-bottom:3px double var(--ink); background:var(--paper);
+    font-family:var(--mono); font-size:9.5px; letter-spacing:.2em; text-transform:uppercase; color:var(--inkSoft);
+  }
+  .ticket-appoint-page .form-head .fh-title{ color:var(--redDeep); font-weight:700; }
+  .ticket-appoint-page .form-head .fh-no{ color:var(--inkMute); }
+  .ticket-appoint-page .form-body{ padding:clamp(20px,2.6vw,30px) clamp(18px,2.4vw,28px); }
+
+  .ticket-appoint-page .form-intro{
+    font-family:var(--body); font-style:italic; font-size:18px; line-height:1.45; color:var(--inkSoft);
+    margin:0 0 22px; max-width:54ch;
+  }
+  .ticket-appoint-page .form-intro b{ font-style:normal; color:var(--ink); }
+
+  /* ===== form controls (form_field macro) ===== */
+  .ticket-appoint-page .form-control-block{ margin-bottom:0; }
+  .ticket-appoint-page .form-label{
+    display:block; font-family:var(--mono); font-size:9.5px; font-weight:700;
+    letter-spacing:.18em; text-transform:uppercase; color:var(--inkSoft); margin-bottom:7px;
+  }
+  .ticket-appoint-page .form-control{
+    width:100%; font-family:var(--body); font-size:20px; line-height:1.3; color:var(--ink);
+    background:var(--paper); border:1.5px solid var(--ink); border-radius:0; padding:13px 15px;
+  }
+  .ticket-appoint-page input.form-control{ appearance:none; -webkit-appearance:none; }
+  .ticket-appoint-page .form-control::placeholder{ color:var(--inkMute); }
+  .ticket-appoint-page .form-control:hover{ border-color:var(--redDeep); }
+  .ticket-appoint-page .form-control:focus{ outline:none; border-color:var(--redDeep); box-shadow:3px 3px 0 var(--redDeep); }
+  .ticket-appoint-page .form-caption{
+    font-family:var(--body); font-style:italic; font-size:14px; color:var(--inkMute); margin-top:7px;
+  }
+  .ticket-appoint-page .form-control-block.invalid .form-control{ border-color:var(--red); box-shadow:3px 3px 0 var(--red); }
+  .ticket-appoint-page .form-errors{
+    list-style:none; margin:9px 0 0; padding:0; font-family:var(--mono); font-size:10.5px;
+    letter-spacing:.06em; color:var(--red);
+  }
+  .ticket-appoint-page .form-errors strong{ text-transform:uppercase; letter-spacing:.12em; }
+
+  /* ===== submit button (form_buttons) ===== */
+  .ticket-appoint-page .button-row{ display:flex; gap:12px; flex-wrap:wrap; margin:24px 0 0; }
+  .ticket-appoint-page .button{
+    display:inline-flex; align-items:center; justify-content:center; gap:10px;
+    font-family:var(--mono); font-size:12px; font-weight:700; letter-spacing:.2em; text-transform:uppercase;
+    padding:15px 32px; border:1.5px solid var(--ink); background:var(--paperLite); color:var(--ink);
+    text-decoration:none; cursor:pointer; border-radius:0; box-shadow:4px 4px 0 var(--ink);
+    transition:transform .14s ease, box-shadow .14s ease, background-color .14s, color .14s, filter .14s;
+  }
+  .ticket-appoint-page .button:hover{ transform:translate(-2px,-2px); box-shadow:6px 6px 0 var(--ink); }
+  .ticket-appoint-page .button:active{ transform:translate(0,0); box-shadow:2px 2px 0 var(--ink); }
+  .ticket-appoint-page .button.color-primary{
+    flex:1 1 auto; background:var(--green); color:#fff; border-color:transparent; box-shadow:4px 4px 0 var(--ink);
+  }
+  .ticket-appoint-page .button.color-primary:hover{ filter:brightness(1.08); }
+  .ticket-appoint-page .button.is-outlined{ flex:0 0 auto; background:transparent; }
+
+  /* ===== back-to-tickets ledger link (additive, outside the form) ===== */
+  .ticket-appoint-page .appoint-back{
+    max-width:42rem; margin:20px auto 0; padding-top:15px; border-top:3px double var(--ink);
+    font-family:var(--body); font-style:italic; font-size:17px; color:var(--inkSoft);
+    display:flex; flex-wrap:wrap; gap:6px 9px; align-items:baseline;
+  }
+  .ticket-appoint-page .appoint-back a{
+    font-family:var(--mono); font-style:normal; font-size:11px; font-weight:700; letter-spacing:.1em;
+    text-transform:uppercase; color:var(--redDeep); text-decoration:none; border-bottom:1px dashed var(--redDeep);
+  }
+  .ticket-appoint-page .appoint-back a:hover{ background:rgba(168,40,28,.07); }
+
+  @media (max-width:560px){
+    .ticket-appoint-page .appoint-stub{ grid-template-columns:1fr; }
+    .ticket-appoint-page .stub-code{ border-right:0; border-bottom:2px dashed var(--paper); }
+    .ticket-appoint-page .stub-code::before{ top:auto; bottom:-9px; left:-9px; right:auto; }
+    .ticket-appoint-page .stub-code::after{ bottom:-9px; right:-9px; }
+    .ticket-appoint-page .button.color-primary{ width:100%; }
+  }
+</style>

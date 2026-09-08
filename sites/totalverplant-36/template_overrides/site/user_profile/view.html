@@ -1,0 +1,237 @@
+{% extends 'layout/base.html' %}
+{% from 'macros/user.html' import render_user_avatar_image, render_user_screen_name %}
+{% from 'macros/seating.html' import render_seat_link %}
+{% from 'macros/icons.html' import render_icon %}
+{% from 'macros/user_badge.html' import render_user_badge_linked %}
+{% set current_page = 'user_profile.view' %}
+{% set page_title = [user.screen_name, _('Users')] %}
+
+{% block head %}
+<style>
+  /* ============================================================
+     PROFIL — "Mitgliederkartei / Stammrolle"
+     The stock BYCEPS profile (avatar + screen name + stats +
+     contact + seats + badges + attended parties) reframed as a
+     newspaper member-dossier card. Joins the same 1320px paper
+     sheet (.bote-page) as every other page; without it the stock
+     .main-body-box ran full-bleed and slid under the masthead.
+     All colours are theme tokens, so dark mode is automatic.
+     ============================================================ */
+
+  /* --- dossier header: portrait + identity + key figures --- */
+  .profile-page .dossier{
+    display:grid;grid-template-columns:auto 1fr;gap:clamp(20px,2.8vw,40px);align-items:start;
+    border:1.5px solid var(--ink);background:var(--paperLite);padding:clamp(18px,2.4vw,28px);
+    box-shadow:5px 5px 0 var(--ink);
+  }
+  .profile-page .portrait-frame{
+    width:clamp(140px,16vw,184px);border:1.5px solid var(--ink);background:var(--paper);padding:8px;
+    box-shadow:3px 3px 0 var(--ink);
+  }
+  .profile-page .portrait-pic{
+    aspect-ratio:1/1;border:1px solid var(--ink);overflow:hidden;background:var(--paperDark);
+    display:grid;place-items:center;filter:grayscale(1) sepia(.30) contrast(1.05);
+    transition:filter .4s ease;
+  }
+  /* bloom the filed portrait to full colour on hover — same treatment as the
+     gallery / .sponsor-grid prints (sepia at rest → filter:none on hover) */
+  .profile-page .portrait-pic:hover{filter:none;}
+  .profile-page .portrait-pic img{display:block;width:100%;height:100%;object-fit:cover;}
+  .profile-page .portrait-cap{
+    margin-top:8px;padding-top:7px;border-top:1px solid var(--ink);
+    font-family:var(--mono);font-size:8.5px;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--inkSoft);text-align:center;
+  }
+  .profile-page .dossier-body{min-width:0;}
+  .profile-page .dossier-kicker{
+    font-family:var(--mono);font-size:10px;letter-spacing:.2em;text-transform:uppercase;
+    color:var(--redDeep);font-weight:700;margin:0 0 6px;
+  }
+  .profile-page .dossier-name{
+    font-family:var(--display);font-weight:900;font-style:italic;letter-spacing:-.02em;line-height:.95;
+    font-size:clamp(2.2rem,4vw,3.4rem);margin:0;color:var(--ink);word-break:break-word;
+  }
+  .profile-page .dossier-orga{
+    display:inline-block;margin-top:10px;font-family:var(--mono);font-size:9px;font-weight:700;
+    letter-spacing:.16em;text-transform:uppercase;color:var(--paper);background:var(--redDeep);padding:3px 8px;
+  }
+  .profile-page .dossier-figures{display:flex;flex-wrap:wrap;gap:0;margin-top:18px;border-top:3px double var(--ink);}
+  .profile-page .figure{flex:1 1 0;min-width:120px;padding:12px 18px 4px 0;}
+  .profile-page .figure + .figure{border-left:1px solid var(--ink);padding-left:18px;}
+  .profile-page .figure .fig-num{
+    font-family:var(--display);font-weight:900;line-height:.9;font-size:clamp(2.4rem,4vw,3.2rem);color:var(--ink);
+  }
+  .profile-page .figure .fig-label{
+    font-family:var(--mono);font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--inkSoft);margin-top:4px;
+  }
+
+  /* --- two-up: contact + seat --- */
+  .profile-page .profile-cols{
+    display:grid;grid-template-columns:1fr 1fr;gap:clamp(22px,3vw,44px);margin-top:clamp(26px,3vw,38px);
+  }
+  .profile-page .col-block{border-top:3px double var(--ink);padding-top:12px;}
+  .profile-page .cb-head{
+    font-family:var(--mono);font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;
+    color:var(--redDeep);font-weight:700;margin:0 0 12px;
+  }
+  .profile-page .cb-sub{
+    font-family:var(--body);font-style:italic;font-size:16px;color:var(--inkSoft);line-height:1.4;margin:0 0 14px;max-width:46ch;
+  }
+  .profile-page .btn-news{
+    display:inline-flex;align-items:center;gap:9px;padding:11px 20px;border:1.5px solid var(--ink);
+    background:var(--paperLite);color:var(--ink);font-family:var(--mono);font-size:11px;font-weight:700;
+    letter-spacing:.18em;text-transform:uppercase;text-decoration:none;box-shadow:3px 3px 0 var(--ink);
+    transition:transform .16s ease,box-shadow .16s ease,background-color .16s ease,color .16s ease;
+  }
+  .profile-page .btn-news:hover{transform:translate(-2px,-2px);box-shadow:5px 5px 0 var(--ink);background:var(--ink);color:var(--paper);}
+  .profile-page .seat-list{width:100%;border-collapse:collapse;font-family:var(--body);font-size:17px;}
+  .profile-page .seat-list td{padding:9px 6px;border-bottom:1px solid var(--ink);vertical-align:middle;}
+  .profile-page .seat-list tr:first-child td{border-top:1px solid var(--ink);}
+  .profile-page .seat-list a{color:var(--ink);text-decoration:none;border-bottom:1px dashed var(--inkSoft);}
+  .profile-page .seat-list a:hover{color:var(--redDeep);border-bottom-color:var(--redDeep);}
+  .profile-page .tag-news{
+    font-family:var(--mono);font-size:8.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--paper);background:var(--redDeep);padding:2px 7px;white-space:nowrap;
+  }
+
+  /* --- badges --- */
+  .profile-page .badges-block,
+  .profile-page .register-block{margin-top:clamp(26px,3vw,38px);border-top:3px double var(--ink);padding-top:12px;}
+  .profile-page .badge-grid{display:grid;gap:clamp(16px,2vw,26px);grid-template-columns:repeat(auto-fill,minmax(130px,1fr));}
+  .profile-page .badge-card{display:flex;flex-direction:column;align-items:center;gap:9px;text-align:center;}
+  .profile-page .badge-card img{width:96px;height:96px;object-fit:contain;}
+  .profile-page .badge-label{font-family:var(--display);font-style:italic;font-size:18px;line-height:1.1;color:var(--ink);}
+  .profile-page .badge-qty{font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--inkSoft);}
+  .profile-page .badges-empty{
+    border:1px dashed var(--inkSoft);padding:22px;text-align:center;
+    background:repeating-linear-gradient(135deg,rgba(128,116,86,.10) 0 6px,transparent 6px 12px);
+    font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--inkSoft);
+  }
+
+  /* --- attended parties: ruled register --- */
+  .profile-page .register-list{list-style:none;margin:8px 0 0;padding:0;counter-reset:reg;}
+  .profile-page .register-list li{
+    display:flex;align-items:baseline;gap:14px;padding:11px 2px;border-bottom:1px solid var(--ink);
+    font-family:var(--display);font-style:italic;font-size:clamp(20px,2.2vw,26px);color:var(--ink);
+  }
+  .profile-page .register-list li::before{
+    counter-increment:reg;content:counter(reg,decimal-leading-zero);
+    font-family:var(--mono);font-style:normal;font-size:11px;font-weight:700;letter-spacing:.1em;
+    color:var(--redDeep);flex:0 0 auto;align-self:center;
+  }
+  .profile-page .register-list li .reg-dots{flex:1;border-bottom:1px dotted var(--inkMute);transform:translateY(-4px);}
+  .profile-page .register-empty{font-family:var(--body);font-style:italic;font-size:17px;color:var(--inkSoft);margin-top:8px;}
+
+  @media (max-width:760px){
+    .profile-page .dossier{grid-template-columns:1fr;justify-items:start;}
+    .profile-page .profile-cols{grid-template-columns:1fr;}
+  }
+</style>
+{%- endblock %}
+
+{% block body %}
+<div class="bote-page profile-page">
+
+  <div class="page-folio">
+    <span class="pf-ressort">{{ _('Mitgliederkartei') }} · {{ _('Stammrolle') }}</span>
+    <span>Der Rentenbote · Ausgabe 36</span>
+  </div>
+
+  <header class="page-head">
+    <h1 class="ph-title">{{ _('Wer ist') }} <em>{{ _('wer?') }}</em></h1>
+    <p class="ph-standfirst">{{ _('Ein Eintrag aus der Stammrolle des Vereins — festgehalten, abgeheftet und für die Nachwelt aufbewahrt. Bitte nicht knicken.') }}</p>
+  </header>
+
+  {# ===== DOSSIER ===== #}
+  <section class="dossier">
+    <div class="dossier-portrait">
+      <div class="portrait-frame">
+        <div class="portrait-pic">{{ render_user_avatar_image(user) }}</div>
+        <div class="portrait-cap">{{ _('Lichtbild') }} · {{ _('z. Akte') }}</div>
+      </div>
+    </div>
+
+    <div class="dossier-body">
+      <h2 class="dossier-name">{{ render_user_screen_name(user) }}</h2>
+      {%- if orga_teams %}
+      <span class="dossier-orga">{{ orga_teams|map(attribute='title')|join(', ') }}</span>
+      {%- else %}
+      <span class="dossier-orga">{{ _('Mitglied') }}</span>
+      {%- endif %}
+
+      <div class="dossier-figures">
+        <div class="figure">
+          <div class="fig-num">{{ attended_parties|length }}</div>
+          <div class="fig-label">{{ ngettext('Besuchte Auflage', 'Besuchte Auflagen', attended_parties|length) }}</div>
+        </div>
+        <div class="figure">
+          <div class="fig-num">{{ badges_with_awarding_quantity|length }}</div>
+          <div class="fig-label">{{ _('Orden & Abzeichen') }}</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {# ===== CONTACT + SEAT ===== #}
+  <div class="profile-cols">
+
+    {%- if not g.site.is_intranet %}
+    <div class="col-block">
+      <h3 class="cb-head">{{ _('Briefkasten') }}</h3>
+      <p class="cb-sub">{{ _('Ein Wort an das Mitglied? Die Redaktion leitet jede Nachricht persönlich weiter — diskret und portofrei.') }}</p>
+      <a class="btn-news" href="{{ url_for('user_message.create_form', recipient_id=user.id) }}">{{ render_icon('email') }} <span>{{ _('Send message') }}</span></a>
+    </div>
+    {%- endif %}
+
+    {%- if current_party_tickets %}
+    <div class="col-block">
+      <h3 class="cb-head">{{ ngettext('Sitzplatz', 'Sitzplätze', current_party_tickets|length) }} · Auflage 36</h3>
+      <table class="seat-list">
+        <tbody>
+          {%- for ticket in current_party_tickets %}
+          <tr>
+            <td>{{ render_seat_link(ticket.occupied_seat) if ticket.occupied_seat else _('not chosen')|dim }}</td>
+            <td style="text-align:right;">{%- if ticket.user_checked_in %}<span class="tag-news">{{ _('checked in') }}</span>{%- endif %}</td>
+          </tr>
+          {%- endfor %}
+        </tbody>
+      </table>
+    </div>
+    {%- endif %}
+
+  </div>
+
+  {# ===== BADGES ===== #}
+  <section class="badges-block">
+    <h3 class="cb-head">{{ _('Orden & Abzeichen') }}</h3>
+    {%- if badges_with_awarding_quantity %}
+    <div class="badge-grid">
+      {%- for badge, quantity in badges_with_awarding_quantity|items|sort(attribute='0.label') %}
+      <div class="badge-card">
+        {{ render_user_badge_linked(badge, 96) }}
+        <div class="badge-label">{{ badge.label }}</div>
+        {%- if quantity > 1 %}<div class="badge-qty">&times;{{ quantity }}</div>{%- endif %}
+      </div>
+      {%- endfor %}
+    </div>
+    {%- else %}
+    <div class="badges-empty">{{ _('Noch keine Auszeichnungen verliehen — die Ordenskammer bleibt vorerst verschlossen.') }}</div>
+    {%- endif %}
+  </section>
+
+  {# ===== ATTENDED PARTIES ===== #}
+  <section class="register-block">
+    <h3 class="cb-head">{{ _('Besuchte Auflagen') }}</h3>
+    {%- if attended_parties %}
+    <ol class="register-list">
+      {%- for party in attended_parties %}
+      <li><span>{{ party.title }}</span><span class="reg-dots"></span></li>
+      {%- endfor %}
+    </ol>
+    {%- else %}
+    <p class="register-empty">{{ pgettext('party', 'none') }}</p>
+    {%- endif %}
+  </section>
+
+</div>
+{%- endblock %}

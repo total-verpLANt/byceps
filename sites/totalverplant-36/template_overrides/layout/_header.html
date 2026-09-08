@@ -1,0 +1,224 @@
+{%- from 'macros/user.html' import render_user_screen_name %}
+{%- set login_url = url_for('authn_login.log_in_form') -%}
+{%- set logout_url = url_for('authn_login.log_out', _method='POST') -%}
+<style>
+  /* ---------- Logged-in account menu (newspaper "Vereinsausweis") ----------
+     Mirrors the .nav-login button styling but opens a dropdown with the same
+     destinations BYCEPS exposes in its standard current-user menu:
+     Dashboard · Profil · Einstellungen · Tickets · Bestellungen · Abmelden. */
+  .nav-actions { display: inline-flex; align-items: center; gap: 10px; margin-left: auto; flex-wrap: wrap; }
+  /* inline-flex (not inline-block) so the wrapper hugs its summary instead of
+     adding a line-box strut from the inherited 21px line-height — that strut
+     made the details box ~4px taller than the summary and dropped the label
+     below the .theme-toggle beside it. The .na-menu is position:absolute, so it
+     stays out of flow and the dropdown anchoring is unaffected. */
+  .nav-account { position: relative; display: inline-flex; align-items: center; }
+  .nav-account > summary {
+    list-style: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px 7px 14px;
+    border: 1.5px solid var(--ink);
+    background: var(--paperLite);
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+    user-select: none;
+    /* Match the .theme-toggle line-box exactly (1.2 = 13.2px @ 11px). Without
+       this the summary inherited the body's 1.5 line-height (16.5px), rendering
+       ~2.5px taller than the toggle beside it. 13.2px also clears the 12px
+       .na-bars glyph so the bars never govern the box height. */
+    line-height: 1.2;
+  }
+  .nav-account > summary::-webkit-details-marker { display: none; }
+  .nav-account > summary:hover { background: var(--ink); color: var(--paper); }
+  .nav-account .na-name { max-width: 16ch; overflow: hidden; text-overflow: ellipsis; }
+  /* Stacked stripes (hamburger-style) replace the key glyph when logged in */
+  .nav-account .na-bars {
+    display: inline-flex; flex-direction: column; justify-content: center;
+    gap: 3px; width: 16px; flex: 0 0 auto;
+  }
+  .nav-account .na-bars i { display: block; height: 2px; background: currentColor; }
+  .nav-account .na-caret { font-size: 9px; transition: transform 0.15s ease; }
+  .nav-account[open] > summary { background: var(--ink); color: var(--paper); }
+  .nav-account[open] .na-caret { transform: rotate(180deg); }
+
+  .nav-account .na-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 90;
+    min-width: 230px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    background: var(--paper);
+    border: 1.5px solid var(--ink);
+    box-shadow: 5px 5px 0 var(--ink);
+  }
+  .nav-account .na-head {
+    padding: 10px 14px;
+    border-bottom: 3px double var(--ink);
+    font-family: var(--mono);
+    font-size: 9.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--inkSoft);
+    line-height: 1.5;
+  }
+  .nav-account .na-head strong {
+    display: block;
+    font-family: var(--display);
+    font-style: italic;
+    font-weight: 700;
+    font-size: 20px;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+    text-transform: none;
+  }
+  .nav-account .na-menu li > a {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-top: 1px dashed var(--ink);
+    font-family: var(--body);
+    font-style: italic;
+    font-size: 16px;
+    color: var(--ink);
+    text-decoration: none;
+  }
+  .nav-account .na-menu li:first-child > a { border-top: 0; }
+  .nav-account .na-menu li > a::before {
+    content: '›';
+    font-family: var(--mono);
+    font-style: normal;
+    color: var(--redDeep);
+  }
+  .nav-account .na-menu li > a:hover { background: rgba(168,40,28,0.06); color: var(--redDeep); }
+  .nav-account .na-menu .na-logout {
+    border-top: 3px double var(--ink) !important;
+    font-family: var(--mono) !important;
+    font-style: normal !important;
+    font-size: 11px !important;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: var(--redDeep) !important;
+  }
+  .nav-account .na-menu .na-logout::before { content: '✕' !important; }
+
+  @media (max-width: 720px) {
+    .nav-account { display: none; }   /* desktop dropdown hidden — lives in the rail */
+  }
+</style>
+<div class="topstrip">
+  <span>Auflage 36 · 16.–18. Oktober MMXXVI</span>
+  <span>Großsporthalle Brake · Philosophenweg 8 · 26919</span>
+  <span>ab 30 € · 18+ · {% if available is defined %}{{ available }}{% else %}5{% endif %} Plätze frei</span>
+</div>
+<div class="rule rule-double"></div>
+<div class="masthead">
+  <div class="mast-box">
+    <div class="small">Wetter</div>
+    <div class="big">9°</div>
+    <div class="mini">bewölkt, später Kaffee</div>
+  </div>
+  <div class="title-block">
+    <h1><a href="/" style="display:inline-block;color:inherit;text-decoration:none">Der <em>Rentenbote</em></a></h1>
+    <div class="tagline">Unabhängig · Überparteilich · Mittagsschlaf&shy;freundlich · gegründet 2006</div>
+  </div>
+  <div class="mast-box">
+    <div class="small">Heute</div>
+    <div class="big">Tatort</div>
+    <div class="mini">20:15 · ARD</div>
+  </div>
+</div>
+<div class="rule"></div>
+<div class="navstrip">
+  <div class="crumbs">
+    <a href="/" class="nav-owl-link" aria-label="Startseite"><img class="nav-owl" src="{{ url_for_site_file('style/eule_logo.png') }}" alt="total verpLANt Eule"></a>
+    {% include 'layout/_navigation.html' with context %}
+  </div>
+
+  <div class="nav-actions">
+  <button type="button" class="theme-toggle" data-theme-toggle aria-pressed="false">
+    {#- Both editions stay in the DOM, stacked in one grid cell, so the button
+        always reserves the width of the widest label and the active edition is
+        centred — the control never changes size between Tages-/Spätausgabe. -#}
+    <span class="tt-label">
+      <span class="tt-edition tt-edition--light">☾ Spätausgabe</span>
+      <span class="tt-edition tt-edition--dark">☀ Tagesausgabe</span>
+    </span>
+    <span class="tt-label-short">
+      <span class="tt-edition tt-edition--light">☾ Spät</span>
+      <span class="tt-edition tt-edition--dark">☀ Tag</span>
+    </span>
+  </button>
+
+  {%- if g.user.authenticated %}
+  {%- set screen_name = render_user_screen_name(g.user.as_user()) %}
+  <details class="nav-account">
+    <summary>
+      <span class="na-bars" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span class="na-name">{{ screen_name }}</span>
+      <span class="na-caret" aria-hidden="true">▾</span>
+    </summary>
+    <ul class="na-menu">
+      <li class="na-head">Angemeldet als<strong>{{ screen_name }}</strong></li>
+      <li><a href="{{ url_for('dashboard.index') }}">Übersicht</a></li>
+      <li><a href="{{ url_for('user_profile.view', user_id=g.user.id) }}">Profil</a></li>
+      <li><a href="{{ url_for('user_settings.view') }}">Einstellungen</a></li>
+      <li><a href="{{ url_for('ticketing.index_mine') }}">Meine Tickets</a></li>
+      <li><a href="{{ url_for('shop_orders.index') }}">Bestellungen</a></li>
+      <li>
+        <a class="na-logout" href="{{ logout_url }}"
+           data-action="log-out" data-redirect-target="{{ login_url }}">Abmelden</a>
+      </li>
+    </ul>
+  </details>
+  {%- else %}
+  <a class="nav-login" href="{{ login_url }}">🔑 {{ _('Log in') }}</a>
+  {%- endif %}
+
+  <button class="nav-hamburger" aria-expanded="false" aria-label="Menü öffnen">
+    <span class="bars"><span></span><span></span><span></span></span>
+    <span class="label">Menü</span>
+  </button>
+  </div>
+  <nav class="nav-panel" style="flex-basis:100%" aria-label="Hauptnavigation">
+    <a class="mr-home" href="/">
+      <img class="owl" src="{{ url_for_site_file('style/eule_logo.png') }}" alt="total verpLANt Eule">
+      <span class="txt"><strong>Startseite</strong><small>genial verpLANt · zur Übersicht</small></span>
+      <span class="arr" aria-hidden="true">→</span>
+    </a>
+    <div class="mr-list">
+      {#- the home row above covers the homepage, so skip a configured "/" item #}
+      {%- for item in get_nav_menu_items('main') if item.target != '/' %}
+      <a href="{{ item.target }}"{% if item.current_page_id == current_page %} class="current"{% endif %}><span class="num">{{ '%02d'|format(loop.index) }}</span><span class="lbl">{{ item.label }}</span></a>
+      {%- endfor %}
+      {%- if g.user.authenticated %}
+      <div class="mr-account-head">Angemeldet als <strong>{{ render_user_screen_name(g.user.as_user()) }}</strong></div>
+      <a class="mr-acc" href="{{ url_for('dashboard.index') }}"><span class="num">›</span><span class="lbl">Übersicht</span></a>
+      <a class="mr-acc" href="{{ url_for('user_profile.view', user_id=g.user.id) }}"><span class="num">›</span><span class="lbl">Profil</span></a>
+      <a class="mr-acc" href="{{ url_for('user_settings.view') }}"><span class="num">›</span><span class="lbl">Einstellungen</span></a>
+      <a class="mr-acc" href="{{ url_for('ticketing.index_mine') }}"><span class="num">›</span><span class="lbl">Meine Tickets</span></a>
+      <a class="mr-acc" href="{{ url_for('shop_orders.index') }}"><span class="num">›</span><span class="lbl">Bestellungen</span></a>
+      {%- endif %}
+    </div>
+    {#- Guests sign in via the .nav-login button in the navstrip, so the rail
+        foot only carries the logged-in logout action; no foot for guests. -#}
+    {%- if g.user.authenticated %}
+    <div class="mr-foot">
+      <a class="primary" href="{{ logout_url }}"
+         data-action="log-out" data-redirect-target="{{ login_url }}">✕ Abmelden</a>
+    </div>
+    {%- endif %}
+  </nav>
+</div>

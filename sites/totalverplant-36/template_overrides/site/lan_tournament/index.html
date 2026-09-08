@@ -1,0 +1,143 @@
+{% extends 'layout/base.html' %}
+{% from 'macros/icons.html' import render_icon %}
+{% from 'macros/misc.html' import render_tag %}
+{% set current_page = 'tournaments' %}
+{% set page_title = _('Tournaments') %}
+
+{% block head %}
+{% include 'site/lan_tournament/_bote_tournament_style.html' %}
+{%- endblock %}
+
+{% block body %}
+<div class="bote-page tournament-page tournament-index">
+
+  <div class="page-folio">
+    <span class="pf-ressort">Turnierbüro · {% if tournaments %}Spielplan der Auflage{% else %}Spielplan in Vorbereitung{% endif %}</span>
+    <span>Der Rentenbote · Ausgabe 36</span>
+  </div>
+
+  <header class="page-head">
+    <h1 class="ph-title">Der <em>Spielplan</em></h1>
+    <p class="ph-standfirst">Die Setzerei arbeitet bereits an den Tableaus — gespielt wird, da legt sich der Stammtisch fest. Hier erscheinen die Disziplinen, sobald die Auslosung steht und die Anmeldung öffnet.</p>
+  </header>
+
+  <div class="main-body-box">
+  {%- if tournaments %}
+    {# ===== populated: stock .tournament-card markup, re-set as Spielplan rows ===== #}
+    <div class="tournament-list">
+    {%- for tournament in tournaments %}
+      <div class="tournament-card">
+        <div class="tournament-icon">
+          {%- if tournament.image_url %}
+            <div class="tournament-media">
+              <img src="{{ tournament.image_url }}" alt="">
+            </div>
+          {%- else %}
+            {{ render_icon('trophy') }}
+          {%- endif %}
+        </div>
+        <div class="tournament-info">
+          <a href="{{ url_for('.view', tournament_id=tournament.id) }}" class="disguised">
+            <div class="tournament-name">{{ tournament.name }}</div>
+            {%- if tournament.game %}
+            <div class="tournament-game">{{ tournament.game }}</div>
+            {%- endif %}
+          </a>
+          {%- if tournament.tournament_status %}
+            {%- if tournament.tournament_status.name == 'REGISTRATION_OPEN' %}
+              {{ render_tag(_('Registration open'), class='color-info') }}
+            {%- elif tournament.tournament_status.name == 'REGISTRATION_CLOSED' %}
+              {{ render_tag(_('Registration closed'), class='color-warning') }}
+            {%- elif tournament.tournament_status.name == 'ONGOING' %}
+              {{ render_tag(_('Ongoing'), class='color-success') }}
+            {%- elif tournament.tournament_status.name == 'PAUSED' %}
+              {{ render_tag(_('Paused'), class='color-warning') }}
+            {%- elif tournament.tournament_status.name == 'COMPLETED' %}
+              {{ render_tag(_('Completed'), class='color-success') }}
+            {%- elif tournament.tournament_status.name == 'CANCELLED' %}
+              {{ render_tag(_('Cancelled'), class='color-danger') }}
+            {%- endif %}
+          {%- endif %}
+        </div>
+        <div class="tournament-meta">
+          {%- if tournament.contestant_type and tournament.contestant_type.name == 'TEAM' %}
+          <div class="tournament-participants">
+            {{ team_counts.get(tournament.id, 0) }}{% if tournament.max_teams %}/{{ tournament.max_teams }}{% endif %} {{ _('Teams') }}
+            {%- if tournament.max_players %}
+              · {{ participant_counts.get(tournament.id, 0) }}/{{ tournament.max_players }} {{ _('Players') }}
+            {%- endif %}
+          </div>
+          {%- elif tournament.max_players %}
+          <div class="tournament-participants">
+            {{ participant_counts.get(tournament.id, 0) }} / {{ tournament.max_players }}
+          </div>
+          {%- endif %}
+          {%- if tournament.start_time %}
+          <div class="tournament-start">
+            {{ tournament.start_time|dateformat }}, {{ tournament.start_time|timeformat('short') }}
+          </div>
+          {%- endif %}
+        </div>
+      </div>
+    {%- endfor %}
+    </div>
+  {%- else %}
+    {# ===== empty: "noch keine, aber bald" — Aushang vom Turnierbüro ===== #}
+    <div class="tourney-empty">
+      <div class="te-main">
+
+        <div class="te-plate">
+          <div class="plate-art">
+            <span class="stamp">Demnächst</span>
+            <div class="bracket" aria-hidden="true">
+              <div class="round r1">
+                <div class="match"><span class="slot"></span><span class="slot"></span></div>
+                <div class="match"><span class="slot"></span><span class="slot"></span></div>
+              </div>
+              <div class="round r2">
+                <div class="match"><span class="slot"></span></div>
+                <div class="match"><span class="slot"></span></div>
+              </div>
+              <div class="round r3 final">
+                <div class="match"><span class="slot"></span></div>
+              </div>
+            </div>
+            <div class="bracket-cap">Tableau Nº 36 · Auslosung ausstehend</div>
+          </div>
+          <div class="plate-cap">
+            <span class="pc-red">Leeres Turnierraster</span>
+            <span>Setzerei · noch nicht gefüllt</span>
+          </div>
+        </div>
+
+        <div class="te-notice">
+          <div class="notice-head">
+            <span class="nh-kicker">Aushang vom Turnierbüro</span>
+            <span class="nh-no">Nº 36</span>
+          </div>
+          <div class="notice-body">
+            <p class="lead">Noch hängt kein Turnier am Schwarzen Brett — aber das bleibt nicht lange so. Die Paarungen werden gerade gesetzt, und sobald die Tinte trocken ist, stehen die ersten Disziplinen genau hier.</p>
+            <p>Wer mitspielen will, hält sich bereit: Die <em>Anmeldung</em> öffnet rechtzeitig vor der Auflage. Plätze sind begrenzt, der Pförtner notiert in der Reihenfolge des Eintreffens.</p>
+
+            <div class="te-help">
+              <span class="eh-label">Wo erfahre ich's zuerst?</span>
+              <ul>
+                <li><span class="eh-no">01</span><a href="{{ url_for('news.index') }}">News &amp; Bekanntmachungen</a><span class="eh-note">Aushang der Redaktion</span></li>
+                <li><span class="eh-no">02</span><a href="/">Event Infos &amp; Programm</a><span class="eh-note">Ablauf der Auflage</span></li>
+              </ul>
+            </div>
+
+            <div class="te-actions">
+              <a class="button color-primary" href="{{ url_for('.index') }}"><span>↻ Später nachsehen</span></a>
+              <a class="button" href="/"><span>← Zurück zur Tagesausgabe</span></a>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  {%- endif %}
+  </div>
+
+</div>
+{%- endblock %}
