@@ -30,7 +30,7 @@ All foreign keys use the default `ON DELETE NO ACTION` behavior. Cleanup of depe
 
 Deletion operations are handled in service layer:
 
-- `tournament_service.py::delete_tournament()` - Deletes tournament and all dependencies
+- `tournament_service.py::delete_tournament()` - Deletes tournament, its log entries and all dependencies
 - `tournament_team_service.py::delete_team()` - Removes team references, then deletes team
 - `tournament_match_service.py::delete_match()` - Deletes match with comments and contestants
 
@@ -69,6 +69,24 @@ Adds soft-delete support to participants and teams:
 **Why soft-delete?** During ONGOING tournaments, participants/teams removed (e.g. ticketless) must keep their rows so that `lan_tournament_match_contestants` foreign keys remain valid. The service layer re-joins soft-deleted participants by clearing `removed_at` instead of inserting a new row, avoiding `UniqueConstraint('tournament_id', 'user_id')` conflicts.
 
 **Rollback:** `rollback_003.sql`
+
+### 012_add_log_entries.sql
+
+Creates the `lan_tournament_log_entries` audit log table:
+
+1. **`id UUID`** primary key — application-generated uuid7
+2. **`occurred_at TIMESTAMPTZ NOT NULL`** — when the event happened
+3. **`event_type TEXT NOT NULL`** — event discriminator string
+4. **`tournament_id UUID NOT NULL`** — FK to `lan_tournaments.id`, indexed via `ix_lan_tournament_log_entries_tournament_id`
+5. **`initiator_id UUID NULL`** — nullable FK to `users.id` (system-triggered entries have no initiator)
+6. **`data JSONB NOT NULL DEFAULT '{}'::jsonb`** — structured payload
+
+Shape mirrors the stock tourney log table (`byceps/services/tourney/log/dbmodels.py`). Zero CASCADE behaviors (BYCEPS convention).
+
+**Rollback:** `rollback_012.sql` (drops index, then table)
+
+Retention: old log entries can be purged with the CLI command `byceps purge-lan-tournament-log-entries --older-than-days N [--dry-run]` (default 365 days; see `byceps/cli/commands/purge_lan_tournament_log_entries.py`), which hard-deletes rows older than the given number of days. Use `--dry-run` to report how many entries would be deleted without deleting them. The command's CLI module lives in BYCEPS core (`byceps/cli/commands/`, registered in `byceps/cli/cli.py`) by explicit, granted exception to the module's core-is-read-only rule.
+
 
 ## Pre-Application Checklist
 

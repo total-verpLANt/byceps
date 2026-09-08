@@ -242,6 +242,11 @@
     <form action='{{ url_for('.unconfirm_match', match_id=match.id) }}'
           method='post'
           onsubmit="return confirm('{{ _('This will unconfirm the match. Continue?') }}');">
+      <div class='form-group'>
+        <label for='ffa_unconfirm_reason'>{{ _('Reason') }}</label>
+        <textarea name='reason' id='ffa_unconfirm_reason' rows='2'
+                  required style='width: 100%;'></textarea>
+      </div>
       <button type='submit' class='button color-warning'>
         {{ render_icon('warning') }} {{ _('Unconfirm Match') }}
       </button>
@@ -312,12 +317,68 @@
 
   {%- if match.confirmed_by and
          g.user.has_permission('lan_tournament.administrate') %}
-  <div class='block'>
-    <form action='{{ url_for('.unconfirm_match', match_id=match.id) }}'
+  <div class='box block' id='correction'>
+    <h2>{{ _('Correct Result') }}</h2>
+
+    {%- if correction_case and correction_case.value == 'case_a' %}
+    <div class='notification color-info'>{{ render_icon('information') }}
+      {{ _('No downstream matches are affected by this correction.') }}
+    </div>
+    {%- elif correction_case and correction_case.value == 'case_b' %}
+    <div class='notification color-warning'>{{ render_icon('warning') }}
+      {{ _('The following downstream matches are not yet confirmed. The contestant who advanced from this match will be removed from them and must be re-determined once this correction is confirmed:') }}
+      <ul style='margin-top: 0.5rem;'>
+        {%- for downstream in affected_downstream_matches %}
+        <li>{{ render_match_ref(downstream) }}</li>
+        {%- endfor %}
+      </ul>
+    </div>
+    {%- elif correction_case and correction_case.value == 'case_c' %}
+    <div class='notification color-danger'>{{ render_icon('warning') }}
+      {{ _('Critical: the following downstream matches have already been confirmed. Confirming this correction will retract them and clear their entered scores. If the retraction reaches a tournament-deciding match, the tournament winner will be cleared and the tournament will revert to ongoing. Those results must be re-entered manually afterwards.') }}
+      <ul style='margin-top: 0.5rem;'>
+        {%- for downstream in affected_downstream_matches %}
+        <li>{{ render_match_ref(downstream) }}</li>
+        {%- endfor %}
+      </ul>
+    </div>
+    {%- endif %}
+
+    <form action='{{ url_for('.correct_match_result', match_id=match.id) }}'
           method='post'
-          onsubmit="return confirm('{{ _('This will also unconfirm any downstream matches that used this result. Continue?') }}');">
+          onsubmit="return confirm('{{ _('This will retract this result. Any already-confirmed downstream matches will also be retracted and their scores cleared. Continue?') }}');">
+      {%- if correction_case and correction_case.value == 'case_c' %}
+      <div class='form-group'>
+        <label>
+          <input type='checkbox' name='ack_critical' value='y'>
+          {{ _('I acknowledge the critical warning (Case C)') }}
+        </label>
+      </div>
+      {%- endif %}
+      <div class='row row--space-between' style='flex-wrap: wrap;'>
+        <div class='form-group' style='margin-right: 1rem;'>
+          <label for='corrected_score_home'>{{ _('Score (home)') }}</label>
+          <input type='number' name='corrected_score_home'
+                 id='corrected_score_home' min='0'
+                 value='{{ contestants[0].score if contestants and contestants[0].score is not none else '' }}'
+                 style='width: 100px;'>
+        </div>
+        <div class='form-group'>
+          <label for='corrected_score_away'>{{ _('Score (away)') }}</label>
+          <input type='number' name='corrected_score_away'
+                 id='corrected_score_away' min='0'
+                 value='{{ contestants[1].score if contestants|length > 1 and contestants[1].score is not none else '' }}'
+                 style='width: 100px;'>
+        </div>
+      </div>
+      <p class='dimmed'>{{ _('Leave both score fields empty to only retract the result without entering a new one.') }}</p>
+      <div class='form-group'>
+        <label for='correction_reason'>{{ _('Reason') }}</label>
+        <textarea name='reason' id='correction_reason' rows='3'
+                  required style='width: 100%;'></textarea>
+      </div>
       <button type='submit' class='button color-warning'>
-        {{ render_icon('warning') }} {{ _('Unconfirm Match') }}
+        {{ render_icon('warning') }} {{ _('Correct Result') }}
       </button>
     </form>
   </div>

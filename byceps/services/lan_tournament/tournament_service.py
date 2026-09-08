@@ -345,14 +345,15 @@ def delete_tournament(
 
     CASCADE HANDLING: Deletes all dependent entities in correct
     order:
-    1. Score submissions (FK to participants/teams)
-    2. Match comments
-    3. Match contestants
-    4. Matches
-    5. Winner references (FK back to teams/participants)
-    6. Participants
-    7. Teams
-    8. Tournament itself
+    1. Log entries
+    2. Score submissions (FK to participants/teams)
+    3. Match comments
+    4. Match contestants
+    5. Matches
+    6. Winner references (FK back to teams/participants)
+    7. Participants
+    8. Teams
+    9. Tournament itself
     """
     # Delete in dependency order (children first, then parent).
     # All repo calls use commit=False so the entire cascade is a
@@ -360,6 +361,9 @@ def delete_tournament(
     # Wrapped in try/except to rollback on partial flush failure,
     # preventing session poisoning if a caller catches the exception.
     try:
+        tournament_repository.delete_log_entries_for_tournament(
+            tournament_id, commit=False
+        )
         tournament_repository.delete_submissions_for_tournament(
             tournament_id, commit=False
         )
@@ -459,14 +463,6 @@ def get_participant_counts_for_tournaments(
     )
 
 
-def _has_bracket_generated(
-    tournament_id: TournamentID,
-) -> bool:
-    """Check if brackets have been generated for the tournament."""
-    matches = tournament_repository.get_matches_for_tournament(tournament_id)
-    return len(matches) > 0
-
-
 def change_status(
     tournament_id: TournamentID,
     new_status: TournamentStatus,
@@ -481,13 +477,21 @@ def change_status(
     if result.is_err():
         return Err(result.unwrap_err())
 
-    # Only after a valid transition: check bracket exists when starting
+    # Only after a valid transition: validate bracket structure when
+    # starting -- hard errors must never be bypassed.
     if new_status == TournamentStatus.ONGOING:
-        if tournament.game_format and tournament.game_format.requires_bracket_generation:
-            if not _has_bracket_generated(tournament_id):
+        if (
+            tournament.game_format
+            and tournament.game_format.requires_bracket_generation
+        ):
+            violations = (
+                tournament_match_service.validate_bracket_for_start(
+                    tournament_id, tournament=tournament
+                )
+            )
+            if violations:
                 return Err(
-                    'Cannot start tournament without generated brackets. '
-                    'Generate brackets first.'
+                    'Cannot start tournament: ' + '; '.join(violations)
                 )
 
     (event,) = result.unwrap()

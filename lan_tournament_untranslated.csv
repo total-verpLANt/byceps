@@ -1,0 +1,340 @@
+original,german
+%(count)s participant(s) removed.,%(count)s Teilnehmer entfernt.
+%(count)s participant(s) removed. ,%(count)s Teilnehmer entfernt. 
+%(name)s added to the team.,%(name)s wurde dem Team hinzugefügt.
+-- select --,-- auswählen --
+2nd,2.
+3rd,3.
+Add Comment,Kommentar hinzufügen
+Add member,Mitglied hinzufügen
+Add participant,Teilnehmer hinzufügen
+Administrate LAN tournaments,LAN-Turniere verwalten
+Advance LB Round,LB-Runde weiterschalten
+Advance Round,Runde weiterschalten
+Advance WB Round,WB-Runde weiterschalten
+Advance per group,Aufsteiger pro Gruppe
+Advanced to next round. %(count)d group(s) ,Zur nächsten Runde vorgerückt. %(count)d Gruppe(n) 
+Advancement count,Anzahl Aufsteiger
+All,Alle
+All scores have been deleted.,Alle Ergebnisse wurden gelöscht.
+Are you sure you want to delete ALL scores? This cannot be undone.,Sollen wirklich ALLE Ergebnisse gelöscht werden? Dies kann nicht rückgängig gemacht werden.
+Average Points,Durchschnittliche Punkte
+Avg,Durchschn.
+Bracket,Turnierbaum
+Bracket can only be generated when registration ,"Der Turnierbaum kann nur generiert werden, wenn die Anmeldung "
+Bracket generated with %(count)d matches.,Turnierbaum mit %(count)d Partien generiert.
+Bracket generation failed: %(error)s,Turnierbaum-Generierung fehlgeschlagen: %(error)s
+Both scores must be provided to re-enter a result.,Beide Ergebnisse müssen angegeben werden, um ein Ergebnis neu einzutragen.
+Cancel Tournament?,Turnier abbrechen?
+Cancelled,Abgebrochen
+Cannot remove the team captain.,Der Team-Kapitän kann nicht entfernt werden.
+Captain,Kapitän
+Captain role has been transferred.,Die Kapitänsrolle wurde übertragen.
+Captain transferred to %(name)s.,Kapitän an %(name)s übertragen.
+Champion,Sieger
+Checked-in players,Eingecheckte Spieler
+Close registration,Anmeldung schließen
+Comment,Kommentar
+Comment added.,Kommentar hinzugefügt.
+Comment cannot be empty.,Kommentar darf nicht leer sein.
+Comment has been added.,Kommentar wurde hinzugefügt.
+Comment has been deleted.,Kommentar wurde gelöscht.
+Comments,Kommentare
+Complete,Abschließen
+Completed,Abgeschlossen
+Confirm FFA Match,FFA-Partie bestätigen
+Confirm Match,Partie bestätigen
+Confirm all LB groups in the current round before advancing.,"Alle LB-Gruppen der aktuellen Runde bestätigen, bevor weitergeschaltet wird."
+Confirm all WB groups in the current round before advancing.,"Alle WB-Gruppen der aktuellen Runde bestätigen, bevor weitergeschaltet wird."
+Confirm all groups in the current round before advancing.,"Alle Gruppen der aktuellen Runde bestätigen, bevor weitergeschaltet wird."
+Confirmed,Bestätigt
+Contains invalid characters.,Enthält ungültige Zeichen.
+Contestant,Teilnehmer
+Contestant ID and score are required.,Teilnehmer-ID und Ergebnis sind erforderlich.
+Contestant type,Teilnehmertyp
+Contestants,Teilnehmer
+Contestants & Placements,Teilnehmer & Platzierungen
+Correct Result,Ergebnis korrigieren
+Could not add member.,Mitglied konnte nicht hinzugefügt werden.
+Could not add participant: %(error)s,Teilnehmer konnte nicht hinzugefügt werden: %(error)s
+Could not create team: %(error)s,Team konnte nicht erstellt werden: %(error)s
+Could not join team: %(error)s,Team konnte nicht beigetreten werden: %(error)s
+Could not join: %(error)s,Beitritt fehlgeschlagen: %(error)s
+Could not leave team: %(error)s,Team konnte nicht verlassen werden: %(error)s
+Could not leave: %(error)s,Verlassen fehlgeschlagen: %(error)s
+Could not remove member: %(error)s,Mitglied konnte nicht entfernt werden: %(error)s
+Could not remove participant: %(error)s,Teilnehmer konnte nicht entfernt werden: %(error)s
+Could not remove: %(error)s,Entfernen fehlgeschlagen: %(error)s
+Could not transfer captain: %(error)s,Kapitän konnte nicht übertragen werden: %(error)s
+Could not update team: %(error)s,Team konnte nicht aktualisiert werden: %(error)s
+Create LAN tournaments,LAN-Turniere erstellen
+Create tournament,Turnier erstellen
+Critical: at least one downstream match has already been confirmed. These matches will NOT be corrected automatically — handle them manually afterwards.,"Kritisch: Mindestens eine Folgepartie wurde bereits bestätigt. Diese Partien werden NICHT automatisch korrigiert – bitte anschließend manuell bearbeiten."
+DEFWIN,DEFWIN
+Danger Zone,Gefahrenbereich
+Delete LAN tournaments,LAN-Turniere löschen
+Delete all scores,Alle Ergebnisse löschen
+Delete team?,Team löschen?
+Details,Details
+Double Elimination,Doppelte Elimination
+Double Elimination Pool Status,Doppelte-Elimination-Pool-Status
+Edit LAN tournaments,LAN-Turniere bearbeiten
+Edit team,Team bearbeiten
+Edit tournament,Turnier bearbeiten
+Eliminated,Ausgeschieden
+Elimination mode,Eliminationsmodus
+Enter the final score for this match.,Gib das Endergebnis für diese Partie ein.
+Error adding comment: %(error)s,Fehler beim Hinzufügen des Kommentars: %(error)s
+Error confirming FFA match: %(error)s,Fehler beim Bestätigen der FFA-Partie: %(error)s
+Error confirming match: %(error)s,Fehler beim Bestätigen der Partie: %(error)s
+Error correcting match result: %(error)s,Fehler bei der Korrektur des Partieergebnisses: %(error)s
+Error deleting comment: %(error)s,Fehler beim Löschen des Kommentars: %(error)s
+Error setting placements: %(error)s,Fehler beim Setzen der Platzierungen: %(error)s
+Error setting score: %(error)s,Fehler beim Setzen des Ergebnisses: %(error)s
+Error unconfirming match: %(error)s,Fehler beim Zurücksetzen der Partie: %(error)s
+FFA,FFA
+FFA Double Elimination,FFA Doppelte Elimination
+FFA Standings,FFA-Rangliste
+FFA match has been confirmed.,FFA-Partie wurde bestätigt.
+FFA round generated with %(count)d group(s).,FFA-Runde mit %(count)d Gruppe(n) generiert.
+FFA round generation failed: %(error)s,FFA-Runden-Generierung fehlgeschlagen: %(error)s
+Free-for-All,Free-for-All
+Free-for-All tournaments generate rounds on demand.,Free-for-All-Turniere generieren Runden bei Bedarf.
+GP,GP
+Game,Spiel
+Game format,Spielformat
+Generate First Round,Erste Runde generieren
+Generate First WB Round,Erste WB-Runde generieren
+Generate Grand Final,Großes Finale generieren
+Generate bracket,Turnierbaum generieren
+Go back,Zurück
+Grand Final,Großes Finale
+Grand Final conditions met. Generate the ,Bedingungen für das große Finale erfüllt. 
+Grand Final generated with %(count)d group(s).,Großes Finale mit %(count)d Gruppe(n) generiert.
+Grand Final generation failed: %(error)s,Generierung des großen Finales fehlgeschlagen: %(error)s
+Grand Final is only for double elimination tournaments.,Das große Finale ist nur für Turniere mit doppelter Elimination.
+Grand Final placements not yet recorded.,Platzierungen des großen Finales noch nicht erfasst.
+Group size,Gruppengröße
+Higher is better,Höher ist besser
+Highscore,Highscore
+Highscore Leaderboard,Highscore-Rangliste
+Highscore tournaments do not use brackets.,Highscore-Turniere verwenden keinen Turnierbaum.
+Image URL,Bild-URL
+I acknowledge the critical warning (Case C),Ich bestätige die kritische Warnung (Fall C)
+Invalid combination of game format and elimination mode.,Ungültige Kombination aus Spielformat und Eliminationsmodus.
+Invalid comment.,Ungültiger Kommentar.
+Invalid contestant type selected.,Ungültiger Teilnehmertyp ausgewählt.
+Invalid elimination mode selected.,Ungültiger Eliminationsmodus ausgewählt.
+Invalid form data.,Ungültige Formulardaten.
+Invalid game format selected.,Ungültiges Spielformat ausgewählt.
+Invalid input.,Ungültige Eingabe.
+Invalid placement value for contestant.,Ungültiger Platzierungswert für Teilnehmer.
+Invalid pool parameter. Use WB or LB.,Ungültiger Pool-Parameter. Verwende WB oder LB.
+Invalid score or contestant ID.,Ungültiges Ergebnis oder ungültige Teilnehmer-ID.
+Invalid score ordering selected.,Ungültige Ergebnisreihenfolge ausgewählt.
+Invalid user selected.,Ungültiger Benutzer ausgewählt.
+Join code,Beitrittscode
+Join code required,Beitrittscode erforderlich
+Join team,Team beitreten
+Join tournament,Turnier beitreten
+Joined,Beigetreten
+LAN,LAN
+LAN Tournaments,LAN-Turniere
+LB,LB
+Leaderboard,Rangliste
+Leave both score fields empty to only retract the result without entering a new one.,"Beide Ergebnisfelder leer lassen, um nur das Ergebnis zurückzusetzen, ohne ein neues einzutragen."
+Leave team,Team verlassen
+Leave tournament,Turnier verlassen
+Loser submits,Verlierer meldet
+Losers Pool,Verlierer-Pool
+Losers Pool Standings,Verlierer-Pool-Rangliste
+Losers pool rounds are generated when WB round advancement drops players.,"Verlierer-Pool-Runden werden generiert, wenn Spieler aus der WB-Runde ausscheiden."
+Lower is better,Niedriger ist besser
+Match,Partie
+Match Score,Partieergebnis
+Match has been confirmed.,Partie wurde bestätigt.
+Match has been unconfirmed.,Partiebestätigung wurde zurückgenommen.
+Match notification email templates already exist.,E-Mail-Vorlagen für Partiebenachrichtigungen existieren bereits.
+Match notification email templates created.,E-Mail-Vorlagen für Partiebenachrichtigungen wurden erstellt.
+Match result has been corrected.,Partieergebnis wurde korrigiert.
+Match result has been corrected and the new scores confirmed.,"Partieergebnis wurde korrigiert und die neuen Ergebnisse bestätigt."
+Match result submitted.,Partieergebnis eingereicht.
+Matches,Partien
+Max. group size,Max. Gruppengröße
+Max. players,Max. Spieler
+Max. players per team,Max. Spieler pro Team
+Max. teams,Max. Teams
+Member,Mitglied
+Member has been removed from the team.,Mitglied wurde aus dem Team entfernt.
+Member removed from the team.,Mitglied aus dem Team entfernt.
+Members,Mitglieder
+Min. group size,Min. Gruppengröße
+Min. players,Min. Spieler
+Min. players per team,Min. Spieler pro Team
+Min. teams,Min. Teams
+My Matches,Meine Partien
+New captain,Neuer Kapitän
+No,Nein
+No FFA rounds have been played yet.,Es wurden noch keine FFA-Runden gespielt.
+No Losers Pool rounds have been played yet.,Es wurden noch keine Verlierer-Pool-Runden gespielt.
+No Winners Pool rounds have been played yet.,Es wurden noch keine Gewinner-Pool-Runden gespielt.
+No comments yet.,Noch keine Kommentare.
+No confirmed rounds yet.,Noch keine bestätigten Runden.
+No downstream matches are affected by this correction.,Keine Folgepartien sind von dieser Korrektur betroffen.
+No matches are ready for you yet.,Es sind noch keine Partien für dich bereit.
+No matches have been created yet.,Es wurden noch keine Partien erstellt.
+No members in this team yet.,Noch keine Mitglieder in diesem Team.
+No members in this team.,Keine Mitglieder in diesem Team.
+No open matches.,Keine offenen Partien.
+No participants have joined yet.,Noch keine Teilnehmer beigetreten.
+No participants without tickets found.,Keine Teilnehmer ohne Tickets gefunden.
+No placement data submitted.,Keine Platzierungsdaten übermittelt.
+No ready matches.,Keine bereiten Partien.
+No teams have been created yet.,Es wurden noch keine Teams erstellt.
+No teams have registered yet.,Es haben sich noch keine Teams angemeldet.
+No ticket,Kein Ticket
+No tournaments exist.,Es existieren keine Turniere.
+No tournaments found.,Keine Turniere gefunden.
+No user selected.,Kein Benutzer ausgewählt.
+None,Keine
+Ongoing,Laufend
+Open registration,Anmeldung öffnen
+Optional code to restrict team joins. Leave empty to remove.,Optionaler Code zur Einschränkung des Teambeitritts. Leer lassen zum Entfernen.
+Optional password to restrict team joins,Optionales Passwort zur Einschränkung des Teambeitritts
+"Optional short tag (e.g., ""PRO"")","Optionales Kürzel (z. B. „PRO"")"
+Overall,Gesamt
+Overall Standings,Gesamtrangliste
+"Participant ""%(name)s"" has been added.","Teilnehmer „%(name)s"" wurde hinzugefügt."
+Participant has been removed.,Teilnehmer wurde entfernt.
+Pause,Pausieren
+Paused,Pausiert
+Pending,Ausstehend
+Place,Platz
+Placement,Platzierung
+Placements,Platzierungen
+Placements have been set.,Platzierungen wurden gesetzt.
+Player,Spieler
+Player/team constraints,Spieler-/Team-Beschränkungen
+Players,Spieler
+Players per team,Spieler pro Team
+Please select a contestant.,Bitte einen Teilnehmer auswählen.
+Point table must be comma-separated integers.,Die Punktetabelle muss aus kommaseparierten ganzen Zahlen bestehen.
+Points,Punkte
+Points by placement,Punkte nach Platzierung
+Points carry to losers,Punkte werden in den Verlierer-Pool übertragen
+Points carry to losers pool,Punkte werden in den Verlierer-Pool übertragen
+Post Comment,Kommentar abschicken
+Pts,Pkt.
+Ready,Bereit
+Regenerate bracket,Turnierbaum neu generieren
+Registered teams,Angemeldete Teams
+Registration closed,Anmeldung geschlossen
+Registration is not open.,Die Anmeldung ist nicht geöffnet.
+Registrations,Anmeldungen
+Remove All Without Tickets,Alle ohne Tickets entfernen
+Remove Ticketless Participants,Teilnehmer ohne Tickets entfernen
+Remove participant?,Teilnehmer entfernen?
+Remove this member from the team?,Dieses Mitglied aus dem Team entfernen?
+Reopen registration,Anmeldung wieder öffnen
+Resume,Fortsetzen
+Round Robin,Round Robin
+Round advanced: %(signal)s,Runde weitergeschaltet: %(signal)s
+Round advancement failed: %(error)s,Rundenfortschritt fehlgeschlagen: %(error)s
+Rounds Played,Gespielte Runden
+Ruleset,Regelwerk
+Save Scores,Ergebnisse speichern
+Score (away),Ergebnis (Gast)
+Score (home),Ergebnis (Heim)
+Score,Ergebnis
+Score has been set.,Ergebnis wurde gesetzt.
+Score has been submitted.,Ergebnis wurde eingereicht.
+"Score must be between 0 and 999,999,999.",Das Ergebnis muss zwischen 0 und 999.999.999 liegen.
+Score ordering,Ergebnisreihenfolge
+Score submitted.,Ergebnis eingereicht.
+Screen name,Anzeigename
+Seat,Sitzplatz
+Selected user is not a team member.,Der ausgewählte Benutzer ist kein Teammitglied.
+Set Placements,Platzierungen setzen
+Set Score,Ergebnis setzen
+Setup email templates,E-Mail-Vorlagen einrichten
+Show all players,Alle Spieler anzeigen
+Single Elimination,Einfache Elimination
+Solo,Solo
+Standings,Rangliste
+Start time,Startzeit
+Start tournament,Turnier starten
+Status change failed: %(error)s,Statusänderung fehlgeschlagen: %(error)s
+Submit,Absenden
+Submit Score,Ergebnis einreichen
+Submit Scores,Ergebnisse einreichen
+Submit Your Score,Dein Ergebnis einreichen
+Substitute,Ersatzspieler
+Tag,Kürzel
+"Team ""%(name)s"" has been created.","Team „%(name)s"" wurde erstellt."
+"Team ""%(name)s"" has been deleted.","Team „%(name)s"" wurde gelöscht."
+"Team ""%(name)s"" has been updated.","Team „%(name)s"" wurde aktualisiert."
+Team creation failed: %(error)s,Teamerstellung fehlgeschlagen: %(error)s
+Team deletion failed: %(error)s,Teamlöschung fehlgeschlagen: %(error)s
+Team management is not available at this time.,Die Teamverwaltung ist derzeit nicht verfügbar.
+Team membership,Teammitgliedschaft
+Teams,Teams
+The following downstream matches will be recalculated (their results will be retracted):,"Die folgenden Folgepartien werden neu berechnet (ihre Ergebnisse werden zurückgesetzt):"
+The following teams are below the minimum team size:,Folgende Teams liegen unter der Mindestteamgröße:
+The match does not have two contestants to re-enter scores for.,Die Partie hat keine zwei Teilnehmer, für die Ergebnisse neu eingetragen werden können.
+The losing side submits the final score.,Die verlierende Seite meldet das Endergebnis.
+This action is irreversible. A cancelled tournament cannot be reopened.,Diese Aktion ist unwiderruflich. Ein abgebrochenes Turnier kann nicht wieder eröffnet werden.
+This tournament does not use highscores.,Dieses Turnier verwendet keine Highscores.
+This tournament is not a Free-for-All format.,Dieses Turnier ist kein Free-for-All-Format.
+"This tournament is ongoing. Only description, image, and ruleset can be changed.","Dieses Turnier läuft. Nur Beschreibung, Bild und Regelwerk können geändert werden."
+This will also unconfirm any downstream matches that used this result. Continue?,"Dadurch werden auch alle Folgepartien, die dieses Ergebnis verwendet haben, zurückgesetzt. Fortfahren?"
+This will unconfirm the match. Continue?,Dadurch wird die Partiebestätigung zurückgenommen. Fortfahren?
+Total Points,Gesamtpunkte
+Total participants,Teilnehmer gesamt
+Tournament,Turnier
+"Tournament ""%(name)s"" has been created.","Turnier „%(name)s"" wurde erstellt."
+"Tournament ""%(name)s"" has been deleted.","Turnier „%(name)s"" wurde gelöscht."
+"Tournament ""%(name)s"" has been updated.","Turnier „%(name)s"" wurde aktualisiert."
+Tournament Bracket,Turnierbaum
+Tournament is not accepting score submissions.,Das Turnier nimmt keine Ergebnisse mehr an.
+Tournament is not in progress.,Das Turnier ist nicht in Gange.
+Tournament mode,Turniermodus
+"Tournament status has been changed to ""%(status)s"".","Turnierstatus wurde auf „%(status)s"" geändert."
+Transfer,Übertragen
+Transfer captain,Kapitän übertragen
+Transfer captain role?,Kapitänsrolle übertragen?
+Transfer failed.,Übertragung fehlgeschlagen.
+Unconfirm Match,Partiebestätigung zurücknehmen
+Unknown,Unbekannt
+Unknown game format or elimination mode.,Unbekanntes Spielformat oder Eliminationsmodus.
+User is already the captain.,Der Benutzer ist bereits Kapitän.
+Valid,Gültig
+View Bracket,Turnierbaum anzeigen
+View LAN tournaments,LAN-Turniere ansehen
+View Matches List,Partienliste anzeigen
+View all,Alle anzeigen
+WB,WB
+Winners Pool,Gewinner-Pool
+Winners Pool Standings,Gewinner-Pool-Rangliste
+Write a comment...,Kommentar schreiben …
+Yes,Ja
+"Yes, cancel tournament","Ja, Turnier abbrechen"
+You are a member of this team.,Du bist Mitglied dieses Teams.
+You are already in a team.,Du bist bereits in einem Team.
+You are not in this team.,Du bist nicht in diesem Team.
+You are not participating in this tournament.,Du nimmst nicht an diesem Turnier teil.
+You are registered for this tournament.,Du bist für dieses Turnier angemeldet.
+"You have joined team ""%(name)s"".","Du bist dem Team „%(name)s"" beigetreten."
+"You have joined the tournament ""%(name)s"".","Du bist dem Turnier „%(name)s"" beigetreten."
+"You have left team ""%(name)s"".","Du hast das Team „%(name)s"" verlassen."
+"You have left the tournament ""%(name)s"".","Du hast das Turnier „%(name)s"" verlassen."
+You must join the tournament first.,Du musst dem Turnier zuerst beitreten.
+defwin,Freilos
+defwin - Advanced,Freilos – Weiter
+member,Mitglied
+members,Mitglieder
+nd,.
+not set,nicht gesetzt
+rd,.
+st,.
+th,.
+– select –,– auswählen –

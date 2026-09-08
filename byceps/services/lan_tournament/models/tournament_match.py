@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum
 from typing import TYPE_CHECKING, NewType
 from uuid import UUID
 
@@ -11,6 +12,14 @@ if TYPE_CHECKING:
     from .tournament_match_to_contestant import TournamentMatchToContestant
 
 TournamentMatchID = NewType('TournamentMatchID', UUID)
+
+
+class CorrectionCase(Enum):
+    """Classification of a result-correction situation."""
+
+    CASE_A = 'case_a'   # no downstream match -> correct freely
+    CASE_B = 'case_b'   # downstream exists, unconfirmed -> warn, then proceed
+    CASE_C = 'case_c'   # downstream confirmed/started -> critical warning + ack
 
 
 @dataclass(frozen=True, kw_only=True)

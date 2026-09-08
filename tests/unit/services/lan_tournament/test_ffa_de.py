@@ -5,9 +5,6 @@ tests.unit.services.lan_tournament.test_ffa_de
 Unit tests for FFA double elimination pool logic:
 advance_ffa_round (WB/LB), generate_ffa_grand_final,
 confirm_ffa_match (GF completion), point carry.
-
-:Copyright: 2014-2026 Jochen Kupperschmidt
-:License: Revised BSD (see `LICENSE` file for details)
 """
 
 from datetime import datetime, UTC

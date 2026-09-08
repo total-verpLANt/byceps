@@ -26,6 +26,9 @@ from byceps.services.lan_tournament.models.elimination_mode import (
 )
 from byceps.services.lan_tournament.models.game_format import GameFormat
 from byceps.services.lan_tournament.models.score_ordering import ScoreOrdering
+from byceps.services.lan_tournament.tournament_match_service import (
+    MAX_MATCH_SCORE,
+)
 
 
 def _get_contestant_type_choices() -> list[tuple[str, str]]:
@@ -255,6 +258,22 @@ class AddTeamMemberForm(LocalizedForm):
 
         field.data = screen_name
         form.user = user
+
+
+class MatchCorrectionForm(LocalizedForm):
+    corrected_score_home = IntegerField(
+        lazy_gettext('Score (home)'),
+        validators=[Optional(), NumberRange(min=0, max=MAX_MATCH_SCORE)],
+    )
+    corrected_score_away = IntegerField(
+        lazy_gettext('Score (away)'),
+        validators=[Optional(), NumberRange(min=0, max=MAX_MATCH_SCORE)],
+    )
+    reason = TextAreaField(lazy_gettext('Reason'), validators=[InputRequired()])
+    ack_critical = BooleanField(
+        lazy_gettext('I acknowledge the critical warning (Case C)'),
+        validators=[Optional()],
+    )
 
 
 class HighscoreSubmitForm(LocalizedForm):
