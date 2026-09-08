@@ -1,4 +1,4 @@
-FROM python:3.13-trixie
+FROM python:3.14-trixie
 
 # Install Debian dependencies.
 # A final `apt-get clean` is part of the Debian base image.
@@ -14,7 +14,7 @@ USER byceps
 ENV PATH=/home/byceps/.local/bin:$PATH
 
 # Install uv.
-COPY --from=ghcr.io/astral-sh/uv:0.9.30 /uv /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.12.9 /uv /bin/
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_PYTHON_DOWNLOADS=never

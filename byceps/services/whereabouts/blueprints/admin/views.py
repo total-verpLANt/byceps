@@ -6,9 +6,6 @@ byceps.services.whereabouts.blueprints.admin.views
 :License: Revised BSD (see `LICENSE` file for details)
 """
 
-from collections import defaultdict
-from datetime import datetime, timedelta
-
 from flask import abort, g, request
 from flask_babel import gettext
 
@@ -23,7 +20,6 @@ from byceps.services.whereabouts import (
 from byceps.services.whereabouts.models import (
     WhereaboutsClient,
     WhereaboutsClientCandidate,
-    WhereaboutsStatus,
 )
 from byceps.util.framework.blueprint import create_blueprint
 from byceps.util.framework.flash import flash_success
@@ -41,9 +37,6 @@ from .forms import ClientUpdateForm, UserSoundCreateForm, WhereaboutsCreateForm
 blueprint = create_blueprint('whereabouts_admin', __name__)
 
 
-STALE_THRESHOLD = timedelta(hours=12)
-
-
 @blueprint.get('/for_party/<party_id>')
 @permission_required('whereabouts.view')
 @templated
@@ -51,26 +44,12 @@ def index(party_id):
     """Show orga whereabouts for party."""
     party = _get_party_or_404(party_id)
 
-    whereabouts_list = whereabouts_service.get_whereabouts_list(party)
-
-    statuses = whereabouts_service.get_statuses(party)
-
-    now = datetime.utcnow()
-
-    def _is_status_stale(status: WhereaboutsStatus) -> bool:
-        return (now - STALE_THRESHOLD) > status.set_at
-
-    stale_statuses, recent_statuses = partition(statuses, _is_status_stale)
-
-    recent_statuses_by_whereabouts = defaultdict(list)
-    for status in recent_statuses:
-        recent_statuses_by_whereabouts[status.whereabouts_id].append(status)
+    overview = whereabouts_service.get_overview(party)
 
     return {
         'party': party,
-        'whereabouts_list': whereabouts_list,
-        'recent_statuses_by_whereabouts': recent_statuses_by_whereabouts,
-        'stale_statuses': stale_statuses,
+        'whereabouts_list': overview.whereabouts_list,
+        'stale_statuses': overview.stale_statuses,
     }
 
 
@@ -220,7 +199,11 @@ def client_update_form(client_id, erroneous_form=None):
     """Show form to update a client."""
     client = _get_client_or_404(client_id)
 
-    form = erroneous_form if erroneous_form else ClientUpdateForm(obj=client)
+    form = (
+        erroneous_form
+        if erroneous_form
+        else ClientUpdateForm(client.name, obj=client)
+    )
 
     return {
         'client': client,
@@ -234,7 +217,7 @@ def client_update(client_id):
     """Update the webhook."""
     client = _get_client_or_404(client_id)
 
-    form = ClientUpdateForm(request.form)
+    form = ClientUpdateForm(client.name, request.form)
     if not form.validate():
         return client_update_form(client.id, form)
 

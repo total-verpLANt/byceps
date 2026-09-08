@@ -110,3 +110,26 @@ class WhereaboutsUpdate:
     whereabouts_id: WhereaboutsID
     created_at: datetime
     source_address: IPAddress | None
+
+
+@dataclass(frozen=True, kw_only=True)
+class Overview:
+    whereabouts_list: list[OverviewWhereabouts]
+    stale_statuses: list[OverviewStatus]
+
+
+@dataclass(frozen=True, kw_only=True)
+class OverviewWhereabouts:
+    name: str
+    description: str
+    position: int
+    hidden_if_empty: bool
+    secret: bool
+    statuses: list[OverviewStatus]
+
+
+@dataclass(frozen=True, kw_only=True)
+class OverviewStatus:
+    user: User
+    set_at: datetime
+    stale: bool

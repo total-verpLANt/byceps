@@ -6,7 +6,7 @@ byceps.services.whereabouts.blueprints.api.views
 :License: Revised BSD (see `LICENSE` file for details)
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from ipaddress import ip_address
 
 from flask import abort, g, jsonify, request, Request, url_for
@@ -28,7 +28,11 @@ from byceps.services.whereabouts.events import (
 )
 from byceps.services.whereabouts.models import IPAddress
 from byceps.util.framework.blueprint import create_blueprint
-from byceps.util.views import create_empty_json_response, respond_no_content
+from byceps.util.views import (
+    api_token_required,
+    create_empty_json_response,
+    respond_no_content,
+)
 
 from .decorators import client_token_required
 from .models import RegisterClientRequestModel, SetStatusRequestModel
@@ -157,7 +161,7 @@ def get_status(user_id, party_id):
         abort(404, 'Unknown user ID')
 
     party = party_service.find_party(party_id)
-    if user is None:
+    if party is None:
         abort(404, 'Unknown party ID')
 
     status = whereabouts_service.find_status(user, party)
@@ -224,6 +228,61 @@ def set_status():
     )
 
     whereabouts_signals.whereabouts_status_updated.send(None, event=event)
+
+
+@blueprint.get('/overview/<party_id>')
+@api_token_required
+def get_overview(party_id):
+    """Return the overview (whereabouts with user statuses) for a party."""
+    party = party_service.find_party(party_id)
+    if party is None:
+        abort(404, 'Unknown party ID')
+
+    whereabouts_list_with_statuses = (
+        whereabouts_service.get_whereabouts_list_with_statuses(party)
+    )
+
+    def party_to_dict(party):
+        return {
+            'id': party.id,
+            'title': party.title,
+        }
+
+    def whereabouts_to_dict(whereabouts):
+        return {
+            'name': whereabouts.name,
+            'description': whereabouts.description,
+            'position': whereabouts.position,
+            'hidden_if_empty': whereabouts.hidden_if_empty,
+            'secret': whereabouts.secret,
+            'statuses': [
+                status_to_dict(status) for status in whereabouts.statuses
+            ],
+        }
+
+    def status_to_dict(status):
+        return {
+            'user': user_to_dict(status.user),
+            'set_at': status.set_at.replace(tzinfo=timezone.utc).isoformat(),
+            'stale': status.stale,
+        }
+
+    def user_to_dict(user):
+        return {
+            'id': user.id,
+            'screen_name': user.screen_name,
+            'avatar_url': user.avatar_url,
+        }
+
+    data = {
+        'party': party_to_dict(party),
+        'whereabouts_list': [
+            whereabouts_to_dict(whereabouts)
+            for whereabouts in whereabouts_list_with_statuses
+        ],
+    }
+
+    return jsonify(data)
 
 
 # helpers

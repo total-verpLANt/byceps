@@ -6,14 +6,14 @@ readme = "README.rst"
 authors = [
     { name = "Jochen Kupperschmidt", email = "homework@nwsnet.de" },
 ]
-license = { text = "Revised BSD License" }
+license = "BSD-3-Clause"
+license-files = ["LICENSE"]
 keywords = ["lanparty"]
 classifiers = [
     "Environment :: Web Environment",
     "Framework :: Flask",
     "Intended Audience :: Developers",
     "Intended Audience :: Other Audience",
-    "License :: OSI Approved :: BSD License",
     "Natural Language :: English",
     "Natural Language :: German",
     "Programming Language :: JavaScript",
@@ -21,6 +21,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Communications",
     "Topic :: Games/Entertainment",
     "Topic :: Internet :: WWW/HTTP :: Dynamic Content :: Content Management System",
@@ -29,48 +30,47 @@ classifiers = [
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "babel>=2.17.0",
+    "babel>=2.18.0",
     "bbcode==1.1.0",
     "blinker>=1.9.0",
-    "click>=8.3.1",
+    "click>=8.5.0",
     "flask-babel==4.0.0",
     "flask-sqlalchemy==3.1.1",
     "flask>=3.1.3",
-    "hiredis>=3.3.0",
+    "hiredis>=3.4.1",
     "httpx[http2]>=0.28.1",
     "itsdangerous==2.2.0",
     "jinja2>=3.1.6",
+    "lanpartydb>=0.13.0",
     "markupsafe==3.0.3",
-    "mistletoe>=1.5.1",
+    "mistletoe>=1.6.0",
     "paypal-checkout-serversdk==1.0.3",
     "paypalhttp==1.0.1",
-    "pillow>=12.1.1",
-    "psycopg[binary]>=3.3.3",
+    "pillow>=12.3.0",
+    "psycopg[binary]>=3.3.5",
     "py-moneyed==3.0",
-    "pydantic>=2.12.5",
-    "python-dotenv>=1.2.2",
+    "pydantic>=2.13.5",
+    "python-dotenv>=1.2.3",
     "qrcode>=8.2",
-    "redis>=7.1.1",
+    "redis>=8.1.0",
     "rq-dashboard>=0.8.6",
-    "rq>=2.6.1",
+    "rq>=2.8.0",
     "rtoml>=0.13.0",
-    "schwifty>=2026.3.0",
+    "schwifty>=2026.7.3",
     "secret-type>=0.3.0",
-    "sentry-sdk[flask,httpx,rq,sqlalchemy]>=2.50.0",
-    "sqlalchemy>=2.0.48",
+    "sentry-sdk[flask,httpx,rq,sqlalchemy]>=2.68.1",
+    "sqlalchemy>=2.0.52",
     "stripe==5.4.0",
-    "structlog>=25.5.0",
+    "structlog>=26.1.0",
     "tenacity>=9.1.4",
     "uuid6>=2025.0.1",
-    "werkzeug>=3.1.6",
-    "wtforms==3.2.1",
+    "werkzeug>=3.1.8",
+    "wtforms>=3.2.2",
 ]
 
 [dependency-groups]
 dev = [
     "flask-debugtoolbar==0.16.0",
-    "mypy>=1.15.0",
-    "ruff>=0.11.7",
     "types-freezegun==1.1.10",
     "types-redis==4.6.0.20241004",
 ]
@@ -79,11 +79,11 @@ docs = [
     "sphinx>=9.0.4",
 ]
 test = [
-    "coverage>=7.13.4",
+    "coverage>=7.16.0",
     "freezegun>=1.5.5",
-    "pyfakefs>=6.1.4",
-    "pytest>=9.0.2",
-    "respx>=0.22.0",
+    "pyfakefs>=6.2.0",
+    "pytest>=9.1.1",
+    "respx>=0.23.1",
 ]
 
 [project.optional-dependencies]
@@ -100,7 +100,7 @@ Documentation = "https://byceps.readthedocs.io/"
 Repository = "https://github.com/byceps/byceps"
 
 [build-system]
-requires = ["uv_build>=0.8.11,<0.9.0"]
+requires = ["uv_build>=0.12.3,<0.13.0"]
 build-backend = "uv_build"
 
 [tool.mypy]
@@ -165,7 +165,7 @@ order-by-type = false
 
 [tool.uv]
 default-groups = []
-required-version = ">=0.9.28"
+required-version = ">=0.12.3"
 
 [tool.uv.build-backend]
 module-name = "byceps"
