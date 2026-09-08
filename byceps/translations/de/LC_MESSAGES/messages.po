@@ -10027,3 +10027,1420 @@ msgstr "Tickets bezahlt"
 msgid "Order tickets"
 msgstr "Tickets bestellen"
 
+
+#. LAN Tournament translations (imported from CSV)
+
+msgid "%(count)s participant(s) removed."
+msgstr "%(count)s Teilnehmer entfernt."
+
+msgid "%(count)s participant(s) removed. Captain roles transferred where needed."
+msgstr "%(count)s Teilnehmer entfernt. Kapitänsrollen wurden bei Bedarf übertragen."
+
+msgid "%(name)s added to the team."
+msgstr "%(name)s wurde dem Team hinzugefügt."
+
+msgid "-- select --"
+msgstr "-- auswählen --"
+
+msgid "1st Place"
+msgstr "1. Platz"
+
+msgid "2nd"
+msgstr "2."
+
+msgid "2nd Place"
+msgstr "2. Platz"
+
+msgid "3rd"
+msgstr "3."
+
+msgid "3rd Place"
+msgstr "3. Platz"
+
+msgid "Add Comment"
+msgstr "Kommentar hinzufügen"
+
+msgid "Add member"
+msgstr "Mitglied hinzufügen"
+
+msgid "Add participant"
+msgstr "Teilnehmer hinzufügen"
+
+msgid "Administrate LAN tournaments"
+msgstr "LAN-Turniere verwalten"
+
+msgid "Advance LB Round"
+msgstr "LB-Runde weiterschalten"
+
+msgid "Advance Round"
+msgstr "Runde weiterschalten"
+
+msgid "Advance WB Round"
+msgstr "WB-Runde weiterschalten"
+
+msgid "Advance per group"
+msgstr "Aufsteiger pro Gruppe"
+
+msgid "Advanced to next round. %(count)d group(s) generated."
+msgstr "Zur nächsten Runde vorgerückt. %(count)d Gruppe(n) generiert."
+
+msgid "Advancement count"
+msgstr "Anzahl Aufsteiger"
+
+msgid "All"
+msgstr "Alle"
+
+msgid "All contestants must have scores."
+msgstr "Alle Teilnehmer müssen Ergebnisse haben."
+
+msgid "All scores have been deleted."
+msgstr "Alle Ergebnisse wurden gelöscht."
+
+msgid "Are you sure you want to delete ALL scores? This cannot be undone."
+msgstr "Sollen wirklich ALLE Ergebnisse gelöscht werden? Dies kann nicht rückgängig gemacht werden."
+
+msgid "Average Points"
+msgstr "Durchschnittliche Punkte"
+
+msgid "Avg"
+msgstr "Durchschn."
+
+msgid "Bracket"
+msgstr "Turnierbaum"
+
+msgid "Bracket can only be generated when registration is closed or tournament is ongoing."
+msgstr "Der Turnierbaum kann nur generiert werden, wenn die Anmeldung geschlossen oder das Turnier laufend ist."
+
+msgid "Bracket generated with %(count)d matches."
+msgstr "Turnierbaum mit %(count)d Partien generiert."
+
+msgid "Bracket generation failed: %(error)s"
+msgstr "Turnierbaum-Generierung fehlgeschlagen: %(error)s"
+
+msgid "Cancel Tournament?"
+msgstr "Turnier abbrechen?"
+
+msgid "Complete Tournament?"
+msgstr "Turnier abschließen?"
+
+msgid "Cancelled"
+msgstr "Abgebrochen"
+
+msgid "Cannot remove the team captain."
+msgstr "Der Team-Kapitän kann nicht entfernt werden."
+
+msgid "Captain"
+msgstr "Kapitän"
+
+msgid "Captain role has been transferred."
+msgstr "Die Kapitänsrolle wurde übertragen."
+
+msgid "Captain transferred to %(name)s."
+msgstr "Kapitän an %(name)s übertragen."
+
+msgid "Champion"
+msgstr "Sieger"
+
+msgid "Checked-in players"
+msgstr "Eingecheckte Spieler"
+
+msgid "Close registration"
+msgstr "Anmeldung schließen"
+
+msgid "Comment"
+msgstr "Kommentar"
+
+msgid "Comment added."
+msgstr "Kommentar hinzugefügt."
+
+msgid "Comment cannot be empty."
+msgstr "Kommentar darf nicht leer sein."
+
+msgid "Comment has been added."
+msgstr "Kommentar wurde hinzugefügt."
+
+msgid "Comment has been deleted."
+msgstr "Kommentar wurde gelöscht."
+
+msgid "Comments"
+msgstr "Kommentare"
+
+msgid "Complete"
+msgstr "Abschließen"
+
+msgid "Completed"
+msgstr "Abgeschlossen"
+
+msgid "Confirm FFA Match"
+msgstr "FFA-Partie bestätigen"
+
+msgid "Confirm Match"
+msgstr "Partie bestätigen"
+
+msgid "Confirm all LB groups in the current round before advancing."
+msgstr "Alle LB-Gruppen der aktuellen Runde bestätigen, bevor weitergeschaltet wird."
+
+msgid "Confirm all WB groups in the current round before advancing."
+msgstr "Alle WB-Gruppen der aktuellen Runde bestätigen, bevor weitergeschaltet wird."
+
+msgid "Confirm all groups in the current round before advancing."
+msgstr "Alle Gruppen der aktuellen Runde bestätigen, bevor weitergeschaltet wird."
+
+msgid "Confirmed"
+msgstr "Bestätigt"
+
+msgid "Contains invalid characters."
+msgstr "Enthält ungültige Zeichen."
+
+msgid "Contestant"
+msgstr "Teilnehmer"
+
+msgid "Contestant ID and score are required."
+msgstr "Teilnehmer-ID und Ergebnis sind erforderlich."
+
+msgid "Contestant type"
+msgstr "Teilnehmertyp"
+
+msgid "Contestants"
+msgstr "Teilnehmer"
+
+msgid "Contestants & Placements"
+msgstr "Teilnehmer & Platzierungen"
+
+msgid "Could not add member."
+msgstr "Mitglied konnte nicht hinzugefügt werden."
+
+msgid "Could not add participant: %(error)s"
+msgstr "Teilnehmer konnte nicht hinzugefügt werden: %(error)s"
+
+msgid "Could not create team: %(error)s"
+msgstr "Team konnte nicht erstellt werden: %(error)s"
+
+msgid "Could not join team: %(error)s"
+msgstr "Team konnte nicht beigetreten werden: %(error)s"
+
+msgid "Could not join: %(error)s"
+msgstr "Beitritt fehlgeschlagen: %(error)s"
+
+msgid "Could not leave team: %(error)s"
+msgstr "Team konnte nicht verlassen werden: %(error)s"
+
+msgid "Could not leave: %(error)s"
+msgstr "Verlassen fehlgeschlagen: %(error)s"
+
+msgid "Could not remove member: %(error)s"
+msgstr "Mitglied konnte nicht entfernt werden: %(error)s"
+
+msgid "Could not remove participant: %(error)s"
+msgstr "Teilnehmer konnte nicht entfernt werden: %(error)s"
+
+msgid "Could not remove: %(error)s"
+msgstr "Entfernen fehlgeschlagen: %(error)s"
+
+msgid "Could not transfer captain: %(error)s"
+msgstr "Kapitän konnte nicht übertragen werden: %(error)s"
+
+msgid "Could not update team: %(error)s"
+msgstr "Team konnte nicht aktualisiert werden: %(error)s"
+
+msgid "Create LAN tournaments"
+msgstr "LAN-Turniere erstellen"
+
+msgid "Create tournament"
+msgstr "Turnier erstellen"
+
+msgid "DEFWIN"
+msgstr "DEFWIN"
+
+msgid "Danger Zone"
+msgstr "Gefahrenbereich"
+
+msgid "Defeated"
+msgstr "Besiegt"
+
+msgid "Delete LAN tournaments"
+msgstr "LAN-Turniere löschen"
+
+msgid "Delete all scores"
+msgstr "Alle Ergebnisse löschen"
+
+msgid "Delete team?"
+msgstr "Team löschen?"
+
+msgid "Details"
+msgstr "Details"
+
+msgid "Double Elimination"
+msgstr "Doppelte Elimination"
+
+msgid "Double Elimination Pool Status"
+msgstr "Doppelte-Elimination-Pool-Status"
+
+msgid "Draw"
+msgstr "Unentschieden"
+
+msgid "Edit LAN tournaments"
+msgstr "LAN-Turniere bearbeiten"
+
+msgid "Edit team"
+msgstr "Team bearbeiten"
+
+msgid "Edit tournament"
+msgstr "Turnier bearbeiten"
+
+msgid "Eliminated"
+msgstr "Ausgeschieden"
+
+msgid "Elimination mode"
+msgstr "Eliminationsmodus"
+
+msgid "Email templates for match notifications have not been set up yet."
+msgstr "E-Mail-Vorlagen für Partiebenachrichtigungen wurden noch nicht eingerichtet."
+
+msgid "Enter the final score for this match."
+msgstr "Gib das Endergebnis für diese Partie ein."
+
+msgid "Error adding comment: %(error)s"
+msgstr "Fehler beim Hinzufügen des Kommentars: %(error)s"
+
+msgid "Error confirming FFA match: %(error)s"
+msgstr "Fehler beim Bestätigen der FFA-Partie: %(error)s"
+
+msgid "Error confirming match: %(error)s"
+msgstr "Fehler beim Bestätigen der Partie: %(error)s"
+
+msgid "Error deleting comment: %(error)s"
+msgstr "Fehler beim Löschen des Kommentars: %(error)s"
+
+msgid "Error setting placements: %(error)s"
+msgstr "Fehler beim Setzen der Platzierungen: %(error)s"
+
+msgid "Error setting score: %(error)s"
+msgstr "Fehler beim Setzen des Ergebnisses: %(error)s"
+
+msgid "Error unconfirming match: %(error)s"
+msgstr "Fehler beim Zurücksetzen der Partie: %(error)s"
+
+msgid "FFA"
+msgstr "FFA"
+
+msgid "FFA Double Elimination"
+msgstr "FFA Doppelte Elimination"
+
+msgid "FFA Standings"
+msgstr "FFA-Rangliste"
+
+msgid "FFA match has been confirmed."
+msgstr "FFA-Partie wurde bestätigt."
+
+msgid "FFA round generated with %(count)d group(s)."
+msgstr "FFA-Runde mit %(count)d Gruppe(n) generiert."
+
+msgid "FFA round generation failed: %(error)s"
+msgstr "FFA-Runden-Generierung fehlgeschlagen: %(error)s"
+
+msgid "Free-for-All"
+msgstr "Free-for-All"
+
+msgid "Free-for-All tournaments generate rounds on demand."
+msgstr "Free-for-All-Turniere generieren Runden bei Bedarf."
+
+msgid "GP"
+msgstr "GP"
+
+msgid "Game"
+msgstr "Spiel"
+
+msgid "Game format"
+msgstr "Spielformat"
+
+msgid "Generate First Round"
+msgstr "Erste Runde generieren"
+
+msgid "Generate First WB Round"
+msgstr "Erste WB-Runde generieren"
+
+msgid "Generate Grand Final"
+msgstr "Großes Finale generieren"
+
+msgid "Generate bracket"
+msgstr "Turnierbaum generieren"
+
+msgid "Go back"
+msgstr "Zurück"
+
+msgid "Grand Final"
+msgstr "Großes Finale"
+
+msgid "Grand Final conditions met. Generate the Grand Final round."
+msgstr "Bedingungen für das große Finale erfüllt. Generiere die Grand-Final-Runde."
+
+msgid "Grand Final generated with %(count)d group(s)."
+msgstr "Großes Finale mit %(count)d Gruppe(n) generiert."
+
+msgid "Grand Final generation failed: %(error)s"
+msgstr "Generierung des großen Finales fehlgeschlagen: %(error)s"
+
+msgid "Grand Final is only for double elimination tournaments."
+msgstr "Das große Finale ist nur für Turniere mit doppelter Elimination."
+
+msgid "Grand Final is ready to be generated."
+msgstr "Das große Finale kann jetzt generiert werden."
+
+msgid "Grand Final placements not yet recorded."
+msgstr "Platzierungen des großen Finales noch nicht erfasst."
+
+msgid "Group size"
+msgstr "Gruppengröße"
+
+msgid "Higher is better"
+msgstr "Höher ist besser"
+
+msgid "Highscore"
+msgstr "Highscore"
+
+msgid "Highscore Leaderboard"
+msgstr "Highscore-Rangliste"
+
+msgid "Highscore tournaments do not use brackets."
+msgstr "Highscore-Turniere verwenden keinen Turnierbaum."
+
+msgid "Image URL"
+msgstr "Bild-URL"
+
+msgid "Invalid combination of game format and elimination mode."
+msgstr "Ungültige Kombination aus Spielformat und Eliminationsmodus."
+
+msgid "Invalid comment."
+msgstr "Ungültiger Kommentar."
+
+msgid "Invalid contestant type selected."
+msgstr "Ungültiger Teilnehmertyp ausgewählt."
+
+msgid "Invalid elimination mode selected."
+msgstr "Ungültiger Eliminationsmodus ausgewählt."
+
+msgid "Invalid form data."
+msgstr "Ungültige Formulardaten."
+
+msgid "Invalid game format selected."
+msgstr "Ungültiges Spielformat ausgewählt."
+
+msgid "Invalid input."
+msgstr "Ungültige Eingabe."
+
+msgid "Invalid placement value for contestant."
+msgstr "Ungültiger Platzierungswert für Teilnehmer."
+
+msgid "Invalid pool parameter. Use WB or LB."
+msgstr "Ungültiger Pool-Parameter. Verwende WB oder LB."
+
+msgid "Invalid score or contestant ID."
+msgstr "Ungültiges Ergebnis oder ungültige Teilnehmer-ID."
+
+msgid "Invalid score ordering selected."
+msgstr "Ungültige Ergebnisreihenfolge ausgewählt."
+
+msgid "Invalid score value."
+msgstr "Ungültiger Ergebniswert."
+
+msgid "Invalid user selected."
+msgstr "Ungültiger Benutzer ausgewählt."
+
+msgid "Join code"
+msgstr "Beitrittscode"
+
+msgid "Join code required"
+msgstr "Beitrittscode erforderlich"
+
+msgid "Join team"
+msgstr "Team beitreten"
+
+msgid "Join tournament"
+msgstr "Turnier beitreten"
+
+msgid "Joined"
+msgstr "Beigetreten"
+
+msgid "LAN"
+msgstr "LAN"
+
+msgid "LAN Tournaments"
+msgstr "LAN-Turniere"
+
+msgid "LB"
+msgstr "LB"
+
+msgid "Leaderboard"
+msgstr "Rangliste"
+
+msgid "Leave team"
+msgstr "Team verlassen"
+
+msgid "Leave tournament"
+msgstr "Turnier verlassen"
+
+msgid "Loser submits"
+msgstr "Verlierer meldet"
+
+msgid "Losers Pool"
+msgstr "Verlierer-Pool"
+
+msgid "Losers Pool Standings"
+msgstr "Verlierer-Pool-Rangliste"
+
+msgid "Losers pool rounds are generated when WB round advancement drops players."
+msgstr "Verlierer-Pool-Runden werden generiert, wenn Spieler aus der WB-Runde ausscheiden."
+
+msgid "Lower is better"
+msgstr "Niedriger ist besser"
+
+msgid "Match"
+msgstr "Partie"
+
+msgid "Match Score"
+msgstr "Partieergebnis"
+
+msgid "Match has been confirmed."
+msgstr "Partie wurde bestätigt."
+
+msgid "Match has been unconfirmed."
+msgstr "Partiebestätigung wurde zurückgenommen."
+
+msgid "Match notification email templates already exist."
+msgstr "E-Mail-Vorlagen für Partiebenachrichtigungen existieren bereits."
+
+msgid "Match notification email templates created."
+msgstr "E-Mail-Vorlagen für Partiebenachrichtigungen wurden erstellt."
+
+msgid "Match result submitted."
+msgstr "Partieergebnis eingereicht."
+
+msgid "Matches"
+msgstr "Partien"
+
+msgid "Max. group size"
+msgstr "Max. Gruppengröße"
+
+msgid "Max. players"
+msgstr "Max. Spieler"
+
+msgid "Max. players per team"
+msgstr "Max. Spieler pro Team"
+
+msgid "Max. teams"
+msgstr "Max. Teams"
+
+msgid "Member"
+msgstr "Mitglied"
+
+msgid "Member has been removed from the team."
+msgstr "Mitglied wurde aus dem Team entfernt."
+
+msgid "Member removed from the team."
+msgstr "Mitglied aus dem Team entfernt."
+
+msgid "Members"
+msgstr "Mitglieder"
+
+msgid "Min. group size"
+msgstr "Min. Gruppengröße"
+
+msgid "Min. players"
+msgstr "Min. Spieler"
+
+msgid "Min. players per team"
+msgstr "Min. Spieler pro Team"
+
+msgid "Min. teams"
+msgstr "Min. Teams"
+
+msgid "My Matches"
+msgstr "Meine Partien"
+
+msgid "New captain"
+msgstr "Neuer Kapitän"
+
+msgid "No"
+msgstr "Nein"
+
+msgid "No FFA rounds have been played yet."
+msgstr "Es wurden noch keine FFA-Runden gespielt."
+
+msgid "No Losers Pool rounds have been played yet."
+msgstr "Es wurden noch keine Verlierer-Pool-Runden gespielt."
+
+msgid "No Winners Pool rounds have been played yet."
+msgstr "Es wurden noch keine Gewinner-Pool-Runden gespielt."
+
+msgid "No comments yet."
+msgstr "Noch keine Kommentare."
+
+msgid "No confirmed rounds yet."
+msgstr "Noch keine bestätigten Runden."
+
+msgid "No matches are ready for you yet."
+msgstr "Es sind noch keine Partien für dich bereit."
+
+msgid "No ready matches."
+msgstr "Keine bereiten Partien."
+
+msgid "No matches have been created yet."
+msgstr "Es wurden noch keine Partien erstellt."
+
+msgid "No members in this team yet."
+msgstr "Noch keine Mitglieder in diesem Team."
+
+msgid "No members in this team."
+msgstr "Keine Mitglieder in diesem Team."
+
+msgid "No open matches."
+msgstr "Keine offenen Partien."
+
+msgid "No participants have joined yet."
+msgstr "Noch keine Teilnehmer beigetreten."
+
+msgid "No participants without tickets found. Ticket status may have changed since the page was loaded."
+msgstr "Keine Teilnehmer ohne Tickets gefunden. Der Ticketstatus hat sich möglicherweise seit dem Laden der Seite geändert."
+
+msgid "No placement data submitted."
+msgstr "Keine Platzierungsdaten übermittelt."
+
+msgid "No ready matches."
+msgstr "Keine bereiten Partien."
+
+msgid "No teams have been created yet."
+msgstr "Es wurden noch keine Teams erstellt."
+
+msgid "No teams have registered yet."
+msgstr "Es haben sich noch keine Teams angemeldet."
+
+msgid "No ticket"
+msgstr "Kein Ticket"
+
+msgid "No tournaments exist."
+msgstr "Es existieren keine Turniere."
+
+msgid "No tournaments found."
+msgstr "Keine Turniere gefunden."
+
+msgid "No user selected."
+msgstr "Kein Benutzer ausgewählt."
+
+msgid "None"
+msgstr "Keine"
+
+msgid "Ongoing"
+msgstr "Laufend"
+
+msgid "Open registration"
+msgstr "Anmeldung öffnen"
+
+msgid "Optional code to restrict team joins. Leave empty to remove."
+msgstr "Optionaler Code zur Einschränkung des Teambeitritts. Leer lassen zum Entfernen."
+
+msgid "Optional password to restrict team joins"
+msgstr "Optionales Passwort zur Einschränkung des Teambeitritts"
+
+msgid "Optional short tag (e.g., \"PRO\")"
+msgstr "Optionales Kürzel (z. B. „PRO”)"
+
+msgid "Overall"
+msgstr "Gesamt"
+
+msgid "Overall Standings"
+msgstr "Gesamtrangliste"
+
+msgid "Participant \"%(name)s\" has been added."
+msgstr "Teilnehmer „%(name)s” wurde hinzugefügt."
+
+msgid "Participant has been removed."
+msgstr "Teilnehmer wurde entfernt."
+
+msgid "Pause"
+msgstr "Pausieren"
+
+msgid "Paused"
+msgstr "Pausiert"
+
+msgid "Pending"
+msgstr "Ausstehend"
+
+msgid "Place"
+msgstr "Platz"
+
+msgid "Placement"
+msgstr "Platzierung"
+
+msgid "Placements"
+msgstr "Platzierungen"
+
+msgid "Placements have been set."
+msgstr "Platzierungen wurden gesetzt."
+
+msgid "Player"
+msgstr "Spieler"
+
+msgid "Player/team constraints"
+msgstr "Spieler-/Team-Beschränkungen"
+
+msgid "Players"
+msgstr "Spieler"
+
+msgid "Players per team"
+msgstr "Spieler pro Team"
+
+msgid "Please select a contestant."
+msgstr "Bitte einen Teilnehmer auswählen."
+
+msgid "Point table must be comma-separated integers."
+msgstr "Die Punktetabelle muss aus kommaseparierten ganzen Zahlen bestehen."
+
+msgid "Points"
+msgstr "Punkte"
+
+msgid "Points by placement"
+msgstr "Punkte nach Platzierung"
+
+msgid "Points carry to losers"
+msgstr "Punkte werden in den Verlierer-Pool übertragen"
+
+msgid "Points carry to losers pool"
+msgstr "Punkte werden in den Verlierer-Pool übertragen"
+
+msgid "Post Comment"
+msgstr "Kommentar abschicken"
+
+msgid "Pts"
+msgstr "Pkt."
+
+msgid "Ready"
+msgstr "Bereit"
+
+msgid "Remaining Placements"
+msgstr "Weitere Platzierungen"
+
+msgid "Regenerate bracket"
+msgstr "Turnierbaum neu generieren"
+
+msgid "Registered teams"
+msgstr "Angemeldete Teams"
+
+msgid "Registration closed"
+msgstr "Anmeldung geschlossen"
+
+msgid "Registration is not open."
+msgstr "Die Anmeldung ist nicht geöffnet."
+
+msgid "Registrations"
+msgstr "Anmeldungen"
+
+msgid "Remove %(count)s participants without tickets?"
+msgstr "%(count)s Teilnehmer ohne Tickets entfernen?"
+
+msgid "Remove %(count)s ticketless participants and transfer captain roles?"
+msgstr "%(count)s Teilnehmer ohne Tickets entfernen und Kapitänsrollen übertragen?"
+
+msgid "Remove All Without Tickets"
+msgstr "Alle ohne Tickets entfernen"
+
+msgid "Remove Ticketless Participants"
+msgstr "Teilnehmer ohne Tickets entfernen"
+
+msgid "Remove participant?"
+msgstr "Teilnehmer entfernen?"
+
+msgid "Remove this member from the team?"
+msgstr "Dieses Mitglied aus dem Team entfernen?"
+
+msgid "Reopen registration"
+msgstr "Anmeldung wieder öffnen"
+
+msgid "Resume"
+msgstr "Fortsetzen"
+
+msgid "Round %(num)s"
+msgstr "Runde %(num)s"
+
+msgid "Round Robin"
+msgstr "Round Robin"
+
+msgid "Round advanced: %(signal)s"
+msgstr "Runde weitergeschaltet: %(signal)s"
+
+msgid "Round advancement failed: %(error)s"
+msgstr "Rundenfortschritt fehlgeschlagen: %(error)s"
+
+msgid "Rounds Played"
+msgstr "Gespielte Runden"
+
+msgid "Ruleset"
+msgstr "Regelwerk"
+
+msgid "Runner-up"
+msgstr "2. Platz"
+
+msgid "Save Scores"
+msgstr "Ergebnisse speichern"
+
+msgid "Score"
+msgstr "Ergebnis"
+
+msgid "Score has been set."
+msgstr "Ergebnis wurde gesetzt."
+
+msgid "Score has been submitted."
+msgstr "Ergebnis wurde eingereicht."
+
+msgid "Score must be between 0 and 999,999,999."
+msgstr "Das Ergebnis muss zwischen 0 und 999.999.999 liegen."
+
+msgid "Score ordering"
+msgstr "Ergebnisreihenfolge"
+
+msgid "Score submitted."
+msgstr "Ergebnis eingereicht."
+
+msgid "Screen name"
+msgstr "Anzeigename"
+
+msgid "Selected user is not a team member."
+msgstr "Der ausgewählte Benutzer ist kein Teammitglied."
+
+msgid "Set Placements"
+msgstr "Platzierungen setzen"
+
+msgid "Set Score"
+msgstr "Ergebnis setzen"
+
+msgid "Setup"
+msgstr "Einrichtung"
+
+msgid "Setup email templates"
+msgstr "E-Mail-Vorlagen einrichten"
+
+msgid "Show all players"
+msgstr "Alle Spieler anzeigen"
+
+msgid "Single Elimination"
+msgstr "Einfache Elimination"
+
+msgid "Solo"
+msgstr "Solo"
+
+msgid "Standings"
+msgstr "Rangliste"
+
+msgid "Start time"
+msgstr "Startzeit"
+
+msgid "Start tournament"
+msgstr "Turnier starten"
+
+msgid "Status change failed: %(error)s"
+msgstr "Statusänderung fehlgeschlagen: %(error)s"
+
+msgid "Submit"
+msgstr "Absenden"
+
+msgid "Submit Score"
+msgstr "Ergebnis einreichen"
+
+msgid "Submit Scores"
+msgstr "Ergebnisse einreichen"
+
+msgid "Submit Your Score"
+msgstr "Dein Ergebnis einreichen"
+
+msgid "Substitute"
+msgstr "Ersatzspieler"
+
+msgid "Tag"
+msgstr "Kürzel"
+
+msgid "Team \"%(name)s\" has been created."
+msgstr "Team „%(name)s” wurde erstellt."
+
+msgid "Team \"%(name)s\" has been deleted."
+msgstr "Team „%(name)s” wurde gelöscht."
+
+msgid "Team \"%(name)s\" has been updated."
+msgstr "Team „%(name)s” wurde aktualisiert."
+
+msgid "Team creation failed: %(error)s"
+msgstr "Teamerstellung fehlgeschlagen: %(error)s"
+
+msgid "Team deletion failed: %(error)s"
+msgstr "Teamlöschung fehlgeschlagen: %(error)s"
+
+msgid "Team management is not available at this time."
+msgstr "Die Teamverwaltung ist derzeit nicht verfügbar."
+
+msgid "Team membership"
+msgstr "Teammitgliedschaft"
+
+msgid "Teams"
+msgstr "Teams"
+
+msgid "The following teams are below the minimum team size:"
+msgstr "Folgende Teams liegen unter der Mindestteamgröße:"
+
+msgid "The losing side submits the final score."
+msgstr "Die verlierende Seite meldet das Endergebnis."
+
+msgid "This action is irreversible. A cancelled tournament cannot be reopened."
+msgstr "Diese Aktion ist unwiderruflich. Ein abgebrochenes Turnier kann nicht wieder eröffnet werden."
+
+msgid "This action is irreversible. A completed tournament cannot be reopened."
+msgstr "Diese Aktion ist unwiderruflich. Ein abgeschlossenes Turnier kann nicht wieder eröffnet werden."
+
+msgid "This tournament does not use highscores."
+msgstr "Dieses Turnier verwendet keine Highscores."
+
+msgid "This tournament is not a Free-for-All format."
+msgstr "Dieses Turnier ist kein Free-for-All-Format."
+
+msgid "This tournament is ongoing. Only description, image, and ruleset can be changed."
+msgstr "Dieses Turnier läuft. Nur Beschreibung, Bild und Regelwerk können geändert werden."
+
+msgid "This will also unconfirm any downstream matches that used this result. Continue?"
+msgstr "Dadurch werden auch alle Folgepartien, die dieses Ergebnis verwendet haben, zurückgesetzt. Fortfahren?"
+
+msgid "This will unconfirm the match. Continue?"
+msgstr "Dadurch wird die Partiebestätigung zurückgenommen. Fortfahren?"
+
+msgid "Total Points"
+msgstr "Gesamtpunkte"
+
+msgid "Total participants"
+msgstr "Teilnehmer gesamt"
+
+msgid "Tournament"
+msgstr "Turnier"
+
+msgid "Tournament \"%(name)s\" has been created."
+msgstr "Turnier „%(name)s” wurde erstellt."
+
+msgid "Tournament \"%(name)s\" has been deleted."
+msgstr "Turnier „%(name)s” wurde gelöscht."
+
+msgid "Tournament \"%(name)s\" has been updated."
+msgstr "Turnier „%(name)s” wurde aktualisiert."
+
+msgid "Tournament Bracket"
+msgstr "Turnierbaum"
+
+msgid "Tournament is not accepting score submissions."
+msgstr "Das Turnier nimmt keine Ergebnisse mehr an."
+
+msgid "Tournament is not in progress."
+msgstr "Das Turnier ist nicht in Gange."
+
+msgid "Tournament mode"
+msgstr "Turniermodus"
+
+msgid "Tournament status has been changed to \"%(status)s\"."
+msgstr "Turnierstatus wurde auf „%(status)s” geändert."
+
+msgid "Transfer"
+msgstr "Übertragen"
+
+msgid "Transfer captain"
+msgstr "Kapitän übertragen"
+
+msgid "Transfer captain role?"
+msgstr "Kapitänsrolle übertragen?"
+
+msgid "Transfer failed."
+msgstr "Übertragung fehlgeschlagen."
+
+msgid "Unconfirm Match"
+msgstr "Partiebestätigung zurücknehmen"
+
+msgid "Unknown"
+msgstr "Unbekannt"
+
+msgid "Unknown game format or elimination mode."
+msgstr "Unbekanntes Spielformat oder Eliminationsmodus."
+
+msgid "User is already the captain."
+msgstr "Der Benutzer ist bereits Kapitän."
+
+msgid "Valid"
+msgstr "Gültig"
+
+msgid "View Bracket"
+msgstr "Turnierbaum anzeigen"
+
+msgid "View LAN tournaments"
+msgstr "LAN-Turniere ansehen"
+
+msgid "View Matches List"
+msgstr "Partienliste anzeigen"
+
+msgid "View all"
+msgstr "Alle anzeigen"
+
+msgid "WB"
+msgstr "WB"
+
+msgid "Winner"
+msgstr "Sieger"
+
+msgid "Winners Pool"
+msgstr "Gewinner-Pool"
+
+msgid "Winners Pool Standings"
+msgstr "Gewinner-Pool-Rangliste"
+
+msgid "Write a comment..."
+msgstr "Kommentar schreiben …"
+
+msgid "Yes"
+msgstr "Ja"
+
+msgid "Yes, cancel tournament"
+msgstr "Ja, Turnier abbrechen"
+
+msgid "Yes, complete tournament"
+msgstr "Ja, Turnier abschließen"
+
+msgid "You are about to cancel the tournament \"%(name)s\"."
+msgstr "Du bist dabei, das Turnier „%(name)s“ abzubrechen."
+
+msgid "You are about to complete the tournament \"%(name)s\"."
+msgstr "Du bist dabei, das Turnier „%(name)s“ abzuschließen."
+
+msgid "You are a member of this team."
+msgstr "Du bist Mitglied dieses Teams."
+
+msgid "You are already in a team."
+msgstr "Du bist bereits in einem Team."
+
+msgid "You are not in this team."
+msgstr "Du bist nicht in diesem Team."
+
+msgid "You are not participating in this tournament."
+msgstr "Du nimmst nicht an diesem Turnier teil."
+
+msgid "You are registered for this tournament."
+msgstr "Du bist für dieses Turnier angemeldet."
+
+msgid "You have joined team \"%(name)s\"."
+msgstr "Du bist dem Team „%(name)s” beigetreten."
+
+msgid "You have joined the tournament \"%(name)s\"."
+msgstr "Du bist dem Turnier „%(name)s” beigetreten."
+
+msgid "You have left team \"%(name)s\"."
+msgstr "Du hast das Team „%(name)s” verlassen."
+
+msgid "You have left the tournament \"%(name)s\"."
+msgstr "Du hast das Turnier „%(name)s” verlassen."
+
+msgid "You must join the tournament first."
+msgstr "Du musst dem Turnier zuerst beitreten."
+
+msgid "defwin"
+msgstr "Freilos"
+
+msgid "defwin - Advanced"
+msgstr "Freilos – Weiter"
+
+msgid "member"
+msgstr "Mitglied"
+
+msgid "members"
+msgstr "Mitglieder"
+
+msgid "nd"
+msgstr "."
+
+msgid "not set"
+msgstr "nicht gesetzt"
+
+msgid "pts"
+msgstr "Pkt."
+
+msgid "rd"
+msgstr "."
+
+msgid "st"
+msgstr "."
+
+msgid "th"
+msgstr "."
+
+
+msgid "complete"
+msgstr "abgeschlossen"
+
+msgid "-slot field"
+msgstr "-Teilnehmerfeld"
+
+msgid "3rd M"
+msgstr "3. P"
+
+msgid "3rd Place Match"
+msgstr "Spiel um Platz 3"
+
+msgid "3rd Place – Game"
+msgstr "Platz 3 – Spiel"
+
+msgid "Additional Matches"
+msgstr "Zusätzliche Partien"
+
+msgid "All brackets"
+msgstr "Alle Seiten"
+
+msgid "Bracket Reset"
+msgstr "Entscheidungsspiel"
+
+msgid "Completion percentage"
+msgstr "Fortschritt"
+
+msgid "Done"
+msgstr "Abgeschlossen"
+
+msgid "Filter bracket view"
+msgstr "Turnierbaum-Ansicht filtern"
+
+msgid "GF G"
+msgstr "GF S"
+
+msgid "Grand Final – Bracket Reset"
+msgstr "Großes Finale – Entscheidungsspiel"
+
+msgid "Grand Final – Decisive Game"
+msgstr "Großes Finale – Entscheidungsspiel"
+
+msgid "Grand Final – Game"
+msgstr "Großes Finale – Spiel"
+
+msgid "LB Winner"
+msgstr "LB-Sieger"
+
+msgid "Loser"
+msgstr "Verlierer"
+
+msgid "Loser SF 1 vs Loser SF 2"
+msgstr "Verlierer HF 1 gegen Verlierer HF 2"
+
+msgid "Losers Bracket (LB)"
+msgstr "Verliererseite (LB)"
+
+msgid "Losers only"
+msgstr "Nur Verliererseite"
+
+msgid "M"
+msgstr "P"
+
+msgid "No bracket data available."
+msgstr "Keine Turnierbaumdaten vorhanden."
+
+msgid "Optional reset game and additional matches"
+msgstr "Optionales Entscheidungsspiel und zusätzliche Partien"
+
+msgid "Played only if the losers-bracket winner takes Grand Final Game 1."
+msgstr "Wird nur gespielt, wenn der Verliererseiten-Sieger das erste Große Finale gewinnt."
+
+msgid "R"
+msgstr "R"
+
+msgid "Round"
+msgstr "Runde"
+
+msgid "Section statistics"
+msgstr "Abschnittsstatistiken"
+
+msgid "Semifinal losers compete for third place"
+msgstr "Halbfinalverlierer spielen um den dritten Platz"
+
+msgid "Source labels on cross-bracket entries with jump navigation"
+msgstr "Herkunftsanzeigen bei seitenübergreifenden Einträgen mit Sprungnavigation"
+
+msgid "TBD"
+msgstr "TBD"
+
+msgid "Top 8"
+msgstr "Top 8"
+
+msgid "Total matches"
+msgstr "Partien gesamt"
+
+msgid "True final: both players enter 1–1 in the series"
+msgstr "Echtes Finale: beide Spieler starten mit 1–1 in der Serie"
+
+msgid "Unique contestants"
+msgstr "Verschiedene Teilnehmer"
+
+msgid "WB Winner vs LB Winner"
+msgstr "WB-Sieger gegen LB-Sieger"
+
+msgid "Winners Bracket (WB)"
+msgstr "Gewinnerseite (WB)"
+
+msgid "Winners only"
+msgstr "Nur Gewinnerseite"
+
+msgid "click to jump to source match"
+msgstr "Klicken, um zur Quellpartie zu springen"
+
+msgid "contestant"
+msgstr "Teilnehmer"
+
+msgid "contestants"
+msgstr "Teilnehmer"
+
+msgid "jump to"
+msgstr "Sprung zu"
+
+msgid "match"
+msgstr "Partie"
+
+msgid "matches"
+msgstr "Partien"
+
+msgid "vs"
+msgstr "gegen"
+
+msgid "– select –"
+msgstr "– auswählen –"
+
+#
+# --- LAN Tournament Service Layer Error Messages ---
+#
+
+msgid "A team with this name already exists in this tournament."
+msgstr "Ein Team mit diesem Namen existiert bereits in diesem Turnier."
+
+msgid "A team with this tag already exists in this tournament."
+msgstr "Ein Team mit diesem Tag existiert bereits in diesem Turnier."
+
+msgid "All contestants in the match must have scores submitted."
+msgstr "Alle Teilnehmer der Partie müssen Ergebnisse abgegeben haben."
+
+msgid "Cannot confirm match with less than 2 contestants."
+msgstr "Partie kann nicht bestätigt werden, wenn weniger als 2 Teilnehmer vorhanden sind."
+
+msgid "Cannot confirm match: all contestants must have scores."
+msgstr "Partie kann nicht bestätigt werden: Alle Teilnehmer müssen Ergebnisse haben."
+
+msgid "Cannot leave team after tournament has started or completed."
+msgstr "Das Team kann nicht verlassen werden, nachdem das Turnier gestartet oder abgeschlossen wurde."
+
+msgid "Cannot modify scores of a confirmed match."
+msgstr "Ergebnisse einer bestätigten Partie können nicht geändert werden."
+
+msgid "Cannot remove participants in this tournament status."
+msgstr "Teilnehmer können in diesem Turnierstatus nicht entfernt werden."
+
+msgid "Cannot remove the captain. Transfer captain role first."
+msgstr "Der Kapitän kann nicht entfernt werden. Übertrage zuerst die Kapitänsrolle."
+
+msgid "Cannot start tournament without generated brackets. Generate brackets first."
+msgstr "Turnier kann nicht gestartet werden ohne generierten Turnierbaum. Generiere zuerst den Turnierbaum."
+
+msgid "Circular match reference detected."
+msgstr "Zirkuläre Partiereferenz erkannt."
+
+msgid "Comment cannot exceed 1000 characters."
+msgstr "Kommentar darf 1000 Zeichen nicht überschreiten."
+
+msgid "Comment does not belong to this match."
+msgstr "Kommentar gehört nicht zu dieser Partie."
+
+msgid "Comment not found."
+msgstr "Kommentar nicht gefunden."
+
+msgid "Could not determine loser."
+msgstr "Verlierer konnte nicht ermittelt werden."
+
+msgid "Double elimination requires pool parameter (Bracket.WINNERS or Bracket.LOSERS)."
+msgstr "Doppelte Elimination erfordert einen Pool-Parameter (Bracket.WINNERS oder Bracket.LOSERS)."
+
+msgid "Exactly one of participant_id or team_id must be provided."
+msgstr "Genau eine der Angaben participant_id oder team_id muss angegeben werden."
+
+msgid "FFA tournaments require a point_table."
+msgstr "FFA-Turniere erfordern eine Punktetabelle."
+
+msgid "FFA tournaments require group_size_max."
+msgstr "FFA-Turniere erfordern eine maximale Gruppengröße."
+
+msgid "Grand Final has already been generated."
+msgstr "Das große Finale wurde bereits generiert."
+
+msgid "Image URL must have a valid domain."
+msgstr "Die Bild-URL muss eine gültige Domain haben."
+
+msgid "Image URL must use http or https scheme."
+msgstr "Die Bild-URL muss http oder https verwenden."
+
+msgid "Invalid image URL format."
+msgstr "Ungültiges Bild-URL-Format."
+
+msgid "Invalid join code."
+msgstr "Ungültiger Beitrittscode."
+
+msgid "Join code required."
+msgstr "Beitrittscode erforderlich."
+
+msgid "Match is a draw; a winner is required in this tournament mode."
+msgstr "Partie ist unentschieden; in diesem Turniermodus wird ein Gewinner benötigt."
+
+msgid "Match is already confirmed."
+msgstr "Partie ist bereits bestätigt."
+
+msgid "Match is not confirmed."
+msgstr "Partie ist nicht bestätigt."
+
+msgid "Maximum number of teams reached."
+msgstr "Maximale Anzahl an Teams erreicht."
+
+msgid "Need at least 2 contestants for FFA round."
+msgstr "Mindestens 2 Teilnehmer für eine FFA-Runde erforderlich."
+
+msgid "Need at least 2 contestants for bracket."
+msgstr "Mindestens 2 Teilnehmer für den Turnierbaum erforderlich."
+
+msgid "Need at least 2 contestants to determine winner."
+msgstr "Mindestens 2 Teilnehmer erforderlich, um einen Gewinner zu ermitteln."
+
+msgid "Need at least 2 survivors for Grand Final."
+msgstr "Mindestens 2 verbliebene Teilnehmer für das große Finale erforderlich."
+
+msgid "Need at least 4 contestants for double-elimination bracket."
+msgstr "Mindestens 4 Teilnehmer für den Doppel-Eliminierungs-Turnierbaum erforderlich."
+
+msgid "No LB contestants qualified for advancement."
+msgstr "Keine LB-Teilnehmer für den Aufstieg qualifiziert."
+
+msgid "No Losers bracket matches found."
+msgstr "Keine Partien im Verlierer-Turnierbaum gefunden."
+
+msgid "No WB contestants qualified for advancement."
+msgstr "Keine WB-Teilnehmer für den Aufstieg qualifiziert."
+
+msgid "No Winners bracket matches found."
+msgstr "Keine Partien im Gewinner-Turnierbaum gefunden."
+
+msgid "No contestants qualified for advancement."
+msgstr "Keine Teilnehmer für den Aufstieg qualifiziert."
+
+msgid "No contestants to distribute."
+msgstr "Keine Teilnehmer zum Verteilen vorhanden."
+
+msgid "Only one of participant_id or team_id may be provided."
+msgstr "Nur eine der Angaben participant_id oder team_id darf angegeben werden."
+
+msgid "Only the losing side may submit scores."
+msgstr "Nur die verlierende Seite darf Ergebnisse einreichen."
+
+msgid "Only the team captain can delete this team."
+msgstr "Nur der Teamkapitän kann dieses Team löschen."
+
+msgid "Only the team captain can update this team."
+msgstr "Nur der Teamkapitän kann dieses Team bearbeiten."
+
+msgid "Participant does not belong to this tournament."
+msgstr "Teilnehmer gehört nicht zu diesem Turnier."
+
+msgid "Participant is already on a team."
+msgstr "Teilnehmer ist bereits in einem Team."
+
+msgid "Participant is not in a team."
+msgstr "Teilnehmer ist in keinem Team."
+
+msgid "Participant not found."
+msgstr "Teilnehmer nicht gefunden."
+
+msgid "Participants can only be added during registration."
+msgstr "Teilnehmer können nur während der Anmeldephase hinzugefügt werden."
+
+msgid "Registration is not open for this tournament."
+msgstr "Die Anmeldung für dieses Turnier ist nicht geöffnet."
+
+msgid "Score cannot be negative."
+msgstr "Ergebnis darf nicht negativ sein."
+
+msgid "Score must not be negative."
+msgstr "Ergebnis darf nicht negativ sein."
+
+msgid "Single-track FFA does not use pool parameter."
+msgstr "Einspuriges FFA verwendet keinen Pool-Parameter."
+
+msgid "Team captain cannot leave while team has other members. Transfer captain role first or have other members leave."
+msgstr "Der Teamkapitän kann das Team nicht verlassen, solange es andere Mitglieder hat. Übertrage zuerst die Kapitänsrolle oder lasse andere Mitglieder austreten."
+
+msgid "Team is full."
+msgstr "Team ist voll."
+
+msgid "Team not found."
+msgstr "Team nicht gefunden."
+
+msgid "The team captain is already assigned to a team."
+msgstr "Der Teamkapitän ist bereits einem Team zugewiesen."
+
+msgid "The team captain must be a registered participant in this tournament."
+msgstr "Der Teamkapitän muss ein registrierter Teilnehmer dieses Turniers sein."
+
+msgid "Tournament advancement_count is not configured."
+msgstr "Die Aufstiegsanzahl des Turniers ist nicht konfiguriert."
+
+msgid "Tournament already has matches. Use force regenerate to clear and rebuild."
+msgstr "Turnier hat bereits Partien. Verwende die erzwungene Neugenerierung zum Löschen und Neuaufbau."
+
+msgid "Tournament contestant type is not set."
+msgstr "Turnier-Teilnehmertyp ist nicht festgelegt."
+
+msgid "Tournament elimination mode must be DOUBLE_ELIMINATION."
+msgstr "Turnier-Eliminationsmodus muss DOUBLE_ELIMINATION sein."
+
+msgid "Tournament game format is not FREE_FOR_ALL."
+msgstr "Turnier-Spielformat ist nicht FREE_FOR_ALL."
+
+msgid "Tournament has no matches."
+msgstr "Turnier hat keine Partien."
+
+msgid "Tournament is full."
+msgstr "Turnier ist voll."
+
+msgid "Tournament mode must be HIGHSCORE to submit scores."
+msgstr "Turniermodus muss HIGHSCORE sein, um Ergebnisse einzureichen."
+
+msgid "Tournament mode must be HIGHSCORE to view leaderboard."
+msgstr "Turniermodus muss HIGHSCORE sein, um die Bestenliste anzuzeigen."
+
+msgid "Tournament name must not exceed 80 characters."
+msgstr "Turniername darf 80 Zeichen nicht überschreiten."
+
+msgid "Tournament score_ordering is not configured."
+msgstr "Die Ergebnisreihenfolge des Turniers ist nicht konfiguriert."
+
+msgid "Unknown team."
+msgstr "Unbekanntes Team."
+
+msgid "User is already registered for this tournament."
+msgstr "Benutzer ist bereits für dieses Turnier registriert."
+
+msgid "User is not a member of this team."
+msgstr "Benutzer ist kein Mitglied dieses Teams."
+
+msgid "User is not a participant in this tournament."
+msgstr "Benutzer ist kein Teilnehmer dieses Turniers."
+
+msgid "You are not a participant in this match."
+msgstr "Du bist kein Teilnehmer dieser Partie."
+
+msgid "You are not registered as a participant in this tournament."
+msgstr "Du bist nicht als Teilnehmer für dieses Turnier registriert."
+
+msgid "You can only leave during the registration period. Contact an admin to be removed."
+msgstr "Verlassen ist nur während der Anmeldephase möglich. Kontaktiere einen Admin, um entfernt zu werden."
+
+msgid "You must be in a team to submit a score."
+msgstr "Du musst in einem Team sein, um ein Ergebnis einzureichen."
+
+msgid "You must have a valid ticket for this party to join."
+msgstr "Du benötigst ein gültiges Ticket für diese Party, um teilzunehmen."
