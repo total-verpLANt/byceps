@@ -155,7 +155,7 @@ def test_rr_mode_calls_round_robin_bracket(app):
         _call(app, tournament)
 
     mocks['match_svc'].generate_round_robin_bracket.assert_called_once_with(
-        TOURNAMENT_ID, force_regenerate=False
+        TOURNAMENT_ID, force_regenerate=False, initiator_id=ADMIN_USER_ID
     )
     mocks['match_svc'].generate_single_elimination_bracket.assert_not_called()
     mocks['match_svc'].generate_double_elimination_bracket.assert_not_called()
@@ -301,5 +301,5 @@ def test_force_param_read_from_form_body(app):
         _call(app, tournament, force='true')
 
     mocks['match_svc'].generate_round_robin_bracket.assert_called_once_with(
-        TOURNAMENT_ID, force_regenerate=True
+        TOURNAMENT_ID, force_regenerate=True, initiator_id=ADMIN_USER_ID
     )

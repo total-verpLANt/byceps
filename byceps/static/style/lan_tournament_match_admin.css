@@ -1,0 +1,253 @@
+/* ================================================================
+   Match view — admin
+   ================================================================
+   Styles the admin view of a single tournament match: the bracket
+   position under the title, the cascade ledger inside a correction
+   warning, and the correction form itself.
+
+   The list is a chain, not a set of peers: the matches hang off a
+   single spine in the order the retraction walks them. Rows that
+   lose an entered result carry a red edge; rows that only lose the
+   contestant who advanced into them stay quiet. Nothing here moves
+   or animates — this is the surface where an admin decides whether
+   to clear confirmed results.
+   ================================================================ */
+
+.lt-cascade {
+  --ltc-edge: 3px;
+  /* Translucent, not #cccccc: the ledger sits on the tinted
+     background of a notification — red for the critical cases,
+     yellow for the merely unconfirmed one — and a flat grey spine
+     disappears into both. */
+  --ltc-rule: rgba(0, 0, 0, 0.28);
+  --ltc-ink: #333333;
+  --ltc-ink-soft: #666666;
+  --ltc-dim: var(--dimmed-color, #808080);
+  --ltc-danger: var(--color-danger, #ff2222);
+  --ltc-surface: #ffffff;
+  --ltc-gap: 1rem;
+
+  list-style: none;
+  margin: 0.75rem 0 0 0;
+  padding-left: var(--ltc-gap);
+  border-left: 2px solid var(--ltc-rule);
+}
+
+.lt-cascade__match {
+  background-color: var(--ltc-surface);
+  /* Reserved on every row so the red edge of a destructive one does
+     not shunt its text out of line with the rest. */
+  border-left: var(--ltc-edge) solid transparent;
+  border-radius: var(--border-radius, 0.25rem);
+  color: var(--ltc-ink);
+  margin-bottom: 0.5rem;
+  padding: 0.5rem 0.625rem;
+  position: relative;
+}
+
+.lt-cascade__match:last-child {
+  margin-bottom: 0;
+}
+
+/* the tie from the spine to the row */
+.lt-cascade__match::before {
+  background-color: var(--ltc-rule);
+  content: '';
+  height: 2px;
+  left: calc((var(--ltc-gap) + var(--ltc-edge)) * -1);
+  position: absolute;
+  top: 0.9rem;
+  width: calc(var(--ltc-gap) + var(--ltc-edge));
+}
+
+.lt-cascade__match--destructive {
+  border-left-color: var(--ltc-danger);
+}
+
+.lt-cascade__head {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem 0.5rem;
+}
+
+/* The shorthand organisers actually say out loud, kept verbatim and
+   set in monospace so the codes line up down the column. */
+.lt-cascade__code {
+  border: 1px solid var(--ltc-rule);
+  border-radius: 0.1875rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
+  font-weight: bold;
+  padding: 0.05rem 0.35rem;
+  white-space: nowrap;
+}
+
+.lt-cascade__label {
+  color: var(--ltc-ink-soft);
+}
+
+.lt-cascade__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-left: auto;
+}
+
+/* Two shrink-to-fit columns, so the score sits beside the name it
+   belongs to instead of drifting to the far side of a wide row, and
+   the scores of one match still line up with each other. */
+.lt-cascade__scores {
+  column-gap: 1.5rem;
+  display: grid;
+  grid-template-columns: max-content max-content;
+  margin-top: 0.4rem;
+  row-gap: 0.125rem;
+}
+
+.lt-cascade__name--open {
+  color: var(--ltc-dim);
+  font-style: italic;
+}
+
+.lt-cascade__score {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-weight: bold;
+  text-align: right;
+}
+
+.lt-cascade__link {
+  display: inline-block;
+  font-size: 0.8125rem;
+  margin-top: 0.4rem;
+}
+
+@media (max-width: 36rem) {
+
+  .lt-cascade__tags {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .lt-cascade__scores {
+    max-width: none;
+  }
+
+}
+
+
+/* ────────────────────────────────────────────────────────────────
+   Bracket position, under the match title
+   ──────────────────────────────────────────────────────────────── */
+
+.lt-match__position {
+  color: #666666;
+  margin: 0.25rem 0 0 0;
+}
+
+
+/* ────────────────────────────────────────────────────────────────
+   Correction form
+   ────────────────────────────────────────────────────────────────
+   The acknowledgement is the gate on a destructive correction, so
+   it is built as one: a panel the eye lands on, not a checkbox in a
+   line of prose. It changes colour once ticked — the only state
+   change on this screen — so an admin can see the gate is open
+   before reaching the button.
+   ──────────────────────────────────────────────────────────────── */
+
+.lt-correct__consent {
+  align-items: flex-start;
+  background-color: var(--color-danger-light, #ffcccc);
+  border: 1px solid var(--color-danger, #ff2222);
+  border-left-width: 3px;
+  border-radius: var(--border-radius, 0.25rem);
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  padding: 0.625rem 0.75rem;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+
+.lt-correct__consent:has(input:checked) {
+  background-color: var(--color-success-light, #cceecc);
+  border-color: var(--color-success, #55cc00);
+}
+
+.lt-correct__consent input {
+  flex: 0 0 auto;
+  margin: 0;
+  transform: scale(1.2);
+  transform-origin: left center;
+}
+
+.lt-correct__consent label {
+  cursor: pointer;
+  font-weight: bold;
+  line-height: 1.4;
+  max-width: 70ch;
+}
+
+.lt-correct__scores {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+}
+
+.lt-correct__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.lt-correct__field label {
+  color: #666666;
+  font-size: 0.8125rem;
+}
+
+/* The admin form controls carry no .form-control class, so they get
+   the look of one here rather than the browser default. */
+.lt-correct__score,
+.lt-correct__reason {
+  background-color: #ffffff;
+  border: 1px solid #bbbbbb;
+  border-radius: var(--border-radius, 0.25rem);
+  font-size: 0.875rem;
+  padding: 0.4rem;
+}
+
+.lt-correct__score {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  width: 6rem;
+}
+
+.lt-correct__hint {
+  color: var(--dimmed-color, #808080);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  max-width: 68ch;
+}
+
+/* The label goes above the field, as it does for the score inputs.
+   Without this the narrower textarea leaves room beside it and the
+   label flows to its left. */
+.lt-correct__group label {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.lt-correct__reason {
+  display: block;
+  max-width: 48rem;
+  width: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+  .lt-correct__consent {
+    transition: none;
+  }
+
+}

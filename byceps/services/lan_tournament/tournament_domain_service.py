@@ -128,9 +128,20 @@ def validate_status_transition(
 
     allowed = _VALID_STATUS_TRANSITIONS.get(current_status, set())
     if new_status not in allowed:
+        # A STATIC msgid, not an f-string naming the two statuses.
+        # The admin view flashes this through gettext(error_message)
+        # -- these service errors are hand-added catalogue entries,
+        # since they never appear at a gettext() call site for babel
+        # to extract. An f-string cannot be one: it renders 30-odd
+        # distinct sentences, none of which matches a msgid, so the
+        # flash came out as a German wrapper with an English tail --
+        # the very defect the view's inner gettext() was added to
+        # fix. The status pair is not lost to the admin: the page
+        # states the current status and the button names the
+        # requested one.
         return Err(
-            f'Cannot transition from {current_status.name}'
-            f' to {new_status.name}.'
+            'Cannot transition the tournament to the requested '
+            'status from its current status.'
         )
 
     return Ok(new_status)

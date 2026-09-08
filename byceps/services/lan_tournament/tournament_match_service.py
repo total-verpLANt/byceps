@@ -1,7 +1,9 @@
 import logging
+from collections.abc import Callable, Collection, Iterable
 from dataclasses import replace
 from datetime import UTC, datetime
 from typing import NamedTuple
+from uuid import UUID
 
 from byceps.services.user.models import UserID
 from byceps.util.result import Err, Ok, Result
@@ -21,6 +23,7 @@ from .events import (
 from .models.tournament import Tournament, TournamentID
 from .models.bracket import Bracket
 from .models.tournament_match import (
+    CorrectionCase,
     MatchUserRole,
     TournamentMatch,
     TournamentMatchID,
@@ -58,11 +61,22 @@ from .tournament_domain_service import (
     map_placement_to_points,
     snake_seed_groups,
 )
+from .tournament_log_service import create_log_entry
 
 logger = logging.getLogger(__name__)
 
 
 MAX_MATCH_SCORE = 999_999_999
+
+# A STATIC msgid, not an f-string over MAX_MATCH_SCORE. Both admin
+# and site views flash this through gettext(), and these service
+# errors are hand-added catalogue entries -- a computed string
+# matches no msgid and renders in English inside a German flash.
+# Spelling the limit out matches the site view's own
+# 'Score must be between 0 and 999,999,999.', the entry already in
+# the catalogue. test_max_match_score_error_states_the_real_limit
+# fails if the two ever drift apart.
+MAX_MATCH_SCORE_ERROR = 'Score cannot exceed 999,999,999.'
 
 class DefwinResult(NamedTuple):
     """Events produced by defwin processing, for post-commit dispatch."""
@@ -187,19 +201,41 @@ def has_matches(tournament_id: TournamentID) -> bool:
     return len(matches) > 0
 
 
-def clear_bracket(tournament_id: TournamentID) -> Result[None, str]:
-    """Clear all matches from a tournament bracket."""
-    from . import signals
-    from .events import MatchDeletedEvent
-
+def clear_bracket(
+    tournament_id: TournamentID,
+    *,
+    initiator_id: UserID | None = None,
+) -> list[MatchDeletedEvent]:
+    """Delete the bracket (flush only); return the events to dispatch."""
     matches = tournament_repository.get_matches_for_tournament(tournament_id)
     if not matches:
-        return Ok(None)
+        return []
 
     now = datetime.now(UTC)
 
     # Collect event data before deletion (IDs won't be accessible after).
     match_ids = [m.id for m in matches]
+
+    confirmed_ids = [m.id for m in matches if m.confirmed_by is not None]
+    contestants_by_match_id = tournament_repository.get_contestants_for_matches(
+        confirmed_ids
+    )
+    create_log_entry(
+        'bracket-cleared',
+        tournament_id,
+        initiator_id,
+        data={
+            'match_count': len(matches),
+            'confirmed_results': {
+                str(match_id): _snapshot_contestant_scores(
+                    match_id,
+                    contestants=contestants_by_match_id.get(match_id, []),
+                )
+                for match_id in confirmed_ids
+            },
+        },
+        commit=False,
+    )
 
     # NULL out self-referential FKs first to avoid IntegrityError
     # on PostgreSQL (next_match_id / loser_next_match_id point to
@@ -212,34 +248,32 @@ def clear_bracket(tournament_id: TournamentID) -> Result[None, str]:
         tournament_repository.delete_contestants_for_match_flush(match_id)
         tournament_repository.delete_match_flush(match_id)
 
-    tournament_repository.commit_session()
-
-    # Dispatch events post-commit.
-    for match_id in match_ids:
-        signals.match_deleted.send(
-            None,
-            event=MatchDeletedEvent(
-                occurred_at=now,
-                initiator=None,
-                tournament_id=tournament_id,
-                match_id=match_id,
-            ),
+    return [
+        MatchDeletedEvent(
+            occurred_at=now,
+            initiator=None,
+            tournament_id=tournament_id,
+            match_id=match_id,
         )
-
-    return Ok(None)
+        for match_id in match_ids
+    ]
 
 
 def _prepare_bracket_generation(
     tournament_id: TournamentID,
     force_regenerate: bool = False,
-) -> Result[tuple[Tournament, list[str], bool], str]:
+    *,
+    initiator_id: UserID | None = None,
+    check: Callable[[Tournament, list[str]], Result[None, str]] | None = None,
+) -> Result[tuple[Tournament, list[str], list[MatchDeletedEvent]], str]:
     """Shared preamble for bracket generation functions.
 
     Locks the tournament, validates contestant type, fetches
-    contestant IDs, checks minimum count, and optionally clears
-    existing matches when *force_regenerate* is set.
+    contestant IDs, checks minimum count and the generator's own
+    *check*, and only then clears existing matches when
+    *force_regenerate* is set (flush only).
 
-    Returns ``Ok((tournament, contestant_ids, had_matches))``
+    Returns ``Ok((tournament, contestant_ids, deleted_events))``
     on success or ``Err(reason)`` on failure.
     """
     from .models.contestant_type import ContestantType
@@ -255,14 +289,6 @@ def _prepare_bracket_generation(
             ' Use force regenerate to clear'
             ' and rebuild.'
         )
-
-    # Clear existing matches if force regenerate.
-    if force_regenerate and had_matches:
-        clear_result = clear_bracket(tournament_id)
-        if clear_result.is_err():
-            return Err(
-                f'Failed to clear existing bracket: {clear_result.unwrap_err()}'
-            )
 
     # Get tournament to check contestant type.
     tournament = tournament_repository.get_tournament(tournament_id)
@@ -290,7 +316,34 @@ def _prepare_bracket_generation(
     if len(contestant_ids) < 2:
         return Err('Need at least 2 contestants for bracket.')
 
-    return Ok((tournament, contestant_ids, had_matches))
+    if check is not None:
+        check_result = check(tournament, contestant_ids)
+        if check_result.is_err():
+            return Err(check_result.unwrap_err())
+
+    # Cleared last and flush only: a refused regeneration keeps the old
+    # bracket, and the tournament lock holds until the generator commits.
+    deleted_events: list[MatchDeletedEvent] = []
+    if force_regenerate and had_matches:
+        deleted_events = clear_bracket(tournament_id, initiator_id=initiator_id)
+
+    return Ok((tournament, contestant_ids, deleted_events))
+
+
+def _check_double_elimination(
+    tournament: Tournament,
+    contestant_ids: list[str],
+) -> Result[None, str]:
+    """Check the preconditions a double-elimination bracket adds."""
+    if len(contestant_ids) < 4:
+        return Err(
+            'Need at least 4 contestants for double-elimination bracket.'
+        )
+
+    if tournament.elimination_mode != EliminationMode.DOUBLE_ELIMINATION:
+        return Err('Tournament elimination mode must be DOUBLE_ELIMINATION.')
+
+    return Ok(None)
 
 
 def generate_single_elimination_bracket(
@@ -312,11 +365,13 @@ def generate_single_elimination_bracket(
     from .tournament_domain_service import _standard_seed_order
 
     # Shared preamble: lock, validate, fetch contestants.
-    prep_result = _prepare_bracket_generation(tournament_id, force_regenerate)
+    prep_result = _prepare_bracket_generation(
+        tournament_id, force_regenerate, initiator_id=initiator_id
+    )
     if prep_result.is_err():
         return Err(prep_result.unwrap_err())
 
-    tournament, contestant_ids, _had_matches = prep_result.unwrap()
+    tournament, contestant_ids, deleted_events = prep_result.unwrap()
     num_contestants = len(contestant_ids)
 
     # Calculate bracket geometry
@@ -467,6 +522,8 @@ def generate_single_elimination_bracket(
     tournament_repository.commit_session()
 
     # Dispatch events after successful commit
+    for event in deleted_events:
+        signals.match_deleted.send(None, event=event)
     for event in match_events:
         signals.match_created.send(None, event=event)
 
@@ -504,22 +561,17 @@ def generate_double_elimination_bracket(
     from .tournament_domain_service import _standard_seed_order
 
     # Shared preamble: lock, validate, fetch contestants.
-    prep_result = _prepare_bracket_generation(tournament_id, force_regenerate)
+    prep_result = _prepare_bracket_generation(
+        tournament_id,
+        force_regenerate,
+        initiator_id=initiator_id,
+        check=_check_double_elimination,
+    )
     if prep_result.is_err():
         return Err(prep_result.unwrap_err())
 
-    tournament, contestant_ids, _had_matches = prep_result.unwrap()
+    tournament, contestant_ids, deleted_events = prep_result.unwrap()
     num_contestants = len(contestant_ids)
-
-    # Double-elimination requires at least 4 contestants.
-    if num_contestants < 4:
-        return Err(
-            'Need at least 4 contestants for double-elimination bracket.'
-        )
-
-    # Validate elimination mode.
-    if tournament.elimination_mode != EliminationMode.DOUBLE_ELIMINATION:
-        return Err('Tournament elimination mode must be DOUBLE_ELIMINATION.')
 
     # Calculate bracket geometry.
     p = math.ceil(math.log2(num_contestants))
@@ -749,6 +801,8 @@ def generate_double_elimination_bracket(
     tournament_repository.commit_session()
 
     # Dispatch events after successful commit.
+    for event in deleted_events:
+        signals.match_deleted.send(None, event=event)
     for event in match_events:
         signals.match_created.send(None, event=event)
 
@@ -792,9 +846,303 @@ def _propagate_dead_lb_matches(
                 )
 
 
+def validate_bracket_for_start(
+    tournament_id: TournamentID,
+    *,
+    tournament: Tournament | None = None,
+) -> list[str]:
+    """Return list of violation strings; empty list = valid.
+
+    Format-aware structural bracket validation enforced on
+    tournament start: a technically invalid
+    bracket must never be started and cannot be administratively
+    ignored.
+
+    ``tournament`` may be passed by callers that already hold the
+    loaded ``Tournament`` (e.g. ``change_status``) to avoid an extra
+    repository round-trip; otherwise it is fetched here.
+    """
+    if tournament is None:
+        tournament = tournament_repository.get_tournament(tournament_id)
+
+    if not (
+        tournament.game_format
+        and tournament.game_format.requires_bracket_generation
+    ):
+        # FFA / HIGHSCORE bypass bracket generation.
+        return []
+
+    matches = tournament_repository.get_matches_for_tournament_ordered(
+        tournament_id
+    )
+    contestants_by_match = (
+        tournament_repository.get_contestants_for_tournament(tournament_id)
+    )
+
+    if tournament.elimination_mode == EliminationMode.SINGLE_ELIMINATION:
+        return _validate_se_bracket(matches, contestants_by_match)
+    if tournament.elimination_mode == EliminationMode.DOUBLE_ELIMINATION:
+        return _validate_de_bracket(matches, contestants_by_match)
+    if tournament.elimination_mode == EliminationMode.ROUND_ROBIN:
+        return _validate_round_robin_bracket(
+            matches, contestants_by_match
+        )
+
+    # Fallthrough: the game format requires bracket generation but
+    # elimination_mode did not match any known bracket structure --
+    # either unset (None) or a mode invalid for this format (e.g.
+    # NONE, valid only for HIGHSCORE, on a ONE_V_ONE tournament since
+    # VALID_COMBINATIONS is not enforced at the DB level). This must
+    # never silently pass as valid and let the tournament start with
+    # zero matches.
+    violations = []
+    if not matches:
+        violations.append('no matches generated')
+    if tournament.elimination_mode is None:
+        violations.append(
+            'tournament requires bracket generation but has no '
+            'elimination mode set'
+        )
+    else:
+        violations.append(
+            f'elimination mode {tournament.elimination_mode.value!r} is '
+            'not valid for a game format that requires bracket generation'
+        )
+    return violations
+
+
+def _distinct_contestant_count(
+    contestants_by_match: dict[
+        TournamentMatchID, list[TournamentMatchToContestant]
+    ],
+) -> int:
+    """Count the distinct real contestants across those matches.
+
+    Skips rows that carry neither a participant nor a team -- DEFWIN
+    slots -- the same way every other reader of a contestant list in
+    this module does (``_validate_match_scores``,
+    ``_snapshot_contestant_scores``, the view helpers' status
+    classifier). Without the filter, ``contestant_id`` RAISES on such
+    a row, and this function is only ever reached from
+    ``validate_bracket_for_start``: a single keyless row anywhere in
+    the tournament would turn "start tournament" into an uncaught
+    ValueError -- a 500 at the one moment an organiser cannot work
+    around it -- instead of the violation list this gate exists to
+    report.
+    """
+    ids: set[str] = set()
+    for match_contestants in contestants_by_match.values():
+        for c in match_contestants:
+            if c.participant_id is None and c.team_id is None:
+                continue
+            ids.add(contestant_id(c))
+    return len(ids)
+
+
+def _collect_dangling_links(matches: list[TournamentMatch]) -> list[str]:
+    """Return violations for next/loser links pointing outside the
+    tournament's match set."""
+    violations = []
+    match_ids = {m.id for m in matches}
+    for m in matches:
+        for attr in ('next_match_id', 'loser_next_match_id'):
+            target = getattr(m, attr)
+            if target is not None and target not in match_ids:
+                violations.append(
+                    f'match {m.id} has {attr} pointing to unknown '
+                    f'match {target}'
+                )
+    return violations
+
+
+def _validate_se_bracket(
+    matches: list[TournamentMatch],
+    contestants_by_match: dict[
+        TournamentMatchID, list[TournamentMatchToContestant]
+    ],
+) -> list[str]:
+    violations = []
+    if not matches:
+        return ['no matches generated']
+
+    main = [m for m in matches if m.bracket in (None, Bracket.WINNERS)]
+    p3 = [m for m in matches if m.bracket == Bracket.THIRD_PLACE]
+    unknown = [
+        m
+        for m in matches
+        if m.bracket not in (None, Bracket.WINNERS, Bracket.THIRD_PLACE)
+    ]
+    for m in unknown:
+        violations.append(
+            f'match {m.id} has unexpected bracket {m.bracket.value!r} '
+            'for single elimination'
+        )
+
+    contestant_count = _distinct_contestant_count(contestants_by_match)
+    if contestant_count < 2:
+        violations.append(
+            f'expected at least 2 contestants, found {contestant_count}'
+        )
+
+    # A match with no round is itself the violation, and it must be
+    # taken out before max(): TournamentMatch.round is `int | None`
+    # (the column is nullable), and one None in the generator below
+    # raises TypeError comparing NoneType to int. That escapes
+    # validate_bracket_for_start, escapes change_status, and 500s the
+    # one action an organiser cannot work around -- instead of
+    # producing the violation list this gate exists for. Same reason
+    # _distinct_contestant_count filters keyless contestant rows.
+    roundless = [m for m in main if m.round is None]
+    for m in roundless:
+        violations.append(f'match {m.id} has no round number')
+
+    rounds = [m for m in main if m.round is not None]
+    if rounds:
+        final_round = max(m.round for m in rounds)
+        for m in rounds:
+            if m.round == final_round:
+                if m.next_match_id is not None:
+                    violations.append(
+                        f'terminal match {m.id} has next_match_id'
+                    )
+            elif m.next_match_id is None:
+                violations.append(
+                    f'match {m.id} (round {m.round}) is missing '
+                    'next_match_id'
+                )
+
+    p3_ids = {m.id for m in p3}
+    for m in matches:
+        if m.loser_next_match_id is not None and (
+            m.loser_next_match_id not in p3_ids
+        ):
+            violations.append(
+                f'match {m.id} has orphaned loser_next_match_id '
+                f'{m.loser_next_match_id}'
+            )
+    for m in p3:
+        if m.next_match_id is not None:
+            violations.append(f'third-place match {m.id} has next_match_id')
+
+    violations.extend(_collect_dangling_links(matches))
+    return violations
+
+
+def _validate_de_bracket(
+    matches: list[TournamentMatch],
+    contestants_by_match: dict[
+        TournamentMatchID, list[TournamentMatchToContestant]
+    ],
+) -> list[str]:
+    violations = []
+    if not matches:
+        return ['no matches generated']
+
+    wb = [m for m in matches if m.bracket == Bracket.WINNERS]
+    lb = [m for m in matches if m.bracket == Bracket.LOSERS]
+    gf = [m for m in matches if m.bracket == Bracket.GRAND_FINAL]
+
+    if not wb:
+        violations.append('no winners-bracket matches')
+    if not lb:
+        violations.append('no losers-bracket matches')
+    if not gf:
+        violations.append('no grand-final match')
+    for m in gf:
+        if m.next_match_id is not None:
+            violations.append(f'grand final {m.id} has next_match_id')
+        if m.loser_next_match_id is not None:
+            violations.append(f'grand final {m.id} has loser_next_match_id')
+
+    contestant_count = _distinct_contestant_count(contestants_by_match)
+    if contestant_count < 4:
+        violations.append(
+            f'expected at least 4 contestants, found {contestant_count}'
+        )
+
+    for m in wb:
+        if m.next_match_id is None:
+            violations.append(
+                f'winners-bracket match {m.id} is missing next_match_id'
+            )
+        if (
+            m.loser_next_match_id is not None
+            and not any(lb_m.id == m.loser_next_match_id for lb_m in lb)
+        ):
+            violations.append(
+                f'match {m.id} has orphaned loser_next_match_id '
+                f'{m.loser_next_match_id}'
+            )
+
+    # LB chain: dead-LB propagation respected.  A live LB match
+    # (incoming feeds >= 1) must route its winner onward; a dead
+    # one may have been cleared by _propagate_dead_lb_matches.
+    feed_counts: dict[TournamentMatchID, int] = {}
+    for m in matches:
+        for target in (m.next_match_id, m.loser_next_match_id):
+            if target is not None:
+                feed_counts[target] = feed_counts.get(target, 0) + 1
+
+    lb_ids = {m.id for m in lb}
+    gf_ids = {m.id for m in gf}
+    for m in lb:
+        if m.next_match_id is None and feed_counts.get(m.id, 0) > 0:
+            violations.append(
+                f'losers-bracket match {m.id} has incoming feeds but no '
+                'next_match_id'
+            )
+        if (
+            m.next_match_id is not None
+            and m.next_match_id not in lb_ids
+            and m.next_match_id not in gf_ids
+        ):
+            violations.append(
+                f'losers-bracket match {m.id} routes to unexpected target'
+            )
+
+    violations.extend(_collect_dangling_links(matches))
+    return violations
+
+
+def _validate_round_robin_bracket(
+    matches: list[TournamentMatch],
+    contestants_by_match: dict[
+        TournamentMatchID, list[TournamentMatchToContestant]
+    ],
+) -> list[str]:
+    """Validate a round-robin bracket against itself.
+
+    Deliberately does NOT re-query the live roster
+    (``get_teams_for_tournament`` / ``get_participants_for_tournament``):
+    once a bracket is generated, a later roster change (e.g. a
+    dropout being soft-deleted) must not make an already-valid
+    bracket fail forever.
+    """
+    violations = []
+    if not matches:
+        return ['no matches generated']
+
+    contestant_count = _distinct_contestant_count(contestants_by_match)
+    if contestant_count < 2:
+        violations.append(
+            f'expected at least 2 contestants, found {contestant_count}'
+        )
+
+    expected_pairings = contestant_count * (contestant_count - 1) // 2
+    if len(matches) != expected_pairings:
+        violations.append(
+            f'expected {expected_pairings} round-robin matches, '
+            f'found {len(matches)}'
+        )
+
+    return violations
+
+
 def generate_round_robin_bracket(
     tournament_id: TournamentID,
     force_regenerate: bool = False,
+    *,
+    initiator_id: UserID | None = None,
 ) -> Result[int, str]:
     """Generate round-robin bracket with all pairings."""
     from uuid import UUID
@@ -806,11 +1154,13 @@ def generate_round_robin_bracket(
     from .models.contestant_type import ContestantType
 
     # Shared preamble: lock, validate, fetch contestants.
-    prep_result = _prepare_bracket_generation(tournament_id, force_regenerate)
+    prep_result = _prepare_bracket_generation(
+        tournament_id, force_regenerate, initiator_id=initiator_id
+    )
     if prep_result.is_err():
         return Err(prep_result.unwrap_err())
 
-    tournament, contestant_ids, _had_matches = prep_result.unwrap()
+    tournament, contestant_ids, deleted_events = prep_result.unwrap()
 
     # Generate round-robin schedule via domain service.
     schedule = generate_round_robin_schedule(contestant_ids)
@@ -872,6 +1222,8 @@ def generate_round_robin_bracket(
     tournament_repository.commit_session()
 
     # Dispatch events after successful commit.
+    for event in deleted_events:
+        signals.match_deleted.send(None, event=event)
     for event in match_events:
         signals.match_created.send(None, event=event)
 
@@ -918,6 +1270,30 @@ def get_matches_for_tournament_ordered(
     )
 
 
+def get_matches_by_ids(
+    match_ids: list[TournamentMatchID],
+) -> list[TournamentMatch]:
+    """Return the matches with those IDs, in arbitrary order."""
+    return tournament_repository.get_matches_by_ids(match_ids)
+
+
+def _lock_defwin_entry_matches(
+    tournament_id: TournamentID,
+    entries: list[tuple[TournamentMatchToContestant, TournamentMatch]],
+) -> None:
+    """Lock the tournament row, then the pass's match rows in id order."""
+    tournament_repository.lock_tournament_for_update(tournament_id)
+
+    match_ids: set[TournamentMatchID] = set()
+    for _contestant, match in entries:
+        match_ids.add(match.id)
+        if match.next_match_id is not None:
+            match_ids.add(match.next_match_id)
+
+    if match_ids:
+        tournament_repository.lock_matches_for_update(sorted(match_ids))
+
+
 def handle_defwin_for_removed_participant(
     tournament_id: TournamentID,
     participant_id: TournamentParticipantID,
@@ -934,6 +1310,9 @@ def handle_defwin_for_removed_participant(
     entries = tournament_repository.find_contestant_entries_for_participant_in_tournament(
         tournament_id, participant_id
     )
+
+    # Before any write -- see _lock_defwin_entry_matches.
+    _lock_defwin_entry_matches(tournament_id, entries)
 
     for _contestant, match in entries:
         tournament_repository.delete_contestant_from_match(
@@ -963,6 +1342,9 @@ def handle_defwin_for_removed_team(
             tournament_id, team_id
         )
     )
+
+    # Before any write -- see _lock_defwin_entry_matches.
+    _lock_defwin_entry_matches(tournament_id, entries)
 
     for _contestant, match in entries:
         tournament_repository.delete_contestant_from_match(
@@ -1226,20 +1608,67 @@ def set_match_scores(
     scores would make the initiator the winner the request is
     rejected.  Draws are accepted from any participant.
 
-    Post-rollback note: when this function returns ``Err``, the
-    database session has been rolled back.  Any ORM-managed objects
-    fetched before this call (match, contestants, etc.) may be
-    expired or detached.  Callers must NOT access attributes on
-    those objects after receiving an ``Err`` result — fetch fresh
-    instances if needed.
+    The submission is validated before any lock is taken, so a refused
+    one locks nothing, and again under the reachable-set lock.
+
+    When this returns `Err`, the session has been rolled back; ORM
+    objects fetched before the call may be expired or detached.
     """
-    match = tournament_repository.get_match_for_update(match_id)
+
+    def _reject(error_message: str) -> Result[None, str]:
+        tournament_repository.rollback_session()
+        return Err(error_message)
+
+    match = tournament_repository.find_match(match_id)
+    if match is None:
+        tournament_repository.rollback_session()
+        raise ValueError(f'Unknown match ID "{match_id}"')
+
+    precheck = _validate_score_submission(
+        match,
+        tournament_repository.get_contestants_for_match(match_id),
+        initiator_id,
+        scores,
+    )
+    if precheck.is_err():
+        return _reject(precheck.unwrap_err())
+
+    _lock_reachable_matches(match_id)
+
+    match = tournament_repository.find_match_fresh(match_id)
+    if match is None:
+        tournament_repository.rollback_session()
+        raise ValueError(f'Unknown match ID "{match_id}"')
+
+    validation = _validate_score_submission(
+        match,
+        tournament_repository.get_contestants_for_match(match_id),
+        initiator_id,
+        scores,
+    )
+    if validation.is_err():
+        return _reject(validation.unwrap_err())
+
+    # Atomic write — all scores flushed together.
+    tournament_repository.update_contestant_scores(validation.unwrap())
+    # Auto-confirm: loser submitted scores → match is resolved.
+    confirm_result = confirm_match(
+        match_id, initiator_id, _locks_held=True
+    )
+    if confirm_result.is_err():
+        return _reject(confirm_result.unwrap_err())
+    return Ok(None)
+
+
+def _validate_score_submission(
+    match: TournamentMatch,
+    contestants: list[TournamentMatchToContestant],
+    initiator_id: UserID,
+    scores: dict[TournamentParticipantID | TournamentTeamID, int],
+) -> Result[dict[TournamentMatchToContestantID, int], str]:
+    """Validate a participant's score submission and map it to rows."""
     if match.confirmed_by is not None:
         return Err('Cannot modify scores of a confirmed match.')
-
-    contestants = tournament_repository.get_contestants_for_match(
-        match_id
-    )
 
     # Exclude DEFWIN slots (no participant or team assigned) — they carry
     # no score and must not appear in the submitted scores dict.
@@ -1254,27 +1683,22 @@ def set_match_scores(
     if initiator_contestant is None:
         return Err('You are not a participant in this match.')
 
-    # Validate: every real contestant must have an entry in the scores dict.
     if len(scores) != len(real_contestants):
         return Err(
             'All contestants in the match must have scores submitted.'
         )
 
-    # Resolve each submitted key to a contestant and validate scores.
     id_to_score: dict[TournamentMatchToContestantID, int] = {}
     proposed_contestants: list[TournamentMatchToContestant] = []
     for contestant in real_contestants:
-        # Match by participant_id or team_id.
         key = contestant.team_id or contestant.participant_id
         if key not in scores:
-            return Err(
-                f'Missing score for contestant "{key}".'
-            )
+            return Err('A score is missing for one of the contestants.')
         score = scores[key]
         if score < 0:
             return Err('Score cannot be negative.')
         if score > MAX_MATCH_SCORE:
-            return Err(f'Score cannot exceed {MAX_MATCH_SCORE:,}.')
+            return Err(MAX_MATCH_SCORE_ERROR)
         id_to_score[contestant.id] = score
         proposed_contestants.append(replace(contestant, score=score))
 
@@ -1287,18 +1711,291 @@ def set_match_scores(
     if winner is not None and winner.id == initiator_contestant.id:
         return Err('Only the losing side may submit scores.')
 
-    # Atomic write — all scores flushed together.
+    return Ok(id_to_score)
+
+
+def _snapshot_contestant_scores(
+    match_id: TournamentMatchID,
+    *,
+    contestants: list[TournamentMatchToContestant] | None = None,
+) -> dict[str, int | None]:
+    """Return ``{contestant key: score}`` for the real contestants.
+
+    Must run before a retraction cascade: ``_unconfirm_match_impl``
+    ends with ``clear_contestant_scores``. Keys are stringified for
+    JSONB storage. Pass ``contestants`` to reuse an existing fetch.
+    """
+    if contestants is None:
+        contestants = tournament_repository.get_contestants_for_match(
+            match_id
+        )
+    return {
+        str(c.team_id or c.participant_id): c.score
+        for c in contestants
+        if (c.team_id or c.participant_id) is not None
+    }
+
+
+def _snapshot_contestant_placements(
+    contestants: list[TournamentMatchToContestant],
+) -> dict[str, dict[str, int | None]]:
+    """Return `{contestant key: {placement, points}}` for placed contestants."""
+    return {
+        str(c.team_id or c.participant_id): {
+            'placement': c.placement,
+            'points': c.points,
+        }
+        for c in contestants
+        if (c.team_id or c.participant_id) is not None
+        and c.placement is not None
+    }
+
+
+def _snapshot_cascade_scores(
+    match_id: TournamentMatchID,
+    *,
+    classification: (
+        tuple[CorrectionCase, list[TournamentMatchID]] | None
+    ) = None,
+) -> dict[str, dict[str, int | None]]:
+    """Return ``{match id: {contestant key: score}}`` for every
+    DOWNSTREAM match the retraction cascade is about to clear.
+
+    The subject match's own scores are recorded separately (see
+    ``_snapshot_contestant_scores``); this covers what the cascade
+    destroys beyond it. ``_unconfirm_match_impl`` recurses into a
+    downstream match only when that match is itself confirmed, and
+    ends every such recursion with ``clear_contestant_scores``: those
+    results are gone from the database the moment the correction
+    commits, and nothing else records them. Without this, a
+    correction that an admin acknowledged as CONFIRMED_DOWNSTREAM
+    logged the one result the admin was looking at and silently
+    dropped every result the cascade wiped underneath it -- leaving
+    the audit log unable to answer the only question worth asking
+    after a mistaken acknowledgement: what did the numbers used to
+    be?
+
+    The affected set comes from ``classify_result_correction``, the
+    same walk the admin panel previews the cascade with, so the log
+    and the warning cannot describe different sets of matches.
+    Best effort: a classification error yields ``{}`` rather than
+    blocking the retraction, since an unrecorded score is worse than
+    nothing but a refused correction is worse still.
+
+    ``classification`` lets a caller that has already classified this
+    match hand its result in rather than pay for a second walk
+    (``classify_result_correction`` reads the whole bracket).
+    ``correct_match_result`` does exactly that: it classifies under
+    the reachable-set lock to drive the acknowledgement gate, and
+    nothing commits between that call and this one, so recomputing
+    here could only produce the same answer. Reusing it also makes
+    the guarantee above -- that the log and the admin's warning
+    describe the same set of matches -- hold by construction rather
+    than by two walks agreeing.
+    """
+    if classification is None:
+        classification_result = classify_result_correction(match_id)
+        if classification_result.is_err():
+            return {}
+        classification = classification_result.unwrap()
+
+    _case, affected_ids = classification
+    if not affected_ids:
+        return {}
+
+    confirmed_ids = [
+        m.id
+        for m in tournament_repository.get_matches_by_ids(
+            list(affected_ids)
+        )
+        if m.confirmed_by is not None
+    ]
+    if not confirmed_ids:
+        return {}
+
+    contestants_by_match = (
+        tournament_repository.get_contestants_for_matches(confirmed_ids)
+    )
+    return {
+        str(downstream_id): _snapshot_contestant_scores(
+            downstream_id,
+            contestants=contestants_by_match.get(downstream_id, []),
+        )
+        for downstream_id in confirmed_ids
+    }
+
+
+def _validate_match_scores(
+    match_id: TournamentMatchID,
+    scores: dict[TournamentParticipantID | TournamentTeamID, int],
+) -> Result[dict[TournamentMatchToContestantID, int], str]:
+    """Validate proposed contestant scores for a match.
+
+    Pure validation — no DB writes.  Resolves the real (non-DEFWIN)
+    contestants for the match, requires a score for each, and
+    rejects a negative score, a score above ``MAX_MATCH_SCORE``, or
+    a score-count mismatch.  Where the tournament's elimination mode
+    forbids draws, also rejects proposed scores that would tie
+    (mirroring the check ``_confirm_draw_impl`` makes at commit time).
+
+    On success returns the resolved contestant-row-ID -> score map,
+    so a caller that goes on to write does not re-query the
+    contestants it has already resolved here.
+
+    Shared by ``admin_set_and_confirm_match`` and
+    ``correct_match_result`` so the two paths cannot drift apart.
+    """
+    contestants = tournament_repository.get_contestants_for_match(
+        match_id
+    )
+
+    # Exclude DEFWIN slots (no participant or team assigned).
+    real_contestants = [
+        c for c in contestants
+        if c.participant_id is not None or c.team_id is not None
+    ]
+
+    # A match with fewer than 2 real contestants can never be
+    # confirmed, and determine_match_winner returns Err rather than a
+    # draw, so the tie check below cannot catch it. Without this,
+    # correcting an auto-confirmed DEFWIN match would cascade the
+    # retraction and only then fail the re-confirm.
+    if len(real_contestants) < 2:
+        return Err(
+            'Cannot confirm match with less than 2 contestants.'
+        )
+
+    if len(scores) != len(real_contestants):
+        return Err(
+            'All contestants in the match must have scores submitted.'
+        )
+
+    # Resolve each submitted key to a contestant and validate scores.
+    proposed_contestants: list[TournamentMatchToContestant] = []
+    id_to_score: dict[TournamentMatchToContestantID, int] = {}
+    for contestant in real_contestants:
+        key = contestant.team_id or contestant.participant_id
+        if key not in scores:
+            return Err(f'Missing score for contestant "{key}".')
+        score = scores[key]
+        if score < 0:
+            return Err('Score cannot be negative.')
+        if score > MAX_MATCH_SCORE:
+            return Err(MAX_MATCH_SCORE_ERROR)
+        proposed_contestants.append(replace(contestant, score=score))
+        id_to_score[contestant.id] = score
+
+    # Draws are only accepted in round-robin tournaments; reject a
+    # tied proposed score elsewhere, mirroring _confirm_draw_impl. Any
+    # other outcome of determine_match_winner (e.g. too few real
+    # contestants) is left for the write path to handle, unchanged.
+    match = tournament_repository.get_match(match_id)
+    tournament = tournament_repository.get_tournament(match.tournament_id)
+    if tournament.elimination_mode != EliminationMode.ROUND_ROBIN:
+        winner_result = determine_match_winner(proposed_contestants)
+        if winner_result.is_ok() and winner_result.unwrap() is None:
+            return Err(
+                'Match is a draw; a winner is required '
+                'in this tournament mode.'
+            )
+
+    return Ok(id_to_score)
+
+
+def _admin_set_and_confirm_match_impl(
+    match_id: TournamentMatchID,
+    admin_id: UserID,
+    scores: dict[TournamentParticipantID | TournamentTeamID, int],
+    *,
+    _locks_held: bool = False,
+) -> Result[
+    tuple[
+        MatchConfirmedEvent,
+        TournamentCompletedEvent | None,
+        list[ContestantAdvancedEvent],
+        list[MatchCreatedEvent],
+        list[MatchReadyEvent],
+    ],
+    str,
+]:
+    """Flush-only, event-collecting core of admin_set_and_confirm_match.
+
+    Sets every contestant score and confirms the match using
+    repository flush calls, via ``_confirm_match_impl``. Collects
+    domain events rather than dispatching them. The caller is
+    responsible for the single ``commit()`` (or ``rollback()``) and
+    event dispatch -- mirrors ``_confirm_match_impl`` /
+    ``_unconfirm_match_flush``.
+
+    Used directly by ``correct_match_result`` so a correction's score
+    application shares its transaction with the retraction that
+    precedes it, instead of committing separately (workspace-ukkj).
+
+    The already-confirmed check below reads WITHOUT a row lock, on
+    purpose. ``_lock_reachable_matches`` is the first match-row lock
+    any writer may take, and it runs inside ``_confirm_match_impl``
+    below; taking ``get_match_for_update`` on the subject here would
+    put this path's first lock on the subject row instead, ahead of
+    the id-ordered set. That is a real inversion, not a theoretical
+    one: bracket ids are uuid7 and generation order is
+    reverse-topological (the third-place match is created first and
+    rounds are built final-first), so the subject is routinely the
+    HIGHEST id in its own reachable set. A concurrent
+    ``correct_match_result`` on the same match would then hold the
+    downstream rows and want the subject while this path held the
+    subject and wanted them -- a deadlock. The unlocked read here is
+    only a fast fail; the authoritative, locked check is
+    ``_validate_match_confirmable`` inside ``_confirm_match_impl``,
+    which rejects an already-confirmed match under the ordered lock.
+
+    The ordered lock is taken HERE, first, rather than being left to
+    ``_confirm_match_impl`` below: the score write between the two
+    (``update_contestant_scores``) takes row locks on this match's
+    contestant rows, which a concurrent retraction cascade also wants
+    (``clear_contestant_scores``). Acquiring those before the match
+    rows would deadlock against a ``correct_match_result`` holding the
+    match rows and reaching for the contestant rows. Nothing here may
+    lock anything before this call.
+
+    ``_confirm_match_impl`` below is then told the lock is already
+    held. Re-taking the row locks would indeed be nearly free, but
+    computing the reachable set again is not: each
+    ``_lock_reachable_matches`` call issues two full-bracket SELECTs
+    (one to walk, one to re-verify the walk under the lock). The
+    choke point still covers any caller that reaches that core
+    without locking first, because ``_locks_held`` defaults to False.
+
+    ``_locks_held`` on THIS function says the same thing one level
+    up: ``correct_match_result`` locks the reachable set once for the
+    whole correction and nothing commits before this runs, so the
+    acquisition here would be pure cost.
+    """
+    if not _locks_held:
+        _lock_reachable_matches(match_id)
+
+    match = tournament_repository.find_match_fresh(match_id)
+    if match is None:
+        raise ValueError(f'Unknown match ID "{match_id}"')
+    if match.confirmed_by is not None:
+        return Err('Match is already confirmed.')
+
+    validation = _validate_match_scores(match_id, scores)
+    if validation.is_err():
+        return Err(validation.unwrap_err())
+
+    # _validate_match_scores already resolved every real (non-DEFWIN)
+    # contestant row and mapped it to its submitted score, so there is
+    # no second get_contestants_for_match round-trip here.
+    id_to_score = validation.unwrap()
+
+    # Flush-only write — all scores flushed together.
     tournament_repository.update_contestant_scores(id_to_score)
-    # Auto-confirm: loser submitted scores → match is resolved.
-    # confirm_match() will see the flushed scores and commit everything.
-    confirm_result = confirm_match(match_id, initiator_id)
-    if confirm_result.is_err():
-        # Scores were flushed but confirm failed (e.g. draw in SE mode).
-        # Roll back so we don't persist partial state (scores without
-        # a confirmed match).  The caller can retry with corrected scores.
-        tournament_repository.rollback_session()
-        return Err(confirm_result.unwrap_err())
-    return Ok(None)
+
+    # Auto-confirm: admin submitted scores → match is resolved.
+    # _confirm_match_impl will see the flushed scores. The reachable
+    # set is locked either way by the time we get here -- by this
+    # function above, or by the caller that set _locks_held.
+    return _confirm_match_impl(match_id, admin_id, _locks_held=True)
 
 
 def admin_set_and_confirm_match(
@@ -1312,55 +2009,60 @@ def admin_set_and_confirm_match(
     check.  The admin supplies scores for every real contestant and
     the match is confirmed in one operation.
 
+    Uses a single DB commit and dispatches all collected events
+    afterwards -- see ``_admin_set_and_confirm_match_impl``.
+
     Post-rollback note: when this function returns ``Err``, the
     database session has been rolled back.  Any ORM-managed objects
     fetched before this call may be expired or detached.  Callers
     must NOT access attributes on those objects after receiving an
     ``Err`` result.
     """
-    match = tournament_repository.get_match_for_update(match_id)
-    if match.confirmed_by is not None:
-        return Err('Match is already confirmed.')
-
-    contestants = tournament_repository.get_contestants_for_match(
-        match_id
-    )
-
-    # Exclude DEFWIN slots (no participant or team assigned).
-    real_contestants = [
-        c for c in contestants
-        if c.participant_id is not None or c.team_id is not None
-    ]
-
-    if len(scores) != len(real_contestants):
-        return Err(
-            'All contestants in the match must have scores submitted.'
-        )
-
-    # Resolve each submitted key to a contestant and validate scores.
-    id_to_score: dict[TournamentMatchToContestantID, int] = {}
-    for contestant in real_contestants:
-        key = contestant.team_id or contestant.participant_id
-        if key not in scores:
-            return Err(f'Missing score for contestant "{key}".')
-        score = scores[key]
-        if score < 0:
-            return Err('Score cannot be negative.')
-        if score > MAX_MATCH_SCORE:
-            return Err(f'Score cannot exceed {MAX_MATCH_SCORE:,}.')
-        id_to_score[contestant.id] = score
-
-    # Atomic write — all scores flushed together.
-    tournament_repository.update_contestant_scores(id_to_score)
-
-    # Auto-confirm: admin submitted scores → match is resolved.
-    # confirm_match() will see the flushed scores and commit everything.
-    confirm_result = confirm_match(match_id, admin_id)
-    if confirm_result.is_err():
-        # Scores were flushed but confirm failed (e.g. draw in SE mode).
-        # Roll back so we don't persist partial state.
+    result = _admin_set_and_confirm_match_impl(match_id, admin_id, scores)
+    if result.is_err():
+        # Roll back unconditionally, mirroring unconfirm_match's own
+        # wrapper: whether the failure happened before any write (e.g.
+        # "already confirmed") or after one (e.g. a flushed score
+        # update followed by a failed confirm), nothing from this
+        # call may survive. A no-write early Err rolls back an empty
+        # transaction, which is a harmless no-op.
         tournament_repository.rollback_session()
-        return Err(confirm_result.unwrap_err())
+        return Err(result.unwrap_err())
+
+    (
+        confirmed_event,
+        completed_event,
+        adv_events,
+        created_events,
+        ready_events,
+    ) = result.unwrap()
+
+    try:
+        create_log_entry(
+            'match-result-entered',
+            confirmed_event.tournament_id,
+            admin_id,
+            data={
+                'match_id': str(match_id),
+                'scores': {str(key): score for key, score in scores.items()},
+            },
+            commit=False,
+        )
+    except Exception:
+        tournament_repository.rollback_session()
+        raise
+
+    tournament_repository.commit_session()
+
+    match_confirmed.send(None, event=confirmed_event)
+    if completed_event is not None:
+        tournament_completed.send(None, event=completed_event)
+    for event in adv_events:
+        contestant_advanced.send(None, event=event)
+    for event in created_events:
+        match_created.send(None, event=event)
+    for event in ready_events:
+        match_ready.send(None, event=event)
     return Ok(None)
 
 
@@ -1390,15 +2092,27 @@ def _validate_match_confirmable(
     return Ok(None)
 
 
-def _confirm_draw(
+def _confirm_draw_impl(
     match: TournamentMatch,
     match_id: TournamentMatchID,
     initiator_id: UserID,
     tournament: Tournament,
-) -> Result[None, str]:
-    """Confirm a drawn match (round-robin only).
+) -> Result[
+    tuple[
+        MatchConfirmedEvent,
+        TournamentCompletedEvent | None,
+        list[ContestantAdvancedEvent],
+        list[MatchCreatedEvent],
+        list[MatchReadyEvent],
+    ],
+    str,
+]:
+    """Flush-only core of confirming a drawn match (round-robin only).
 
-    Self-contained: owns its own commit + event dispatch.
+    Caller (``_confirm_match_impl``) owns the single commit and event
+    dispatch. Returns the same event-tuple shape as
+    ``_confirm_match_impl`` so its caller does not need to
+    special-case the draw outcome.
     """
     if tournament.elimination_mode != EliminationMode.ROUND_ROBIN:
         return Err(
@@ -1410,21 +2124,16 @@ def _confirm_draw(
         match_id, initiator_id,
     )
 
-    tournament_repository.commit_session()
-
     now = datetime.now(UTC)
-    match_confirmed.send(
-        None,
-        event=MatchConfirmedEvent(
-            occurred_at=now,
-            initiator=None,
-            tournament_id=match.tournament_id,
-            match_id=match_id,
-            winner_team_id=None,
-            winner_participant_id=None,
-        ),
+    confirmed_event = MatchConfirmedEvent(
+        occurred_at=now,
+        initiator=None,
+        tournament_id=match.tournament_id,
+        match_id=match_id,
+        winner_team_id=None,
+        winner_participant_id=None,
     )
-    return Ok(None)
+    return Ok((confirmed_event, None, [], [], []))
 
 
 def _collect_ready_match_events(
@@ -1713,42 +2422,81 @@ def _create_bracket_reset(
     return gf_m2_id, events
 
 
+def is_deciding_match(
+    match: TournamentMatch,
+    tournament: Tournament,
+) -> bool:
+    """Return `True` if the match's result decides the tournament."""
+    if match.bracket == Bracket.THIRD_PLACE:
+        return False
+
+    if tournament.elimination_mode not in (
+        EliminationMode.SINGLE_ELIMINATION,
+        EliminationMode.DOUBLE_ELIMINATION,
+    ):
+        return False
+
+    # FFA matches never have a next match, so that test cannot apply.
+    if tournament.game_format == GameFormat.FREE_FOR_ALL:
+        if tournament.elimination_mode == EliminationMode.DOUBLE_ELIMINATION:
+            return match.bracket == Bracket.GRAND_FINAL
+        round_matches = tournament_repository.get_matches_for_round(
+            tournament.id, match.round, bracket=None,
+        )
+        return len(round_matches) == 1
+
+    return match.next_match_id is None
+
+
+def retraction_reverts_completion(
+    match: TournamentMatch,
+    tournament: Tournament,
+) -> bool:
+    """Return `True` if retracting the match reopens the tournament."""
+    return (
+        tournament.tournament_status == TournamentStatus.COMPLETED
+        and is_deciding_match(match, tournament)
+    )
+
+
+def ffa_round_already_advanced(
+    match: TournamentMatch,
+    tournament: Tournament,
+) -> bool:
+    """Return `True` if a later FFA round was built from the match's round."""
+    if tournament.game_format != GameFormat.FREE_FOR_ALL:
+        return False
+
+    if match.bracket == Bracket.GRAND_FINAL:
+        return False
+
+    matches = tournament_repository.get_matches_for_tournament(tournament.id)
+
+    # Double elimination seeds its grand final from both pools.
+    if match.bracket is not None and any(
+        m.bracket == Bracket.GRAND_FINAL for m in matches
+    ):
+        return True
+
+    return any(
+        m.bracket == match.bracket and (m.round or 0) > (match.round or 0)
+        for m in matches
+    )
+
+
 def _try_auto_complete_tournament(
     match: TournamentMatch,
     tournament: Tournament,
     winner: TournamentMatchToContestant,
 ) -> Result[bool, str]:
-    """Complete the tournament if this is a terminal elimination
-    match (flush only).
+    """Complete the tournament if this match decides it (flush only).
 
     Returns ``Ok(True)`` when the tournament was completed,
     ``Ok(False)`` when the condition does not apply.
     Caller owns commit and event dispatch.
     """
-    # Gate: only SE/DE modes can auto-complete (regardless of game format)
-    if tournament.elimination_mode not in (
-        EliminationMode.SINGLE_ELIMINATION,
-        EliminationMode.DOUBLE_ELIMINATION,
-    ):
+    if not is_deciding_match(match, tournament):
         return Ok(False)
-
-    if tournament.game_format == GameFormat.FREE_FOR_ALL:
-        # FFA+DE: auto-complete only when Grand Final match is confirmed
-        if tournament.elimination_mode == EliminationMode.DOUBLE_ELIMINATION:
-            if match.bracket != Bracket.GRAND_FINAL:
-                return Ok(False)
-        # FFA+SE: auto-complete when the confirmed round has exactly 1 group
-        # (all remaining players were in a single group — this was the final round)
-        else:
-            round_matches = tournament_repository.get_matches_for_round(
-                tournament.id, match.round, bracket=None,
-            )
-            if len(round_matches) != 1:
-                return Ok(False)
-    # 1v1: existing logic — terminal match (no next_match_id)
-    else:
-        if match.next_match_id is not None:
-            return Ok(False)
 
     winner_set = tournament_repository.set_tournament_winner(
         match.tournament_id,
@@ -1768,11 +2516,63 @@ def _try_auto_complete_tournament(
     return Ok(True)
 
 
-def confirm_match(
+def _confirm_match_impl(
     match_id: TournamentMatchID,
     initiator_id: UserID,
-) -> Result[None, str]:
-    """Confirm a match result."""
+    *,
+    _locks_held: bool = False,
+) -> Result[
+    tuple[
+        MatchConfirmedEvent,
+        TournamentCompletedEvent | None,
+        list[ContestantAdvancedEvent],
+        list[MatchCreatedEvent],
+        list[MatchReadyEvent],
+    ],
+    str,
+]:
+    """Flush-only, event-collecting core of confirm_match.
+
+    Performs all confirmation logic (winner advance, loser-to-LB
+    advance, DE bracket reset, tournament auto-complete) using
+    repository flush calls. Collects domain events rather than
+    dispatching them. The caller is responsible for the single
+    commit() and event dispatch -- mirrors ``_unconfirm_match_flush``.
+
+    Locks the whole reachable bracket in id order first, via
+    ``_lock_reachable_matches``, before taking the row lock on
+    ``match_id`` itself -- the same ordered acquisition
+    ``unconfirm_match`` / ``correct_match_result`` use. Confirming a
+    match advances the winner (and, in DE, the loser) into whatever
+    ``match.next_match_id`` / ``match.loser_next_match_id`` name, which
+    is exactly the reachable set those functions lock; without this,
+    this path and a concurrent retraction could acquire the same rows
+    in opposing orders and deadlock (workspace-k9hm). Reached from
+    every writer that advances a contestant downstream --
+    ``confirm_match``, ``admin_set_and_confirm_match`` (and, through
+    it, ``correct_match_result``'s score re-application), and
+    ``set_match_scores`` (which calls ``confirm_match``). The FFA
+    paths (``confirm_ffa_match``, ``set_ffa_placements``) do not
+    advance a contestant into another match at all -- FFA does not use
+    ``next_match_id`` -- so they are correctly outside this set.
+
+    ``_locks_held`` says the caller already took that ordered lock
+    for THIS match, in this transaction, and nothing has committed
+    since. Only the three in-module callers that demonstrably did so
+    pass it. It is not an optimisation of the lock itself -- re-taking
+    a row lock this transaction already holds is nearly free -- but of
+    the two full-bracket SELECTs ``_lock_reachable_matches`` issues to
+    compute and then re-verify the reachable set. Those are the
+    expensive part, and on a 256-entrant double-elimination bracket
+    they materialise ~511 rows each. Skipping them is sound because
+    the set cannot grow while we hold it: another transaction can
+    only add an edge into or out of the reachable set by UPDATEing a
+    match row we already have locked, so it blocks until we commit.
+    The default is False, so a caller that forgets simply pays for
+    the locking again rather than losing it.
+    """
+    if not _locks_held:
+        _lock_reachable_matches(match_id)
     match = tournament_repository.get_match_for_update(match_id)
     contestants = (
         tournament_repository.get_contestants_for_match(match_id)
@@ -1788,7 +2588,7 @@ def confirm_match(
         match.tournament_id,
     )
     if winner is None:
-        return _confirm_draw(
+        return _confirm_draw_impl(
             match, match_id, initiator_id, tournament,
         )
     tournament_repository.confirm_match(
@@ -1828,34 +2628,92 @@ def confirm_match(
     if comp.is_err():
         return comp
     tournament_was_completed = comp.unwrap()
-    tournament_repository.commit_session()
     tid = match.tournament_id
-    match_confirmed.send(None, event=MatchConfirmedEvent(
+
+    confirmed_event = MatchConfirmedEvent(
         occurred_at=now, initiator=None,
         tournament_id=tid, match_id=match_id,
         winner_team_id=winner.team_id,
         winner_participant_id=winner.participant_id,
-    ))
+    )
+    completed_event = None
     if tournament_was_completed:
-        tournament_completed.send(None, event=TournamentCompletedEvent(
+        completed_event = TournamentCompletedEvent(
             occurred_at=now, initiator=None,
             tournament_id=tid,
             winner_team_id=winner.team_id,
             winner_participant_id=winner.participant_id,
-        ))
-    for event in adv_events:
-        contestant_advanced.send(None, event=event)
-    for event in bracket_reset_events:
-        match_created.send(None, event=event)
+        )
+
     destination_match_ids: set[TournamentMatchID] = set()
     for event in adv_events:
         destination_match_ids.add(event.match_id)
     for event in bracket_reset_events:
         destination_match_ids.add(event.match_id)
+    ready_events: list[MatchReadyEvent] = []
     if destination_match_ids:
-        ready_events = _collect_ready_match_events(destination_match_ids, tid, now)
-        for event in ready_events:
-            match_ready.send(None, event=event)
+        ready_events = _collect_ready_match_events(
+            destination_match_ids, tid, now
+        )
+
+    return Ok(
+        (confirmed_event, completed_event, adv_events, bracket_reset_events, ready_events)
+    )
+
+
+def confirm_match(
+    match_id: TournamentMatchID,
+    initiator_id: UserID,
+    *,
+    _locks_held: bool = False,
+) -> Result[None, str]:
+    """Confirm a match result.
+
+    Uses a single DB commit and dispatches all collected events
+    afterwards -- see ``_confirm_match_impl``.
+
+    Post-rollback note: when this function returns ``Err``, the
+    database session has been rolled back. Any ORM-managed objects
+    fetched before this call may be expired or detached. Callers must
+    NOT access attributes on those objects after receiving an ``Err``
+    result.
+
+    ``_locks_held`` is internal and passed straight through to
+    ``_confirm_match_impl`` -- see its docstring. Only
+    ``set_match_scores``, which took the ordered lock for this match
+    itself, sets it. External callers must leave it alone.
+    """
+    result = _confirm_match_impl(
+        match_id, initiator_id, _locks_held=_locks_held
+    )
+    if result.is_err():
+        # _confirm_match_impl is flush-only and can fail after writing
+        # (_advance_loser_to_lb, _try_auto_complete_tournament). Roll
+        # back so those writes are not left for the next commit, and
+        # so its reachable-set locks are released. Mirrors
+        # admin_set_and_confirm_match / unconfirm_match.
+        tournament_repository.rollback_session()
+        return Err(result.unwrap_err())
+
+    (
+        confirmed_event,
+        completed_event,
+        adv_events,
+        created_events,
+        ready_events,
+    ) = result.unwrap()
+
+    tournament_repository.commit_session()
+
+    match_confirmed.send(None, event=confirmed_event)
+    if completed_event is not None:
+        tournament_completed.send(None, event=completed_event)
+    for event in adv_events:
+        contestant_advanced.send(None, event=event)
+    for event in created_events:
+        match_created.send(None, event=event)
+    for event in ready_events:
+        match_ready.send(None, event=event)
     return Ok(None)
 
 
@@ -1915,7 +2773,15 @@ def _unconfirm_match_impl(
     )
 
     if match.next_match_id is not None and winner is not None:
-        next_match = tournament_repository.get_match(
+        # find_match, not get_match: get_match RAISES on an unknown
+        # ID, so the `is not None` guard below was unreachable and a
+        # dangling next_match_id turned the whole cascade into an
+        # uncaught ValueError (a 500 on the correction route).
+        # classify_result_correction, which the panel shows the admin
+        # as a preview of this cascade, deliberately treats a dangling
+        # routing entry as absent -- so the preview said "safe" and
+        # the act crashed. Same contract on both sides now.
+        next_match = tournament_repository.find_match(
             match.next_match_id
         )
         if (
@@ -1958,7 +2824,9 @@ def _unconfirm_match_impl(
             return Err(loser_result.unwrap_err())
         loser = loser_result.unwrap()
 
-        loser_next_match = tournament_repository.get_match(
+        # find_match, not get_match -- same reason as the
+        # next_match_id lookup above.
+        loser_next_match = tournament_repository.find_match(
             match.loser_next_match_id
         )
         if (
@@ -2052,16 +2920,12 @@ def _unconfirm_match_impl(
             # sees next_match_id=None and reverts tournament completion.
             match = tournament_repository.get_match(match_id)
 
-    # Revert tournament state for terminal elimination
-    # matches.
+    # Avoid the tournament lookup for matches that cannot decide it.
     if match.next_match_id is None:
         tournament = tournament_repository.get_tournament(
             match.tournament_id
         )
-        if tournament.elimination_mode in (
-            EliminationMode.SINGLE_ELIMINATION,
-            EliminationMode.DOUBLE_ELIMINATION,
-        ):
+        if retraction_reverts_completion(match, tournament):
             winner_result2 = (
                 tournament_repository.set_tournament_winner(
                     match.tournament_id,
@@ -2099,28 +2963,187 @@ def _unconfirm_match_impl(
     return Ok((collected_events, deleted_events, tournament_was_uncompleted))
 
 
-def unconfirm_match(
+def _unconfirm_match_flush(
     match_id: TournamentMatchID,
     initiator_id: UserID,
-) -> Result[None, str]:
-    """Unconfirm a match and cascade-retract advanced contestants.
+    *,
+    reason: str | None = None,
+    _classification: (
+        tuple[CorrectionCase, list[TournamentMatchID]] | None
+    ) = None,
+) -> Result[
+    tuple[
+        list[MatchUnconfirmedEvent],
+        list[MatchDeletedEvent],
+        bool,
+        TournamentID,
+    ],
+    str,
+]:
+    """Flush-only, event-collecting core of unconfirm_match.
 
-    Uses a single DB commit for the entire cascade and dispatches
-    all collected events afterwards.
+    Locks the initial match row (TOCTOU guard), runs the retraction
+    cascade via ``_unconfirm_match_impl``, and -- when ``reason`` is
+    given -- stages a ``'match-result-retracted'`` audit log entry
+    (flush-only) carrying the scores the cascade destroyed, read
+    before it clears them: this match's own under
+    ``retracted_scores``, and those of every confirmed downstream
+    match the cascade also clears under
+    ``cascaded_retracted_scores`` (see ``_snapshot_cascade_scores``).
 
-    Acquires a row lock (SELECT ... FOR UPDATE) on the initial
-    match to prevent concurrent unconfirmation races.
+    Does NOT call ``_lock_reachable_matches``: the caller must already
+    hold the reachable-set lock (``unconfirm_match`` takes it itself;
+    ``correct_match_result`` takes it once, up front, for the whole
+    correction -- see workspace-ubjc / workspace-ukkj). Does NOT
+    commit and does NOT dispatch events -- the caller is responsible
+    for the single ``commit()`` and dispatch, and, since
+    ``create_log_entry`` can raise, for rolling back on an exception
+    from this call as well as on an ``Err`` result.
+
+    ``_classification`` is the caller's already-computed
+    ``classify_result_correction`` result, handed to
+    ``_snapshot_cascade_scores`` instead of letting it walk the
+    bracket a second time. ``correct_match_result`` passes the very
+    classification its acknowledgement gate decided on;
+    ``unconfirm_match`` passes nothing and the snapshot classifies
+    for itself.
+
+    Returns ``Ok((events, deleted_events, tournament_was_uncompleted,
+    tournament_id))``.
     """
-    # Lock the match row to prevent TOCTOU races.
+    # Lock the match row to prevent TOCTOU races. Still raises on an
+    # unknown match ID, which _lock_reachable_matches (caller's job)
+    # leaves to it.
     match = tournament_repository.get_match_for_update(match_id)
+
+    tournament = tournament_repository.get_tournament(match.tournament_id)
+    if ffa_round_already_advanced(match, tournament):
+        return Err(
+            'A later round has already been built from this result, so it '
+            'can no longer be unconfirmed.'
+        )
+
+    # Before the cascade clears them -- the subject's own scores, and
+    # the scores of every confirmed downstream match the cascade will
+    # clear along with it. Both reads must happen here, while the row
+    # lock is held and before _unconfirm_match_impl runs; afterwards
+    # the numbers exist nowhere.
+    retracted_scores = None
+    retracted_placements = None
+    cascaded_retracted_scores = None
+    if reason is not None:
+        contestants = tournament_repository.get_contestants_for_match(
+            match_id
+        )
+        retracted_scores = _snapshot_contestant_scores(
+            match_id, contestants=contestants
+        )
+        retracted_placements = _snapshot_contestant_placements(contestants)
+        cascaded_retracted_scores = _snapshot_cascade_scores(
+            match_id, classification=_classification
+        )
 
     result = _unconfirm_match_impl(
         match_id, initiator_id, _match=match,
     )
     if result.is_err():
-        return Err(result.unwrap_err())
+        return result
 
     events, deleted_events, tournament_was_uncompleted = result.unwrap()
+
+    if reason is not None:
+        # Staged after the cascade's own flushes, so this INSERT does
+        # not flush ahead of it. Rides the caller's single commit and
+        # is discarded with it on rollback. May raise -- the caller
+        # must roll back on that too, not just on an Err return.
+        data = {
+            'match_id': str(match_id),
+            'reason': reason,
+            'retracted_scores': retracted_scores,
+            # What the cascade destroyed beyond this match. Empty
+            # for the ordinary case; the whole point of the entry
+            # for an acknowledged CONFIRMED_DOWNSTREAM correction.
+            'cascaded_retracted_scores': cascaded_retracted_scores,
+        }
+        # FFA results are placements, not scores.
+        if retracted_placements:
+            data['retracted_placements'] = retracted_placements
+        create_log_entry(
+            'match-result-retracted',
+            match.tournament_id,
+            initiator_id,
+            data=data,
+            commit=False,
+        )
+
+    return Ok(
+        (events, deleted_events, tournament_was_uncompleted, match.tournament_id)
+    )
+
+
+def unconfirm_match(
+    match_id: TournamentMatchID,
+    initiator_id: UserID,
+    *,
+    reason: str | None = None,
+) -> Result[None, str]:
+    """Unconfirm a match and cascade-retract advanced contestants.
+
+    Uses a single DB commit for the entire cascade and dispatches
+    all collected events afterwards -- see ``_unconfirm_match_flush``.
+
+    Acquires row locks (SELECT ... FOR UPDATE) on every match the
+    cascade can reach, in one id-ordered acquisition, before locking
+    the initial match -- see ``_lock_reachable_matches``. This both
+    prevents concurrent unconfirmation races and keeps this path from
+    acquiring rows in an order opposing ``correct_match_result``'s,
+    which would deadlock the two against each other.
+
+    ``reason`` is optional; when provided, a ``'match-result-retracted'``
+    audit log entry is written. The entry is staged (flush-only) in
+    the same transaction as the cascade, after the row lock is
+    acquired, so it is discarded together with the state change on
+    rollback and never changes the cascade behavior itself. When
+    ``reason`` is ``None``, no entry is written.
+
+    The entry carries the scores the retraction destroyed -- this
+    match's own and those of every confirmed downstream match the
+    cascade clears with it. They are read under the row lock below,
+    before the cascade clears them.
+    """
+    # Lock the whole reachable bracket in id order first, so the
+    # cascade's own traversal-order locks below only re-take rows
+    # this transaction already holds.
+    _lock_reachable_matches(match_id)
+
+    try:
+        result = _unconfirm_match_flush(match_id, initiator_id, reason=reason)
+    except Exception:
+        # _unconfirm_match_flush's cascade may have already flushed
+        # partial deletions and status changes, or its log-entry stage
+        # may have raised after those flushes. Either way, roll back
+        # so those flushed-but-uncommitted writes are not left in the
+        # live session to be committed by whatever calls
+        # commit_session() next -- this function must not depend on
+        # request-lifecycle teardown (db.session.remove()) to keep the
+        # database consistent, since it also runs outside a request
+        # (e.g. from CLI commands).
+        tournament_repository.rollback_session()
+        raise
+
+    if result.is_err():
+        # The cascade may have already flushed partial deletions and
+        # status changes before failing (e.g. a circular reference
+        # detected partway through, or a repository Err from setting
+        # the tournament winner/status). Roll back so those flushed-
+        # but-uncommitted writes are not left in the live session to
+        # be committed by whatever calls commit_session() next.
+        tournament_repository.rollback_session()
+        return Err(result.unwrap_err())
+
+    events, deleted_events, tournament_was_uncompleted, tournament_id = (
+        result.unwrap()
+    )
 
     # Single commit for the entire cascade.
     tournament_repository.commit_session()
@@ -2140,11 +3163,669 @@ def unconfirm_match(
             event=TournamentUncompletedEvent(
                 occurred_at=now,
                 initiator=None,
-                tournament_id=match.tournament_id,
+                tournament_id=tournament_id,
             ),
         )
 
     return Ok(None)
+
+
+def _collect_reachable_match_ids(
+    match: TournamentMatch,
+    matches_by_id: dict[TournamentMatchID, TournamentMatch],
+) -> list[TournamentMatchID]:
+    """Return every match a retraction from ``match`` could reach.
+
+    Unlike ``classify_result_correction`` this does NOT stop at an
+    unconfirmed match: confirmation state is what a concurrent admin
+    can change, so a lock set derived from it would be the wrong set.
+    Includes the subject match itself.
+    """
+    reachable: list[TournamentMatchID] = [match.id]
+    visited: set[TournamentMatchID] = {match.id}
+    frontier = [match]
+
+    while frontier:
+        next_frontier = []
+        for current in frontier:
+            for downstream_id in (
+                current.next_match_id,
+                current.loser_next_match_id,
+            ):
+                if downstream_id is None or downstream_id in visited:
+                    continue
+                downstream = matches_by_id.get(downstream_id)
+                if downstream is None:
+                    continue
+                visited.add(downstream_id)
+                reachable.append(downstream_id)
+                next_frontier.append(downstream)
+        frontier = next_frontier
+
+    return reachable
+
+
+_MAX_LOCK_REFRESH_ROUNDS = 3
+
+
+def _as_match_id(match_id: TournamentMatchID) -> TournamentMatchID:
+    """Normalise a match ID to a real ``UUID``.
+
+    ``TournamentMatchID`` is a ``NewType``, i.e. a no-op at runtime, so
+    a blueprint that wraps a raw URL segment hands this module a
+    ``str``. Every query still works -- SQLAlchemy coerces on bind --
+    but the UUID-keyed dict and set lookups below do not: a ``str`` key
+    matches no entry, so ``_lock_reachable_matches`` would fall back to
+    its pre-lock snapshot of the subject match on every refresh round
+    and never observe an edge committed in between, and
+    ``classify_result_correction``'s cycle guard would not recognise
+    the subject match. Coerce once, at the entry points that depend on
+    the key type, rather than trusting every caller.
+    """
+    if isinstance(match_id, UUID):
+        return match_id
+    return TournamentMatchID(UUID(str(match_id)))
+
+
+def _lock_reachable_matches(match_id: TournamentMatchID) -> None:
+    """Row-lock every match a retraction OR a confirmation from
+    ``match_id`` can reach.
+
+    Best effort and side-effect only: an unknown match locks nothing
+    and is left for the caller to report, so every entry point keeps
+    the not-found contract it already had.
+
+    The point is a SINGLE id-ordered acquisition for the whole
+    reachable set. Both the retraction cascade (``_unconfirm_match_impl``,
+    taking its own per-node ``get_match_for_update`` locks in traversal
+    order as it recurses) and confirmation's own downstream advance
+    (``_advance_winner`` / ``_advance_loser_to_lb`` writing into
+    ``match.next_match_id`` / ``match.loser_next_match_id``) touch
+    exactly this reachable set; once this has run in the same
+    transaction, those writers only re-take locks already held, so no
+    two callers can acquire the same rows in opposing orders and
+    deadlock (workspace-k9hm). Covered callers -- everything that
+    retracts or advances a contestant into another match -- come
+    through here first: ``unconfirm_match``, ``correct_match_result``,
+    and, via ``_confirm_match_impl``, ``confirm_match``,
+    ``admin_set_and_confirm_match`` and ``set_match_scores``. The FFA
+    writers (``confirm_ffa_match``, ``set_ffa_placements``) do not
+    advance a contestant into another match -- FFA does not use
+    ``next_match_id`` -- so they are correctly not covered.
+
+    The reachable set is derived from an unlocked read, so it is
+    recomputed after locking and the lock re-taken while it keeps
+    growing: a transaction that commits a new edge in between (a DE
+    bracket reset wiring GF M1 to a fresh GF M2) can make a match
+    reachable that the first pass did not lock. In practice this
+    settles on the second pass. Re-locking passes the whole set, not
+    just the new IDs, so the acquisition order stays stable.
+
+    Each round's re-read uses the ``_fresh`` (``populate_existing``)
+    repository variant, not the plain one. Every match in this
+    tournament is already in the identity map by the second round
+    (this function loaded them all in round one), so a plain re-read
+    would hand back byte-identical, pre-lock objects: the growth
+    check below could never observe a newly committed edge and the
+    whole retry loop would be a no-op (workspace-ubjc).
+
+    ``match_id`` is normalised to a real ``UUID`` first: the refresh
+    round below looks the subject match up in a ``UUID``-keyed index,
+    and a ``str`` ID (what a ``NewType`` wrap of a URL segment yields)
+    would miss it every time and silently pin the walk to the pre-lock
+    snapshot -- turning the whole loop back into the no-op it exists
+    to avoid.
+    """
+    match_id = _as_match_id(match_id)
+
+    subject = tournament_repository.find_match(match_id)
+    if subject is None:
+        return
+
+    # Every writer locks the tournament row before any match row.
+    tournament_repository.lock_tournament_for_update(subject.tournament_id)
+
+    locked: set[TournamentMatchID] = set()
+
+    for _ in range(_MAX_LOCK_REFRESH_ROUNDS):
+        matches_by_id = {
+            m.id: m
+            for m in (
+                tournament_repository.get_matches_for_tournament_ordered_fresh(
+                    subject.tournament_id
+                )
+            )
+        }
+        current = matches_by_id.get(match_id, subject)
+        reachable = set(
+            _collect_reachable_match_ids(current, matches_by_id)
+        )
+        if reachable <= locked:
+            return
+
+        locked |= reachable
+        tournament_repository.lock_matches_for_update(sorted(locked))
+
+    logger.warning(
+        'Reachable match set for %s kept growing over %d lock rounds; '
+        'proceeding with %d locked matches.',
+        match_id,
+        _MAX_LOCK_REFRESH_ROUNDS,
+        len(locked),
+    )
+
+
+def acknowledgement_match_ids(
+    case: CorrectionCase,
+    affected_matches: Iterable[TournamentMatch],
+) -> list[TournamentMatchID]:
+    """Return the affected matches an acknowledgement has to cover."""
+    if case is CorrectionCase.BRACKET_RESET_DELETION:
+        return [m.id for m in affected_matches]
+    if case is CorrectionCase.CONFIRMED_DOWNSTREAM:
+        return [m.id for m in affected_matches if m.confirmed_by is not None]
+    return []
+
+
+def classify_result_correction(
+    match_id: TournamentMatchID,
+) -> Result[tuple[CorrectionCase, list[TournamentMatchID]], str]:
+    """Classify a result correction by what lies downstream.
+
+    Walks the SAME transitive closure that ``_unconfirm_match_impl``
+    actually retracts, not just the direct downstream matches: from
+    ``match_id``, each match's ``next_match_id`` / ``loser_next_match_id``
+    (the inverse of ``find_feeder_matches`` traversal) is added to the
+    affected set, and traversal continues past a downstream match only
+    if it is itself confirmed -- exactly the condition
+    ``_unconfirm_match_impl`` uses to decide whether to recurse. A
+    round trip back to an already-visited match (a cycle) simply stops
+    traversing there instead of raising, since classification must
+    never error on a bracket topology the cascade itself already
+    tolerates.
+
+    - no downstream at all -> NO_DOWNSTREAM (correct freely)
+    - downstream exists, all unconfirmed -> UNCONFIRMED_DOWNSTREAM
+      (warn, recalculate)
+    - any affected match is confirmed -> CONFIRMED_DOWNSTREAM
+      (critical warning + explicit acknowledgement)
+    - subject is DE grand final M1 and the bracket-reset match GF M2
+      exists -> BRACKET_RESET_DELETION (critical warning + explicit
+      acknowledgement). Checked last and overriding, because the
+      cascade DELETES GF M2 rather than retracting it; the two
+      retraction cases above would both describe that wrongly.
+
+    Two cascade effects are deliberately accounted for here even
+    though the confirmed-only recursion does not reach them: the
+    GF M2 deletion above, and the structural-DEFWIN undo that strips
+    the loser's auto-advanced row from an unconfirmed LB match's own
+    next match.
+
+    Returns the affected downstream match IDs (excluding the subject
+    match itself) for warning text, in breadth-first order with
+    ``next_match_id`` visited before ``loser_next_match_id``.
+
+    Uses the ``_fresh`` (``populate_existing``) repository reads, not
+    the plain ones. ``correct_match_result`` calls this specifically
+    *after* ``_lock_reachable_matches``, so the ack_critical gate
+    below decides on post-lock confirmation state -- that is the
+    whole point of locking before classifying. Every match in this
+    bracket is already in the identity map from that locking pass, so
+    a plain (non-``_fresh``) read here would silently hand back the
+    same pre-lock objects: a second admin who confirms a downstream
+    match between the first unlocked read and the lock acquisition
+    would be invisible, and the acknowledgement gate this function
+    drives would decide on stale data (workspace-ubjc). This function
+    is also called unlocked, from the admin correction-preview view;
+    ``_fresh`` reads are harmless there too, since the SELECT already
+    runs regardless -- it only changes whether a cached instance's
+    attributes get refreshed from it.
+
+    ``match_id`` is normalised to a real ``UUID`` first: the cycle
+    guard below seeds its ``visited`` set with it and compares it
+    against ``UUID`` routing columns, so a ``str`` ID would leave the
+    subject match unguarded and let a bracket edge routing back to it
+    report the subject as its own downstream.
+    """
+    match_id = _as_match_id(match_id)
+
+    match = tournament_repository.find_match_fresh(match_id)
+    if match is None:
+        return Err(f'Unknown match ID "{match_id}".')
+
+    # Index the tournament's matches once. The walk below used to call
+    # find_match per node, which put one query per bracket node on a
+    # page admins reload throughout an event; this keeps the whole
+    # classification at two queries regardless of bracket size.
+    matches_by_id = {
+        m.id: m
+        for m in (
+            tournament_repository.get_matches_for_tournament_ordered_fresh(
+                match.tournament_id
+            )
+        )
+    }
+
+    affected: list[TournamentMatchID] = []
+    any_confirmed = False
+    visited: set[TournamentMatchID] = {match_id}
+    frontier = [match]
+
+    while frontier:
+        next_frontier = []
+        for current in frontier:
+            for downstream_id in (
+                current.next_match_id,
+                current.loser_next_match_id,
+            ):
+                if downstream_id is None or downstream_id in visited:
+                    # Absent, or already seen -- a cycle guard, mirroring
+                    # _unconfirm_match_impl's _visited set. Unlike that
+                    # cascade, a cycle here is not an error: just stop
+                    # traversing through this edge.
+                    continue
+                downstream = matches_by_id.get(downstream_id)
+                if downstream is None:
+                    # Dangling routing entry; treat as absent.
+                    continue
+                visited.add(downstream_id)
+                # The cascade always removes the advanced contestant
+                # from a direct downstream match, confirmed or not.
+                affected.append(downstream.id)
+                if downstream.confirmed_by is not None:
+                    any_confirmed = True
+                    # Only a confirmed downstream match is itself
+                    # unconfirmed-and-cascaded further.
+                    next_frontier.append(downstream)
+                elif downstream_id == current.loser_next_match_id:
+                    # Structural-DEFWIN undo: even when this LB match
+                    # is unconfirmed -- and therefore not cascaded
+                    # into -- _unconfirm_match_impl still deletes the
+                    # loser's auto-advanced row from ITS next match.
+                    # That grandchild is reachable by the cascade but
+                    # not by the confirmed-only recursion above, so
+                    # account for it here; otherwise a confirmed match
+                    # can have its contestant set mutated without the
+                    # acknowledgement this gate exists to require.
+                    grandchild_id = downstream.next_match_id
+                    if (
+                        grandchild_id is not None
+                        and grandchild_id not in visited
+                    ):
+                        grandchild = matches_by_id.get(grandchild_id)
+                        if grandchild is not None:
+                            visited.add(grandchild_id)
+                            affected.append(grandchild_id)
+                            if grandchild.confirmed_by is not None:
+                                any_confirmed = True
+        frontier = next_frontier
+
+    # A correction of GF M1 is not a retraction of GF M2 -- the
+    # bracket-reset cleanup in _unconfirm_match_impl deletes GF M2
+    # entirely (comments, contestants, match row) and emits a
+    # MatchDeletedEvent. This is the normal post-reset state (GF M1
+    # confirmed, GF M2 pending), so reporting it as
+    # UNCONFIRMED_DOWNSTREAM would tell the admin the match merely
+    # loses a contestant, and would wave the deletion through with no
+    # acknowledgement at all.
+    if (
+        match.bracket == Bracket.GRAND_FINAL
+        and match.match_order == 0  # GF M1
+        and match.next_match_id is not None
+    ):
+        gf_m2 = matches_by_id.get(match.next_match_id)
+        if (
+            gf_m2 is not None
+            and gf_m2.bracket == Bracket.GRAND_FINAL
+            and gf_m2.match_order == 1  # GF M2
+        ):
+            return Ok((CorrectionCase.BRACKET_RESET_DELETION, affected))
+
+    if not affected:
+        return Ok((CorrectionCase.NO_DOWNSTREAM, []))
+    if any_confirmed:
+        return Ok((CorrectionCase.CONFIRMED_DOWNSTREAM, affected))
+    return Ok((CorrectionCase.UNCONFIRMED_DOWNSTREAM, affected))
+
+
+def correct_match_result(
+    match_id: TournamentMatchID,
+    initiator_id: UserID,
+    *,
+    reason: str,
+    corrected_scores: (
+        dict[TournamentParticipantID | TournamentTeamID, int] | None
+    ) = None,
+    ack_critical: bool = False,
+    acknowledged_match_ids: Collection[TournamentMatchID] | None = None,
+) -> Result[tuple[CorrectionCase, bool], str]:
+    """Orchestrate an admin result correction with audit logging.
+
+    If `acknowledged_match_ids` is given, a critical correction is
+    refused when more matches are at stake than were acknowledged.
+
+    Atomic: the retraction and the score re-application are ONE
+    transaction, with a single commit at the end and every collected
+    event dispatched only after it succeeds (workspace-ukkj). Earlier,
+    ``unconfirm_match`` committed the retraction on its own before the
+    corrected scores were applied by a second, separate commit; a
+    process death, a concurrent confirm taking the match, or a
+    deadlock abort between the two left the bracket retracted with the
+    correction unapplied, recoverable only by hand. That is no longer
+    reachable: every write below is flush-only until the single commit
+    near the end, and any failure before it rolls the whole
+    transaction back, so a correction either fully applies or never
+    happened.
+
+    Flow:
+
+    1. Reject blank reasons.
+    2. Lock every match the cascade could reach, via
+       ``_lock_reachable_matches``, so the classification below
+       cannot go stale between the decision and the act -- and so
+       this path and a concurrent ``unconfirm_match`` acquire the
+       same rows in the same order. Held for the ENTIRE correction:
+       nothing below commits (and so nothing releases these locks)
+       until the single commit at the end.
+    3. Classify via ``classify_result_correction``, under those
+       locks.
+    4. Refuse CONFIRMED_DOWNSTREAM and BRACKET_RESET_DELETION unless
+       ``ack_critical`` is set — there is no automatic chain
+       correction; admins handle confirmed downstream matches, and
+       the deletion of a bracket-reset match, manually after explicit
+       acknowledgement.
+    5. If corrected scores are supplied, validate them via the same
+       read-only ``_validate_match_scores`` check
+       ``admin_set_and_confirm_match`` uses, BEFORE anything
+       destructive runs. A bad score (negative, over the max,
+       missing, a disallowed draw, or a match that can never be
+       confirmed because it holds fewer than 2 real contestants)
+       must fail here so the retraction below never happens on
+       invalid input. Scores identical to the current result are
+       rejected too: a correction that corrects nothing still
+       cascades.
+    6. Retract the result via ``_unconfirm_match_flush(reason=...)``
+       -- the flush-only core ``unconfirm_match`` itself is built on
+       -- which stages (but does not commit) a
+       ``'match-result-retracted'`` entry. This is the single writer
+       of that entry.
+    7. If corrected scores are supplied, stage a
+       ``'match-result-corrected'`` entry (flush-only), then apply
+       the scores via ``_admin_set_and_confirm_match_impl`` (the
+       flush-only core ``admin_set_and_confirm_match`` itself is
+       built on). When no scores are supplied, the retraction entry
+       alone is the record.
+    8. A single ``commit_session()`` covers everything staged above;
+       any ``Err`` or exception before it rolls the whole transaction
+       back instead, undoing the retraction along with it. Every
+       collected event (from both the retraction and, when
+       applicable, the re-confirmation) is dispatched only after that
+       commit succeeds.
+
+    Returns ``(case, scores_applied)`` on success.
+    """
+    if reason is None or not reason.strip():
+        return Err('A correction reason is required.')
+
+    # Normalise once, up front, so every ID-keyed step below -- the
+    # lock refresh and the classification especially -- sees a real
+    # UUID rather than whatever a caller's NewType wrap handed in.
+    match_id = _as_match_id(match_id)
+
+    subject = tournament_repository.find_match(match_id)
+    if subject is None:
+        return Err(f'Unknown match ID "{match_id}".')
+
+    # Lock every match the cascade could reach BEFORE classifying.
+    # The ack gate is a decision about downstream confirmation state,
+    # which a second admin can change; classified unlocked, a match
+    # confirmed after the gate passed would be retracted without the
+    # acknowledgement it requires.
+    _lock_reachable_matches(match_id)
+
+    # Past this point the reachable bracket is locked, so every early
+    # return must release it. This runs outside a request too, where
+    # no teardown rolls the session back.
+
+    # A walkover has no determinable winner, so its retraction would
+    # not cascade and it could never be confirmed again.
+    contestants = tournament_repository.get_contestants_for_match(match_id)
+    real_contestant_count = sum(
+        1
+        for c in contestants
+        if c.participant_id is not None or c.team_id is not None
+    )
+    if real_contestant_count < 2:
+        tournament_repository.rollback_session()
+        return Err(
+            'A walkover cannot be corrected: the match has fewer than '
+            '2 contestants.'
+        )
+
+    classification_result = classify_result_correction(match_id)
+    if classification_result.is_err():
+        tournament_repository.rollback_session()
+        return Err(classification_result.unwrap_err())
+    classification = classification_result.unwrap()
+    case, affected = classification
+
+    if (
+        case
+        in (
+            CorrectionCase.CONFIRMED_DOWNSTREAM,
+            CorrectionCase.BRACKET_RESET_DELETION,
+        )
+        and not ack_critical
+    ):
+        tournament_repository.rollback_session()
+        if case is CorrectionCase.BRACKET_RESET_DELETION:
+            return Err(
+                'Correcting the first grand final deletes the '
+                'bracket-reset match; explicit acknowledgement is '
+                'required.'
+            )
+        return Err(
+            'Downstream matches already started or completed; '
+            'explicit acknowledgement is required.'
+        )
+
+    if acknowledged_match_ids is not None:
+        at_stake = set(
+            acknowledgement_match_ids(
+                case, tournament_repository.get_matches_by_ids(affected)
+            )
+        )
+        acknowledged = {_as_match_id(i) for i in acknowledged_match_ids}
+        if not at_stake <= acknowledged:
+            tournament_repository.rollback_session()
+            return Err(
+                'The downstream matches changed since this page was '
+                'loaded. Review the correction and acknowledge it again.'
+            )
+
+    previous_scores = None
+    if corrected_scores:
+        # Validate BEFORE the destructive retraction below. Without
+        # this, an invalid score would still commit the
+        # unconfirm_match cascade (retracting the result, and
+        # anything downstream of it) and only then fail applying the
+        # new scores -- leaving the bracket wiped for no reason.
+        validation = _validate_match_scores(match_id, corrected_scores)
+        if validation.is_err():
+            tournament_repository.rollback_session()
+            return Err(validation.unwrap_err())
+
+        id_to_score = validation.unwrap()
+
+        # Refuse a correction that corrects nothing: the panel
+        # pre-fills the current scores, and the retraction would
+        # still clear any confirmed downstream result.
+        current_by_row = {c.id: c.score for c in contestants}
+        if id_to_score and all(
+            current_by_row.get(row_id) == score
+            for row_id, score in id_to_score.items()
+        ):
+            tournament_repository.rollback_session()
+            return Err(
+                'The submitted scores are identical to the current '
+                'result; nothing was corrected. Change a score, or '
+                'clear every score field to retract the result.'
+            )
+
+        previous_scores = _snapshot_contestant_scores(
+            match_id, contestants=contestants
+        )
+
+    tournament_id = subject.tournament_id
+
+    # Retract (flush only) -- shares this transaction and the locks
+    # taken above rather than committing on its own. Wrapped in
+    # try/except because _unconfirm_match_flush's staged log entry
+    # (below, inside it) can raise: this function also runs outside a
+    # request, so it must not depend on request-lifecycle teardown
+    # (db.session.remove()) to discard a partial cascade on a bare
+    # re-raise.
+    try:
+        retract_result = _unconfirm_match_flush(
+            match_id,
+            initiator_id,
+            reason=reason,
+            # The classification the acknowledgement gate above
+            # decided on, reused for the cascade score snapshot
+            # instead of walking the bracket a second time. Nothing
+            # commits between the two, so a fresh walk could only
+            # return the same answer -- and reusing it makes the log
+            # and the admin's warning describe the same match set by
+            # construction.
+            _classification=classification,
+        )
+    except Exception:
+        tournament_repository.rollback_session()
+        raise
+
+    if retract_result.is_err():
+        tournament_repository.rollback_session()
+        return Err(retract_result.unwrap_err())
+
+    (
+        retract_events,
+        retract_deleted_events,
+        tournament_was_uncompleted,
+        _tournament_id,
+    ) = retract_result.unwrap()
+
+    scores_applied = False
+    confirmed_events: list[MatchConfirmedEvent] = []
+    completed_event: TournamentCompletedEvent | None = None
+    adv_events: list[ContestantAdvancedEvent] = []
+    created_events: list[MatchCreatedEvent] = []
+    ready_events: list[MatchReadyEvent] = []
+
+    if corrected_scores:
+        # Staged before the call so this entry is flushed in the same
+        # transaction as the score write it describes. Wrapped for
+        # the same reason as _unconfirm_match_flush above: this can
+        # raise, and the retraction's already-flushed writes above
+        # must not survive a bare re-raise.
+        try:
+            create_log_entry(
+                'match-result-corrected',
+                tournament_id,
+                initiator_id,
+                data={
+                    'match_id': str(match_id),
+                    'case': case.value,
+                    'reason': reason,
+                    'scores_applied': True,
+                    'previous_scores': previous_scores,
+                    'new_scores': {
+                        str(key): score
+                        for key, score in corrected_scores.items()
+                    },
+                },
+                commit=False,
+            )
+        except Exception:
+            tournament_repository.rollback_session()
+            raise
+
+        # Wrapped for the same reason as the two calls above: this
+        # can raise (an unknown match, a repository error on the score
+        # write), and the retraction's already-flushed cascade must
+        # not survive a bare re-raise. Without this the atomicity
+        # guarantee this function documents holds for every Err path
+        # but not for an exception, outside a request where no
+        # teardown rolls the session back.
+        try:
+            apply_result = _admin_set_and_confirm_match_impl(
+                match_id,
+                initiator_id,
+                corrected_scores,
+                # Locked once at the top of this function, for the
+                # whole correction; nothing below commits until the
+                # single commit_session(), so the locks still stand.
+                _locks_held=True,
+            )
+        except Exception:
+            tournament_repository.rollback_session()
+            raise
+
+        if apply_result.is_err():
+            # Nothing below commits until the single commit_session()
+            # near the end of this function, so this rollback undoes
+            # the retraction above too: the whole correction never
+            # happened, matching every other early-return path here.
+            tournament_repository.rollback_session()
+            # Returned unwrapped, NOT wrapped in an f-string. Every
+            # Err this module returns is itself a msgid the view
+            # translates with gettext(); an f-string around one
+            # matches no msgid at all, so the flash came out as a
+            # German wrapper with an English tail. The "nothing was
+            # changed" reassurance that used to live in that wrapper
+            # is true of every Err this function returns (see the
+            # atomicity contract above), so it now sits in the view's
+            # own translatable wrapper instead.
+            return Err(apply_result.unwrap_err())
+        (
+            confirmed_event,
+            completed_event,
+            adv_events,
+            created_events,
+            ready_events,
+        ) = apply_result.unwrap()
+        confirmed_events = [confirmed_event]
+        scores_applied = True
+
+    # Single commit for the whole correction.
+    tournament_repository.commit_session()
+
+    # Dispatch every collected event only after that commit succeeds.
+    for event in retract_events:
+        match_unconfirmed.send(None, event=event)
+    for event in retract_deleted_events:
+        match_deleted.send(None, event=event)
+    if tournament_was_uncompleted:
+        now = datetime.now(UTC)
+        tournament_uncompleted.send(
+            None,
+            event=TournamentUncompletedEvent(
+                occurred_at=now,
+                initiator=None,
+                tournament_id=tournament_id,
+            ),
+        )
+    for event in confirmed_events:
+        match_confirmed.send(None, event=event)
+    if completed_event is not None:
+        tournament_completed.send(None, event=completed_event)
+    for event in adv_events:
+        contestant_advanced.send(None, event=event)
+    for event in created_events:
+        match_created.send(None, event=event)
+    for event in ready_events:
+        match_ready.send(None, event=event)
+
+    return Ok((case, scores_applied))
 
 
 def set_score(
@@ -2286,6 +3967,17 @@ def get_contestants_for_tournament(
     Single query -- use this in match-list / bracket views to avoid N+1.
     """
     return tournament_repository.get_contestants_for_tournament(tournament_id)
+
+
+def get_contestants_for_matches(
+    match_ids: list[TournamentMatchID],
+) -> dict[TournamentMatchID, list[TournamentMatchToContestant]]:
+    """Return the contestants of those matches, grouped by match ID.
+
+    Single query, bounded by the passed IDs -- use this where a view
+    needs a known handful of matches rather than the whole tournament.
+    """
+    return tournament_repository.get_contestants_for_matches(match_ids)
 
 
 # -------------------------------------------------------------------- #
@@ -2465,7 +4157,15 @@ def set_ffa_placements(
 
     Returns ``Ok(None)`` on success.
     """
+    match = tournament_repository.find_match(match_id)
+    if match is not None:
+        tournament_repository.lock_tournament_for_update(match.tournament_id)
     match = tournament_repository.get_match_for_update(match_id)
+
+    # A confirmed result changes only through the audited unconfirm.
+    if match.confirmed_by is not None:
+        return Err('Cannot modify placements of a confirmed match.')
+
     contestants = tournament_repository.get_contestants_for_match(match_id)
 
     # Build lookup: contestant-id-string -> contestant record.
@@ -2522,6 +4222,9 @@ def confirm_ffa_match(
 
     Returns ``Ok(None)`` on success.
     """
+    match = tournament_repository.find_match(match_id)
+    if match is not None:
+        tournament_repository.lock_tournament_for_update(match.tournament_id)
     match = tournament_repository.get_match_for_update(match_id)
 
     # Reject already-confirmed matches.
@@ -2588,6 +4291,17 @@ def confirm_ffa_match(
                 if comp.is_err():
                     return comp
                 tournament_was_completed = comp.unwrap()
+
+    create_log_entry(
+        'ffa-match-confirmed',
+        match.tournament_id,
+        initiator_id,
+        data={
+            'match_id': str(match_id),
+            'placements': _snapshot_contestant_placements(contestants),
+        },
+        commit=False,
+    )
 
     tournament_repository.commit_session()
 

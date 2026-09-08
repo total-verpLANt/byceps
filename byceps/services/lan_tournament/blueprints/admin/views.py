@@ -65,6 +65,10 @@ from byceps.services.lan_tournament.models.tournament_status import (
 from byceps.services.lan_tournament.models.ffa_de_pool_data import (
     FfaDePoolData,
 )
+from byceps.services.lan_tournament.tournament_match_service import (
+    acknowledgement_match_ids,
+    retraction_reverts_completion,
+)
 from byceps.services.lan_tournament.tournament_service import (
     EDIT_LOCKED_STATUSES,
     resolve_podium_display_names,
@@ -72,7 +76,9 @@ from byceps.services.lan_tournament.tournament_service import (
 )
 from byceps.services.lan_tournament.lan_tournament_view_helpers import (
     build_contestant_name_lookups,
+    build_downstream_impact,
     build_hover_lookups,
+    build_match_label,
     build_round_robin_standings,
     build_seat_lookup,
     build_team_members_lookup,
@@ -85,6 +91,8 @@ from .forms import (
     AddParticipantForm,
     AddTeamMemberForm,
     HighscoreSubmitForm,
+    MatchCorrectionForm,
+    MatchUnconfirmForm,
     TeamCreateForm,
     TeamUpdateForm,
     TransferCaptainForm,
@@ -788,7 +796,7 @@ def delete(tournament_id):
     """Delete the tournament."""
     tournament = _get_tournament_or_404(tournament_id)
 
-    tournament_service.delete_tournament(tournament.id)
+    tournament_service.delete_tournament(tournament.id, g.user.id)
 
     flash_success(
         gettext(
@@ -865,7 +873,15 @@ def _change_status(tournament_id, new_status: TournamentStatus):
             flash_error(
                 gettext(
                     'Status change failed: %(error)s',
-                    error=error_message,
+                    # The services report failures as plain English
+                    # msgids (the transition errors from
+                    # tournament_domain_service and the bracket check
+                    # in change_status alike); without this inner
+                    # call the flash is a German wrapper with an
+                    # English tail. gettext() with no kwargs does no
+                    # %-interpolation, so a message carrying a
+                    # literal % is safe here.
+                    error=gettext(error_message),
                 )
             )
 
@@ -916,6 +932,7 @@ def generate_bracket(tournament_id):
             result = tournament_match_service.generate_round_robin_bracket(
                 tournament.id,
                 force_regenerate=force_regenerate,
+                initiator_id=g.user.id,
             )
         case (GameFormat.FREE_FOR_ALL, _):
             flash_error(
@@ -1522,6 +1539,18 @@ def _get_party_or_404(party_id) -> Party:
 
 
 def _get_tournament_or_404(tournament_id) -> Tournament:
+    # Parse the raw URL segment before it reaches the repository, the
+    # same way _get_match_or_404 below and the site blueprint's own
+    # _get_tournament_or_404 already do. db.session.get() hands an
+    # unparsed str straight to psycopg, which raises DataError
+    # ("invalid input syntax for type uuid") -- a 500 with a stack
+    # trace on a guessable URL, and a session left in a failed
+    # transaction so every later statement in the request aborts too.
+    try:
+        tournament_id = TournamentID(UUID(str(tournament_id)))
+    except ValueError:
+        abort(404)
+
     tournament = tournament_service.find_tournament(tournament_id)
 
     if tournament is None:
@@ -1531,6 +1560,12 @@ def _get_tournament_or_404(tournament_id) -> Tournament:
 
 
 def _get_team_or_404(team_id) -> TournamentTeam:
+    # Same parse-before-query reason as _get_tournament_or_404 above.
+    try:
+        team_id = TournamentTeamID(UUID(str(team_id)))
+    except ValueError:
+        abort(404)
+
     team = tournament_team_service.find_team(team_id)
 
     if team is None:
@@ -1539,8 +1574,50 @@ def _get_team_or_404(team_id) -> TournamentTeam:
     return team
 
 
+def _is_ffa(tournament: Tournament) -> bool:
+    """Whether the tournament is free-for-all (no bracket routing).
+
+    Asks the domain enum rather than comparing ``game_format.name``
+    to a string literal. Two safety gates hang off this answer -- the
+    correction route refuses FFA, the unconfirm route refuses
+    everything else -- and a stringly-typed comparison would keep
+    type-checking and keep passing tests while silently answering
+    ``False`` for every FFA tournament if the member were ever
+    renamed.
+    """
+    return (
+        tournament.game_format is not None
+        and tournament.game_format.uses_placements
+    )
+
+
+def _parse_match_ids(raw: str) -> list[TournamentMatchID]:
+    """Return the comma-separated match IDs, or `[]` if one is malformed."""
+    try:
+        return [
+            TournamentMatchID(UUID(part)) for part in raw.split(',') if part
+        ]
+    except ValueError:
+        return []
+
+
 def _get_match_or_404(match_id) -> TournamentMatch:
-    match = tournament_match_service.find_match(TournamentMatchID(match_id))
+    # Parse the raw URL segment into a real UUID before it reaches the
+    # service layer. The route uses the default string converter and
+    # TournamentMatchID is a NewType -- a runtime no-op -- so without
+    # this every ID threaded downstream stays a str. SQLAlchemy coerces
+    # a str on the way into a query, which hides the problem, but the
+    # UUID-keyed dict/set lookups in _lock_reachable_matches and
+    # classify_result_correction do not: a str key misses every entry
+    # and silently degrades their freshness re-check. A malformed ID
+    # also reaches the driver as a str today and raises a DataError
+    # (500) instead of a 404.
+    try:
+        match_uuid = TournamentMatchID(UUID(str(match_id)))
+    except ValueError:
+        abort(404)
+
+    match = tournament_match_service.find_match(match_uuid)
     if match is None:
         abort(404)
     return match
@@ -1648,8 +1725,77 @@ def view_match(match_id):
     contestants = tournament_match_service.get_contestants_for_match(match.id)
     comments = tournament_match_service.get_comments_from_match(match.id)
 
+    # Classify a potential result correction. Only
+    # needed when the correction panel is actually rendered, i.e. a
+    # confirmed match viewed by an admin (see view_match.html) —
+    # skip the extra DB round-trips otherwise.
+    #
+    # Runs before the name lookups below so the downstream
+    # contestants join the SAME batched name resolution as this
+    # match's own: the correction panel names them, and resolving
+    # them separately would double the lookups it takes to draw one
+    # page.
+    #
+    # FFA is excluded: the panel renders only in view_match.html's
+    # non-FFA branch, so classifying one costs two queries and a full
+    # bracket load to produce a result nothing renders.
+    is_ffa = _is_ffa(tournament)
+    ffa_result_consumed = (
+        is_ffa
+        and match.confirmed_by is not None
+        and tournament_match_service.ffa_round_already_advanced(
+            match, tournament
+        )
+    )
+    is_walkover = (
+        sum(
+            1
+            for c in contestants
+            if c.participant_id is not None or c.team_id is not None
+        )
+        < 2
+    )
+    correction_case = None
+    affected_downstream_matches = []
+    downstream_contestants_by_match_id = {}
+    if (
+        not is_ffa
+        and not is_walkover
+        and match.confirmed_by is not None
+        and g.user.has_permission('lan_tournament.administrate')
+    ):
+        classification_result = (
+            tournament_match_service.classify_result_correction(match.id)
+        )
+        if classification_result.is_ok():
+            correction_case, affected_downstream_ids = (
+                classification_result.unwrap()
+            )
+            # One batched fetch, then restore the breadth-first order
+            # the service returned. Fetching per ID here put a query
+            # per affected bracket node on every page load.
+            fetched_by_id = {
+                m.id: m
+                for m in tournament_match_service.get_matches_by_ids(
+                    affected_downstream_ids
+                )
+            }
+            affected_downstream_matches = [
+                fetched_by_id[downstream_id]
+                for downstream_id in affected_downstream_ids
+                if downstream_id in fetched_by_id
+            ]
+            # Likewise one query for the whole affected set, not one
+            # per node: the panel shows their current scores.
+            downstream_contestants_by_match_id = (
+                tournament_match_service.get_contestants_for_matches(
+                    [m.id for m in affected_downstream_matches]
+                )
+            )
+
     teams_by_id, participants_by_id = build_contestant_name_lookups(
-        tournament.id, [contestants]
+        tournament.id,
+        [contestants, *downstream_contestants_by_match_id.values()],
     )
 
     # Resolve comment author names
@@ -1658,6 +1804,28 @@ def view_match(match_id):
 
     seats_by_user_id, team_members_by_team_id = build_hover_lookups(
         tournament, participants_by_id, teams_by_id, party.id
+    )
+
+    downstream_impact = build_downstream_impact(
+        affected_downstream_matches,
+        downstream_contestants_by_match_id,
+        correction_case,
+    )
+
+    correction_clears_winner = (
+        correction_case is not None
+        and retraction_reverts_completion(match, tournament)
+    )
+
+    ack_match_ids = (
+        [
+            str(match_id)
+            for match_id in acknowledgement_match_ids(
+                correction_case, affected_downstream_matches
+            )
+        ]
+        if correction_case is not None
+        else []
     )
 
     return {
@@ -1671,15 +1839,151 @@ def view_match(match_id):
         'comment_users_by_id': comment_users_by_id,
         'seats_by_user_id': seats_by_user_id,
         'team_members_by_team_id': team_members_by_team_id,
+        'match_label': build_match_label(match),
+        'is_walkover': is_walkover,
+        'ffa_result_consumed': ffa_result_consumed,
+        'correction_case': correction_case,
+        'ack_match_ids': ack_match_ids,
+        'correction_clears_winner': correction_clears_winner,
+        'downstream_impact': downstream_impact,
+        'max_match_score': tournament_match_service.MAX_MATCH_SCORE,
     }
+
+
+@blueprint.post('/matches/<match_id>/correct_result')
+@permission_required('lan_tournament.administrate')
+def correct_match_result(match_id):
+    """Correct a match result: retract it and optionally re-enter scores."""
+    match = _get_match_or_404(match_id)
+    tournament = _get_tournament_or_404(match.tournament_id)
+
+    # The correction panel is rendered only in view_match.html's
+    # non-FFA branch, and view_match skips the classification for FFA
+    # entirely, so this route is unreachable from the UI for an FFA
+    # match. Posted at directly it would still run: the whole cascade
+    # is built on next_match_id, which FFA does not use, so it would
+    # degrade into a plain unconfirm wearing a correction's audit
+    # entries and reason. FFA has its own unconfirm route; send the
+    # admin there rather than logging a correction that corrected
+    # nothing.
+    if _is_ffa(tournament):
+        flash_error(
+            gettext(
+                'Free-for-all matches are corrected by unconfirming '
+                'them and re-entering the placements.'
+            )
+        )
+        return redirect_to('.view_match', match_id=match.id)
+
+    form = MatchCorrectionForm(request.form)
+
+    if not form.validate():
+        flash_error(gettext('Invalid input.'))
+        return redirect_to('.view_match', match_id=match_id)
+
+    reason = form.reason.data.strip()
+    ack_critical = bool(form.ack_critical.data)
+    acknowledged_match_ids = _parse_match_ids(
+        request.form.get('ack_match_ids', '')
+    )
+
+    # Bind each submitted score to its contestant BY KEY, never by
+    # list position. get_contestants_for_match sorts on a created_at
+    # that is identical for every contestant of a generated bracket,
+    # so the row order is not stable between the GET that rendered
+    # this form and this POST; a positional home/away binding could
+    # silently record the inverted result. Mirrors the key-driven
+    # parse in confirm_match_with_scores below.
+    contestants = tournament_match_service.get_contestants_for_match(
+        match.id
+    )
+
+    corrected_scores = {}
+    num_real = 0
+    num_blank = 0
+    for contestant in contestants:
+        key = contestant.team_id or contestant.participant_id
+        if key is None:
+            continue  # DEFWIN slot -- carries no key, takes no score.
+        num_real += 1
+        raw = request.form.get(f'corrected_score_{key}', '').strip()
+        if not raw:
+            num_blank += 1
+            continue
+        try:
+            score_int = int(raw)
+        except ValueError:
+            flash_error(gettext('Invalid score value.'))
+            return redirect_to('.view_match', match_id=match_id)
+
+        if tournament.contestant_type == ContestantType.TEAM:
+            corrected_scores[TournamentTeamID(key)] = score_int
+        else:
+            corrected_scores[TournamentParticipantID(key)] = score_int
+
+    # All filled re-enters the result; all blank retracts only.
+    # A partial fill is ambiguous and must not reach the service,
+    # which would reject it only after the retraction had committed.
+    if num_blank not in (0, num_real):
+        flash_error(
+            gettext(
+                'Enter a score for every contestant, or leave them all empty.'
+            )
+        )
+        return redirect_to('.view_match', match_id=match_id)
+
+    if not corrected_scores:
+        corrected_scores = None
+
+    result = tournament_match_service.correct_match_result(
+        match.id,
+        g.user.id,
+        reason=reason,
+        corrected_scores=corrected_scores,
+        ack_critical=ack_critical,
+        acknowledged_match_ids=acknowledged_match_ids,
+    )
+
+    match result:
+        case Ok((_, True)):
+            flash_success(
+                gettext(
+                    'Match result has been corrected and the new scores confirmed.'
+                )
+            )
+        case Ok(_):
+            flash_success(gettext('Match result has been corrected.'))
+        case Err(error_message):
+            flash_error(
+                gettext(
+                    'Error correcting match result: %(error)s Nothing '
+                    'was changed; the original result remains '
+                    'confirmed.',
+                    # The service reports failures as plain English
+                    # msgids; translate the inner text too, or the
+                    # flash reads half German -- which is what an
+                    # admin who skips the acknowledgement checkbox
+                    # got. The catalogue carries every one of these
+                    # strings (check_translations.py guards that).
+                    #
+                    # The reassurance is part of THIS msgid rather
+                    # than the service's message: correct_match_result
+                    # is atomic, so it holds for every Err it returns,
+                    # and composing it service-side would produce a
+                    # string no catalogue entry can match.
+                    error=gettext(error_message),
+                )
+            )
+
+    return redirect_to('.view_match', match_id=match.id)
 
 
 @blueprint.post('/matches/<match_id>/confirm_with_scores')
 @permission_required('lan_tournament.administrate')
 def confirm_match_with_scores(match_id):
     """Set scores for all contestants and confirm the match."""
-    match_id_obj = TournamentMatchID(match_id)
-    match_obj = tournament_match_service.get_match(match_id_obj)
+    match_obj = _get_match_or_404(match_id)
+    match_id_obj = match_obj.id
     tournament = _get_tournament_or_404(match_obj.tournament_id)
 
     contestants = tournament_match_service.get_contestants_for_match(
@@ -1714,7 +2018,19 @@ def confirm_match_with_scores(match_id):
             flash_error(
                 gettext(
                     'Error confirming match: %(error)s',
-                    error=error_message,
+                    # Same inner gettext() as _change_status and
+                    # correct_match_result: the service reports
+                    # failures as plain English msgids, hand-added to
+                    # the catalogue because they never appear at a
+                    # gettext() call site for babel to extract.
+                    # Without this the flash is a German wrapper with
+                    # an English tail. _validate_match_scores feeds
+                    # this path two of them ('Cannot confirm match
+                    # with less than 2 contestants.', 'Match is a
+                    # draw; a winner is required in this tournament
+                    # mode.'); check_translations.py guards that the
+                    # catalogue carries them.
+                    error=gettext(error_message),
                 )
             )
 
@@ -1725,16 +2041,51 @@ def confirm_match_with_scores(match_id):
 @permission_required('lan_tournament.administrate')
 def unconfirm_match(match_id):
     """Unconfirm a match result."""
-    match_id_obj = TournamentMatchID(match_id)
+    match = _get_match_or_404(match_id)
+    match_id_obj = match.id
+    tournament = _get_tournament_or_404(match.tournament_id)
 
-    match tournament_match_service.unconfirm_match(match_id_obj, g.user.id):
+    # Only FFA still reaches this route from the UI: view_match.html
+    # replaced the bracket unconfirm button with the correction panel,
+    # which refuses to retract confirmed downstream matches -- or
+    # delete a bracket-reset match -- without an explicit
+    # acknowledgement. This route runs the same cascade with no such
+    # gate, so a stale tab or bookmarked URL would wave it through.
+    if not _is_ffa(tournament):
+        flash_error(
+            gettext(
+                'Bracket matches are retracted in the result '
+                'correction panel, which requires acknowledging the '
+                'impact on downstream matches.'
+            )
+        )
+        return redirect_to('.view_match', match_id=match.id)
+
+    form = MatchUnconfirmForm(request.form)
+    if not form.validate():
+        flash_error(gettext('Reason cannot be empty.'))
+        return redirect_to('.view_match', match_id=match_id)
+
+    reason = form.reason.data.strip()
+    if not reason:
+        flash_error(gettext('Reason cannot be empty.'))
+        return redirect_to('.view_match', match_id=match_id)
+
+    match tournament_match_service.unconfirm_match(
+        match_id_obj, g.user.id, reason=reason
+    ):
         case Ok(_):
             flash_success(gettext('Match has been unconfirmed.'))
         case Err(error_message):
             flash_error(
                 gettext(
                     'Error unconfirming match: %(error)s',
-                    error=error_message,
+                    # Inner gettext() for the same reason as the
+                    # confirm path above -- the cascade's Errs
+                    # ('Match is not confirmed.', 'Circular match
+                    # reference detected.') are English msgids the
+                    # catalogue carries.
+                    error=gettext(error_message),
                 )
             )
 
@@ -1745,7 +2096,7 @@ def unconfirm_match(match_id):
 @permission_required('lan_tournament.update')
 def add_match_comment(match_id):
     """Add a comment to a match."""
-    match_id_obj = TournamentMatchID(match_id)
+    match_id_obj = _get_match_or_404(match_id).id
 
     comment = request.form.get('comment', '').strip()
 
@@ -1903,8 +2254,17 @@ def bracket(tournament_id):
 @permission_required('lan_tournament.administrate')
 def delete_match_comment(match_id, comment_id):
     """Delete a match comment."""
-    comment_id_obj = TournamentMatchCommentID(UUID(comment_id))
-    match_id_obj = TournamentMatchID(UUID(match_id))
+    # Both IDs come off the URL as raw strings. A bare UUID() on a
+    # malformed one raises ValueError out of the view -- a 500 with a
+    # stack trace on a guessable URL. Route the match through the
+    # shared helper (which 404s on both malformed and unknown) and
+    # give the comment ID the same treatment.
+    match_id_obj = _get_match_or_404(match_id).id
+
+    try:
+        comment_id_obj = TournamentMatchCommentID(UUID(str(comment_id)))
+    except ValueError:
+        abort(404)
 
     match tournament_match_service.delete_comment(comment_id_obj, match_id_obj):
         case Ok():
@@ -2362,7 +2722,7 @@ def set_ffa_placements_action(match_id):
             flash_error(
                 gettext(
                     'Error setting placements: %(error)s',
-                    error=error_message,
+                    error=gettext(error_message),
                 )
             )
 

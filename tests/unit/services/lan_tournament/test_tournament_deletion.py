@@ -3,12 +3,9 @@ tests.unit.services.lan_tournament.test_tournament_deletion
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Unit tests for CASCADE deletion behavior in tournament service layer.
-
-:Copyright: 2014-2026 Jochen Kupperschmidt
-:License: Revised BSD (see `LICENSE` file for details)
 """
 
-from unittest.mock import call, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 
@@ -33,8 +30,9 @@ from tests.helpers import generate_uuid
     'byceps.services.lan_tournament.tournament_service.tournament_repository'
 )
 @patch('byceps.services.lan_tournament.tournament_service.signals')
+@patch('byceps.services.lan_tournament.tournament_service.create_log_entry')
 def test_delete_tournament_cascades_all_dependencies(
-    mock_signals, mock_repository
+    mock_create_log_entry, mock_signals, mock_repository
 ):
     """Test that delete_tournament() deletes all dependent entities in correct order."""
     from byceps.services.lan_tournament import tournament_service
@@ -44,8 +42,14 @@ def test_delete_tournament_cascades_all_dependencies(
     # Execute deletion
     tournament_service.delete_tournament(tournament_id)
 
-    # Verify deletion calls in correct order (children first, then parent)
+    # Verify deletion calls in correct order (children first, then
+    # parent). Log entries are no longer part of this cascade at all
+    # (workspace-ytqz) -- get_tournament is the new first repository
+    # call, reading the tournament so the tournament-deleted entry
+    # below can denormalise its fields.
     expected_calls = [
+        call.lock_tournament_for_update(tournament_id),
+        call.get_tournament(tournament_id),
         call.delete_submissions_for_tournament(tournament_id, commit=False),
         call.delete_comments_for_tournament(tournament_id, commit=False),
         call.delete_contestants_for_tournament(tournament_id, commit=False),
@@ -59,6 +63,9 @@ def test_delete_tournament_cascades_all_dependencies(
 
     assert mock_repository.method_calls == expected_calls
 
+    # A tournament-deleted entry is written.
+    assert mock_create_log_entry.call_args.args[0] == 'tournament-deleted'
+
     # Verify event emitted
     assert mock_signals.tournament_deleted.send.called
 
@@ -67,8 +74,141 @@ def test_delete_tournament_cascades_all_dependencies(
     'byceps.services.lan_tournament.tournament_service.tournament_repository'
 )
 @patch('byceps.services.lan_tournament.tournament_service.signals')
+@patch('byceps.services.lan_tournament.tournament_service.create_log_entry')
+def test_delete_tournament_does_not_delete_log_entries(
+    mock_create_log_entry, mock_signals, mock_repository
+):
+    """workspace-ytqz: deleting a tournament must leave its audit log
+    entries in place. Migration 013 dropped the FK that used to force
+    their deletion; delete_tournament() must never call
+    delete_log_entries_for_tournament (or any other entry-deleting
+    repository function) as part of its cascade -- the CLI retention
+    purge is the only thing that still removes log entries."""
+    from byceps.services.lan_tournament import tournament_service
+
+    tournament_id = TournamentID(generate_uuid())
+
+    tournament_service.delete_tournament(tournament_id)
+
+    method_names = [c[0] for c in mock_repository.method_calls]
+
+    assert 'delete_log_entries_for_tournament' not in method_names
+    mock_repository.delete_log_entries_for_tournament.assert_not_called()
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_service.tournament_repository'
+)
+@patch('byceps.services.lan_tournament.tournament_service.signals')
+@patch('byceps.services.lan_tournament.tournament_service.create_log_entry')
+def test_delete_tournament_writes_tournament_deleted_entry(
+    mock_create_log_entry, mock_signals, mock_repository
+):
+    """workspace-ytqz: delete_tournament() writes a 'tournament-deleted'
+    log entry carrying enough denormalised tournament context (name,
+    party, game, status) that the entry stays meaningful once the
+    tournament row -- and the FK that used to point at it -- are
+    gone."""
+    from byceps.services.lan_tournament.models.contestant_type import (
+        ContestantType,
+    )
+    from byceps.services.lan_tournament.models.tournament import Tournament
+    from byceps.services.lan_tournament.models.tournament_status import (
+        TournamentStatus,
+    )
+    from byceps.services.party.models import PartyID
+    from byceps.services.lan_tournament import tournament_service
+    from datetime import datetime
+
+    tournament_id = TournamentID(generate_uuid())
+    party_id = PartyID('doomed-party')
+    initiator_id = UserID(generate_uuid())
+
+    mock_tournament = Tournament(
+        id=tournament_id,
+        party_id=party_id,
+        name='Doomed Tournament',
+        game='Quake',
+        description=None,
+        image_url=None,
+        ruleset=None,
+        start_time=None,
+        created_at=datetime(2025, 6, 15, 14, 0, 0),
+        min_players=None,
+        max_players=None,
+        min_teams=None,
+        max_teams=None,
+        min_players_in_team=None,
+        max_players_in_team=None,
+        contestant_type=ContestantType.SOLO,
+        tournament_status=TournamentStatus.COMPLETED,
+        game_format=None,
+        elimination_mode=None,
+    )
+    mock_repository.get_tournament.return_value = mock_tournament
+
+    tournament_service.delete_tournament(
+        tournament_id, initiator_id=initiator_id
+    )
+
+    mock_create_log_entry.assert_called_once_with(
+        'tournament-deleted',
+        tournament_id,
+        initiator_id,
+        data={
+            'name': 'Doomed Tournament',
+            'party_id': str(party_id),
+            'game': 'Quake',
+            'tournament_status': TournamentStatus.COMPLETED.value,
+        },
+        commit=False,
+    )
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_service.tournament_repository'
+)
+@patch('byceps.services.lan_tournament.tournament_service.signals')
+@patch('byceps.services.lan_tournament.tournament_service.create_log_entry')
+def test_delete_tournament_writes_log_entry_before_cascade_deletes(
+    mock_create_log_entry, mock_signals, mock_repository
+):
+    """workspace-ytqz: the tournament-deleted entry must be staged
+    before the deletion cascade runs (not after), so it rides the
+    same transaction as -- and is discarded together with -- every
+    other write on a rollback."""
+    from byceps.services.lan_tournament import tournament_service
+
+    tournament_id = TournamentID(generate_uuid())
+
+    # A single parent mock records both mocks' calls in one ordered
+    # sequence -- mock_repository.method_calls alone can't show where
+    # a *different* mock's call (create_log_entry) landed relative to
+    # it.
+    parent = MagicMock()
+    parent.attach_mock(mock_repository, 'repo')
+    parent.attach_mock(mock_create_log_entry, 'log')
+
+    tournament_service.delete_tournament(tournament_id)
+
+    call_names = [c[0] for c in parent.mock_calls]
+    log_idx = call_names.index('log')
+    first_delete_idx = call_names.index(
+        'repo.delete_submissions_for_tournament'
+    )
+
+    assert log_idx < first_delete_idx, (
+        'tournament-deleted entry must be staged before the cascade'
+    )
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_service.tournament_repository'
+)
+@patch('byceps.services.lan_tournament.tournament_service.signals')
+@patch('byceps.services.lan_tournament.tournament_service.create_log_entry')
 def test_delete_tournament_with_winner_clears_winner_before_children(
-    mock_signals, mock_repository
+    mock_create_log_entry, mock_signals, mock_repository
 ):
     """Test that clear_winner_for_tournament() is called before
     participant and team deletion to avoid FK violations."""
@@ -97,8 +237,9 @@ def test_delete_tournament_with_winner_clears_winner_before_children(
     'byceps.services.lan_tournament.tournament_service.tournament_repository'
 )
 @patch('byceps.services.lan_tournament.tournament_service.signals')
+@patch('byceps.services.lan_tournament.tournament_service.create_log_entry')
 def test_delete_tournament_rolls_back_on_failure(
-    mock_signals, mock_repository
+    mock_create_log_entry, mock_signals, mock_repository
 ):
     """DB error mid-cascade -> rollback called, event NOT emitted."""
     from byceps.services.lan_tournament import tournament_service

@@ -1,9 +1,6 @@
 """
 tests.unit.services.lan_tournament.test_tournament_match_service
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-:Copyright: 2014-2026 Jochen Kupperschmidt
-:License: Revised BSD (see `LICENSE` file for details)
 """
 
 from datetime import datetime, UTC
@@ -1222,6 +1219,10 @@ def test_generate_round_robin_contestants_placed(
 
 
 @patch(
+    'byceps.services.lan_tournament.tournament_match_service.create_log_entry',
+    new=Mock(),
+)
+@patch(
     'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
 )
 def test_generate_round_robin_with_force_regenerate(
@@ -1816,7 +1817,7 @@ def test_unconfirm_match_retracts_advanced_contestant(mock_repo):
     next_match = _create_match(match_id=next_match_id, confirmed_by=None)
 
     mock_repo.get_match_for_update.return_value = match
-    mock_repo.get_match.return_value = next_match
+    _route_find_match(mock_repo, [match, next_match])
     mock_repo.get_contestants_for_match.return_value = contestants
 
     result = tournament_match_service.unconfirm_match(MATCH_ID, USER_ID)
@@ -1829,6 +1830,49 @@ def test_unconfirm_match_retracts_advanced_contestant(mock_repo):
         team_id=None,
         participant_id=winner_participant_id,
     )
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_unconfirm_match_tolerates_dangling_next_match_id(mock_repo):
+    """A next_match_id pointing at no row must not blow up the cascade.
+
+    The lookup used to be ``get_match``, which RAISES on an unknown
+    ID -- making the cascade's own ``is not None`` guard unreachable
+    and turning a dangling routing entry into an uncaught ValueError
+    (a 500 on the correction route). ``classify_result_correction``,
+    which the admin panel shows as a preview of this very cascade,
+    deliberately treats a dangling entry as absent; the preview said
+    "safe to correct" and the act crashed. Both sides read through
+    ``find_match`` now.
+    """
+    confirmed_by = UserID(generate_uuid())
+    match = _create_match(
+        confirmed_by=confirmed_by,
+        next_match_id=TournamentMatchID(generate_uuid()),  # no such row
+    )
+
+    contestants = [
+        _create_match_contestant(
+            participant_id=TournamentParticipantID(generate_uuid()),
+            score=10,
+        ),
+        _create_match_contestant(
+            participant_id=TournamentParticipantID(generate_uuid()),
+            score=5,
+        ),
+    ]
+
+    mock_repo.get_match_for_update.return_value = match
+    # Only the subject resolves; the routing target does not.
+    _route_find_match(mock_repo, [match])
+    mock_repo.get_contestants_for_match.return_value = contestants
+
+    result = tournament_match_service.unconfirm_match(MATCH_ID, USER_ID)
+
+    assert result.is_ok()
+    mock_repo.unconfirm_match.assert_called_once_with(MATCH_ID)
 
 
 @patch(
@@ -2070,7 +2114,7 @@ def test_unconfirm_match_retracts_loser_from_lb(mock_repo):
     )
 
     mock_repo.get_match_for_update.return_value = match
-    mock_repo.get_match.side_effect = [next_match, loser_next_match]
+    _route_find_match(mock_repo, [match, next_match, loser_next_match])
     mock_repo.get_contestants_for_match.return_value = contestants
 
     result = tournament_match_service.unconfirm_match(MATCH_ID, USER_ID)
@@ -2146,13 +2190,9 @@ def test_unconfirm_match_cascades_through_loser_bracket(
         match,
         loser_next_match,
     ]
-    # get_match calls (downstream lookups):
-    # 1) next_match (winner cascade check)
-    # 2) loser_next_match (loser cascade check)
-    mock_repo.get_match.side_effect = [
-        next_match,
-        loser_next_match,
-    ]
+    # Downstream lookups (winner cascade check, loser cascade
+    # check) go through find_match, routed by ID.
+    _route_find_match(mock_repo, [match, next_match, loser_next_match])
 
     # get_contestants_for_match calls:
     # 1) main match contestants
@@ -2208,7 +2248,7 @@ def test_unconfirm_match_no_loser_retract_without_loser_next_match(
     next_match = _create_match(match_id=next_match_id, confirmed_by=None)
 
     mock_repo.get_match_for_update.return_value = match
-    mock_repo.get_match.return_value = next_match
+    _route_find_match(mock_repo, [match, next_match])
     mock_repo.get_contestants_for_match.return_value = contestants
 
     result = tournament_match_service.unconfirm_match(MATCH_ID, USER_ID)
@@ -2654,10 +2694,7 @@ def test_unconfirm_retracts_lb_auto_advance(mock_repo):
     )
 
     mock_repo.get_match_for_update.return_value = match
-    mock_repo.get_match.side_effect = [
-        next_match,
-        loser_next_match,
-    ]
+    _route_find_match(mock_repo, [match, next_match, loser_next_match])
     mock_repo.get_contestants_for_match.return_value = contestants
 
     result = tournament_match_service.unconfirm_match(MATCH_ID, USER_ID)
@@ -2702,6 +2739,7 @@ def test_unconfirm_terminal_match_clears_winner(mock_repo):
     match = _create_match(confirmed_by=confirmed_by, next_match_id=None)
     tournament = _create_tournament(
         game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.SINGLE_ELIMINATION,
+        tournament_status=TournamentStatus.COMPLETED,
     )
 
     contestants = [
@@ -2731,6 +2769,52 @@ def test_unconfirm_terminal_match_clears_winner(mock_repo):
     )
 
 
+@pytest.mark.parametrize(
+    'tournament_status',
+    [
+        TournamentStatus.ONGOING,
+        TournamentStatus.PAUSED,
+        TournamentStatus.CANCELLED,
+    ],
+)
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service'
+    '.tournament_repository'
+)
+def test_unconfirm_terminal_match_leaves_uncompleted_status_alone(
+    mock_repo, tournament_status
+):
+    """Only a completed tournament has a completion to revert."""
+    confirmed_by = UserID(generate_uuid())
+    match = _create_match(confirmed_by=confirmed_by, next_match_id=None)
+    tournament = _create_tournament(
+        game_format=GameFormat.ONE_V_ONE,
+        elimination_mode=EliminationMode.SINGLE_ELIMINATION,
+        tournament_status=tournament_status,
+    )
+
+    contestants = [
+        _create_match_contestant(
+            participant_id=TournamentParticipantID(generate_uuid()),
+            score=10,
+        ),
+        _create_match_contestant(
+            participant_id=TournamentParticipantID(generate_uuid()),
+            score=5,
+        ),
+    ]
+
+    mock_repo.get_match_for_update.return_value = match
+    mock_repo.get_tournament.return_value = tournament
+    mock_repo.get_contestants_for_match.return_value = contestants
+
+    result = tournament_match_service.unconfirm_match(MATCH_ID, USER_ID)
+
+    assert result.is_ok()
+    mock_repo.set_tournament_winner.assert_not_called()
+    mock_repo.set_tournament_status_flush.assert_not_called()
+
+
 @patch(
     'byceps.services.lan_tournament.tournament_match_service'
     '.tournament_repository'
@@ -2745,6 +2829,7 @@ def test_unconfirm_terminal_match_reverts_status_to_ongoing(
     match = _create_match(confirmed_by=confirmed_by, next_match_id=None)
     tournament = _create_tournament(
         game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.SINGLE_ELIMINATION,
+        tournament_status=TournamentStatus.COMPLETED,
     )
 
     contestants = [
@@ -2792,6 +2877,7 @@ def test_unconfirm_terminal_match_dispatches_uncompleted_event(
     match = _create_match(confirmed_by=confirmed_by, next_match_id=None)
     tournament = _create_tournament(
         game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.SINGLE_ELIMINATION,
+        tournament_status=TournamentStatus.COMPLETED,
     )
 
     contestants = [
@@ -2861,6 +2947,7 @@ def test_unconfirm_non_terminal_cascading_to_gf_dispatches_uncompleted_event(
 
     tournament = _create_tournament(
         game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.DOUBLE_ELIMINATION,
+        tournament_status=TournamentStatus.COMPLETED,
     )
 
     winner_pid = TournamentParticipantID(generate_uuid())
@@ -2945,7 +3032,7 @@ def test_unconfirm_non_terminal_match_no_uncompleted_event(
     next_match = _create_match(match_id=next_match_id, confirmed_by=None)
 
     mock_repo.get_match_for_update.return_value = match
-    mock_repo.get_match.return_value = next_match
+    _route_find_match(mock_repo, [match, next_match])
     mock_repo.get_contestants_for_match.return_value = contestants
 
     result = tournament_match_service.unconfirm_match(MATCH_ID, USER_ID)
@@ -3110,6 +3197,10 @@ def test_propagate_dead_lb_all_dead(mock_repo):
 
 
 @patch(
+    'byceps.services.lan_tournament.tournament_match_service.create_log_entry',
+    new=Mock(),
+)
+@patch(
     'byceps.services.lan_tournament.signals'
 )
 @patch(
@@ -3117,17 +3208,18 @@ def test_propagate_dead_lb_all_dead(mock_repo):
     '.tournament_match_service.tournament_repository'
 )
 def test_clear_bracket_deletes_all_matches(mock_repo, mock_signals):
-    """3 matches: FK nulling + per-match child/match deletion, commit called."""
+    """3 matches: FK nulling + per-match child/match deletion, no commit."""
     match_ids = [TournamentMatchID(generate_uuid()) for _ in range(3)]
     matches = [_create_match(match_id=mid) for mid in match_ids]
     mock_repo.get_matches_for_tournament.return_value = matches
 
-    tournament_match_service.clear_bracket(TOURNAMENT_ID)
+    events = tournament_match_service.clear_bracket(TOURNAMENT_ID)
 
     # Verify exact call ordering: FK nulling → per-match children/match
-    # deletion → commit.  Order matters for PostgreSQL FK integrity.
+    # deletion.  Order matters for PostgreSQL FK integrity.
     expected_repo_calls = [
         call.get_matches_for_tournament(TOURNAMENT_ID),
+        call.get_contestants_for_matches([]),
         call.null_self_referential_fks(TOURNAMENT_ID),
     ]
     for mid in match_ids:
@@ -3136,10 +3228,10 @@ def test_clear_bracket_deletes_all_matches(mock_repo, mock_signals):
             call.delete_contestants_for_match_flush(mid),
             call.delete_match_flush(mid),
         ]
-    expected_repo_calls.append(call.commit_session())
 
     assert mock_repo.mock_calls == expected_repo_calls
-    assert mock_signals.match_deleted.send.call_count == 3
+    assert [e.match_id for e in events] == match_ids
+    mock_signals.match_deleted.send.assert_not_called()
 
 
 @patch(
@@ -3167,13 +3259,50 @@ def test_clear_bracket_empty_tournament(mock_repo, _mock_signals):
     'byceps.services.lan_tournament'
     '.tournament_match_service.tournament_repository'
 )
-def test_clear_bracket_returns_ok(mock_repo, _mock_signals):
-    """Result is Ok(None)."""
+def test_clear_bracket_returns_no_events_when_empty(mock_repo, _mock_signals):
+    """Nothing deleted, nothing to announce."""
     mock_repo.get_matches_for_tournament.return_value = []
 
     result = tournament_match_service.clear_bracket(TOURNAMENT_ID)
 
-    assert result == Ok(None)
+    assert result == []
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.create_log_entry',
+    new=Mock(),
+)
+@patch(
+    'byceps.services.lan_tournament.signals'
+)
+@patch(
+    'byceps.services.lan_tournament'
+    '.tournament_match_service.tournament_repository'
+)
+def test_force_regenerate_commits_once_before_announcing_deletions(
+    mock_repo, mock_signals
+):
+    """The wipe and the new bracket share one commit, and so one lock."""
+    mock_repo.get_tournament.return_value = _create_tournament(
+        contestant_type=ContestantType.SOLO,
+    )
+    mock_repo.get_participants_for_tournament.return_value = [
+        _create_mock_participant(TournamentParticipantID(generate_uuid()))
+        for _ in range(3)
+    ]
+    mock_repo.get_matches_for_tournament.return_value = [_create_match()]
+    order = []
+    mock_repo.commit_session.side_effect = lambda: order.append('commit')
+    mock_signals.match_deleted.send.side_effect = (
+        lambda *a, **kw: order.append('deleted')
+    )
+
+    result = tournament_match_service.generate_round_robin_bracket(
+        TOURNAMENT_ID, force_regenerate=True
+    )
+
+    assert result.is_ok()
+    assert order == ['commit', 'deleted']
 
 
 # -------------------------------------------------------------------- #
@@ -3440,6 +3569,8 @@ def test_set_match_scores_succeeds_when_caller_is_loser(
     participant.team_id = None
 
     mock_repo.get_match_for_update.return_value = match
+    mock_repo.find_match_fresh.return_value = match
+    mock_repo.find_match.return_value = match
     mock_repo.find_participant_by_user.return_value = participant
     mock_repo.get_contestants_for_match.return_value = contestants
     mock_confirm_match.return_value = Ok(None)
@@ -3451,7 +3582,12 @@ def test_set_match_scores_succeeds_when_caller_is_loser(
 
     assert result.is_ok()
     mock_repo.update_contestant_scores.assert_called_once()
-    mock_confirm_match.assert_called_once_with(MATCH_ID, USER_ID)
+    # _locks_held=True: set_match_scores already took the ordered
+    # reachable-set lock itself, so confirm_match must not recompute
+    # it (two full-bracket SELECTs). See _confirm_match_impl.
+    mock_confirm_match.assert_called_once_with(
+        MATCH_ID, USER_ID, _locks_held=True
+    )
     # commit_session is NOT called directly — confirm_match handles it.
     mock_repo.commit_session.assert_not_called()
 
@@ -3479,6 +3615,8 @@ def test_set_match_scores_rejects_when_caller_is_winner(mock_repo):
     participant.team_id = None
 
     mock_repo.get_match_for_update.return_value = match
+    mock_repo.find_match_fresh.return_value = match
+    mock_repo.find_match.return_value = match
     mock_repo.find_participant_by_user.return_value = participant
     mock_repo.get_contestants_for_match.return_value = contestants
 
@@ -3519,6 +3657,8 @@ def test_set_match_scores_succeeds_draw_any_participant(
     participant.team_id = None
 
     mock_repo.get_match_for_update.return_value = match
+    mock_repo.find_match_fresh.return_value = match
+    mock_repo.find_match.return_value = match
     mock_repo.find_participant_by_user.return_value = participant
     mock_repo.get_contestants_for_match.return_value = contestants
     mock_confirm_match.return_value = Ok(None)
@@ -3530,7 +3670,12 @@ def test_set_match_scores_succeeds_draw_any_participant(
 
     assert result.is_ok()
     mock_repo.update_contestant_scores.assert_called_once()
-    mock_confirm_match.assert_called_once_with(MATCH_ID, USER_ID)
+    # _locks_held=True: set_match_scores already took the ordered
+    # reachable-set lock itself, so confirm_match must not recompute
+    # it (two full-bracket SELECTs). See _confirm_match_impl.
+    mock_confirm_match.assert_called_once_with(
+        MATCH_ID, USER_ID, _locks_held=True
+    )
 
 
 @patch(
@@ -3542,6 +3687,8 @@ def test_set_match_scores_fails_match_confirmed(mock_repo):
     match = _create_match(confirmed_by=confirmed_by)
 
     mock_repo.get_match_for_update.return_value = match
+    mock_repo.find_match_fresh.return_value = match
+    mock_repo.find_match.return_value = match
 
     scores = {TournamentParticipantID(generate_uuid()): 10}
     result = tournament_match_service.set_match_scores(
@@ -3560,6 +3707,8 @@ def test_set_match_scores_fails_caller_not_participant(mock_repo):
     match = _create_match(confirmed_by=None)
 
     mock_repo.get_match_for_update.return_value = match
+    mock_repo.find_match_fresh.return_value = match
+    mock_repo.find_match.return_value = match
     mock_repo.get_contestants_for_match.return_value = []
     mock_repo.find_participant_by_user.return_value = None
 
@@ -3594,6 +3743,8 @@ def test_set_match_scores_fails_negative_score(mock_repo):
     participant.team_id = None
 
     mock_repo.get_match_for_update.return_value = match
+    mock_repo.find_match_fresh.return_value = match
+    mock_repo.find_match.return_value = match
     mock_repo.find_participant_by_user.return_value = participant
     mock_repo.get_contestants_for_match.return_value = contestants
 
@@ -3628,6 +3779,8 @@ def test_set_match_scores_fails_missing_contestant(mock_repo):
     participant.team_id = None
 
     mock_repo.get_match_for_update.return_value = match
+    mock_repo.find_match_fresh.return_value = match
+    mock_repo.find_match.return_value = match
     mock_repo.find_participant_by_user.return_value = participant
     mock_repo.get_contestants_for_match.return_value = contestants
 
@@ -3664,6 +3817,8 @@ def test_set_match_scores_fails_unknown_contestant_id(mock_repo):
     participant.team_id = None
 
     mock_repo.get_match_for_update.return_value = match
+    mock_repo.find_match_fresh.return_value = match
+    mock_repo.find_match.return_value = match
     mock_repo.find_participant_by_user.return_value = participant
     mock_repo.get_contestants_for_match.return_value = contestants
 
@@ -3674,7 +3829,13 @@ def test_set_match_scores_fails_unknown_contestant_id(mock_repo):
     )
 
     assert result.is_err()
-    assert 'missing score' in result.unwrap_err().lower()
+    # Asserted verbatim, not by substring: this is a msgid the
+    # German catalogue carries, so a reworded message is a silently
+    # untranslated flash, not a cosmetic change.
+    assert (
+        result.unwrap_err()
+        == 'A score is missing for one of the contestants.'
+    )
 
 
 @patch(
@@ -3702,6 +3863,8 @@ def test_set_match_scores_atomic_commit(mock_repo, mock_confirm_match):
     participant.team_id = None
 
     mock_repo.get_match_for_update.return_value = match
+    mock_repo.find_match_fresh.return_value = match
+    mock_repo.find_match.return_value = match
     mock_repo.find_participant_by_user.return_value = participant
     mock_repo.get_contestants_for_match.return_value = contestants
     mock_confirm_match.return_value = Ok(None)
@@ -3716,7 +3879,12 @@ def test_set_match_scores_atomic_commit(mock_repo, mock_confirm_match):
     mock_repo.update_contestant_scores.assert_called_once()
     # confirm_match handles the commit — no direct commit_session call.
     mock_repo.commit_session.assert_not_called()
-    mock_confirm_match.assert_called_once_with(MATCH_ID, USER_ID)
+    # _locks_held=True: set_match_scores already took the ordered
+    # reachable-set lock itself, so confirm_match must not recompute
+    # it (two full-bracket SELECTs). See _confirm_match_impl.
+    mock_confirm_match.assert_called_once_with(
+        MATCH_ID, USER_ID, _locks_held=True
+    )
     # Individual update_contestant_score should NOT be called.
     mock_repo.update_contestant_score.assert_not_called()
 
@@ -3743,6 +3911,8 @@ def test_set_match_scores_team_mode(mock_repo, mock_confirm_match):
     participant.team_id = team_b
 
     mock_repo.get_match_for_update.return_value = match
+    mock_repo.find_match_fresh.return_value = match
+    mock_repo.find_match.return_value = match
     mock_repo.find_participant_by_user.return_value = participant
     mock_repo.get_contestants_for_match.return_value = contestants
     mock_confirm_match.return_value = Ok(None)
@@ -3754,7 +3924,12 @@ def test_set_match_scores_team_mode(mock_repo, mock_confirm_match):
 
     assert result.is_ok()
     mock_repo.update_contestant_scores.assert_called_once()
-    mock_confirm_match.assert_called_once_with(MATCH_ID, USER_ID)
+    # _locks_held=True: set_match_scores already took the ordered
+    # reachable-set lock itself, so confirm_match must not recompute
+    # it (two full-bracket SELECTs). See _confirm_match_impl.
+    mock_confirm_match.assert_called_once_with(
+        MATCH_ID, USER_ID, _locks_held=True
+    )
 
 
 @patch(
@@ -3784,6 +3959,8 @@ def test_set_match_scores_auto_confirm_fails_rolls_back(
     participant.team_id = None
 
     mock_repo.get_match_for_update.return_value = match
+    mock_repo.find_match_fresh.return_value = match
+    mock_repo.find_match.return_value = match
     mock_repo.find_participant_by_user.return_value = participant
     mock_repo.get_contestants_for_match.return_value = contestants
     mock_confirm_match.return_value = Err(
@@ -3825,6 +4002,8 @@ def test_set_match_scores_fails_score_too_large(mock_repo):
     participant.team_id = None
 
     mock_repo.get_match_for_update.return_value = match
+    mock_repo.find_match_fresh.return_value = match
+    mock_repo.find_match.return_value = match
     mock_repo.find_participant_by_user.return_value = participant
     mock_repo.get_contestants_for_match.return_value = contestants
 
@@ -3868,6 +4047,8 @@ def test_set_match_scores_ignores_defwin_contestant(mock_repo, mock_confirm_matc
     participant.team_id = None
 
     mock_repo.get_match_for_update.return_value = match
+    mock_repo.find_match_fresh.return_value = match
+    mock_repo.find_match.return_value = match
     mock_repo.find_participant_by_user.return_value = participant
     mock_repo.get_contestants_for_match.return_value = [
         contestant_a, contestant_b, defwin_contestant
@@ -3884,7 +4065,12 @@ def test_set_match_scores_ignores_defwin_contestant(mock_repo, mock_confirm_matc
         f'Expected Ok but got Err: {result.unwrap_err()!r}'
     )
     mock_repo.update_contestant_scores.assert_called_once()
-    mock_confirm_match.assert_called_once_with(MATCH_ID, USER_ID)
+    # _locks_held=True: set_match_scores already took the ordered
+    # reachable-set lock itself, so confirm_match must not recompute
+    # it (two full-bracket SELECTs). See _confirm_match_impl.
+    mock_confirm_match.assert_called_once_with(
+        MATCH_ID, USER_ID, _locks_held=True
+    )
 
 
 # -------------------------------------------------------------------- #
@@ -4115,6 +4301,39 @@ def _create_tournament(**kwargs) -> Tournament:
     }
     defaults.update(kwargs)
     return Tournament(**defaults)
+
+
+def _route_find_match(mock_repo, matches) -> None:
+    """Resolve ``find_match`` by match ID on a mocked repository.
+
+    The retraction cascade looks downstream matches up with
+    ``find_match``, not ``get_match``: ``get_match`` raises on an
+    unknown ID, which made the cascade's own ``is not None`` guards
+    unreachable and turned a dangling routing entry into an uncaught
+    ValueError. ``_lock_reachable_matches`` resolves the subject the
+    same way, so a positional ``side_effect`` list would be consumed
+    by that lock pass before the cascade ever asked. Route by ID
+    instead; an unknown ID yields ``None``, exactly as the real
+    repository does.
+    """
+    by_id = {m.id: m for m in matches}
+
+    def _find(match_id):
+        return by_id.get(match_id)
+
+    def _get(match_id):
+        # Mirror the real repository: get_match RAISES on an unknown
+        # ID rather than returning None. A MagicMock that happily
+        # returns another MagicMock is what let the cascade keep an
+        # unreachable `is not None` guard around a get_match call for
+        # so long.
+        found = by_id.get(match_id)
+        if found is None:
+            raise ValueError(f'Unknown match ID "{match_id}"')
+        return found
+
+    mock_repo.find_match.side_effect = _find
+    mock_repo.get_match.side_effect = _get
 
 
 def _create_match(
@@ -4681,6 +4900,7 @@ def test_unconfirm_gf_m1_deletes_unconfirmed_gf_m2(mock_repo):
 
     tournament = _create_tournament(
         game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.DOUBLE_ELIMINATION,
+        tournament_status=TournamentStatus.COMPLETED,
     )
 
     mock_repo.get_match_for_update.return_value = gf_m1
@@ -4862,6 +5082,7 @@ def test_unconfirm_gf_m1_without_gf_m2_works_normally(mock_repo):
 
     tournament = _create_tournament(
         game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.DOUBLE_ELIMINATION,
+        tournament_status=TournamentStatus.COMPLETED,
     )
 
     mock_repo.get_match_for_update.return_value = gf_m1
@@ -5199,3 +5420,17 @@ def test_unconfirm_gf_m1_emits_match_deleted_event(
     event = call_kwargs.kwargs.get('event') or call_kwargs[1]['event']
     assert event.match_id == gf_m2_id
     assert event.tournament_id == TOURNAMENT_ID
+
+
+def test_max_match_score_error_states_the_real_limit():
+    """The score-cap msgid must keep naming MAX_MATCH_SCORE.
+
+    The message is a static string rather than an f-string, because
+    both the admin and the site view flash it through ``gettext()``
+    and a computed string matches no catalogue entry. That trade
+    buys translatability at the cost of a literal that can drift
+    away from the constant it describes; this is the guard for that.
+    """
+    assert tournament_match_service.MAX_MATCH_SCORE_ERROR == (
+        f'Score cannot exceed {tournament_match_service.MAX_MATCH_SCORE:,}.'
+    )
