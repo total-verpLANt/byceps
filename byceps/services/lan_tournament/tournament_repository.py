@@ -17,6 +17,7 @@ from .dbmodels.participant import DbTournamentParticipant
 from .dbmodels.score_submission import DbScoreSubmission
 from .dbmodels.team import DbTournamentTeam
 from .dbmodels.tournament import DbTournament
+from .dbmodels.tournament_log_entry import DbTournamentLogEntry
 from .models.bracket import Bracket
 from .models.contestant_type import ContestantType
 from .models.tournament import Tournament, TournamentID
@@ -1754,3 +1755,30 @@ def get_ready_unconfirmed_match_ids(
         .all()
     )
     return list(match_ids)
+
+
+def delete_log_entries_older_than(occurred_before: datetime) -> int:
+    """Delete tournament log entries which occurred before the given date.
+
+    Return the number of deleted log entries.
+    """
+    result = db.session.execute(
+        delete(DbTournamentLogEntry).filter(
+            DbTournamentLogEntry.occurred_at < occurred_before
+        )
+    )
+    db.session.commit()
+
+    num_deleted = result.rowcount
+    return num_deleted
+
+
+def delete_log_entries_for_tournament(
+    tournament_id: TournamentID, *, commit: bool = True
+) -> None:
+    """Delete all log entries for a tournament."""
+    db.session.execute(
+        delete(DbTournamentLogEntry).filter_by(tournament_id=tournament_id)
+    )
+    if commit:
+        db.session.commit()

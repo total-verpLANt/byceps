@@ -5,7 +5,10 @@ tests.integration.services.lan_tournament.test_tournament_service
 
 import pytest
 
-from byceps.services.lan_tournament import tournament_service
+from byceps.services.lan_tournament import (
+    tournament_log_service,
+    tournament_service,
+)
 from byceps.services.lan_tournament.models import (
     ContestantType,
     EliminationMode,
@@ -21,6 +24,11 @@ PARTY_ID = PartyID('lan-party-2024')
 @pytest.fixture(scope='module')
 def party(make_party, brand):
     return make_party(brand, PARTY_ID, 'LAN Party 2024')
+
+
+@pytest.fixture(scope='module')
+def initiator(make_user):
+    return make_user('TournamentDeletionInitiator')
 
 
 def _create_ok(*args, **kwargs):
@@ -221,3 +229,33 @@ def test_delete_tournament(party):
 
     # Verify it's gone
     assert tournament_service.find_tournament(tournament_id) is None
+
+
+def test_delete_tournament_with_log_entries(party, initiator):
+    title = 'Test Tournament 11'
+
+    tournament, _ = _create_ok(PARTY_ID, title, max_players=16)
+
+    tournament_id = tournament.id
+
+    tournament_log_service.create_log_entry(
+        'tournament-updated',
+        tournament_id,
+        initiator.id,
+        data={'note': 'pre-deletion log entry'},
+    )
+
+    entries_before = tournament_log_service.get_entries_for_tournament(
+        tournament_id
+    )
+    assert len(entries_before) == 1
+
+    # Must not raise IntegrityError due to the FK from log entries
+    # to the tournament being deleted while entries still reference it.
+    tournament_service.delete_tournament(tournament_id)
+
+    assert tournament_service.find_tournament(tournament_id) is None
+    assert (
+        tournament_log_service.get_entries_for_tournament(tournament_id)
+        == []
+    )

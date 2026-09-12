@@ -5,9 +5,6 @@ tests.unit.services.lan_tournament.test_ffa_round_generation
 Unit tests for FFA match service functions:
 generate_ffa_round, set_ffa_placements, confirm_ffa_match,
 advance_ffa_round.
-
-:Copyright: 2014-2026 Jochen Kupperschmidt
-:License: Revised BSD (see `LICENSE` file for details)
 """
 
 from datetime import datetime, UTC

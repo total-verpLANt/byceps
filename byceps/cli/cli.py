@@ -20,6 +20,9 @@ from .commands.import_roles import import_roles
 from .commands.import_seats import import_seats
 from .commands.import_users import import_users
 from .commands.initialize_database import initialize_database
+from .commands.purge_lan_tournament_log_entries import (
+    purge_lan_tournament_log_entries,
+)
 from .commands.worker import worker
 
 
@@ -40,6 +43,7 @@ for func in [
     import_seats,
     import_users,
     initialize_database,
+    purge_lan_tournament_log_entries,
     worker,
 ]:
     cli.add_command(func)

@@ -5,9 +5,6 @@ tests.unit.services.lan_tournament.test_ffa_domain_logic
 Unit tests for FFA domain-level algorithms:
 snake_seed_groups, map_placement_to_points,
 compute_ffa_round_standings, compute_ffa_cumulative_standings.
-
-:Copyright: 2014-2026 Jochen Kupperschmidt
-:License: Revised BSD (see `LICENSE` file for details)
 """
 
 from datetime import datetime

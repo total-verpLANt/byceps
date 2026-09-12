@@ -44,6 +44,7 @@ from byceps.services.lan_tournament.models.tournament_participant import (
     TournamentParticipantID,
 )
 from byceps.services.lan_tournament.models.tournament_match import (
+    CorrectionCase,
     TournamentMatch,
     TournamentMatchID,
 )
@@ -85,6 +86,7 @@ from .forms import (
     AddParticipantForm,
     AddTeamMemberForm,
     HighscoreSubmitForm,
+    MatchCorrectionForm,
     TeamCreateForm,
     TeamUpdateForm,
     TransferCaptainForm,
@@ -1660,6 +1662,27 @@ def view_match(match_id):
         tournament, participants_by_id, teams_by_id, party.id
     )
 
+    # Classify a potential result correction (case A/B/C). Only
+    # needed when the correction panel is actually rendered, i.e. a
+    # confirmed match viewed by an admin (see view_match.html) —
+    # skip the extra DB round-trips otherwise.
+    correction_case = None
+    affected_downstream_matches = []
+    if match.confirmed_by is not None and g.user.has_permission(
+        'lan_tournament.administrate'
+    ):
+        classification_result = (
+            tournament_match_service.classify_result_correction(match.id)
+        )
+        if classification_result.is_ok():
+            correction_case, affected_downstream_ids = (
+                classification_result.unwrap()
+            )
+            affected_downstream_matches = [
+                tournament_match_service.get_match(downstream_id)
+                for downstream_id in affected_downstream_ids
+            ]
+
     return {
         'party': party,
         'tournament': tournament,
@@ -1671,7 +1694,88 @@ def view_match(match_id):
         'comment_users_by_id': comment_users_by_id,
         'seats_by_user_id': seats_by_user_id,
         'team_members_by_team_id': team_members_by_team_id,
+        'correction_case': correction_case,
+        'affected_downstream_matches': affected_downstream_matches,
     }
+
+
+@blueprint.post('/matches/<match_id>/correct_result')
+@permission_required('lan_tournament.administrate')
+def correct_match_result(match_id):
+    """Correct a match result: retract it and optionally re-enter scores."""
+    match = _get_match_or_404(match_id)
+    tournament = _get_tournament_or_404(match.tournament_id)
+
+    form = MatchCorrectionForm(request.form)
+
+    if not form.validate():
+        flash_error(gettext('Invalid input.'))
+        return redirect_to('.view_match', match_id=match_id)
+
+    reason = form.reason.data.strip()
+    ack_critical = bool(form.ack_critical.data)
+
+    # Capture plain values before any potential rollback (object-expiry
+    # contract in admin_set_and_confirm_match); flash messages below must
+    # not depend on ORM state fetched pre-rollback.
+    home_score = form.corrected_score_home.data
+    away_score = form.corrected_score_away.data
+    if (home_score is None) != (away_score is None):
+        flash_error(gettext('Both scores must be provided to re-enter a result.'))
+        return redirect_to('.view_match', match_id=match_id)
+
+    corrected_scores = None
+    if home_score is not None:
+        contestants = tournament_match_service.get_contestants_for_match(
+            TournamentMatchID(match_id)
+        )
+        keys = [
+            contestant.team_id or contestant.participant_id
+            for contestant in contestants
+            if contestant.team_id is not None
+            or contestant.participant_id is not None
+        ]
+        if len(keys) < 2:
+            flash_error(
+                gettext(
+                    'The match does not have two contestants to re-enter scores for.'
+                )
+            )
+            return redirect_to('.view_match', match_id=match_id)
+
+        corrected_scores = {
+            keys[0]: home_score,
+            keys[1]: away_score,
+        }
+
+    result = tournament_match_service.correct_match_result(
+        TournamentMatchID(match_id),
+        g.user.id,
+        reason=reason,
+        corrected_scores=corrected_scores,
+        ack_critical=ack_critical,
+    )
+
+    match result:
+        case Ok((_, True)):
+            flash_success(
+                gettext(
+                    'Match result has been corrected and the new scores confirmed.'
+                )
+            )
+        case Ok((CorrectionCase.CASE_A, _)):
+            flash_success(gettext('Match result has been corrected.'))
+        case Ok(_):
+            flash_success(gettext('Match result has been corrected.'))
+        case Err(error_message):
+            flash_error(
+                gettext(
+                    'Error correcting match result: %(error)s',
+                    error=error_message,
+                )
+            )
+
+    return redirect_to('.view_match', match_id=match.id)
 
 
 @blueprint.post('/matches/<match_id>/confirm_with_scores')
@@ -1727,7 +1831,15 @@ def unconfirm_match(match_id):
     """Unconfirm a match result."""
     match_id_obj = TournamentMatchID(match_id)
 
-    match tournament_match_service.unconfirm_match(match_id_obj, g.user.id):
+    reason = request.form.get('reason', '').strip()
+
+    if not reason:
+        flash_error(gettext('Reason cannot be empty.'))
+        return redirect_to('.view_match', match_id=match_id)
+
+    match tournament_match_service.unconfirm_match(
+        match_id_obj, g.user.id, reason=reason
+    ):
         case Ok(_):
             flash_success(gettext('Match has been unconfirmed.'))
         case Err(error_message):

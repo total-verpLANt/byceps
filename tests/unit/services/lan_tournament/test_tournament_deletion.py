@@ -3,9 +3,6 @@ tests.unit.services.lan_tournament.test_tournament_deletion
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Unit tests for CASCADE deletion behavior in tournament service layer.
-
-:Copyright: 2014-2026 Jochen Kupperschmidt
-:License: Revised BSD (see `LICENSE` file for details)
 """
 
 from unittest.mock import call, patch
@@ -46,6 +43,7 @@ def test_delete_tournament_cascades_all_dependencies(
 
     # Verify deletion calls in correct order (children first, then parent)
     expected_calls = [
+        call.delete_log_entries_for_tournament(tournament_id, commit=False),
         call.delete_submissions_for_tournament(tournament_id, commit=False),
         call.delete_comments_for_tournament(tournament_id, commit=False),
         call.delete_contestants_for_tournament(tournament_id, commit=False),
@@ -61,6 +59,34 @@ def test_delete_tournament_cascades_all_dependencies(
 
     # Verify event emitted
     assert mock_signals.tournament_deleted.send.called
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_service.tournament_repository'
+)
+@patch('byceps.services.lan_tournament.tournament_service.signals')
+def test_delete_tournament_deletes_log_entries_first(
+    mock_signals, mock_repository
+):
+    """Test that delete_log_entries_for_tournament() precedes every
+    other repository delete call, so a tournament with log entries
+    does not raise an IntegrityError mid-cascade."""
+    from byceps.services.lan_tournament import tournament_service
+
+    tournament_id = TournamentID(generate_uuid())
+
+    tournament_service.delete_tournament(tournament_id)
+
+    method_names = [c[0] for c in mock_repository.method_calls]
+
+    log_entries_idx = method_names.index('delete_log_entries_for_tournament')
+
+    for method_name in method_names:
+        if method_name == 'delete_log_entries_for_tournament':
+            continue
+        assert log_entries_idx < method_names.index(method_name), (
+            f'delete_log_entries_for_tournament must precede {method_name}'
+        )
 
 
 @patch(
