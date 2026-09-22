@@ -1,0 +1,89 @@
+{% extends 'layout/admin/lan_tournament.html' %}
+{% set current_page_party = party %}
+{% set current_tab = 'tournaments' %}
+{% from 'macros/admin.html' import render_extra_in_heading %}
+{% from 'macros/icons.html' import render_icon %}
+{% set page_title = [_('LAN'), party.title, _('Tournaments'), tournament.name, _('Orgas')] %}
+
+{% block body %}
+
+  <nav class="breadcrumbs">
+    <ol>
+      <li><a href="{{ url_for('.index', party_id=party.id) }}">{{ party.title }}</a></li>
+      <li><a href="{{ url_for('.view', tournament_id=tournament.id) }}">{{ tournament.name }}</a></li>
+    </ol>
+  </nav>
+
+  <h1 class="title">{{ _('Orgas') }} {{ render_extra_in_heading(orgas|length) }}</h1>
+
+  {%- if orgas %}
+  <table class="itemlist is-vcentered is-wide">
+    <thead>
+      <tr>
+        <th>{{ _('User') }}</th>
+        <th>{{ _('Duties') }}</th>
+        <th>{{ _('Assigned') }}</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {%- for orga in orgas %}
+      {%- set _user = users_by_id.get(orga.user_id) %}
+      <tr>
+        <td>
+          {%- if _user -%}
+            {{ _user.screen_name }}
+          {%- else -%}
+            {{ orga.user_id|string }}
+          {%- endif -%}
+        </td>
+        <td>
+          {%- if orga.duties -%}
+            {{ orga.duties }}
+          {%- else -%}
+            <span class="dimmed">-</span>
+          {%- endif -%}
+        </td>
+        <td>{{ orga.assigned_at|dateformat }}</td>
+        <td class="bared">
+          {%- if g.user.has_permission('lan_tournament.orga_assign') %}
+          <div class="button-row is-compact is-right-aligned">
+            <form action="{{ url_for('.revoke_orga', tournament_id=tournament.id, user_id=orga.user_id) }}" method="post" class="inline">
+              <button type="submit" class="button is-compact" title="{{ _('Revoke') }}" onclick="return confirm('{{ _('Revoke this orga assignment?') }}');">{{ render_icon('delete') }}</button>
+            </form>
+          </div>
+          {%- endif %}
+        </td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+  {%- else %}
+  <div class="box">
+    <div class="dimmed">{{ _('No orgas have been assigned yet.') }}</div>
+  </div>
+  {%- endif %}
+
+  {%- if g.user.has_permission('lan_tournament.orga_assign') %}
+  {# Assign orga #}
+  <h2>{{ _('Assign orga') }}</h2>
+  <div class="box block">
+    <form action="{{ url_for('.assign_orga', tournament_id=tournament.id) }}" method="post">
+      <div class="row row--space-between row--v-centered">
+        <div>
+          {{ form.screen_name.label }}
+          {{ form.screen_name(class='form-control') }}
+        </div>
+        <div>
+          {{ form.duties.label }}
+          {{ form.duties(class='form-control') }}
+        </div>
+        <div>
+          <button type="submit" class="button">{{ render_icon('add') }} {{ _('Assign') }}</button>
+        </div>
+      </div>
+    </form>
+  </div>
+  {%- endif %}
+
+{%- endblock %}

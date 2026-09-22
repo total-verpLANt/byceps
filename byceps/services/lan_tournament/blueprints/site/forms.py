@@ -4,7 +4,7 @@ byceps.services.lan_tournament.blueprints.site.forms
 """
 
 from flask_babel import lazy_gettext
-from wtforms import IntegerField, StringField, TextAreaField
+from wtforms import BooleanField, IntegerField, StringField, TextAreaField
 from wtforms.validators import InputRequired, Length, NumberRange, Optional
 
 from byceps.util.l10n import LocalizedForm
@@ -50,4 +50,21 @@ class MatchCommentForm(LocalizedForm):
     comment = TextAreaField(
         lazy_gettext('Comment'),
         [InputRequired(), Length(max=1000)],
+    )
+
+
+class OrgaMatchUnconfirmForm(LocalizedForm):
+    reason = TextAreaField(
+        lazy_gettext('Reason'), [InputRequired(), Length(min=1, max=2000)]
+    )
+
+
+class OrgaMatchCorrectionForm(LocalizedForm):
+    """Validate the reason and acknowledgement of a result correction."""
+
+    reason = TextAreaField(
+        lazy_gettext('Reason'), [InputRequired(), Length(min=1, max=2000)]
+    )
+    ack_critical = BooleanField(
+        lazy_gettext('I understand the consequences'), [Optional()]
     )

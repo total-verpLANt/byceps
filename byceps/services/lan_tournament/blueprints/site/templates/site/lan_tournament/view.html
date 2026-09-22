@@ -2,6 +2,7 @@
 {% from 'macros/icons.html' import render_icon %}
 {% from 'macros/misc.html' import render_tag %}
 {% from 'macros/lan_tournament.html' import render_tournament_subnav %}
+{% from 'site/lan_tournament/orga_actions.html' import render_orga_tournament_status_actions %}
 {% set page_title = [_('Tournament'), tournament.name] %}
 
 {% block body %}
@@ -52,6 +53,8 @@
     {%- endif %}
   </div>
   {%- endif %}
+
+  {{ render_orga_tournament_status_actions(tournament, may_administrate) }}
 
   {%- if tournament.tournament_status and tournament.tournament_status.name == 'COMPLETED' and winner_name %}
   {%- set is_ffa = tournament.game_format and tournament.game_format.name == 'FREE_FOR_ALL' %}
@@ -133,6 +136,20 @@
       {%- else %}
       <div class="data-value">{{ participant_count }}</div>
       {%- endif %}
+    </div>
+    {%- endif %}
+
+    {%- if orgas %}
+    <div class="box">
+      <div class="data-label">{{ _('Organizers') }}</div>
+      <div class="data-value">
+        {%- for orga in orgas %}
+        <div>
+          {{- orga.user.screen_name -}}
+          {%- if orga.duties %} <span class="dimmed">({{ orga.duties }})</span>{%- endif -%}
+        </div>
+        {%- endfor %}
+      </div>
     </div>
     {%- endif %}
   </div>

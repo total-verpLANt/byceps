@@ -10,6 +10,7 @@ from . import (
     signals,
     tournament_domain_service,
     tournament_match_service,
+    tournament_orga_repository,
     tournament_participant_service,
     tournament_repository,
     tournament_score_service,
@@ -358,7 +359,8 @@ def delete_tournament(
     5. Winner references (FK back to teams/participants)
     6. Participants
     7. Teams
-    8. Tournament itself
+    8. Orga assignments
+    9. Tournament itself
     """
     tournament_repository.lock_tournament_for_update(tournament_id)
 
@@ -378,8 +380,9 @@ def delete_tournament(
                 'name': tournament.name,
                 'party_id': str(tournament.party_id),
                 'game': tournament.game,
+                # Log the name, as the enum values are positional ints.
                 'tournament_status': (
-                    tournament.tournament_status.value
+                    tournament.tournament_status.name
                     if tournament.tournament_status is not None
                     else None
                 ),
@@ -406,6 +409,9 @@ def delete_tournament(
             tournament_id, commit=False
         )
         tournament_repository.delete_teams_for_tournament(
+            tournament_id, commit=False
+        )
+        tournament_orga_repository.delete_orgas_for_tournament(
             tournament_id, commit=False
         )
         tournament_repository.delete_tournament(tournament_id, commit=False)
@@ -489,8 +495,10 @@ def get_participant_counts_for_tournaments(
 def change_status(
     tournament_id: TournamentID,
     new_status: TournamentStatus,
+    initiator_id: UserID | None = None,
 ) -> Result[tuple[Tournament, TournamentStatusChangedEvent], str]:
     """Change the tournament status."""
+    tournament_repository.lock_tournament_for_update(tournament_id)
     tournament = tournament_repository.get_tournament(tournament_id)
 
     # Validate state machine transition first
@@ -498,13 +506,21 @@ def change_status(
         tournament, new_status
     )
     if result.is_err():
+        tournament_repository.rollback_session()
         return Err(result.unwrap_err())
 
-    # Validate the bracket on a start, not on a resume from `PAUSED`:
-    # play has changed the bracket by then.
-    is_start = (
-        new_status == TournamentStatus.ONGOING
-        and tournament.tournament_status != TournamentStatus.PAUSED
+    # Validate the bracket on a start, not on a resume from `PAUSED` or
+    # a reopen from `COMPLETED`: play has changed the bracket by then.
+    #
+    # Stated as what a start IS, not as the states it is not, so that
+    # adding another edge into ONGOING cannot silently opt that edge
+    # into this validation. `None` is in the set because a tournament
+    # that has never carried a status is also starting here -- the
+    # old "anything but PAUSED" spelling covered that case, and
+    # dropping it would have quietly relaxed the gate.
+    is_start = new_status == TournamentStatus.ONGOING and (
+        tournament.tournament_status
+        in (None, TournamentStatus.REGISTRATION_CLOSED)
     )
     if is_start:
         if (
@@ -517,6 +533,8 @@ def change_status(
                 )
             )
             if violations:
+                tournament_repository.rollback_session()
+
                 # Only this violation has a catalogue entry.
                 if violations == ['no matches generated']:
                     return Err(
@@ -530,6 +548,47 @@ def change_status(
     (event,) = result.unwrap()
 
     updated = dataclasses.replace(tournament, tournament_status=new_status)
+
+    # Leaving COMPLETED means the recorded winner is no longer a
+    # result -- the tournament is being played again. Clearing it here
+    # rather than in the reopen route covers every way out of the
+    # status (the admin `reopen` and `resume`/`start` routes all land
+    # on change_status), and mirrors what the retraction cascade in
+    # _unconfirm_match_impl already does when it reverts a completion.
+    # Flush only: update_tournament below owns the commit, so a
+    # failure there discards this with it.
+    if (
+        tournament.tournament_status == TournamentStatus.COMPLETED
+        and new_status != TournamentStatus.COMPLETED
+    ):
+        cleared = tournament_repository.set_tournament_winner(
+            tournament_id,
+            winner_team_id=None,
+            winner_participant_id=None,
+        )
+        if cleared.is_err():
+            tournament_repository.rollback_session()
+            return Err(cleared.unwrap_err())
+        updated = dataclasses.replace(
+            updated, winner_team_id=None, winner_participant_id=None
+        )
+
+    # `update_tournament` commits this entry together with the status.
+    create_log_entry(
+        'tournament-status-changed',
+        tournament_id,
+        initiator_id,
+        data={
+            'old_status': (
+                tournament.tournament_status.name
+                if tournament.tournament_status is not None
+                else None
+            ),
+            'new_status': new_status.name,
+        },
+        commit=False,
+    )
+
     tournament_repository.update_tournament(updated)
 
     signals.tournament_status_changed.send(None, event=event)
@@ -539,30 +598,36 @@ def change_status(
 
 def start_tournament(
     tournament_id: TournamentID,
+    initiator_id: UserID | None = None,
 ) -> Result[tuple[Tournament, TournamentStatusChangedEvent], str]:
     """Start a tournament."""
-    return change_status(tournament_id, TournamentStatus.ONGOING)
+    return change_status(tournament_id, TournamentStatus.ONGOING, initiator_id)
 
 
 def pause_tournament(
     tournament_id: TournamentID,
+    initiator_id: UserID | None = None,
 ) -> Result[tuple[Tournament, TournamentStatusChangedEvent], str]:
     """Pause a tournament."""
-    return change_status(tournament_id, TournamentStatus.PAUSED)
+    return change_status(tournament_id, TournamentStatus.PAUSED, initiator_id)
 
 
 def resume_tournament(
     tournament_id: TournamentID,
+    initiator_id: UserID | None = None,
 ) -> Result[tuple[Tournament, TournamentStatusChangedEvent], str]:
     """Resume a paused tournament."""
-    return change_status(tournament_id, TournamentStatus.ONGOING)
+    return change_status(tournament_id, TournamentStatus.ONGOING, initiator_id)
 
 
 def end_tournament(
     tournament_id: TournamentID,
+    initiator_id: UserID | None = None,
 ) -> Result[tuple[Tournament, TournamentStatusChangedEvent], str]:
     """End a tournament."""
-    return change_status(tournament_id, TournamentStatus.COMPLETED)
+    return change_status(
+        tournament_id, TournamentStatus.COMPLETED, initiator_id
+    )
 
 
 def resolve_winner_display_name(tournament: Tournament) -> str | None:

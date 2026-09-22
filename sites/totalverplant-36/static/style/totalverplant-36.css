@@ -1549,6 +1549,104 @@
     text-shadow: none;
   }
 
+  /* Notices on tournament pages. common.css paints these as flat web
+     alerts -- .notification.color-danger is #ff9999 at (0,2,0) -- which
+     on paper reads as a sticker rather than print. Re-stamp them the
+     same way the chips above are: ink on a brand-tinted paper swatch,
+     square, hairline rule. totalverplant-36.css loads after common.css,
+     so matching specificity wins on source order.
+
+     Scoped to body.lt-dark (the module's pages) exactly like the chip
+     rules, so the shop and news notices are untouched. */
+  body.lt-dark :is(.notification).color-danger,
+  body.lt-dark :is(.notification).color-warning,
+  body.lt-dark :is(.notification).color-info,
+  body.lt-dark :is(.notification).color-success {
+    color: var(--ink);
+    border-width: 1px;
+    border-radius: 0;
+    text-shadow: none;
+  }
+
+  body.lt-dark :is(.notification).color-danger {
+    background: color-mix(in srgb, var(--red) 12%, var(--paperLite));
+    border-color: color-mix(in srgb, var(--red) 55%, var(--ink));
+  }
+
+  body.lt-dark :is(.notification).color-warning {
+    background: color-mix(in srgb, var(--lt-brand-warning) 18%, var(--paperLite));
+    border-color: color-mix(in srgb, var(--lt-brand-warning) 60%, var(--ink));
+  }
+
+  body.lt-dark :is(.notification).color-info {
+    background: color-mix(in srgb, var(--blue) 10%, var(--paperLite));
+    border-color: color-mix(in srgb, var(--blue) 45%, var(--ink));
+  }
+
+  body.lt-dark :is(.notification).color-success {
+    background: color-mix(in srgb, var(--green) 12%, var(--paperLite));
+    border-color: color-mix(in srgb, var(--green) 50%, var(--ink));
+  }
+
+  /* Action buttons on tournament pages. common.css paints the colour
+     variants as web-alert fills (.color-danger is #ff9999 at (0,2,0)),
+     which shouted louder than the critical notice they sit under once
+     that notice was re-set as print. Same treatment as the notices:
+     ink on a tinted paper swatch, square, hairline rule. The mono
+     uppercase face already comes from the theme's own `.button`. */
+  body.lt-dark :is(.button).color-danger,
+  body.lt-dark :is(.button).color-warning,
+  body.lt-dark :is(.button).color-success,
+  body.lt-dark :is(.button).color-primary {
+    color: var(--ink);
+    border-width: 1.5px;
+    border-radius: 0;
+    text-shadow: none;
+  }
+
+  body.lt-dark :is(.button).color-danger {
+    background: color-mix(in srgb, var(--red) 16%, var(--paperLite));
+    border-color: var(--redDeep);
+  }
+
+  body.lt-dark :is(.button).color-warning {
+    background: color-mix(in srgb, var(--lt-brand-warning) 24%, var(--paperLite));
+    border-color: color-mix(in srgb, var(--lt-brand-warning) 70%, var(--ink));
+  }
+
+  body.lt-dark :is(.button).color-success,
+  body.lt-dark :is(.button).color-primary {
+    background: color-mix(in srgb, var(--green) 16%, var(--paperLite));
+    border-color: color-mix(in srgb, var(--green) 55%, var(--ink));
+  }
+
+  /* The one loud moment in the orga panel. A correction that reaches
+     confirmed matches is the only action here that destroys entered
+     results, so its notice carries a stamped marginal rule in the
+     deep red -- the rest of the panel stays quiet print. */
+  body.lt-dark .lt-orga-panel .notification.color-danger {
+    border-left: 5px solid var(--redDeep);
+  }
+
+  /* Field labels in the panel -- contestant names above the score
+     boxes, "Reason", "Orga Comment" -- set in the mono register the
+     rest of the paper uses for data, so they read as form furniture
+     rather than competing with the serif body. The acknowledgement is
+     excluded: it is a sentence to be read, not a label. */
+  body.lt-dark .lt-orga-panel .form-group:not(.lt-orga-ack) > label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: var(--inkSoft);
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  body.lt-dark .lt-orga-ack label {
+    font-size: 17px;
+    line-height: 1.45;
+  }
+
   /* Tagesausgabe token tune: the module's success token (#24c26b) and muted
      ink (--inkMute) pass on the dark editions but land at 1.6:1 ("Done" /
      "DEFWIN" chips, defwin rows) and ~4.2:1 (stats chips, view label,
@@ -1563,6 +1661,792 @@
   html:not([data-theme="dark"]) body.lt-dark .winner-banner-label,
   html:not([data-theme="dark"]) body.lt-dark .winner-banner-name {
     color: var(--ink);
+  }
+
+  /* ----------------------------------------------------------------------------
+     (a-iii) TURNIER + MATCH — "Spielbericht" treatment.
+
+     Implements the Turnier-Match-Screens design over the module's own
+     markup. No template fork: the stock classes are re-set in the
+     newspaper register, so site/lan_tournament/view.html and
+     view_match.html stay shared with every other site.
+
+     CASCADE NOTE: lan_tournament.css loads AFTER this file (the module
+     layout appends it in its own head block), so every rule here has to
+     out-specify the module rather than merely follow it. The module's
+     strongest claims on these elements are (0,2,0) --
+     `.lt-dark .overview-grid > .box`, `.lt-dark .data-label`,
+     `.subnav .button--current`, `.podium__card--1st .podium__name` --
+     so the `body.lt-dark` prefix at (0,2,1) carries it without
+     !important. Where a rule fights the light-edition chip rules above
+     (0,4,2), it repeats their `html:not([data-theme="dark"])` guard and
+     sits after them.
+     ---------------------------------------------------------------------------- */
+
+  /* ----- breadcrumbs: a dateline, not a widget ----- */
+  body.lt-dark .breadcrumbs ol {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--inkMute);
+  }
+  body.lt-dark .breadcrumbs a { color: var(--redDeep); text-decoration: none; }
+  body.lt-dark .breadcrumbs a:hover { color: var(--ink); text-decoration: underline; }
+
+  /* ----- subnav re-set as ruled tabs ----- */
+  body.lt-dark .subnav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: clamp(16px, 3vw, 30px);
+    border-bottom: 1px solid var(--ink);
+    margin-top: 16px;
+  }
+  body.lt-dark .subnav .button,
+  body.lt-dark .subnav .button.secondary {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .2em;
+    text-transform: uppercase;
+    color: var(--inkMute);
+    background: none;
+    border: 0;
+    border-bottom: 3px solid transparent;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 10px 0 9px;
+    margin-bottom: -1px;
+  }
+  body.lt-dark .subnav .button:hover { color: var(--ink); }
+  body.lt-dark .subnav .button--current {
+    color: var(--ink);
+    border-bottom-color: var(--redDeep);
+    box-shadow: none;
+  }
+
+  /* ----- mastheads: tournament name and match reference ----- */
+  body.lt-dark .tournament-header,
+  body.lt-dark .match-header {
+    padding: 30px 0 18px;
+    border-bottom: 3px double var(--ink);
+  }
+  /* The tournament head hands its rule down to the status block below
+     (see the :has() pair further down), so it closes flush; the match
+     head carries its own and needs the air under it. */
+  body.lt-dark .tournament-header { margin-bottom: 0; }
+  body.lt-dark .match-header { margin-bottom: 28px; }
+  body.lt-dark .tournament-header .title,
+  body.lt-dark .match-header h1 {
+    font-family: var(--display);
+    font-weight: 900;
+    font-size: clamp(34px, 6vw, 60px);
+    line-height: .95;
+    letter-spacing: -.02em;
+    margin: 0;
+  }
+  body.lt-dark .tournament-header .dimmed {
+    font-family: var(--body);
+    font-style: italic;
+    font-size: 21px;
+    color: var(--inkSoft);
+    margin-top: 8px;
+  }
+
+  /* ----- status chips re-cut as rubber stamps -----
+     Form applies in both editions; the un-filled, single-ink colouring
+     has to beat the light-edition chip rules above, hence the repeated
+     guard and the matching (0,4,2)/(0,5,2) weights. */
+  body.lt-dark .tournament-header + .block > .tag,
+  body.lt-dark .match-header .tag {
+    display: inline-block;
+    font-family: var(--mono);
+    font-weight: 700;
+    font-size: 12.5px;
+    letter-spacing: .22em;
+    text-transform: uppercase;
+    padding: 7px 14px;
+    border-radius: 3px;
+    border-width: 2.5px;
+    border-style: solid;
+    transform: rotate(-4deg);
+    text-shadow: none;
+  }
+  html:not([data-theme="dark"]) body.lt-dark .tournament-header + .block > .tag,
+  html:not([data-theme="dark"]) body.lt-dark .match-header .tag {
+    background: none;
+    border-color: currentColor;
+    box-shadow: inset 0 0 0 1.5px currentColor;
+    opacity: .88;
+  }
+  html:not([data-theme="dark"]) body.lt-dark .tournament-header + .block > .tag.color-success,
+  html:not([data-theme="dark"]) body.lt-dark .match-header .tag.color-success {
+    color: var(--green);
+  }
+  html:not([data-theme="dark"]) body.lt-dark .tournament-header + .block > .tag.color-warning,
+  html:not([data-theme="dark"]) body.lt-dark .match-header .tag.color-warning {
+    color: var(--red);
+  }
+  html:not([data-theme="dark"]) body.lt-dark .tournament-header + .block > .tag.color-danger,
+  html:not([data-theme="dark"]) body.lt-dark .match-header .tag.color-danger {
+    color: var(--redDeep);
+  }
+  html:not([data-theme="dark"]) body.lt-dark .tournament-header + .block > .tag.color-info,
+  html:not([data-theme="dark"]) body.lt-dark .match-header .tag.color-info {
+    color: var(--inkSoft);
+  }
+  /* The format chip (FFA) is always the second tag in the match header --
+     the status renders first, the format is appended after it. It is a
+     set label, not a verdict, so it stays a solid ink chip. */
+  html:not([data-theme="dark"]) body.lt-dark .match-header .tag + .tag {
+    background: var(--ink);
+    color: var(--paper);
+    border-color: var(--ink);
+    box-shadow: none;
+    transform: none;
+    letter-spacing: .2em;
+    font-size: 11px;
+    padding: 5px 10px;
+    border-radius: 0;
+    border-width: 1.5px;
+    opacity: 1;
+  }
+
+  /* ----- the facts register (tournament overview) ----- */
+  body.lt-dark .overview-grid {
+    grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr));
+    gap: 0;
+    border-top: 1px solid var(--ink);
+    border-bottom: 1px solid var(--ink);
+  }
+  body.lt-dark .overview-grid > .box {
+    background: none;
+    border: 0;
+    border-left: 1px solid var(--inkMute);
+    border-radius: 0;
+    box-shadow: none;
+    padding: 16px 20px 18px;
+  }
+  body.lt-dark .overview-grid > .box:first-child {
+    border-left: 0;
+    padding-left: 0;
+  }
+  body.lt-dark .overview-grid .data-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: .2em;
+    text-transform: uppercase;
+    color: var(--inkMute);
+    margin-bottom: 6px;
+  }
+  body.lt-dark .overview-grid .data-value {
+    font-family: var(--body);
+    font-size: 20px;
+    font-weight: 400;
+    line-height: 1.25;
+    color: var(--ink);
+  }
+
+  /* ----- rosters set as a leader list ----- */
+  body.lt-dark .lt-player-list .lt-player-row {
+    padding: 10px 2px;
+    gap: 12px;
+    font-family: var(--body);
+    font-size: 19px;
+  }
+  body.lt-dark .lt-player-list .lt-player-sep {
+    border-bottom-color: var(--inkMute);
+  }
+  body.lt-dark .lt-player-list .lt-player-name a {
+    color: var(--ink);
+    text-decoration: none;
+    border-bottom: 1px dashed var(--inkSoft);
+  }
+  body.lt-dark .lt-player-list .lt-player-name a:hover {
+    color: var(--redDeep);
+    border-bottom-color: var(--redDeep);
+  }
+  body.lt-dark .lt-player-list .lt-player-seat {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: var(--inkSoft);
+  }
+
+  /* ----- the scoreboard -----
+     One treatment for both states: .match-result-1v1 (confirmed) and
+     .contestants-box (pending) are the same three-column plate. */
+  body.lt-dark .match-result-1v1,
+  body.lt-dark .contestants-box {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 80px minmax(0, 1fr);
+    align-items: stretch;
+    justify-content: stretch;
+    gap: 0;
+    padding: 0;
+    border: 1.5px solid var(--ink);
+    border-radius: 0;
+    background: var(--paperLite);
+  }
+  body.lt-dark .match-result-1v1__card,
+  body.lt-dark .contestants-box > .contestant {
+    flex: initial;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    text-align: center;
+    padding: clamp(18px, 3vw, 26px) 20px 24px;
+    border: 0;
+    border-radius: 0;
+    overflow: visible;
+  }
+  /* The module paints gold/silver glows behind these cards. Print has
+     no gloss: the winner is marked with a rule, not a gradient. */
+  body.lt-dark .match-result-1v1__card::before { display: none; }
+  body.lt-dark .match-result-1v1 .podium__medal { display: none; }
+  body.lt-dark .match-result-1v1__card--winner {
+    background: var(--paper);
+    border-color: transparent;
+    box-shadow: inset 0 -4px 0 var(--redDeep);
+  }
+  body.lt-dark .match-result-1v1 .podium__rank {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .24em;
+    text-transform: uppercase;
+    color: var(--inkMute);
+    margin: 0;
+    min-height: 14px;
+  }
+  body.lt-dark .match-result-1v1 .podium__name,
+  body.lt-dark .contestants-box .contestant-name {
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: clamp(20px, 3vw, 28px);
+    color: var(--ink);
+    margin: 0;
+  }
+  body.lt-dark .match-result-1v1 .podium__score,
+  body.lt-dark .contestants-box .contestant-score {
+    font-family: var(--display);
+    font-weight: 900;
+    font-size: clamp(54px, 9vw, 96px);
+    line-height: 1;
+    margin-top: 6px;
+    color: var(--ink);
+  }
+  /* A pending score is a placeholder dash, not a result: at 96px in a
+     900 weight it prints as a black bar. Set it in the muted ink and a
+     lighter weight, as the design does for its "tbd" side. */
+  body.lt-dark .contestants-box .contestant-score {
+    font-weight: 700;
+    color: var(--inkMute);
+  }
+
+  /* State overrides -- declared after the type rules above, which carry
+     the same (0,3,1) weight and would otherwise win on order. */
+  body.lt-dark .match-result-1v1__card--winner .podium__rank {
+    color: var(--redDeep);
+  }
+  body.lt-dark .match-result-1v1__card--loser .podium__name,
+  body.lt-dark .match-result-1v1__card--loser .podium__score {
+    color: var(--inkMute);
+  }
+  body.lt-dark .match-result-1v1__vs,
+  body.lt-dark .contestants-box > .vs-divider {
+    display: grid;
+    place-items: center;
+    border-left: 1px solid var(--inkMute);
+    border-right: 1px solid var(--inkMute);
+    font-family: var(--body);
+    font-style: italic;
+    font-weight: 400;
+    font-size: 20px;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--inkSoft);
+  }
+  /* The module stacks .contestants-box at 760px from a (0,1,0) rule that
+     these (0,2,1) rules would otherwise outrank at every width. */
+  @media (max-width: 760px) {
+    body.lt-dark .match-result-1v1,
+    body.lt-dark .contestants-box {
+      grid-template-columns: 1fr;
+    }
+    body.lt-dark .match-result-1v1__vs,
+    body.lt-dark .contestants-box > .vs-divider {
+      border-left: 0;
+      border-right: 0;
+      border-top: 1px solid var(--inkMute);
+      border-bottom: 1px solid var(--inkMute);
+      padding: 6px 0;
+    }
+  }
+
+  /* ----- the orga desk -----
+     A ruled plate with an ink header band, matching the Spielplan
+     plates on the tournament index. --deskPad keeps the full-bleed
+     band and the body padding in step. */
+  body.lt-dark .lt-orga-panel {
+    --deskPad: 18px;
+    border: 1.5px solid var(--ink);
+    border-radius: 0;
+    background: var(--paperLite);
+    box-shadow: 6px 6px 0 var(--ink);
+    padding: 0 var(--deskPad) var(--deskPad);
+  }
+  body.lt-dark .lt-orga-panel > .title {
+    margin: 0 calc(var(--deskPad) * -1) var(--deskPad);
+    padding: 9px 18px;
+    background: var(--ink);
+    color: var(--paper);
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .22em;
+    text-transform: uppercase;
+    border: 0;
+  }
+  body.lt-dark .lt-orga-panel .button {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    border-radius: 0;
+    border-width: 1.5px;
+    padding: 12px 18px;
+  }
+  body.lt-dark .lt-orga-panel .dimmed {
+    font-family: var(--body);
+    font-style: italic;
+    font-size: 16px;
+    line-height: 1.4;
+    color: var(--inkSoft);
+  }
+
+  /* ----- comments ----- */
+  body.lt-dark .comments-section .title {
+    font-family: var(--display);
+    font-weight: 900;
+    font-size: 26px;
+    border-bottom: 1.5px solid var(--ink);
+    padding-bottom: 7px;
+    margin-bottom: 4px;
+  }
+  body.lt-dark .comments-section > .dimmed {
+    font-family: var(--body);
+    font-style: italic;
+    font-size: 18px;
+    color: var(--inkMute);
+    padding: 16px 0 20px;
+  }
+
+  /* ----- section wrappers: one frame, not two -----
+     The module wraps the scoreboard and the rosters in their own carded
+     boxes. On paper the inner plate is the frame, so these wrappers step
+     back to being plain sections with a ruled heading. */
+  body.lt-dark .ffa-match-box,
+  body.lt-dark .main-body-box.box {
+    background: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 0;
+    gap: 0;
+  }
+  body.lt-dark .ffa-match-box > .title,
+  body.lt-dark .main-body-box.box > .data-label {
+    display: block;
+    font-family: var(--display);
+    font-weight: 900;
+    font-size: 26px;
+    line-height: 1.15;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--ink);
+    border-bottom: 1.5px solid var(--ink);
+    padding-bottom: 7px;
+    margin: 0 0 4px;
+  }
+
+  /* ----- match masthead: the stamps group at the right ----- */
+  body.lt-dark .match-header {
+    justify-content: flex-start;
+    align-items: flex-end;
+    gap: 12px;
+  }
+  body.lt-dark .match-header h1 { margin-right: auto; }
+
+  /* ----- tournament masthead: the status stamp joins the head -----
+     The status tag is a sibling block, not a child of the header, so the
+     double rule moves down to sit under both. :has() keeps it safe: when
+     a tournament carries no status the block is not rendered, neither
+     selector matches, and the header keeps its own rule. */
+  body.lt-dark .tournament-header:has(+ .block > .tag) {
+    padding-bottom: 6px;
+    border-bottom: 0;
+  }
+  body.lt-dark .tournament-header + .block:has(> .tag) {
+    display: flex;
+    justify-content: flex-end;
+    padding-bottom: 16px;
+    margin-bottom: 26px;
+    border-bottom: 3px double var(--ink);
+  }
+
+  /* ----- FFA contestant register ----- */
+  body.lt-dark .ffa-unconfirmed-row {
+    padding: 10px 2px;
+    gap: 12px;
+    border-bottom: 1px dotted var(--inkMute);
+    font-family: var(--body);
+    font-size: 19px;
+  }
+  body.lt-dark .ffa-unconfirmed-row__bullet {
+    width: 5px;
+    height: 5px;
+    border-radius: 0;
+    background: var(--inkMute);
+  }
+  body.lt-dark .ffa-unconfirmed-row__name {
+    font-weight: 400;
+    color: var(--ink);
+  }
+
+  /* ----- desk fields: results are set in the display face -----
+     Both inputs carry size="6", so common.css's
+     `input.form-control:not([size])...{width:100%}` (0,6,1) does not
+     apply to them and these widths hold. */
+  body.lt-dark .lt-orga-panel .lt-orga-score,
+  body.lt-dark .lt-orga-panel .lt-orga-placement {
+    height: 52px;
+    width: 5.5rem;
+    text-align: center;
+    font-family: var(--display);
+    font-weight: 900;
+    font-size: 26px;
+    border: 1.5px solid var(--ink);
+    border-radius: 0;
+    background: var(--paper);
+    color: var(--ink);
+    padding: 0 8px;
+  }
+  body.lt-dark .lt-orga-panel .lt-orga-placement {
+    font-size: 20px;
+  }
+
+  /* ----- the participant comment form -----
+     Three stock defects meet here, all measured on the rendered page:
+       1. common.css `textarea.form-control{height:20rem}` (0,1,1) gives
+          the box a fixed 320px slab; .comment-form textarea declares no
+          height, so nothing in the module ever overrode it.
+       2. the submit button used to carry class="btn", the design file's
+          own vocabulary, which is defined in NO BYCEPS stylesheet --
+          .comment-form button[type="submit"] only sets a margin -- so it
+          rendered as raw OS chrome on every site. It now carries the
+          module's `.button`, like every other control here.
+       3. .comment is ruled in brand blue, off-palette here.
+     The design sets this as a plain ruled field with a solid ink stamp
+     under it. */
+  body.lt-dark .comment-form {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    margin-top: 18px;
+  }
+  body.lt-dark .comment-form textarea {
+    height: auto;
+    min-height: 92px;
+    width: 100%;
+    resize: vertical;
+    border: 1.5px solid var(--ink);
+    border-radius: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 18px;
+    padding: 10px 12px;
+  }
+  /* The design marks this one `btn sm pri` -- a solid ink stamp -- while
+     the orga desk's own Post Comment is a plain `btn sm`. Keyed on the
+     class, so BYCEPS's `.button` supplies the box and this supplies the
+     rank; `.secondary` is deliberately absent for the same reason. */
+  body.lt-dark .comment-form .button {
+    margin-top: 0;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    padding: 9px 14px;
+    border: 1.5px solid var(--ink);
+    border-radius: 0;
+    background: var(--ink);
+    color: var(--paper);
+    cursor: pointer;
+  }
+  body.lt-dark .comment-form .button:hover {
+    background: var(--paperLite);
+    color: var(--ink);
+  }
+
+  /* ----- posted comments: a ruled slip, not a chat bubble ----- */
+  body.lt-dark .comment {
+    background: var(--paperLite);
+    border: 1px solid var(--paperDark);
+    border-left: 3px solid var(--redDeep);
+    border-radius: 0;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+  }
+  body.lt-dark .comment-author {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: var(--inkSoft);
+    margin-bottom: 4px;
+  }
+  body.lt-dark .comment-text {
+    font-family: var(--body);
+    font-size: 19px;
+    line-height: 1.4;
+    color: var(--ink);
+  }
+  body.lt-dark .comment-timestamp {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: .16em;
+    color: var(--inkMute);
+  }
+
+  /* ----- participant score entry -----
+     The module paints this card with hardcoded navy literals
+     (rgba(7,19,49,.72) on the card, rgba(2,8,20,.8) on the inputs)
+     rather than the --lt-* tokens, so it is the one element on the
+     match screen the paper re-skin cannot reach through the token
+     contract -- it stayed a dark rounded slab in the middle of the
+     sheet. Re-cut as a ruled plate in the same idiom as the orga desk. */
+  body.lt-dark .score-submit-card {
+    border: 1.5px solid var(--ink);
+    border-radius: 0;
+    background: var(--paperLite);
+    box-shadow: 6px 6px 0 var(--ink);
+    padding: 16px 18px 18px;
+    margin: 0 0 26px;
+    width: 100%;
+  }
+  body.lt-dark .score-submit-card::before { display: none; }
+  body.lt-dark .score-submit-title {
+    font-family: var(--display);
+    font-weight: 900;
+    font-size: 22px;
+    color: var(--ink);
+  }
+  body.lt-dark .score-submit-copy {
+    font-family: var(--body);
+    font-style: italic;
+    font-size: 16px;
+    color: var(--inkSoft);
+  }
+  body.lt-dark .score-submit-side {
+    border: 1px solid var(--inkMute);
+    border-radius: 0;
+    background: var(--paper);
+    padding: 10px 12px 12px;
+  }
+  body.lt-dark .score-submit-side:hover {
+    border-color: var(--ink);
+    background: var(--paper);
+  }
+  body.lt-dark .score-submit-team-name {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: var(--inkSoft);
+  }
+  body.lt-dark .score-submit-versus {
+    font-family: var(--body);
+    font-style: italic;
+    font-weight: 400;
+    font-size: 20px;
+    letter-spacing: 0;
+    color: var(--inkSoft);
+  }
+  body.lt-dark .score-submit-input {
+    border: 1.5px solid var(--ink);
+    border-radius: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--display);
+    font-weight: 900;
+    font-size: 26px;
+    min-height: 52px;
+  }
+  body.lt-dark .score-submit-actions .button {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    border-radius: 0;
+    border-width: 1.5px;
+  }
+
+  /* ----- the two-column match plate -----
+     The design lays the match screen out as `.cols`
+     (minmax(0,1fr) / 440px, 44px gap): the result AND the comments in
+     the left column, the orga desk as a sidebar. Both left-hand blocks
+     live in one .lt-match-main element, so the column is a single grid
+     item -- when they were two rows the taller desk spanning both
+     inflated them and opened a dead gap under the board. The template
+     order is board -> comments -> desk; a site without this stylesheet
+     stacks them in that order, which reads fine unstyled. */
+  body.lt-dark .match-detail {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 440px;
+    column-gap: 44px;
+    row-gap: 26px;
+    align-items: start;
+  }
+  body.lt-dark .match-detail > .match-header {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    margin-bottom: 0;
+  }
+  body.lt-dark .match-detail > .lt-match-main {
+    grid-column: 1;
+    grid-row: 2;
+    min-width: 0;
+  }
+  body.lt-dark .lt-match-main > .comments-section {
+    margin-top: 40px;
+  }
+  body.lt-dark .match-detail > .lt-orga-panel {
+    grid-column: 2;
+    grid-row: 2;
+  }
+  /* A plain visitor gets no desk; without this the 440px track would
+     sit empty and squeeze the result column. */
+  body.lt-dark .match-detail:not(:has(> .lt-orga-panel)) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  @media (max-width: 1080px) {
+    body.lt-dark .match-detail {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    body.lt-dark .match-detail > .lt-match-main,
+    body.lt-dark .match-detail > .lt-orga-panel {
+      grid-column: 1;
+      grid-row: auto;
+    }
+  }
+
+  /* ----- desk internals -----
+     `.desk-b` in the design is a flex column with an 18px rhythm, a
+     double rule before the comment block, and full-width action
+     buttons. */
+  body.lt-dark .lt-orga-panel > form + form,
+  body.lt-dark .lt-orga-panel > .notification + form,
+  body.lt-dark .lt-orga-panel > form + .notification {
+    margin-top: 18px;
+  }
+  body.lt-dark .lt-orga-panel > form:last-of-type:not(:first-of-type) {
+    border-top: 3px double var(--ink);
+    padding-top: 18px;
+  }
+  /* The same 18px inside a form. In the design every one of these is a
+     direct child of `.desk-b` and picks the rhythm up from its gap; here
+     the form is in the way, and what the children carried instead was
+     the stock spacing -- 16px after `.lt-orga-fields`, 14px after
+     `.dimmed`, and nothing at all before a button, which left the
+     comment button welded to its textarea. Zero first, then space: a
+     `gap` or a bare `* + *` would have added to those leftovers rather
+     than replaced them. */
+  body.lt-dark .lt-orga-panel > form > * {
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+  body.lt-dark .lt-orga-panel > form > * + * {
+    margin-top: 18px;
+  }
+  body.lt-dark .lt-orga-panel > form > .button {
+    width: 100%;
+    justify-content: center;
+  }
+  body.lt-dark .lt-orga-panel > form > .button.is-compact,
+  body.lt-dark .lt-orga-panel .button-row .button {
+    width: auto;
+  }
+
+  /* Score pair: two equal fields filling the sidebar, as `.fldrow`. */
+  body.lt-dark .lt-orga-fields:has(.lt-orga-score) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  body.lt-dark .lt-orga-panel .lt-orga-score {
+    width: 100%;
+    height: 56px;
+    font-size: 28px;
+  }
+
+  /* Placements are a register, not a row of fields: one contestant per
+     ruled line, name left, placement right, as `.places`/`.prow`. */
+  body.lt-dark .lt-orga-fields:has(.lt-orga-placement) {
+    display: block;
+    border-top: 1.5px solid var(--ink);
+    margin-bottom: 0;
+  }
+  body.lt-dark .lt-orga-fields:has(.lt-orga-placement) .form-group {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 110px;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 0;
+    border-bottom: 1px dotted var(--inkMute);
+  }
+  body.lt-dark .lt-orga-fields:has(.lt-orga-placement) .form-group > label {
+    margin: 0;
+    font-family: var(--body);
+    font-size: 20px;
+    font-weight: 400;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--ink);
+  }
+  body.lt-dark .lt-orga-panel .lt-orga-placement {
+    width: 100%;
+    height: 44px;
+    font-size: 20px;
+  }
+
+  /* The affected matches read as stamped chips, not a bullet list --
+     an orga scans them for a reference they recognise. */
+  body.lt-dark .lt-orga-impact {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    list-style: none;
+    padding: 0;
+    margin: 12px 0 2px;
+  }
+  body.lt-dark .lt-orga-impact li {
+    margin: 0;
+    padding: 4px 9px;
+    border: 1.5px solid var(--red);
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .12em;
+    color: var(--red);
   }
 
   /* ----------------------------------------------------------------------------

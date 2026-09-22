@@ -50,6 +50,20 @@ class TournamentUncompletedEvent(_BaseTournamentEvent):
     pass
 
 
+# orga
+
+
+@dataclass(frozen=True, kw_only=True)
+class TournamentOrgaAssignedEvent(_BaseTournamentEvent):
+    user_id: UserID
+    duties: str | None
+
+
+@dataclass(frozen=True, kw_only=True)
+class TournamentOrgaRevokedEvent(_BaseTournamentEvent):
+    user_id: UserID
+
+
 # participant
 
 

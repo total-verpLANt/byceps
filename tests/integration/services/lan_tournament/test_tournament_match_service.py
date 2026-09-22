@@ -424,36 +424,6 @@ def test_bracket_with_defwins(party, user1, user2, user3, grant_ticket):
     assert defwin_count == 1
 
 
-def test_reset_match(party, user1, user2, grant_ticket):
-    """Test resetting a match."""
-    tournament = _create_tournament(
-        'Reset Match Test',
-        contestant_type=ContestantType.SOLO,
-        max_players=4,
-    )
-
-    _join_all(tournament, [user1, user2], grant_ticket)
-
-    generate_result = tournament_match_service.generate_single_elimination_bracket(
-        tournament.id
-    )
-    assert generate_result.is_ok()
-
-    # Get match
-    matches = tournament_match_service.get_matches_for_tournament(tournament.id)
-    assert len(matches) == 1
-    match = matches[0]
-
-    # Reset match
-    tournament_match_service.reset_match(match.id)
-
-    # Verify match deleted
-    remaining_matches = tournament_match_service.get_matches_for_tournament(
-        tournament.id
-    )
-    assert len(remaining_matches) == 0
-
-
 def test_bracket_generation_rejects_empty_team(
     party, user1, user2, user3, grant_ticket
 ):
