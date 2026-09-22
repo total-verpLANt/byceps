@@ -97,6 +97,68 @@ The retention purge (see 012 above) is unaffected and is now the *only* thing th
 
 **Rollback:** `rollback_013.sql` -- re-adds the FK, but read the warning at the top of that file first: `ADD CONSTRAINT` validates every existing row and will fail once any tournament has been deleted since 013 was applied, because that produces exactly the orphaned rows described above. The rollback does not delete or re-point those rows to force it through; that decision is left to the operator (see the file for options), because auto-deleting them would silently recreate the defect 013 fixes.
 
+### 014_add_tournament_orga.sql
+
+Creates the `lan_tournament_orgas` table, recording which users are assigned as organizers ("orgas") of a given tournament:
+
+1. **`id UUID`** primary key — application-generated uuid7
+2. **`tournament_id UUID NOT NULL`** — FK to `lan_tournaments.id`, indexed via `ix_lan_tournament_orgas_tournament_id`
+3. **`user_id UUID NOT NULL`** — FK to `users.id`, indexed via `ix_lan_tournament_orgas_user_id`
+4. **`assigned_at TIMESTAMPTZ NOT NULL`** — when the assignment was made
+5. **`assigned_by_id UUID NULL`** — nullable FK to `users.id` (fixture- and system-created assignments have no initiator)
+6. **`duties TEXT NULL`** — optional free-text description of the orga's responsibilities
+
+`uq_lan_tournament_orgas_tournament_user` — `UNIQUE (tournament_id, user_id)` — mirrors `DbMembership.__table_args__` in `orga_team/dbmodels.py` and guards against a double-submit of the assign form creating two rows for the same person. Zero CASCADE behaviors (BYCEPS convention).
+
+Note: the branch `prd/f04-match-ready` also uses 014 (`014_add_match_ready_columns.sql`). Whichever of the two branches is merged second must renumber its migration, its rollback and its README entry before merging.
+
+**Rollback:** `rollback_014.sql` (drops both indexes, then table)
+
+#### Required follow-up: apply migration 015
+
+This migration ships with a NEW permission, `lan_tournament.orga_assign`.
+Permissions are registered in code (`permissions.py`), but the mapping from a
+role to its permissions lives in the database, so deploying the code alone
+grants it to nobody. Until it is granted, the "Assign orga" form does not
+render, `POST .../orgas/assign` and `.../orgas/<user_id>/revoke` answer `403`,
+and no tournament orga can be appointed — the whole feature is inert while
+looking merely empty. Observed on staging after this branch was deployed.
+
+**Apply `015_grant_orga_assign_permission.sql` after this one.** Do not reach
+for `import-roles`: it is create-only and cannot add a permission to a role
+that already exists (it reports `Imported 0 roles, skipped 2 roles` and changes
+nothing). 015's header explains why, quoting the `continue` in
+`impex_service._create_roles()` that skips the assignment loop.
+
+
+### 015_grant_orga_assign_permission.sql
+
+Data-only; no schema change. Grants `lan_tournament.orga_assign` to every role
+that already holds `lan_tournament.administrate`, plus the canonical
+`lan_tournament_admin` role by name. Data-driven rather than hardcoded, because
+a deployment need not use the role from `lan_tournament_roles.toml` — staging
+does not — and naming one role would silently fix nothing on the installations
+that need it most.
+
+Idempotent via `ON CONFLICT DO NOTHING` against the
+`(role_id, permission_id)` primary key, so a re-run is a no-op and an install
+already granted by hand is left alone. Transaction-wrapped.
+
+Note: BYCEPS resolves a session's permissions at login. Anyone already signed
+in must log out and back in before the grant takes effect — a re-run of the
+grant will not help them.
+
+Note: check the highest migration number in sibling branches before merging;
+014 is already shared with `prd/f04-match-ready`, so 015 may need renumbering
+along with it, together with its rollback and this entry.
+
+**Rollback:** `rollback_015.sql` — revokes the permission from every role that
+holds it. Not a precise undo: after `ON CONFLICT DO NOTHING`, a row granted by
+015 is indistinguishable from one granted by hand beforehand, so record the
+current grants first if any were deliberate. Existing rows in
+`lan_tournament_orgas` are untouched — already-appointed orgas keep their
+scoped site-side rights, which are checked against that table rather than this
+permission.
 
 ## Pre-Application Checklist
 

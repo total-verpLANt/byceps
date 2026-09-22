@@ -140,6 +140,11 @@ def _patched_correction_view(
 
     with (
         patch(f'{_V}.gettext', side_effect=translate),
+        # The score parse lives in the shared view helper.
+        patch(
+            'byceps.services.lan_tournament.lan_tournament_view_helpers.gettext',
+            side_effect=translate,
+        ),
         patch(f'{_V}.flash_error') as mock_flash_error,
         patch(f'{_V}.flash_success') as mock_flash_success,
         patch(f'{_V}.redirect_to') as mock_redirect_to,

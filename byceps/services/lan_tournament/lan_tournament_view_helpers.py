@@ -1,5 +1,6 @@
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from uuid import UUID
 
 from flask_babel import gettext
 
@@ -41,6 +42,7 @@ from byceps.services.lan_tournament.tournament_domain_service import (
 from byceps.services.party.models import PartyID
 from byceps.services.user import user_service
 from byceps.services.user.models import User, UserID
+from byceps.util.result import Err, Ok, Result
 
 
 def build_contestant_name_lookups(
@@ -576,3 +578,104 @@ def serialize_bracket_json(
             'openMatch': gettext('Open'),
         },
     }
+
+
+def parse_submitted_contestant_scores(
+    contestants: list[TournamentMatchToContestant],
+    tournament: Tournament,
+    form: Mapping[str, str],
+    *,
+    field_prefix: str,
+    allow_all_blank: bool,
+) -> Result[dict[TournamentParticipantID | TournamentTeamID, int], str]:
+    """Parse the submitted score of each real contestant of a match.
+
+    Scores are bound by contestant key, as the order of contestants is
+    not stable. With `allow_all_blank`, leaving every field empty is
+    accepted; a partial fill is always rejected.
+    """
+    scores: dict[TournamentParticipantID | TournamentTeamID, int] = {}
+    num_real = 0
+    num_blank = 0
+
+    for contestant in contestants:
+        key = contestant.team_id or contestant.participant_id
+        if key is None:
+            continue  # DEFWIN slot
+
+        num_real += 1
+        raw = form.get(f'{field_prefix}{key}', '').strip()
+
+        if not raw:
+            if not allow_all_blank:
+                return Err(gettext('All contestants must have scores.'))
+            num_blank += 1
+            continue
+
+        try:
+            score_int = int(raw)
+        except ValueError:
+            return Err(gettext('Invalid score value.'))
+
+        if tournament.contestant_type == ContestantType.TEAM:
+            scores[TournamentTeamID(key)] = score_int
+        else:
+            scores[TournamentParticipantID(key)] = score_int
+
+    if allow_all_blank and num_blank not in (0, num_real):
+        return Err(
+            gettext(
+                'Enter a score for every contestant, or leave them all empty.'
+            )
+        )
+
+    return Ok(scores)
+
+
+def is_ffa_tournament(tournament: Tournament) -> bool:
+    """Return `True` if the tournament's matches are decided by placement."""
+    return (
+        tournament.game_format is not None
+        and tournament.game_format.uses_placements
+    )
+
+
+def is_walkover_match(contestants: list[TournamentMatchToContestant]) -> bool:
+    """Return `True` if fewer than two real contestants are in the match."""
+    real_contestants = [
+        c
+        for c in contestants
+        if c.participant_id is not None or c.team_id is not None
+    ]
+    return len(real_contestants) < 2
+
+
+def parse_match_ids(raw: str) -> list[TournamentMatchID]:
+    """Return the comma-separated match IDs, or `[]` if one is malformed."""
+    try:
+        return [
+            TournamentMatchID(UUID(part)) for part in raw.split(',') if part
+        ]
+    except ValueError:
+        return []
+
+
+def parse_submitted_ffa_placements(
+    form: Mapping[str, str],
+) -> Result[dict[str, int], str]:
+    """Parse the submitted `placement_<contestant ID>` fields."""
+    placements: dict[str, int] = {}
+
+    for key, value in form.items():
+        if not key.startswith('placement_'):
+            continue
+
+        try:
+            placements[key.removeprefix('placement_')] = int(value)
+        except ValueError:
+            return Err(gettext('Invalid placement value for contestant.'))
+
+    if not placements:
+        return Err(gettext('No placement data submitted.'))
+
+    return Ok(placements)

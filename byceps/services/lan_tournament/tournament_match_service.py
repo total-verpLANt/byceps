@@ -78,6 +78,43 @@ MAX_MATCH_SCORE = 999_999_999
 # fails if the two ever drift apart.
 MAX_MATCH_SCORE_ERROR = 'Score cannot exceed 999,999,999.'
 
+# A STATIC msgid, for the same reason as MAX_MATCH_SCORE_ERROR above.
+PLACEMENT_FORMAT_CONFIRM_ERROR = (
+    'Free-for-all matches are decided by placements, not by scores.'
+)
+
+# Already in the catalogue; the two views flash the same sentence.
+PLACEMENT_FORMAT_CORRECTION_ERROR = (
+    'Free-for-all matches are corrected by unconfirming '
+    'them and re-entering the placements.'
+)
+
+
+def _decided_by_placements(tournament: Tournament) -> bool:
+    """Return `True` if the tournament's matches are decided by placement.
+
+    The predicate the views spell as ``is_ffa_tournament``. It lives
+    here too because the format split has to be enforced in the
+    service: the views' own checks only cover the forms they render,
+    and every write path below is reachable by a direct POST.
+
+    The ``isinstance`` is load-bearing, not a type-checker sop. This
+    gate now decides whether a match may be confirmed at all, and the
+    unit tests in this module drive the service against Mock
+    repositories whose ``game_format`` is a ``Mock``: reading
+    ``.uses_placements`` off one yields a truthy ``Mock``, which would
+    make every stubbed tournament look like a free-for-all and refuse
+    every confirmation. A guard that a test double can flip is a
+    guard that a future refactor can flip too. ``GameFormat`` stays
+    the source of truth for what "decided by placements" means --
+    this only refuses to answer for something that is not one.
+    """
+    return (
+        isinstance(tournament.game_format, GameFormat)
+        and tournament.game_format.uses_placements
+    )
+
+
 class DefwinResult(NamedTuple):
     """Events produced by defwin processing, for post-commit dispatch."""
 
@@ -1235,11 +1272,6 @@ def generate_round_robin_bracket(
     return Ok(total_matches)
 
 
-def reset_match(match_id: TournamentMatchID) -> None:
-    """Reset a match (with cascading delete of dependents)."""
-    delete_match(match_id)
-
-
 def get_match(
     match_id: TournamentMatchID,
 ) -> TournamentMatch:
@@ -1979,6 +2011,14 @@ def _admin_set_and_confirm_match_impl(
     if match.confirmed_by is not None:
         return Err('Match is already confirmed.')
 
+    # Fail before the score write below rather than leaving it to
+    # _confirm_match_impl's own guard: the caller does roll back, but
+    # reporting the format mismatch at the point the scores are
+    # rejected keeps the flash accurate about what was refused.
+    tournament = tournament_repository.get_tournament(match.tournament_id)
+    if _decided_by_placements(tournament):
+        return Err(PLACEMENT_FORMAT_CONFIRM_ERROR)
+
     validation = _validate_match_scores(match_id, scores)
     if validation.is_err():
         return Err(validation.unwrap_err())
@@ -2580,13 +2620,36 @@ def _confirm_match_impl(
     validation = _validate_match_confirmable(match, contestants)
     if validation.is_err():
         return validation
+    tournament = tournament_repository.get_tournament(
+        match.tournament_id,
+    )
+
+    # A free-for-all match is decided by placements and confirmed by
+    # confirm_ffa_match, which does NOT come through here. Letting one
+    # through this path confirms it on raw scores while placement and
+    # points -- the only numbers the FFA standings read -- stay NULL,
+    # and _try_auto_complete_tournament below then declares a
+    # tournament winner from those scores: for FFA+SE any round with a
+    # single group satisfies its terminal test, so confirming the
+    # first group of a four-player tournament completes it outright.
+    # COMPLETED is a terminal status, so that is not merely wrong but
+    # hard to undo.
+    #
+    # The two blueprints already refuse this per route, but only for
+    # the forms they render. This is the choke point every bracket
+    # confirmation actually passes through -- confirm_match,
+    # set_match_scores (the participant score submission, which needs
+    # no permission beyond being in the match),
+    # admin_set_and_confirm_match, and correct_match_result's score
+    # re-application -- so the rule is enforced once, here, for
+    # direct POSTs as well.
+    if _decided_by_placements(tournament):
+        return Err(PLACEMENT_FORMAT_CONFIRM_ERROR)
+
     winner_result = determine_match_winner(contestants)
     if winner_result.is_err():
         return Err(winner_result.unwrap_err())
     winner = winner_result.unwrap()
-    tournament = tournament_repository.get_tournament(
-        match.tournament_id,
-    )
     if winner is None:
         return _confirm_draw_impl(
             match, match_id, initiator_id, tournament,
@@ -3576,6 +3639,20 @@ def correct_match_result(
     if subject is None:
         return Err(f'Unknown match ID "{match_id}".')
 
+    # The whole cascade below is built on next_match_id, which a
+    # free-for-all bracket does not use, so a correction here would
+    # degrade into a plain unconfirm wearing a correction's audit
+    # entries and reason -- and, with corrected scores, would try to
+    # re-confirm through the bracket path that PLACEMENT_FORMAT_
+    # CONFIRM_ERROR refuses. Both blueprints already send the admin
+    # to the unconfirm route instead; enforce it here too, so a
+    # direct POST cannot retract an FFA result under a correction's
+    # audit trail. Checked before _lock_reachable_matches so the
+    # refusal takes no locks.
+    tournament = tournament_repository.get_tournament(subject.tournament_id)
+    if _decided_by_placements(tournament):
+        return Err(PLACEMENT_FORMAT_CORRECTION_ERROR)
+
     # Lock every match the cascade could reach BEFORE classifying.
     # The ack gate is a decision about downstream confirmation state,
     # which a second admin can change; classified unlocked, a match
@@ -4166,6 +4243,18 @@ def set_ffa_placements(
     if match.confirmed_by is not None:
         return Err('Cannot modify placements of a confirmed match.')
 
+    # The mirror of PLACEMENT_FORMAT_CONFIRM_ERROR: a bracket match
+    # has no placements, and writing some is the first half of a way
+    # to stall the bracket -- confirm_ffa_match below accepts any
+    # match whose contestants all carry one, and deliberately does
+    # NOT advance a winner, so a bracket match confirmed through it
+    # never feeds its next_match_id and can no longer be confirmed
+    # properly. Both site routes already refuse this; the admin ones
+    # did not, so enforce it here for both.
+    tournament = tournament_repository.get_tournament(match.tournament_id)
+    if not _decided_by_placements(tournament):
+        return Err('Placements apply only to free-for-all matches.')
+
     contestants = tournament_repository.get_contestants_for_match(match_id)
 
     # Build lookup: contestant-id-string -> contestant record.
@@ -4195,8 +4284,8 @@ def set_ffa_placements(
             f'Got: {sorted(actual)}'
         )
 
-    # Map placements to points.
-    tournament = tournament_repository.get_tournament(match.tournament_id)
+    # Map placements to points. The tournament is already loaded by
+    # the format guard above.
     point_table = tournament.point_table or []
 
     updates: dict[TournamentMatchToContestantID, tuple[int, int]] = {}
@@ -4227,9 +4316,20 @@ def confirm_ffa_match(
         tournament_repository.lock_tournament_for_update(match.tournament_id)
     match = tournament_repository.get_match_for_update(match_id)
 
-    # Reject already-confirmed matches.
+    # Reject already-confirmed matches. Checked before the format
+    # guard below so a confirmed match keeps reporting the more
+    # specific of the two reasons it is refused.
     if match.confirmed_by is not None:
         return Err('Match is already confirmed.')
+
+    # Same guard as set_ffa_placements above, and the reason this one
+    # matters most: this function confirms WITHOUT advancing a winner,
+    # which is correct for FFA and ruinous for a bracket match -- it
+    # would be marked confirmed, never feed its next_match_id, and be
+    # refused by the normal confirm path from then on.
+    tournament = tournament_repository.get_tournament(match.tournament_id)
+    if not _decided_by_placements(tournament):
+        return Err('Placements apply only to free-for-all matches.')
 
     contestants = tournament_repository.get_contestants_for_match(match_id)
 
@@ -4242,8 +4342,6 @@ def confirm_ffa_match(
         )
 
     tournament_repository.confirm_match(match_id, initiator_id)
-
-    tournament = tournament_repository.get_tournament(match.tournament_id)
 
     tournament_was_completed = False
     winner = None

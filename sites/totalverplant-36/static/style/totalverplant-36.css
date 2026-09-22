@@ -1549,6 +1549,104 @@
     text-shadow: none;
   }
 
+  /* Notices on tournament pages. common.css paints these as flat web
+     alerts -- .notification.color-danger is #ff9999 at (0,2,0) -- which
+     on paper reads as a sticker rather than print. Re-stamp them the
+     same way the chips above are: ink on a brand-tinted paper swatch,
+     square, hairline rule. totalverplant-36.css loads after common.css,
+     so matching specificity wins on source order.
+
+     Scoped to body.lt-dark (the module's pages) exactly like the chip
+     rules, so the shop and news notices are untouched. */
+  body.lt-dark :is(.notification).color-danger,
+  body.lt-dark :is(.notification).color-warning,
+  body.lt-dark :is(.notification).color-info,
+  body.lt-dark :is(.notification).color-success {
+    color: var(--ink);
+    border-width: 1px;
+    border-radius: 0;
+    text-shadow: none;
+  }
+
+  body.lt-dark :is(.notification).color-danger {
+    background: color-mix(in srgb, var(--red) 12%, var(--paperLite));
+    border-color: color-mix(in srgb, var(--red) 55%, var(--ink));
+  }
+
+  body.lt-dark :is(.notification).color-warning {
+    background: color-mix(in srgb, var(--lt-brand-warning) 18%, var(--paperLite));
+    border-color: color-mix(in srgb, var(--lt-brand-warning) 60%, var(--ink));
+  }
+
+  body.lt-dark :is(.notification).color-info {
+    background: color-mix(in srgb, var(--blue) 10%, var(--paperLite));
+    border-color: color-mix(in srgb, var(--blue) 45%, var(--ink));
+  }
+
+  body.lt-dark :is(.notification).color-success {
+    background: color-mix(in srgb, var(--green) 12%, var(--paperLite));
+    border-color: color-mix(in srgb, var(--green) 50%, var(--ink));
+  }
+
+  /* Action buttons on tournament pages. common.css paints the colour
+     variants as web-alert fills (.color-danger is #ff9999 at (0,2,0)),
+     which shouted louder than the critical notice they sit under once
+     that notice was re-set as print. Same treatment as the notices:
+     ink on a tinted paper swatch, square, hairline rule. The mono
+     uppercase face already comes from the theme's own `.button`. */
+  body.lt-dark :is(.button).color-danger,
+  body.lt-dark :is(.button).color-warning,
+  body.lt-dark :is(.button).color-success,
+  body.lt-dark :is(.button).color-primary {
+    color: var(--ink);
+    border-width: 1.5px;
+    border-radius: 0;
+    text-shadow: none;
+  }
+
+  body.lt-dark :is(.button).color-danger {
+    background: color-mix(in srgb, var(--red) 16%, var(--paperLite));
+    border-color: var(--redDeep);
+  }
+
+  body.lt-dark :is(.button).color-warning {
+    background: color-mix(in srgb, var(--lt-brand-warning) 24%, var(--paperLite));
+    border-color: color-mix(in srgb, var(--lt-brand-warning) 70%, var(--ink));
+  }
+
+  body.lt-dark :is(.button).color-success,
+  body.lt-dark :is(.button).color-primary {
+    background: color-mix(in srgb, var(--green) 16%, var(--paperLite));
+    border-color: color-mix(in srgb, var(--green) 55%, var(--ink));
+  }
+
+  /* The one loud moment in the orga panel. A correction that reaches
+     confirmed matches is the only action here that destroys entered
+     results, so its notice carries a stamped marginal rule in the
+     deep red -- the rest of the panel stays quiet print. */
+  body.lt-dark .lt-orga-panel .notification.color-danger {
+    border-left: 5px solid var(--redDeep);
+  }
+
+  /* Field labels in the panel -- contestant names above the score
+     boxes, "Reason", "Orga Comment" -- set in the mono register the
+     rest of the paper uses for data, so they read as form furniture
+     rather than competing with the serif body. The acknowledgement is
+     excluded: it is a sentence to be read, not a label. */
+  body.lt-dark .lt-orga-panel .form-group:not(.lt-orga-ack) > label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: var(--inkSoft);
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  body.lt-dark .lt-orga-ack label {
+    font-size: 17px;
+    line-height: 1.45;
+  }
+
   /* Tagesausgabe token tune: the module's success token (#24c26b) and muted
      ink (--inkMute) pass on the dark editions but land at 1.6:1 ("Done" /
      "DEFWIN" chips, defwin rows) and ~4.2:1 (stats chips, view label,

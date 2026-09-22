@@ -434,3 +434,37 @@ def test_remove_team_member_does_not_delete_nonempty_team(
 
     remaining = tournament_team_service.get_team_members(team_id)
     assert len(remaining) == 2
+
+
+def test_lost_race_on_duplicate_team_name_returns_err_not_500(
+    party, captain1, captain2, grant_ticket, monkeypatch
+):
+    """Return an `Err` when a duplicate name gets past the pre-check."""
+    tournament = _create_team_tournament('Team Name Race Test')
+    _join(tournament, captain1, grant_ticket)
+    _join(tournament, captain2, grant_ticket)
+
+    _create_ok(tournament.id, 'Contested Name', captain1.id)
+
+    monkeypatch.setattr(
+        tournament_team_service.tournament_repository,
+        'find_active_team_by_name',
+        lambda *args, **kwargs: None,
+    )
+
+    racing_result = tournament_team_service.create_team(
+        tournament.id, 'Contested Name', captain2.id
+    )
+
+    assert racing_result.is_err()
+    assert 'name already exists' in racing_result.unwrap_err()
+
+    monkeypatch.undo()
+
+    # The session survived the rollback: a later statement still runs.
+    assert (
+        tournament_repository.find_active_team_by_name(
+            tournament.id, 'Contested Name'
+        )
+        is not None
+    )

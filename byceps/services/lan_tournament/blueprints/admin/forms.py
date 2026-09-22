@@ -257,6 +257,13 @@ class AddTeamMemberForm(LocalizedForm):
         form.user = user
 
 
+class TournamentOrgaAssignForm(LocalizedForm):
+    screen_name = StringField(
+        lazy_gettext('Username'), [InputRequired(), Length(max=80)]
+    )
+    duties = StringField(lazy_gettext('Duties'), [Optional(), Length(max=200)])
+
+
 class MatchCorrectionForm(LocalizedForm):
     """Validate the non-score fields of a result correction.
 

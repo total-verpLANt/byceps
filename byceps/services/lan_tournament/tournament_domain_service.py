@@ -44,7 +44,20 @@ _VALID_STATUS_TRANSITIONS: dict[TournamentStatus, set[TournamentStatus]] = {
         TournamentStatus.ONGOING,
         TournamentStatus.CANCELLED,
     },
-    TournamentStatus.COMPLETED: set(),
+    # Reopening a completed tournament. COMPLETED used to be a dead
+    # end, which made a premature "Complete" unrecoverable: the only
+    # code that ever left the status was the retraction cascade's
+    # revert, and that fires only for a confirmed DECIDING match, so
+    # a round-robin or highscore tournament -- where
+    # is_deciding_match() is False by construction -- stayed frozen
+    # with no route, CLI or admin action able to move it.
+    #
+    # Reserved for global admins: the admin blueprint's `reopen`
+    # route is the only surface for it, and the site blueprint's
+    # orga status actions refuse a COMPLETED tournament explicitly
+    # so that its `resume` action cannot reach this edge.
+    # change_status() clears the recorded winner on the way out.
+    TournamentStatus.COMPLETED: {TournamentStatus.ONGOING},
     TournamentStatus.CANCELLED: set(),
 }
 

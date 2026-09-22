@@ -1,0 +1,221 @@
+{% from 'macros/icons.html' import render_icon %}
+{% from 'macros/lan_tournament.html' import render_match_ref %}
+
+{% macro render_contestant_label(contestant, teams_by_id, participants_by_id) %}
+{%- set _key = (contestant.team_id or contestant.participant_id)|string %}
+{%- if contestant.team_id -%}
+  {{ teams_by_id.get(contestant.team_id).name if teams_by_id.get(contestant.team_id) else _key }}
+{%- else -%}
+  {{ participants_by_id.get(contestant.participant_id).screen_name if participants_by_id.get(contestant.participant_id) else _key }}
+{%- endif -%}
+{% endmacro %}
+
+
+{% macro render_orga_tournament_status_actions(tournament, may_administrate) %}
+{%- if may_administrate and tournament.tournament_status %}
+{%- set _status = tournament.tournament_status.name %}
+{%- if _status in ('REGISTRATION_CLOSED', 'ONGOING', 'PAUSED') %}
+<div class="box block lt-orga-panel">
+  <h2 class="title">{{ _('Orga Actions') }}</h2>
+  <div class="button-row">
+    {%- if _status == 'REGISTRATION_CLOSED' %}
+    <form method="post" action="{{ url_for('.orga_change_tournament_status', tournament_id=tournament.id, action='start') }}">
+      <button type="submit" class="button color-success">{{ render_icon('success') }} {{ _('Start tournament') }}</button>
+    </form>
+    {%- elif _status == 'ONGOING' %}
+    <form method="post" action="{{ url_for('.orga_change_tournament_status', tournament_id=tournament.id, action='pause') }}">
+      <button type="submit" class="button color-warning">{{ render_icon('warning') }} {{ _('Pause') }}</button>
+    </form>
+    <form method="post" action="{{ url_for('.orga_change_tournament_status', tournament_id=tournament.id, action='complete') }}"
+          onsubmit="return confirm('{{ _('This will complete the tournament. Continue?') }}');">
+      <button type="submit" class="button color-success">{{ render_icon('success') }} {{ _('Complete') }}</button>
+    </form>
+    {%- elif _status == 'PAUSED' %}
+    <form method="post" action="{{ url_for('.orga_change_tournament_status', tournament_id=tournament.id, action='resume') }}">
+      <button type="submit" class="button color-success">{{ render_icon('success') }} {{ _('Resume') }}</button>
+    </form>
+    {%- endif %}
+  </div>
+</div>
+{%- endif %}
+{%- endif %}
+{% endmacro %}
+
+
+{% macro render_orga_match_actions(match, tournament, contestants, teams_by_id, participants_by_id, may_administrate, max_match_score, correction_case, affected_downstream_matches, ack_match_ids, is_ffa, is_walkover, ffa_result_consumed, results_editable) %}
+{%- if may_administrate %}
+<div class="box block lt-orga-panel">
+  <h2 class="title">{{ _('Orga Actions') }}</h2>
+
+  {%- if not results_editable %}
+  <div class="notification color-info">{{ render_icon('information') }}
+    {{ _('Tournament is not in progress.') }}
+  </div>
+  {%- else %}
+
+  {%- if not is_ffa and not match.confirmed_by %}
+  {# Inputs are named by contestant key, not by position. #}
+  <form method="post" action="{{ url_for('.orga_confirm_match_with_scores', match_id=match.id) }}" class="block">
+    <div class="lt-orga-fields">
+      {%- for contestant in contestants if contestant.team_id or contestant.participant_id %}
+      {%- set _key = (contestant.team_id or contestant.participant_id)|string %}
+      <div class="form-group">
+        <label for="orga_score_{{ _key }}">
+          {{- render_contestant_label(contestant, teams_by_id, participants_by_id) -}}
+        </label>
+        <input class="form-control lt-orga-score" type="number"
+               name="score_{{ _key }}" id="orga_score_{{ _key }}"
+               min="0" max="{{ max_match_score }}"
+               value="{{ contestant.score if contestant.score is not none else '' }}" required>
+      </div>
+      {%- endfor %}
+    </div>
+    <button type="submit" class="button color-success">{{ render_icon('success') }} {{ _('Confirm Match') }}</button>
+  </form>
+  {%- endif %}
+
+  {%- if is_ffa and not match.confirmed_by %}
+  {# Placements #}
+  <form method="post" action="{{ url_for('.orga_set_ffa_placements', match_id=match.id) }}" class="block">
+    <div class="lt-orga-fields">
+      {%- for contestant in contestants if contestant.team_id or contestant.participant_id %}
+      {%- set _key = (contestant.team_id or contestant.participant_id)|string %}
+      {%- set _count = loop.length %}
+      <div class="form-group">
+        <label for="orga_placement_{{ _key }}">
+          {{- render_contestant_label(contestant, teams_by_id, participants_by_id) -}}
+        </label>
+        <select class="form-control lt-orga-placement" name="placement_{{ _key }}" id="orga_placement_{{ _key }}" required>
+          <option value="">&#8211;</option>
+          {%- for i in range(1, _count + 1) %}
+          <option value="{{ i }}"{% if contestant.placement == i %} selected{% endif %}>{{ i }}</option>
+          {%- endfor %}
+        </select>
+      </div>
+      {%- endfor %}
+    </div>
+    <button type="submit" class="button">{{ render_icon('save') }} {{ _('Set Placements') }}</button>
+  </form>
+  {%- if not contestants|rejectattr('placement')|list %}
+  <form method="post" action="{{ url_for('.orga_confirm_ffa_match', match_id=match.id) }}" class="block">
+    <button type="submit" class="button color-success">{{ render_icon('success') }} {{ _('Confirm FFA Match') }}</button>
+  </form>
+  {%- endif %}
+  {%- endif %}
+
+  {%- if match.confirmed_by %}
+  {%- if is_ffa %}
+  {%- if ffa_result_consumed %}
+  <div class="notification color-info">{{ render_icon('information') }}
+    {{ _('A later round has already been built from this result, so it can no longer be unconfirmed.') }}
+  </div>
+  {%- else %}
+  {#- Bracket matches are retracted through the correction form. #}
+  <form method="post" action="{{ url_for('.orga_unconfirm_match', match_id=match.id) }}" class="block"
+        onsubmit="return confirm('{{ _('This will unconfirm the match. Continue?') }}');">
+    <div class="form-group">
+      <label for="orga_unconfirm_reason">{{ _('Reason') }}</label>
+      <textarea class="form-control" name="reason" id="orga_unconfirm_reason" rows="2" required maxlength="2000"></textarea>
+    </div>
+    <button type="submit" class="button color-warning">{{ render_icon('warning') }} {{ _('Unconfirm Match') }}</button>
+  </form>
+  {%- endif %}
+
+  {%- elif is_walkover %}
+  <div class="notification color-info">{{ render_icon('information') }}
+    {{ _('This match was decided by a walkover, so it has no result to correct.') }}
+  </div>
+
+  {%- else %}
+  {# Correct result #}
+  {%- if correction_case and correction_case.value == 'no_downstream' %}
+  <div class="notification color-info">{{ render_icon('information') }}
+    {{ _('No downstream matches are affected by this correction.') }}
+  </div>
+  {%- elif correction_case and correction_case.value == 'unconfirmed_downstream' %}
+  <div class="notification color-warning">{{ render_icon('warning') }}
+    {{ _('The following downstream matches are not yet confirmed. The contestant who advanced from this match will be removed from them and must be re-determined once this correction is confirmed:') }}
+    <ul class="lt-orga-impact">
+      {%- for downstream in affected_downstream_matches %}
+      <li>{{ render_match_ref(downstream) }}</li>
+      {%- endfor %}
+    </ul>
+  </div>
+  {%- elif correction_case and correction_case.value == 'confirmed_downstream' %}
+  <div class="notification color-danger">{{ render_icon('warning') }}
+    {{ _('Critical: the following downstream matches have already been confirmed. Confirming this correction will retract them and clear their entered scores. If the retraction reaches a tournament-deciding match, the tournament winner will be cleared and the tournament will revert to ongoing. Those results must be re-entered manually afterwards.') }}
+    <ul class="lt-orga-impact">
+      {%- for downstream in affected_downstream_matches %}
+      <li>{{ render_match_ref(downstream) }}</li>
+      {%- endfor %}
+    </ul>
+  </div>
+  {%- elif correction_case and correction_case.value == 'bracket_reset_deletion' %}
+  <div class="notification color-danger">{{ render_icon('warning') }}
+    {{ _('Critical: this is the first grand final and the bracket has been reset. Confirming this correction does not just retract the following bracket-reset match — it deletes it, together with its contestants and comments. The tournament winner will be cleared and the tournament will revert to ongoing. If the reset is still warranted after the correction, the bracket-reset match is recreated when this match is confirmed again.') }}
+    <ul class="lt-orga-impact">
+      {%- for downstream in affected_downstream_matches %}
+      <li>{{ render_match_ref(downstream) }}</li>
+      {%- endfor %}
+    </ul>
+  </div>
+  {%- endif %}
+
+  <form method="post" action="{{ url_for('.orga_correct_match_result', match_id=match.id) }}" class="block"
+        onsubmit="return confirm('{{ _('This will retract this result. Any already-confirmed downstream matches will also be retracted and their scores cleared. Continue?') }}');">
+    <div class="lt-orga-fields">
+      {%- for contestant in contestants if contestant.team_id or contestant.participant_id %}
+      {%- set _key = (contestant.team_id or contestant.participant_id)|string %}
+      <div class="form-group">
+        <label for="orga_corrected_score_{{ _key }}">
+          {{- render_contestant_label(contestant, teams_by_id, participants_by_id) -}}
+        </label>
+        <input class="form-control lt-orga-score" type="number"
+               name="corrected_score_{{ _key }}" id="orga_corrected_score_{{ _key }}"
+               min="0" max="{{ max_match_score }}"
+               value="{{ contestant.score if contestant.score is not none else '' }}">
+      </div>
+      {%- endfor %}
+    </div>
+    <p class="dimmed">{{ _('The fields hold the current scores. Change at least one to re-enter the result, or clear them all to only retract it. Submitting the scores unchanged is rejected, because the retraction would still clear any confirmed downstream results.') }}</p>
+    {#- Only for the two cases the service gates on. -#}
+    {%- if correction_case and correction_case.value in ('confirmed_downstream', 'bracket_reset_deletion') %}
+    <input type="hidden" name="ack_match_ids" value="{{ ack_match_ids|join(',') }}">
+    {%- endif %}
+    {%- if correction_case and correction_case.value == 'confirmed_downstream' %}
+    <div class="form-group lt-orga-ack">
+      <label>
+        <input type="checkbox" name="ack_critical" value="y">
+        {{ _('I acknowledge that the confirmed downstream matches listed above will be retracted and their scores cleared.') }}
+      </label>
+    </div>
+    {%- elif correction_case and correction_case.value == 'bracket_reset_deletion' %}
+    <div class="form-group lt-orga-ack">
+      <label>
+        <input type="checkbox" name="ack_critical" value="y">
+        {{ _('I acknowledge that the bracket-reset match listed above will be deleted, not merely retracted.') }}
+      </label>
+    </div>
+    {%- endif %}
+    <div class="form-group">
+      <label for="orga_correction_reason">{{ _('Reason') }}</label>
+      <textarea class="form-control" name="reason" id="orga_correction_reason" rows="3" required maxlength="2000"></textarea>
+    </div>
+    <button type="submit" class="button color-danger">{{ render_icon('warning') }} {{ _('Correct Result') }}</button>
+  </form>
+  {%- endif %}
+  {%- endif %}
+
+  {%- endif %}{# results_editable #}
+
+  {# Orga comment, available in every tournament status #}
+  <form method="post" action="{{ url_for('.orga_add_match_comment', match_id=match.id) }}">
+    <div class="form-group">
+      <label for="orga_comment">{{ _('Orga Comment') }}</label>
+      <textarea class="form-control" name="comment" id="orga_comment" rows="2" maxlength="1000" placeholder="{{ _('Write a comment...') }}"></textarea>
+    </div>
+    <button type="submit" class="button is-compact secondary">{{ _('Post Comment') }}</button>
+  </form>
+</div>
+{%- endif %}
+{% endmacro %}

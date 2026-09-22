@@ -23,6 +23,7 @@ from byceps.services.lan_tournament import (
     tournament_domain_service,
     tournament_match_service,
     tournament_notification_service,
+    tournament_orga_service,
     tournament_participant_service,
     tournament_score_service,
     tournament_service,
@@ -39,9 +40,6 @@ from byceps.services.lan_tournament.models.contestant_type import (
 from byceps.services.lan_tournament.models.tournament_team import (
     TournamentTeam,
     TournamentTeamID,
-)
-from byceps.services.lan_tournament.models.tournament_participant import (
-    TournamentParticipantID,
 )
 from byceps.services.lan_tournament.models.tournament_match import (
     TournamentMatch,
@@ -83,6 +81,11 @@ from byceps.services.lan_tournament.lan_tournament_view_helpers import (
     build_seat_lookup,
     build_team_members_lookup,
     compute_feed_counts,
+    is_ffa_tournament,
+    is_walkover_match,
+    parse_match_ids,
+    parse_submitted_contestant_scores,
+    parse_submitted_ffa_placements,
 )
 from byceps.services.more.blueprints.admin import item_service
 from byceps.services.more.blueprints.admin.item_service import MoreItem
@@ -97,6 +100,7 @@ from .forms import (
     TeamUpdateForm,
     TransferCaptainForm,
     TournamentCreateForm,
+    TournamentOrgaAssignForm,
     TournamentUpdateForm,
 )
 
@@ -857,11 +861,24 @@ def cancel(tournament_id):
     return _change_status(tournament_id, TournamentStatus.CANCELLED)
 
 
+# The only way back out of COMPLETED. Reserved for global admins:
+# the site blueprint's orga status actions refuse a completed
+# tournament, so an orga who completes one prematurely needs an
+# admin to undo it. change_status() clears the recorded winner.
+@blueprint.post('/tournaments/<tournament_id>/reopen')
+@permission_required('lan_tournament.administrate')
+def reopen(tournament_id):
+    """Reopen a completed tournament."""
+    return _change_status(tournament_id, TournamentStatus.ONGOING)
+
+
 def _change_status(tournament_id, new_status: TournamentStatus):
     """Change the tournament status."""
     tournament = _get_tournament_or_404(tournament_id)
 
-    match tournament_service.change_status(tournament.id, new_status):
+    match tournament_service.change_status(
+        tournament.id, new_status, g.user.id
+    ):
         case Ok((_, _event)):
             flash_success(
                 gettext(
@@ -1508,6 +1525,114 @@ def remove_participants_without_tickets(tournament_id):
     )
 
 
+@blueprint.get('/tournaments/<tournament_id>/orgas')
+@permission_required('lan_tournament.view')
+@templated
+def orgas_for_tournament(tournament_id):
+    """List orgas for that tournament."""
+    tournament = _get_tournament_or_404(tournament_id)
+    party = party_service.get_party(tournament.party_id)
+
+    orgas = tournament_orga_service.get_orgas_for_tournament(tournament.id)
+
+    user_ids = {orga.user_id for orga in orgas}
+    users_by_id = user_service.get_users_indexed_by_id(user_ids)
+
+    form = TournamentOrgaAssignForm()
+
+    return {
+        'party': party,
+        'tournament': tournament,
+        'orgas': orgas,
+        'users_by_id': users_by_id,
+        'form': form,
+    }
+
+
+@blueprint.post('/tournaments/<tournament_id>/orgas/assign')
+@permission_required('lan_tournament.orga_assign')
+def assign_orga(tournament_id):
+    """Assign a user as an orga of the tournament."""
+    tournament = _get_tournament_or_404(tournament_id)
+
+    form = TournamentOrgaAssignForm(request.form)
+
+    if not form.validate():
+        flash_error(gettext('Could not assign orga.'))
+        return redirect_to('.orgas_for_tournament', tournament_id=tournament.id)
+
+    screen_name = form.screen_name.data.strip()
+    user = user_service.find_user_by_screen_name(screen_name)
+    if user is None:
+        flash_error(
+            gettext(
+                'Unknown username "%(screen_name)s".',
+                screen_name=screen_name,
+            )
+        )
+        return redirect_to('.orgas_for_tournament', tournament_id=tournament.id)
+
+    # Do not grant tournament rights to an account that must not act.
+    if user.deleted or user.suspended:
+        flash_error(
+            gettext(
+                'Cannot assign "%(screen_name)s": the account is '
+                'deleted or suspended.',
+                screen_name=screen_name,
+            )
+        )
+        return redirect_to('.orgas_for_tournament', tournament_id=tournament.id)
+
+    duties = (form.duties.data or '').strip() or None
+
+    match tournament_orga_service.assign_orga(
+        tournament.id, user.id, g.user.id, duties=duties
+    ):
+        case Ok(_):
+            flash_success(
+                gettext(
+                    '%(name)s has been assigned as orga.',
+                    name=user.screen_name,
+                )
+            )
+        case Err(error_message):
+            flash_error(
+                gettext(
+                    'Could not assign orga: %(error)s',
+                    error=gettext(error_message),
+                )
+            )
+
+    return redirect_to('.orgas_for_tournament', tournament_id=tournament.id)
+
+
+@blueprint.post('/tournaments/<tournament_id>/orgas/<user_id>/revoke')
+@permission_required('lan_tournament.orga_assign')
+def revoke_orga(tournament_id, user_id):
+    """Revoke a user's orga assignment for the tournament."""
+    tournament = _get_tournament_or_404(tournament_id)
+
+    try:
+        orga_user_id = UserID(UUID(user_id))
+    except ValueError:
+        abort(404)
+
+    match tournament_orga_service.revoke_orga(
+        tournament.id, orga_user_id, g.user.id
+    ):
+        case Ok(_):
+            flash_success(gettext('Orga assignment revoked.'))
+        case Err(error_message):
+            flash_error(
+                gettext(
+                    'Could not revoke orga: %(error)s',
+                    error=gettext(error_message),
+                )
+            )
+
+    return redirect_to('.orgas_for_tournament', tournament_id=tournament.id)
+
+
 def _get_team_members(team_id):
     """Fetch active team members and resolve their user info."""
     members = tournament_team_service.get_team_members(team_id)
@@ -1572,33 +1697,6 @@ def _get_team_or_404(team_id) -> TournamentTeam:
         abort(404)
 
     return team
-
-
-def _is_ffa(tournament: Tournament) -> bool:
-    """Whether the tournament is free-for-all (no bracket routing).
-
-    Asks the domain enum rather than comparing ``game_format.name``
-    to a string literal. Two safety gates hang off this answer -- the
-    correction route refuses FFA, the unconfirm route refuses
-    everything else -- and a stringly-typed comparison would keep
-    type-checking and keep passing tests while silently answering
-    ``False`` for every FFA tournament if the member were ever
-    renamed.
-    """
-    return (
-        tournament.game_format is not None
-        and tournament.game_format.uses_placements
-    )
-
-
-def _parse_match_ids(raw: str) -> list[TournamentMatchID]:
-    """Return the comma-separated match IDs, or `[]` if one is malformed."""
-    try:
-        return [
-            TournamentMatchID(UUID(part)) for part in raw.split(',') if part
-        ]
-    except ValueError:
-        return []
 
 
 def _get_match_or_404(match_id) -> TournamentMatch:
@@ -1739,7 +1837,7 @@ def view_match(match_id):
     # FFA is excluded: the panel renders only in view_match.html's
     # non-FFA branch, so classifying one costs two queries and a full
     # bracket load to produce a result nothing renders.
-    is_ffa = _is_ffa(tournament)
+    is_ffa = is_ffa_tournament(tournament)
     ffa_result_consumed = (
         is_ffa
         and match.confirmed_by is not None
@@ -1747,14 +1845,7 @@ def view_match(match_id):
             match, tournament
         )
     )
-    is_walkover = (
-        sum(
-            1
-            for c in contestants
-            if c.participant_id is not None or c.team_id is not None
-        )
-        < 2
-    )
+    is_walkover = is_walkover_match(contestants)
     correction_case = None
     affected_downstream_matches = []
     downstream_contestants_by_match_id = {}
@@ -1866,7 +1957,7 @@ def correct_match_result(match_id):
     # entries and reason. FFA has its own unconfirm route; send the
     # admin there rather than logging a correction that corrected
     # nothing.
-    if _is_ffa(tournament):
+    if is_ffa_tournament(tournament):
         flash_error(
             gettext(
                 'Free-for-all matches are corrected by unconfirming '
@@ -1883,57 +1974,26 @@ def correct_match_result(match_id):
 
     reason = form.reason.data.strip()
     ack_critical = bool(form.ack_critical.data)
-    acknowledged_match_ids = _parse_match_ids(
+    acknowledged_match_ids = parse_match_ids(
         request.form.get('ack_match_ids', '')
     )
 
-    # Bind each submitted score to its contestant BY KEY, never by
-    # list position. get_contestants_for_match sorts on a created_at
-    # that is identical for every contestant of a generated bracket,
-    # so the row order is not stable between the GET that rendered
-    # this form and this POST; a positional home/away binding could
-    # silently record the inverted result. Mirrors the key-driven
-    # parse in confirm_match_with_scores below.
     contestants = tournament_match_service.get_contestants_for_match(
         match.id
     )
 
-    corrected_scores = {}
-    num_real = 0
-    num_blank = 0
-    for contestant in contestants:
-        key = contestant.team_id or contestant.participant_id
-        if key is None:
-            continue  # DEFWIN slot -- carries no key, takes no score.
-        num_real += 1
-        raw = request.form.get(f'corrected_score_{key}', '').strip()
-        if not raw:
-            num_blank += 1
-            continue
-        try:
-            score_int = int(raw)
-        except ValueError:
-            flash_error(gettext('Invalid score value.'))
-            return redirect_to('.view_match', match_id=match_id)
-
-        if tournament.contestant_type == ContestantType.TEAM:
-            corrected_scores[TournamentTeamID(key)] = score_int
-        else:
-            corrected_scores[TournamentParticipantID(key)] = score_int
-
-    # All filled re-enters the result; all blank retracts only.
-    # A partial fill is ambiguous and must not reach the service,
-    # which would reject it only after the retraction had committed.
-    if num_blank not in (0, num_real):
-        flash_error(
-            gettext(
-                'Enter a score for every contestant, or leave them all empty.'
-            )
-        )
+    parse_result = parse_submitted_contestant_scores(
+        contestants,
+        tournament,
+        request.form,
+        field_prefix='corrected_score_',
+        allow_all_blank=True,
+    )
+    if parse_result.is_err():
+        flash_error(parse_result.unwrap_err())
         return redirect_to('.view_match', match_id=match_id)
 
-    if not corrected_scores:
-        corrected_scores = None
+    corrected_scores = parse_result.unwrap() or None
 
     result = tournament_match_service.correct_match_result(
         match.id,
@@ -1989,25 +2049,19 @@ def confirm_match_with_scores(match_id):
     contestants = tournament_match_service.get_contestants_for_match(
         match_id_obj
     )
-    scores = {}
-    for contestant in contestants:
-        key = contestant.team_id or contestant.participant_id
-        if key is None:
-            continue  # DEFWIN slot
-        raw = request.form.get(f'score_{key}', '').strip()
-        if not raw:
-            flash_error(gettext('All contestants must have scores.'))
-            return redirect_to('.view_match', match_id=match_id)
-        try:
-            score_int = int(raw)
-        except ValueError:
-            flash_error(gettext('Invalid score value.'))
-            return redirect_to('.view_match', match_id=match_id)
 
-        if tournament.contestant_type == ContestantType.TEAM:
-            scores[TournamentTeamID(key)] = score_int
-        else:
-            scores[TournamentParticipantID(key)] = score_int
+    parse_result = parse_submitted_contestant_scores(
+        contestants,
+        tournament,
+        request.form,
+        field_prefix='score_',
+        allow_all_blank=False,
+    )
+    if parse_result.is_err():
+        flash_error(parse_result.unwrap_err())
+        return redirect_to('.view_match', match_id=match_id)
+
+    scores = parse_result.unwrap()
 
     match tournament_match_service.admin_set_and_confirm_match(
         match_id_obj, g.user.id, scores
@@ -2051,7 +2105,7 @@ def unconfirm_match(match_id):
     # delete a bracket-reset match -- without an explicit
     # acknowledgement. This route runs the same cascade with no such
     # gate, so a stale tab or bookmarked URL would wave it through.
-    if not _is_ffa(tournament):
+    if not is_ffa_tournament(tournament):
         flash_error(
             gettext(
                 'Bracket matches are retracted in the result '
@@ -2684,35 +2738,27 @@ def advance_ffa_round_action(tournament_id):
     return redirect_to('.bracket', tournament_id=tournament.id)
 
 
+# Placements ARE the result of a free-for-all match -- they decide
+# its winner and the points that feed the standings, and since the
+# bracket score path refuses an FFA match
+# (PLACEMENT_FORMAT_CONFIRM_ERROR) they are the only way to enter
+# one. So this takes the same permission every other result-entry
+# route takes, not the metadata-editing 'update'.
 @blueprint.post('/matches/<match_id>/set_ffa_placements')
-@permission_required('lan_tournament.update')
+@permission_required('lan_tournament.administrate')
 def set_ffa_placements_action(match_id):
     """Set FFA placements for all contestants in a match."""
     match_obj = _get_match_or_404(match_id)
     match_id_obj = TournamentMatchID(match_obj.id)
 
-    # Parse placement form data: placement_<contestant_id> = <rank>
-    placements: dict[str, int] = {}
-    for key, value in request.form.items():
-        if key.startswith('placement_'):
-            cid = key[len('placement_'):]
-            try:
-                placements[cid] = int(value)
-            except ValueError:
-                flash_error(
-                    gettext(
-                        'Invalid placement value for contestant.'
-                    )
-                )
-                return redirect_to('.view_match', match_id=match_id)
-
-    if not placements:
-        flash_error(gettext('No placement data submitted.'))
+    parse_result = parse_submitted_ffa_placements(request.form)
+    if parse_result.is_err():
+        flash_error(parse_result.unwrap_err())
         return redirect_to('.view_match', match_id=match_id)
 
     result = tournament_match_service.set_ffa_placements(
         match_id_obj,
-        placements,
+        parse_result.unwrap(),
     )
 
     match result:

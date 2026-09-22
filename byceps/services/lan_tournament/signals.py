@@ -28,4 +28,7 @@ match_unconfirmed  = lan_tournament_signals.signal('match-unconfirmed')
 match_ready        = lan_tournament_signals.signal('match-ready')
 
 contestant_advanced = lan_tournament_signals.signal('contestant-advanced')
+
+tournament_orga_assigned = lan_tournament_signals.signal('tournament-orga-assigned')
+tournament_orga_revoked  = lan_tournament_signals.signal('tournament-orga-revoked')
 # fmt: on

@@ -71,6 +71,7 @@ def _call_change_status(app, service_error: str):
 
     with app.test_request_context('/'):
         with (
+            patch(f'{_V}.g'),
             patch(f'{_V}.gettext', side_effect=_translate),
             patch(f'{_V}.flash_error') as mock_flash_error,
             patch(f'{_V}.redirect_to'),

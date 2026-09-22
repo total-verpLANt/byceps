@@ -102,8 +102,9 @@ def _build_valid_se_bracket(tournament_id):
     'byceps.services.lan_tournament.tournament_service.tournament_repository'
 )
 @patch('byceps.services.lan_tournament.tournament_service.signals')
+@patch('byceps.services.lan_tournament.tournament_service.create_log_entry')
 def test_start_bracketless_mode_without_matches_succeeds(
-    mock_signals, mock_repository
+    mock_create_log_entry, mock_signals, mock_repository
 ):
     """A HIGHSCORE tournament can transition to ONGOING even without
     any generated matches, because its mode does not require a bracket."""
@@ -193,8 +194,9 @@ def test_start_bracket_mode_without_matches_fails(
     'byceps.services.lan_tournament.tournament_service.tournament_repository'
 )
 @patch('byceps.services.lan_tournament.tournament_service.signals')
+@patch('byceps.services.lan_tournament.tournament_service.create_log_entry')
 def test_start_bracket_mode_with_matches_succeeds(
-    mock_signals, mock_repository, mock_match_repo
+    mock_create_log_entry, mock_signals, mock_repository, mock_match_repo
 ):
     """A SINGLE_ELIMINATION tournament with a structurally valid
     bracket CAN start.
@@ -316,8 +318,9 @@ def test_start_error_lists_violations(
     'byceps.services.lan_tournament.tournament_service.tournament_repository'
 )
 @patch('byceps.services.lan_tournament.tournament_service.signals')
+@patch('byceps.services.lan_tournament.tournament_service.create_log_entry')
 def test_resume_from_paused_skips_bracket_validation(
-    mock_signals, mock_repository, mock_match_service
+    mock_create_log_entry, mock_signals, mock_repository, mock_match_service
 ):
     """A resume is not a start, so the pre-start gate must not run.
 
@@ -354,8 +357,9 @@ def test_resume_from_paused_skips_bracket_validation(
     'byceps.services.lan_tournament.tournament_service.tournament_repository'
 )
 @patch('byceps.services.lan_tournament.tournament_service.signals')
+@patch('byceps.services.lan_tournament.tournament_service.create_log_entry')
 def test_resume_from_paused_succeeds_with_wired_grand_final(
-    mock_signals, mock_repository, mock_match_repo
+    mock_create_log_entry, mock_signals, mock_repository, mock_match_repo
 ):
     """A DE bracket reset wires GF M1.next_match_id during play.
 

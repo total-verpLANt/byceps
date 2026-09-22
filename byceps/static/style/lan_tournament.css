@@ -2008,3 +2008,76 @@ a.lt-hover-name-link:hover {
   font-weight: 500;
   margin-bottom: 0.75rem;
 }
+
+/* ── Scoped-orga control panel (site) ──────────────────────────────
+   Layout furniture only. The controls themselves carry the house
+   `.form-control` / `.button` classes, so a site theme skins them
+   through its own global rules rather than anything asserted here --
+   the panel used to ship bare <input>/<select>/<textarea> and was the
+   one surface in the module that stayed browser-default on a themed
+   site. */
+
+/* Contestant score/placement entry. A grid rather than a wrapping
+   flex row: with 2 contestants it reads as a pair, with 8 (FFA) it
+   stays on a baseline instead of ragging. */
+.lt-orga-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, max-content));
+  gap: 0.75rem 1.25rem;
+  align-items: end;
+  margin-bottom: 1rem;
+}
+
+.lt-orga-fields .form-group {
+  margin-bottom: 0;
+  min-width: 0;
+}
+
+/* A score is at most 9 digits and a placement a single digit; sizing
+   them to the data keeps a four-player FFA from spanning the panel. */
+.lt-orga-score {
+  width: 7rem;
+}
+
+.lt-orga-placement {
+  width: 5rem;
+}
+
+/* The matches a correction would reach. Set as a register, not prose:
+   an orga scans it for a match they recognise. */
+.lt-orga-impact {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.lt-orga-impact li + li {
+  margin-top: 0.15rem;
+}
+
+/* The acknowledgement. This is the last thing between an orga and a
+   wiped bracket, so the control and its sentence stay on one line
+   together and the hit target covers the whole sentence. */
+.lt-orga-ack label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  cursor: pointer;
+  max-width: 68ch;
+}
+
+.lt-orga-ack input[type='checkbox'] {
+  flex: 0 0 auto;
+  margin-top: 0.2em;
+}
+
+/* common.css pins every `textarea.form-control` to a fixed
+   `height: 20rem`. That suits a match comment box; it is absurd for a
+   correction reason, which is one sentence and sits between the score
+   fields and the button an orga is about to press. Let `rows` decide
+   again -- the paper styling from `.form-control` is what we wanted
+   from that class, not its height. */
+.lt-orga-panel textarea.form-control {
+  height: auto;
+  min-height: 0;
+  resize: vertical;
+}

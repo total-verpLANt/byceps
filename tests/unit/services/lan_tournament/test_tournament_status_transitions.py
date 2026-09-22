@@ -106,11 +106,11 @@ def test_valid_status_transition(current, new):
         (TournamentStatus.PAUSED,              TournamentStatus.COMPLETED),
         (TournamentStatus.PAUSED,              TournamentStatus.PAUSED),
 
-        # COMPLETED is terminal
+        # COMPLETED leads only back to ONGOING (the admin reopen);
+        # see test_completed_reopens_to_ongoing_and_nothing_else.
         (TournamentStatus.COMPLETED,           TournamentStatus.DRAFT),
         (TournamentStatus.COMPLETED,           TournamentStatus.REGISTRATION_OPEN),
         (TournamentStatus.COMPLETED,           TournamentStatus.REGISTRATION_CLOSED),
-        (TournamentStatus.COMPLETED,           TournamentStatus.ONGOING),
         (TournamentStatus.COMPLETED,           TournamentStatus.PAUSED),
         (TournamentStatus.COMPLETED,           TournamentStatus.CANCELLED),
         (TournamentStatus.COMPLETED,           TournamentStatus.COMPLETED),
@@ -181,19 +181,31 @@ def test_completed_not_reachable_from_cancelled():
 
 
 # -------------------------------------------------------------------- #
-# terminal states have no outgoing transitions
+# terminal states
 
 
-@pytest.mark.parametrize(
-    'terminal_status',
-    [
-        TournamentStatus.COMPLETED,
-        TournamentStatus.CANCELLED,
-    ],
-)
-def test_terminal_states_have_no_transitions(terminal_status):
+def test_cancelled_has_no_outgoing_transitions():
     for target in TournamentStatus:
-        result = validate_status_transition(terminal_status, target)
+        result = validate_status_transition(TournamentStatus.CANCELLED, target)
+        assert result.is_err()
+
+
+def test_completed_reopens_to_ongoing_and_nothing_else():
+    """The one way out, added so a premature completion is not fatal.
+
+    A tournament with no deciding match -- round robin, highscore --
+    can never be reopened by the retraction cascade's own revert, so
+    without this edge COMPLETED was unrecoverable. Reserved for
+    global admins: the admin `reopen` route is its only surface.
+    """
+    assert validate_status_transition(
+        TournamentStatus.COMPLETED, TournamentStatus.ONGOING
+    ).is_ok()
+
+    for target in TournamentStatus:
+        if target == TournamentStatus.ONGOING:
+            continue
+        result = validate_status_transition(TournamentStatus.COMPLETED, target)
         assert result.is_err()
 
 

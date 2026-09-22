@@ -50,7 +50,7 @@
   <div class='box block'>
     <h2>{{ _('Contestants & Placements') }}</h2>
 
-    {%- if not match.confirmed_by and g.user.has_permission('lan_tournament.update') %}
+    {%- if not match.confirmed_by and g.user.has_permission('lan_tournament.administrate') %}
     {# Drag-and-drop placement editor (JS-enhanced) #}
     <form action='{{ url_for('.set_ffa_placements_action', match_id=match.id) }}'
           method='post'>
@@ -560,7 +560,7 @@
 {%- endblock %}
 
 {% block scripts %}
-{%- if is_ffa and not match.confirmed_by and g.user.has_permission('lan_tournament.update') %}
+{%- if is_ffa and not match.confirmed_by and g.user.has_permission('lan_tournament.administrate') %}
 <script src="{{ url_for('static', filename='behavior/sortable.min.js') }}"></script>
 <script src="{{ url_for('static', filename='behavior/lan_tournament_ffa.js') }}"></script>
 {%- endif %}

@@ -15,6 +15,7 @@ from . import (
     tournament_domain_service,
     tournament_repository,
 )
+from .db_error_helpers import extract_constraint_name
 from .events import (
     CaptainTransferredEvent,
     TeamCreatedEvent,
@@ -131,7 +132,7 @@ def create_team(
         tournament_repository.create_team(team)
     except IntegrityError as e:
         db.session.rollback()
-        constraint = getattr(e.orig, 'constraint_name', '') or ''
+        constraint = extract_constraint_name(e)
         if 'uq_lan_tournament_teams_active_name_ci' in constraint:
             return Err(
                 'A team with this name already exists in this tournament.'
@@ -228,7 +229,7 @@ def update_team(
         tournament_repository.update_team(updated)
     except IntegrityError as e:
         db.session.rollback()
-        constraint = getattr(e.orig, 'constraint_name', '') or ''
+        constraint = extract_constraint_name(e)
         if 'uq_lan_tournament_teams_active_name_ci' in constraint:
             return Err(
                 'A team with this name already exists in this tournament.'

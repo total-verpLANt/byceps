@@ -2,8 +2,8 @@
 {% from 'macros/icons.html' import render_icon %}
 {% from 'macros/misc.html' import render_tag %}
 {% from 'macros/lan_tournament.html' import render_hover_name, render_match_ref, render_tournament_subnav %}
+{% from 'site/lan_tournament/orga_actions.html' import render_orga_match_actions %}
 {% set page_title = [_('Match'), tournament.name] %}
-{% set is_ffa = tournament.game_format and tournament.game_format.name == 'FREE_FOR_ALL' %}
 
 {%- macro render_contestant_name(contestant) -%}
   {%- if contestant.team_id -%}
@@ -276,6 +276,23 @@
     </div>
     {% endif %}
     {%- endif %}{# end is_ffa/standard branch #}
+
+    {{ render_orga_match_actions(
+         match=match,
+         tournament=tournament,
+         contestants=contestants,
+         teams_by_id=teams_by_id,
+         participants_by_id=participants_by_id,
+         may_administrate=may_administrate,
+         max_match_score=max_match_score,
+         correction_case=correction_case,
+         affected_downstream_matches=affected_downstream_matches,
+         ack_match_ids=ack_match_ids,
+         is_ffa=is_ffa,
+         is_walkover=is_walkover,
+         ffa_result_consumed=ffa_result_consumed,
+         results_editable=results_editable,
+       ) }}
 
     {# Comments section #}
     <div class='comments-section'>

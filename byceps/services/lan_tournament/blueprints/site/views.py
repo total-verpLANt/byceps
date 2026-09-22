@@ -4,13 +4,19 @@ from flask_babel import gettext
 
 from byceps.services.lan_tournament import (
     tournament_match_service,
+    tournament_orga_service,
     tournament_participant_service,
     tournament_score_service,
     tournament_service,
     tournament_team_service,
 )
 from byceps.services.lan_tournament.models.tournament import Tournament
-from byceps.services.lan_tournament.models.tournament_team import TournamentTeam
+from byceps.services.lan_tournament.models.tournament_match import (
+    TournamentMatchID,
+)
+from byceps.services.lan_tournament.models.tournament_team import (
+    TournamentTeam,
+)
 from byceps.services.lan_tournament.models.tournament_status import (
     TournamentStatus,
 )
@@ -21,7 +27,15 @@ from byceps.services.lan_tournament.lan_tournament_view_helpers import (
     build_round_robin_standings,
     build_seat_lookup,
     compute_feed_counts,
+    is_ffa_tournament,
+    is_walkover_match,
+    parse_match_ids,
+    parse_submitted_contestant_scores,
+    parse_submitted_ffa_placements,
     serialize_bracket_json,
+)
+from byceps.services.lan_tournament.tournament_match_service import (
+    acknowledgement_match_ids,
 )
 from byceps.services.lan_tournament.models.contestant_type import (
     ContestantType,
@@ -41,9 +55,12 @@ from byceps.util.framework.templating import templated
 from byceps.util.result import Err, Ok
 from byceps.util.views import login_required, redirect_to
 
+from .authz import may_administrate_tournament, scoped_orga_required
 from .forms import (
     HighscoreSubmitForm,
     MatchCommentForm,
+    OrgaMatchCorrectionForm,
+    OrgaMatchUnconfirmForm,
     SiteTeamCreateForm,
     SiteTeamUpdateForm,
 )
@@ -153,6 +170,12 @@ def view(tournament_id):
     runner_up_name = podium.get('runner_up')
     bronze_name = podium.get('bronze')
 
+    may_administrate = may_administrate_tournament(g.user, tournament.id)
+
+    orgas = tournament_orga_service.get_public_orgas_for_tournament(
+        tournament.id
+    )
+
     return {
         'tournament': tournament,
         'participants': participants,
@@ -169,6 +192,8 @@ def view(tournament_id):
         'winner_name': winner_name,
         'runner_up_name': runner_up_name,
         'bronze_name': bronze_name,
+        'may_administrate': may_administrate,
+        'orgas': orgas,
         'active_tab': 'overview',
     }
 
@@ -1025,6 +1050,61 @@ def view_match(match_id):
         current_user_can_comment = False
     comment_form = MatchCommentForm() if current_user_can_comment else None
 
+    may_administrate = may_administrate_tournament(g.user, tournament.id)
+    results_editable = _orga_results_editable(tournament)
+    is_ffa = is_ffa_tournament(tournament)
+    is_walkover = is_walkover_match(contestants)
+    ffa_result_consumed = (
+        is_ffa
+        and may_administrate
+        and results_editable
+        and match.confirmed_by is not None
+        and tournament_match_service.ffa_round_already_advanced(
+            match, tournament
+        )
+    )
+
+    # Show the orga what a correction would affect.
+    correction_case = None
+    affected_downstream_matches = []
+    if (
+        may_administrate
+        and results_editable
+        and not is_ffa
+        and not is_walkover
+        and match.confirmed_by is not None
+    ):
+        classification_result = (
+            tournament_match_service.classify_result_correction(match.id)
+        )
+        if classification_result.is_ok():
+            correction_case, affected_downstream_ids = (
+                classification_result.unwrap()
+            )
+            # Batched fetch, then restore the service's order.
+            fetched_by_id = {
+                m.id: m
+                for m in tournament_match_service.get_matches_by_ids(
+                    affected_downstream_ids
+                )
+            }
+            affected_downstream_matches = [
+                fetched_by_id[downstream_id]
+                for downstream_id in affected_downstream_ids
+                if downstream_id in fetched_by_id
+            ]
+
+    ack_match_ids = (
+        [
+            str(ack_id)
+            for ack_id in acknowledgement_match_ids(
+                correction_case, affected_downstream_matches
+            )
+        ]
+        if correction_case is not None
+        else []
+    )
+
     return {
         'tournament': tournament,
         'match': match,
@@ -1041,6 +1121,15 @@ def view_match(match_id):
         'current_user_can_submit': current_user_can_submit,
         'current_user_can_comment': current_user_can_comment,
         'comment_form': comment_form,
+        'may_administrate': may_administrate,
+        'results_editable': results_editable,
+        'is_ffa': is_ffa,
+        'is_walkover': is_walkover,
+        'ffa_result_consumed': ffa_result_consumed,
+        'correction_case': correction_case,
+        'affected_downstream_matches': affected_downstream_matches,
+        'ack_match_ids': ack_match_ids,
+        'max_match_score': tournament_match_service.MAX_MATCH_SCORE,
         'active_tab': 'matches',
     }
 
@@ -1144,6 +1233,344 @@ def add_comment(match_id):
     else:
         flash_success(gettext('Comment added.'))
     return redirect_to('.view_match', match_id=match_id)
+
+
+# -------------------------------------------------------------------- #
+# orga actions
+
+
+def _get_orga_match_and_tournament_or_404(match_id):
+    """Return the match and its tournament, which must belong to the
+    current site's party.
+    """
+    try:
+        match_id_obj = TournamentMatchID(uuid.UUID(str(match_id)))
+        match = tournament_match_service.get_match(match_id_obj)
+    except ValueError:
+        abort(404)
+
+    tournament = _get_tournament_or_404(match.tournament_id)
+
+    return match, tournament
+
+
+def _orga_results_editable(tournament: Tournament) -> bool:
+    """Return `True` if an orga may change match results now."""
+    return tournament.tournament_status == TournamentStatus.ONGOING
+
+
+@blueprint.post('/orga/matches/<match_id>/confirm_with_scores')
+@login_required
+@scoped_orga_required
+def orga_confirm_match_with_scores(match_id):
+    """Set scores for all contestants and confirm the match."""
+    match, tournament = _get_orga_match_and_tournament_or_404(match_id)
+
+    if not _orga_results_editable(tournament):
+        flash_error(gettext('Tournament is not in progress.'))
+        return redirect_to('.view_match', match_id=match.id)
+
+    contestants = tournament_match_service.get_contestants_for_match(match.id)
+
+    parse_result = parse_submitted_contestant_scores(
+        contestants,
+        tournament,
+        request.form,
+        field_prefix='score_',
+        allow_all_blank=False,
+    )
+    if parse_result.is_err():
+        flash_error(parse_result.unwrap_err())
+        return redirect_to('.view_match', match_id=match_id)
+
+    scores = parse_result.unwrap()
+
+    match tournament_match_service.admin_set_and_confirm_match(
+        match.id, g.user.id, scores
+    ):
+        case Ok(_):
+            flash_success(gettext('Match has been confirmed.'))
+        case Err(error_message):
+            flash_error(
+                gettext(
+                    'Error confirming match: %(error)s',
+                    error=gettext(error_message),
+                )
+            )
+
+    return redirect_to('.view_match', match_id=match_id)
+
+
+@blueprint.post('/orga/matches/<match_id>/unconfirm')
+@login_required
+@scoped_orga_required
+def orga_unconfirm_match(match_id):
+    """Unconfirm a match result."""
+    match, tournament = _get_orga_match_and_tournament_or_404(match_id)
+
+    if not _orga_results_editable(tournament):
+        flash_error(gettext('Tournament is not in progress.'))
+        return redirect_to('.view_match', match_id=match.id)
+
+    if not is_ffa_tournament(tournament):
+        flash_error(
+            gettext(
+                'Bracket matches are retracted in the result '
+                'correction panel, which requires acknowledging the '
+                'impact on downstream matches.'
+            )
+        )
+        return redirect_to('.view_match', match_id=match.id)
+
+    form = OrgaMatchUnconfirmForm(request.form)
+    if not form.validate():
+        flash_error(gettext('Reason cannot be empty.'))
+        return redirect_to('.view_match', match_id=match_id)
+
+    reason = form.reason.data.strip()
+    if not reason:
+        flash_error(gettext('Reason cannot be empty.'))
+        return redirect_to('.view_match', match_id=match_id)
+
+    match tournament_match_service.unconfirm_match(
+        match.id, g.user.id, reason=reason
+    ):
+        case Ok(_):
+            flash_success(gettext('Match has been unconfirmed.'))
+        case Err(error_message):
+            flash_error(
+                gettext(
+                    'Error unconfirming match: %(error)s',
+                    error=gettext(error_message),
+                )
+            )
+
+    return redirect_to('.view_match', match_id=match_id)
+
+
+@blueprint.post('/orga/matches/<match_id>/correct_result')
+@login_required
+@scoped_orga_required
+def orga_correct_match_result(match_id):
+    """Correct a match result: retract it and optionally re-enter scores."""
+    match, tournament = _get_orga_match_and_tournament_or_404(match_id)
+
+    if not _orga_results_editable(tournament):
+        flash_error(gettext('Tournament is not in progress.'))
+        return redirect_to('.view_match', match_id=match.id)
+
+    if is_ffa_tournament(tournament):
+        flash_error(
+            gettext(
+                'Free-for-all matches are corrected by unconfirming '
+                'them and re-entering the placements.'
+            )
+        )
+        return redirect_to('.view_match', match_id=match.id)
+
+    form = OrgaMatchCorrectionForm(request.form)
+    if not form.validate():
+        flash_error(gettext('Invalid input.'))
+        return redirect_to('.view_match', match_id=match_id)
+
+    reason = form.reason.data.strip()
+    ack_critical = bool(form.ack_critical.data)
+    acknowledged_match_ids = parse_match_ids(
+        request.form.get('ack_match_ids', '')
+    )
+
+    contestants = tournament_match_service.get_contestants_for_match(match.id)
+
+    parse_result = parse_submitted_contestant_scores(
+        contestants,
+        tournament,
+        request.form,
+        field_prefix='corrected_score_',
+        allow_all_blank=True,
+    )
+    if parse_result.is_err():
+        flash_error(parse_result.unwrap_err())
+        return redirect_to('.view_match', match_id=match_id)
+
+    corrected_scores = parse_result.unwrap() or None
+
+    result = tournament_match_service.correct_match_result(
+        match.id,
+        g.user.id,
+        reason=reason,
+        corrected_scores=corrected_scores,
+        ack_critical=ack_critical,
+        acknowledged_match_ids=acknowledged_match_ids,
+    )
+
+    match result:
+        case Ok((_, True)):
+            flash_success(
+                gettext(
+                    'Match result has been corrected and the new scores confirmed.'
+                )
+            )
+        case Ok(_):
+            flash_success(gettext('Match result has been corrected.'))
+        case Err(error_message):
+            flash_error(
+                gettext(
+                    'Error correcting match result: %(error)s Nothing '
+                    'was changed; the original result remains '
+                    'confirmed.',
+                    error=gettext(error_message),
+                )
+            )
+
+    return redirect_to('.view_match', match_id=match.id)
+
+
+@blueprint.post('/orga/matches/<match_id>/set_ffa_placements')
+@login_required
+@scoped_orga_required
+def orga_set_ffa_placements(match_id):
+    """Set the placements of an FFA match."""
+    match, tournament = _get_orga_match_and_tournament_or_404(match_id)
+
+    if not _orga_results_editable(tournament):
+        flash_error(gettext('Tournament is not in progress.'))
+        return redirect_to('.view_match', match_id=match.id)
+
+    if not is_ffa_tournament(tournament):
+        flash_error(gettext('Placements apply only to free-for-all matches.'))
+        return redirect_to('.view_match', match_id=match.id)
+
+    parse_result = parse_submitted_ffa_placements(request.form)
+    if parse_result.is_err():
+        flash_error(parse_result.unwrap_err())
+        return redirect_to('.view_match', match_id=match.id)
+
+    match tournament_match_service.set_ffa_placements(
+        match.id, parse_result.unwrap()
+    ):
+        case Ok(_):
+            flash_success(gettext('Placements have been set.'))
+        case Err(error_message):
+            flash_error(
+                gettext(
+                    'Error setting placements: %(error)s',
+                    error=gettext(error_message),
+                )
+            )
+
+    return redirect_to('.view_match', match_id=match.id)
+
+
+@blueprint.post('/orga/matches/<match_id>/confirm_ffa')
+@login_required
+@scoped_orga_required
+def orga_confirm_ffa_match(match_id):
+    """Confirm an FFA match once its placements are set."""
+    match, tournament = _get_orga_match_and_tournament_or_404(match_id)
+
+    if not _orga_results_editable(tournament):
+        flash_error(gettext('Tournament is not in progress.'))
+        return redirect_to('.view_match', match_id=match.id)
+
+    if not is_ffa_tournament(tournament):
+        flash_error(gettext('Placements apply only to free-for-all matches.'))
+        return redirect_to('.view_match', match_id=match.id)
+
+    match tournament_match_service.confirm_ffa_match(match.id, g.user.id):
+        case Ok(_):
+            flash_success(gettext('FFA match has been confirmed.'))
+        case Err(error_message):
+            flash_error(
+                gettext(
+                    'Error confirming FFA match: %(error)s',
+                    error=gettext(error_message),
+                )
+            )
+
+    return redirect_to('.view_match', match_id=match.id)
+
+
+@blueprint.post('/orga/matches/<match_id>/add_comment')
+@login_required
+@scoped_orga_required
+def orga_add_match_comment(match_id):
+    """Add a comment to a match."""
+    match, _tournament = _get_orga_match_and_tournament_or_404(match_id)
+
+    comment = request.form.get('comment', '').strip()
+
+    if not comment:
+        flash_error(gettext('Comment cannot be empty.'))
+        return redirect_to('.view_match', match_id=match_id)
+
+    match tournament_match_service.add_comment(match.id, g.user.id, comment):
+        case Ok(_):
+            flash_success(gettext('Comment has been added.'))
+        case Err(error_message):
+            flash_error(
+                gettext(
+                    'Error adding comment: %(error)s',
+                    error=gettext(error_message),
+                )
+            )
+
+    return redirect_to('.view_match', match_id=match_id)
+
+
+# Other transitions, such as cancelling, are reserved for global admins.
+_ORGA_TOURNAMENT_STATUS_ACTIONS = {
+    'start': TournamentStatus.ONGOING,
+    'pause': TournamentStatus.PAUSED,
+    'resume': TournamentStatus.ONGOING,
+    'complete': TournamentStatus.COMPLETED,
+}
+
+
+@blueprint.post('/orga/tournaments/<tournament_id>/<action>')
+@login_required
+@scoped_orga_required
+def orga_change_tournament_status(tournament_id, action):
+    """Start, pause, resume, or complete the tournament."""
+    tournament = _get_tournament_or_404(tournament_id)
+
+    new_status = _ORGA_TOURNAMENT_STATUS_ACTIONS.get(action)
+    if new_status is None:
+        abort(404)
+
+    # Reopening a completed tournament is an admin-only correction of
+    # an orga's own mistake, so it must not be reachable from here.
+    # Without this the `resume` action would be exactly that: it maps
+    # to ONGOING, and COMPLETED -> ONGOING is now a valid transition
+    # (see _VALID_STATUS_TRANSITIONS). The template only offers
+    # Resume on a PAUSED tournament, but this route is a plain POST.
+    if tournament.tournament_status == TournamentStatus.COMPLETED:
+        flash_error(
+            gettext(
+                'A completed tournament can only be reopened by an '
+                'administrator.'
+            )
+        )
+        return redirect_to('.view', tournament_id=tournament.id)
+
+    match tournament_service.change_status(
+        tournament.id, new_status, g.user.id
+    ):
+        case Ok((_, _event)):
+            flash_success(
+                gettext(
+                    'Tournament status has been changed to "%(status)s".',
+                    status=new_status.name.replace('_', ' ').title(),
+                )
+            )
+        case Err(error_message):
+            flash_error(
+                gettext(
+                    'Status change failed: %(error)s',
+                    error=gettext(error_message),
+                )
+            )
+
+    return redirect_to('.view', tournament_id=tournament.id)
 
 
 @blueprint.get('/<tournament_id>/bracket')
