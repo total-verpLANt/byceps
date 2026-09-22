@@ -81,6 +81,7 @@
     <a class="button" href="{{ url_for('.teams_for_tournament', tournament_id=tournament.id) }}">{{ _('Teams') }}</a>
     {% endif %}
     <a class="button" href="{{ url_for('.matches_for_tournament', tournament_id=tournament.id) }}">{{ _('Matches') }}</a>
+    <a class="button{% if active_tab == 'orgas' %} button--current{% endif %}" href="{{ url_for('.orgas_for_tournament', tournament_id=tournament.id) }}">{{ _('Orgas') }}</a>
     {% if tournament.game_format and tournament.game_format.name == 'HIGHSCORE' %}
     <a class="button{% if active_tab == 'highscore' %} button--current{% endif %}" href="{{ url_for('.highscore', tournament_id=tournament.id) }}">{{ _('Leaderboard') }}</a>
     {% else %}
@@ -453,6 +454,14 @@
       <form action="{{ url_for('.cancel', tournament_id=tournament.id) }}" method="post" data-action="cancel-tournament">
         <button type="submit" class="button color-danger">{{ _('Cancel') }}</button>
       </form>
+
+    {%- elif tournament.tournament_status.name == 'COMPLETED' %}
+      {#- The only way out of COMPLETED, and admin-only: an orga can
+          complete a tournament from the site but cannot undo it. -#}
+      <form action="{{ url_for('.reopen', tournament_id=tournament.id) }}" method="post" data-action="reopen-tournament">
+        <button type="submit" class="button color-warning">{{ _('Reopen') }}</button>
+      </form>
+      <p class="dimmed">{{ _('Reopening clears the recorded winner and returns the tournament to ongoing.') }}</p>
     {%- endif %}
 
     {# Delete button (always available except for completed/ongoing) #}

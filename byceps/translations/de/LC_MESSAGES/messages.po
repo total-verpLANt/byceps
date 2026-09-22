@@ -10463,6 +10463,9 @@ msgstr "Mitglied hinzufügen"
 msgid "Add participant"
 msgstr "Teilnehmer hinzufügen"
 
+msgid "%(name)s has been assigned as orga."
+msgstr "%(name)s wurde als Orga zugewiesen."
+
 msgid "Administrate LAN tournaments"
 msgstr "LAN-Turniere verwalten"
 
@@ -10495,6 +10498,15 @@ msgstr "Alle Ergebnisse wurden gelöscht."
 
 msgid "Are you sure you want to delete ALL scores? This cannot be undone."
 msgstr "Sollen wirklich ALLE Ergebnisse gelöscht werden? Dies kann nicht rückgängig gemacht werden."
+
+msgid "Assign LAN tournament orgas"
+msgstr "LAN-Turnier-Orgas zuweisen"
+
+msgid "Assign orga"
+msgstr "Orga zuweisen"
+
+msgid "Assigned"
+msgstr "Zugewiesen am"
 
 msgid "Average Points"
 msgstr "Durchschnittliche Punkte"
@@ -10604,11 +10616,20 @@ msgstr "Teilnehmer"
 msgid "Contestants & Placements"
 msgstr "Teilnehmer & Platzierungen"
 
+msgid "Cannot assign \"%(screen_name)s\": the account is deleted or suspended."
+msgstr "\"%(screen_name)s\" kann nicht zugewiesen werden: Das Konto ist gelöscht oder gesperrt."
+
 msgid "Could not add member."
 msgstr "Mitglied konnte nicht hinzugefügt werden."
 
 msgid "Could not add participant: %(error)s"
 msgstr "Teilnehmer konnte nicht hinzugefügt werden: %(error)s"
+
+msgid "Could not assign orga."
+msgstr "Orga konnte nicht zugewiesen werden."
+
+msgid "Could not assign orga: %(error)s"
+msgstr "Orga-Zuweisung fehlgeschlagen: %(error)s"
 
 msgid "Could not create team: %(error)s"
 msgstr "Team konnte nicht erstellt werden: %(error)s"
@@ -10633,6 +10654,9 @@ msgstr "Teilnehmer konnte nicht entfernt werden: %(error)s"
 
 msgid "Could not remove: %(error)s"
 msgstr "Entfernen fehlgeschlagen: %(error)s"
+
+msgid "Could not revoke orga: %(error)s"
+msgstr "Orga-Widerruf fehlgeschlagen: %(error)s"
 
 msgid "Could not transfer captain: %(error)s"
 msgstr "Kapitän konnte nicht übertragen werden: %(error)s"
@@ -10676,6 +10700,9 @@ msgstr "Doppelte-Elimination-Pool-Status"
 msgid "Draw"
 msgstr "Unentschieden"
 
+msgid "Duties"
+msgstr "Aufgaben"
+
 msgid "Edit LAN tournaments"
 msgstr "LAN-Turniere bearbeiten"
 
@@ -10702,6 +10729,13 @@ msgstr "Fehler beim Hinzufügen des Kommentars: %(error)s"
 
 msgid "Error confirming FFA match: %(error)s"
 msgstr "Fehler beim Bestätigen der FFA-Partie: %(error)s"
+
+msgid ""
+"Error confirming FFA match: %(error)s The placements were saved; submit "
+"again to confirm them."
+msgstr ""
+"Fehler beim Bestätigen der FFA-Partie: %(error)s Die Platzierungen wurden "
+"gespeichert; erneut absenden, um sie zu bestätigen."
 
 msgid "Error confirming match: %(error)s"
 msgstr "Fehler beim Bestätigen der Partie: %(error)s"
@@ -10801,6 +10835,9 @@ msgstr "Highscore-Rangliste"
 
 msgid "Highscore tournaments do not use brackets."
 msgstr "Highscore-Turniere verwenden keinen Turnierbaum."
+
+msgid "I understand the consequences"
+msgstr "Ich verstehe die Konsequenzen"
 
 msgid "Image URL"
 msgstr "Bild-URL"
@@ -10994,6 +11031,9 @@ msgstr "Keine Mitglieder in diesem Team."
 msgid "No open matches."
 msgstr "Keine offenen Partien."
 
+msgid "No orgas have been assigned yet."
+msgstr "Es wurden noch keine Orgas zugewiesen."
+
 msgid "No participants have joined yet."
 msgstr "Noch keine Teilnehmer beigetreten."
 
@@ -11042,6 +11082,18 @@ msgstr "Optionales Passwort zur Einschränkung des Teambeitritts"
 msgid "Optional short tag (e.g., \"PRO\")"
 msgstr "Optionales Kürzel (z. B. „PRO”)"
 
+msgid "Orga Actions"
+msgstr "Orga-Aktionen"
+
+msgid "Orga Comment"
+msgstr "Orga-Kommentar"
+
+msgid "Orga assignment revoked."
+msgstr "Orga-Zuweisung widerrufen."
+
+msgid "Orgas"
+msgstr "Orgas"
+
 msgid "Overall"
 msgstr "Gesamt"
 
@@ -11071,6 +11123,9 @@ msgstr "Platzierung"
 
 msgid "Placements"
 msgstr "Platzierungen"
+
+msgid "Placements apply only to free-for-all matches."
+msgstr "Platzierungen gibt es nur bei Free-for-All-Partien."
 
 msgid "Placements have been set."
 msgstr "Platzierungen wurden gesetzt."
@@ -11155,6 +11210,12 @@ msgstr "Anmeldung wieder öffnen"
 
 msgid "Resume"
 msgstr "Fortsetzen"
+
+msgid "Revoke"
+msgstr "Widerrufen"
+
+msgid "Revoke this orga assignment?"
+msgstr "Diese Orga-Zuweisung widerrufen?"
 
 msgid "Round %(num)s"
 msgstr "Runde %(num)s"
@@ -11279,6 +11340,9 @@ msgstr "Teammitgliedschaft"
 msgid "Teams"
 msgstr "Teams"
 
+msgid "The fields hold the current scores. Change at least one to re-enter the result, or clear them all to only retract it."
+msgstr "Die Felder enthalten die aktuellen Ergebnisse. Ändere mindestens eines, um das Ergebnis neu einzutragen, oder leere alle, um es nur zurückzusetzen."
+
 msgid "The following teams are below the minimum team size:"
 msgstr "Folgende Teams liegen unter der Mindestteamgröße:"
 
@@ -11302,6 +11366,9 @@ msgstr "Dieses Turnier läuft. Nur Beschreibung, Bild und Regelwerk können geä
 
 msgid "This will also unconfirm any downstream matches that used this result. Continue?"
 msgstr "Dadurch werden auch alle Folgepartien, die dieses Ergebnis verwendet haben, zurückgesetzt. Fortfahren?"
+
+msgid "This will complete the tournament. Continue?"
+msgstr "Dadurch wird das Turnier abgeschlossen. Fortfahren?"
 
 msgid "This will unconfirm the match. Continue?"
 msgstr "Dadurch wird die Partiebestätigung zurückgenommen. Fortfahren?"
@@ -11360,8 +11427,17 @@ msgstr "Unbekannt"
 msgid "Unknown game format or elimination mode."
 msgstr "Unbekanntes Spielformat oder Eliminationsmodus."
 
+msgid "Unknown username \"%(screen_name)s\"."
+msgstr "Unbekannter Benutzername „%(screen_name)s”."
+
+msgid "User is already an orga of this tournament."
+msgstr "Der Benutzer ist bereits Orga dieses Turniers."
+
 msgid "User is already the captain."
 msgstr "Der Benutzer ist bereits Kapitän."
+
+msgid "User is not an orga of this tournament."
+msgstr "Der Benutzer ist kein Orga dieses Turniers."
 
 msgid "Valid"
 msgstr "Gültig"
@@ -12070,3 +12146,23 @@ msgstr "Bist du dir sicher, dass du das für die Party aktivieren möchtest?"
 #: byceps/services/chair_planning/blueprints/admin/templates/macros/admin/chair_planning.html
 msgid "Rental chair"
 msgstr "Mietstuhl"
+
+msgid "Free-for-all matches are decided by placements, not by scores."
+msgstr ""
+"Free-for-All-Partien werden über Platzierungen entschieden, nicht über "
+"Punktestände."
+
+msgid "A completed tournament can only be reopened by an administrator."
+msgstr ""
+"Ein abgeschlossenes Turnier kann nur von einem Administrator wieder "
+"geöffnet werden."
+
+msgid "Reopen"
+msgstr "Wieder öffnen"
+
+msgid ""
+"Reopening clears the recorded winner and returns the tournament to "
+"ongoing."
+msgstr ""
+"Beim Wiederöffnen wird der eingetragene Sieger gelöscht und das Turnier "
+"wird wieder auf laufend gesetzt."

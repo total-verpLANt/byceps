@@ -854,6 +854,14 @@ def _read_via_fresh_connection(tournament, match_id):
 
     It sees only committed data, unlike the shared session.
     """
+    # The fixtures also write status-change entries; ignore those.
+    correction_event_types = frozenset(
+        {
+            'match-result-retracted',
+            'match-result-corrected',
+        }
+    )
+
     with SqlaSession(bind=db.engine) as fresh:
         fresh_match = fresh.get(DbTournamentMatch, match_id)
         fresh_contestants = fresh.scalars(
@@ -869,7 +877,11 @@ def _read_via_fresh_connection(tournament, match_id):
         return (
             fresh_match,
             {c.participant_id: c.score for c in fresh_contestants},
-            [e.event_type for e in fresh_entries],
+            [
+                e.event_type
+                for e in fresh_entries
+                if e.event_type in correction_event_types
+            ],
         )
 
 

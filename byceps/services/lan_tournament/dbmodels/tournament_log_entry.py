@@ -24,7 +24,8 @@ class DbTournamentLogEntry(db.Model):
     id: Mapped[TournamentLogEntryID] = mapped_column(
         db.Uuid, primary_key=True
     )
-    occurred_at: Mapped[datetime]
+    # Same index as migration 012; the retention purge filters on it.
+    occurred_at: Mapped[datetime] = mapped_column(index=True)
     event_type: Mapped[str] = mapped_column(db.UnicodeText)
     # No foreign key: entries must survive their tournament's deletion.
     tournament_id: Mapped[TournamentID] = mapped_column(
