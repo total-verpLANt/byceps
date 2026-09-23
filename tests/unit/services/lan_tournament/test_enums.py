@@ -1,9 +1,6 @@
 """
 tests.unit.services.lan_tournament.test_enums
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-:Copyright: 2014-2026 Jochen Kupperschmidt
-:License: Revised BSD (see `LICENSE` file for details)
 """
 
 from byceps.services.lan_tournament.models.contestant_type import (

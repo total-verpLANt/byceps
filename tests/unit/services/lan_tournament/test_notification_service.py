@@ -3,9 +3,6 @@ tests.unit.services.lan_tournament.test_notification_service
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Unit tests for tournament match-ready email notifications.
-
-:Copyright: 2014-2026 Jochen Kupperschmidt
-:License: Revised BSD (see `LICENSE` file for details)
 """
 
 from datetime import datetime

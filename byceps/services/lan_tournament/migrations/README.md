@@ -30,7 +30,7 @@ All foreign keys use the default `ON DELETE NO ACTION` behavior. Cleanup of depe
 
 Deletion operations are handled in service layer:
 
-- `tournament_service.py::delete_tournament()` - Deletes tournament and all dependencies
+- `tournament_service.py::delete_tournament()` - Deletes the tournament and its dependencies (submissions, comments, contestants, matches, winner references, participants, teams). Log entries are explicitly NOT among them (see 013 below) -- they are orphaned, not deleted, and a `tournament-deleted` entry is written recording the deletion itself.
 - `tournament_team_service.py::delete_team()` - Removes team references, then deletes team
 - `tournament_match_service.py::delete_match()` - Deletes match with comments and contestants
 
@@ -69,6 +69,34 @@ Adds soft-delete support to participants and teams:
 **Why soft-delete?** During ONGOING tournaments, participants/teams removed (e.g. ticketless) must keep their rows so that `lan_tournament_match_contestants` foreign keys remain valid. The service layer re-joins soft-deleted participants by clearing `removed_at` instead of inserting a new row, avoiding `UniqueConstraint('tournament_id', 'user_id')` conflicts.
 
 **Rollback:** `rollback_003.sql`
+
+### 012_add_log_entries.sql
+
+Creates the `lan_tournament_log_entries` audit log table:
+
+1. **`id UUID`** primary key — application-generated uuid7
+2. **`occurred_at TIMESTAMPTZ NOT NULL`** — when the event happened, indexed via `ix_lan_tournament_log_entries_occurred_at` (the retention purge and its `--dry-run` count filter on this column alone)
+3. **`event_type TEXT NOT NULL`** — event discriminator string
+4. **`tournament_id UUID NOT NULL`** — FK to `lan_tournaments.id`, indexed via `ix_lan_tournament_log_entries_tournament_id`
+5. **`initiator_id UUID NULL`** — nullable FK to `users.id` (system-triggered entries have no initiator)
+6. **`data JSONB NOT NULL DEFAULT '{}'::jsonb`** — structured payload
+
+Shape mirrors the stock tourney log table (`byceps/services/tourney/log/dbmodels.py`). Zero CASCADE behaviors (BYCEPS convention).
+
+**Rollback:** `rollback_012.sql` (drops both indexes, then table)
+
+Retention: old log entries can be purged with the CLI command `byceps purge-lan-tournament-log-entries --older-than-days N [--dry-run]` (default 365 days; see `byceps/cli/commands/purge_lan_tournament_log_entries.py`), which hard-deletes rows older than the given number of days. Use `--dry-run` to report how many entries would be deleted without deleting them. The command's CLI module lives in BYCEPS core (`byceps/cli/commands/`, registered in `byceps/cli/cli.py`) by explicit, granted exception to the module's core-is-read-only rule.
+
+### 013_drop_log_entry_tournament_fk.sql
+
+Drops `fk_lan_tournament_log_entries_tournament_id`. The `tournament_id` column, its `NOT NULL` constraint, and `ix_lan_tournament_log_entries_tournament_id` are all kept -- only the FK goes.
+
+**Why:** that FK forced every log entry for a tournament to be deleted before the tournament row itself could go, and `tournament_service.py::delete_tournament()` used to do exactly that as step 1 of its own cascade -- meaning the same `lan_tournament.administrate` role the log exists to hold accountable could also erase it, just by deleting the tournament (workspace-ytqz). As of this migration, `delete_tournament()` no longer touches log entries. Deleting a tournament now **orphans** its entries (`tournament_id` pointing at a row that no longer exists) instead of removing them, and additionally writes one further `tournament-deleted` entry with denormalised tournament context (name, party, game, status) so it stays meaningful with no tournament row left to join to.
+
+The retention purge (see 012 above) is unaffected and is now the *only* thing that ever removes log entries: it filters on `occurred_at` alone, with no join to `lan_tournaments`, so orphaned entries age out exactly like any other entry.
+
+**Rollback:** `rollback_013.sql` -- re-adds the FK, but read the warning at the top of that file first: `ADD CONSTRAINT` validates every existing row and will fail once any tournament has been deleted since 013 was applied, because that produces exactly the orphaned rows described above. The rollback does not delete or re-point those rows to force it through; that decision is left to the operator (see the file for options), because auto-deleting them would silently recreate the defect 013 fixes.
+
 
 ## Pre-Application Checklist
 

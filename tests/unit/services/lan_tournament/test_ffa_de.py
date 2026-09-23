@@ -5,9 +5,6 @@ tests.unit.services.lan_tournament.test_ffa_de
 Unit tests for FFA double elimination pool logic:
 advance_ffa_round (WB/LB), generate_ffa_grand_final,
 confirm_ffa_match (GF completion), point carry.
-
-:Copyright: 2014-2026 Jochen Kupperschmidt
-:License: Revised BSD (see `LICENSE` file for details)
 """
 
 from datetime import datetime, UTC
@@ -642,6 +639,10 @@ def test_generate_gf_rejects_non_de_tournament(mock_repo):
 # -------------------------------------------------------------------- #
 
 
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.create_log_entry',
+    new=Mock(),
+)
 @patch(REPO_PATH)
 def test_gf_confirmation_triggers_tournament_completion(mock_repo):
     """Confirming the Grand Final match triggers auto-complete."""
@@ -686,6 +687,10 @@ def test_gf_confirmation_triggers_tournament_completion(mock_repo):
     mock_repo.set_tournament_status_flush.assert_called_once()
 
 
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.create_log_entry',
+    new=Mock(),
+)
 @patch(REPO_PATH)
 def test_non_gf_confirmation_does_not_complete_tournament(mock_repo):
     """Confirming a non-GF match in a DE tournament does not

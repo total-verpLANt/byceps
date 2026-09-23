@@ -17,6 +17,7 @@ from .dbmodels.participant import DbTournamentParticipant
 from .dbmodels.score_submission import DbScoreSubmission
 from .dbmodels.team import DbTournamentTeam
 from .dbmodels.tournament import DbTournament
+from .dbmodels.tournament_log_entry import DbTournamentLogEntry
 from .models.bracket import Bracket
 from .models.contestant_type import ContestantType
 from .models.tournament import Tournament, TournamentID
@@ -1023,6 +1024,30 @@ def find_match(
     return _db_match_to_match(db_match)
 
 
+def find_match_fresh(
+    match_id: TournamentMatchID,
+) -> TournamentMatch | None:
+    """Return the match, or `None` if not found -- refreshing the ORM
+    instance's attributes from the database even if it is already in
+    the session's identity map.
+
+    ``find_match`` is a ``db.session.get()`` identity-map lookup: if
+    the row was already loaded earlier in this transaction (e.g. by a
+    prior unlocked read of the same bracket), it may issue no SQL at
+    all and return the same, now-stale, cached instance. Use this
+    instead whenever the read must observe state committed since an
+    earlier read in the same transaction -- e.g. re-reading after
+    ``lock_matches_for_update`` / ``get_match_for_update`` took a row
+    lock (see workspace-ubjc).
+    """
+    db_match = db.session.get(
+        DbTournamentMatch, match_id, populate_existing=True
+    )
+    if db_match is None:
+        return None
+    return _db_match_to_match(db_match)
+
+
 def get_match(
     match_id: TournamentMatchID,
 ) -> TournamentMatch:
@@ -1044,18 +1069,46 @@ def get_match_for_update(
     Issues ``SELECT ... FOR UPDATE`` to prevent concurrent
     modification (TOCTOU race on confirm).
 
+    ``populate_existing`` is the documented pairing for
+    ``with_for_update()``: without it, an ORM instance already in the
+    session's identity map (e.g. loaded by an earlier unlocked read
+    in this transaction) keeps its stale, pre-lock attribute values --
+    the row lock is taken at the database level, but the caller still
+    reads the cached, unlocked-era data (see workspace-ubjc).
+
     Raise an exception if not found.
     """
     db_match = db.session.execute(
         select(DbTournamentMatch)
         .filter_by(id=match_id)
         .with_for_update()
+        .execution_options(populate_existing=True)
     ).scalar_one_or_none()
     if db_match is None:
         raise ValueError(
             f'Unknown match ID "{match_id}"'
         )
     return _db_match_to_match(db_match)
+
+
+def lock_matches_for_update(
+    match_ids: list[TournamentMatchID],
+) -> None:
+    """Take row locks on several matches at once.
+
+    The ``ORDER BY`` gives every transaction the same lock order, so
+    callers with overlapping match sets queue instead of deadlocking.
+    Match IDs that do not exist are simply not locked.
+    """
+    if not match_ids:
+        return
+
+    db.session.execute(
+        select(DbTournamentMatch.id)
+        .filter(DbTournamentMatch.id.in_(match_ids))
+        .order_by(DbTournamentMatch.id)
+        .with_for_update()
+    ).all()
 
 
 def get_matches_for_tournament(
@@ -1083,6 +1136,55 @@ def get_matches_for_tournament_ordered(
             .order_by(
                 DbTournamentMatch.round,
                 DbTournamentMatch.match_order,
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [_db_match_to_match(m) for m in db_matches]
+
+
+def get_matches_for_tournament_ordered_fresh(
+    tournament_id: TournamentID,
+) -> list[TournamentMatch]:
+    """Same as ``get_matches_for_tournament_ordered``, but refreshes
+    every already-loaded ORM instance's attributes from the database.
+
+    Use this for a re-read that must observe state committed since an
+    earlier read in the same transaction -- e.g. re-reading the whole
+    bracket after taking row locks on it (see ``find_match_fresh`` and
+    workspace-ubjc). The plain function silently returns stale, cached
+    attribute values for any match already in the identity map; the
+    SELECT still runs either way, so this costs nothing extra in
+    query count.
+    """
+    db_matches = (
+        db.session.execute(
+            select(DbTournamentMatch)
+            .filter_by(tournament_id=tournament_id)
+            .order_by(
+                DbTournamentMatch.round,
+                DbTournamentMatch.match_order,
+            )
+            .execution_options(populate_existing=True)
+        )
+        .scalars()
+        .all()
+    )
+    return [_db_match_to_match(m) for m in db_matches]
+
+
+def get_matches_by_ids(
+    match_ids: list[TournamentMatchID],
+) -> list[TournamentMatch]:
+    """Return the matches with those IDs, in arbitrary order."""
+    if not match_ids:
+        return []
+
+    db_matches = (
+        db.session.execute(
+            select(DbTournamentMatch).filter(
+                DbTournamentMatch.id.in_(match_ids)
             )
         )
         .scalars()
@@ -1488,6 +1590,39 @@ def get_contestants_for_tournament(
     return result
 
 
+def get_contestants_for_matches(
+    match_ids: list[TournamentMatchID],
+) -> dict[TournamentMatchID, list[TournamentMatchToContestant]]:
+    """Return the contestants of those matches, grouped by match ID.
+
+    One query for the whole set. Unlike
+    ``get_contestants_for_tournament`` this stays bounded by the
+    passed IDs, so a view that only needs a handful of matches does
+    not pull the contestant table of a 256-seat bracket.
+    """
+    if not match_ids:
+        return {}
+
+    db_contestants = (
+        db.session.execute(
+            select(DbTournamentMatchToContestant)
+            .filter(
+                DbTournamentMatchToContestant.tournament_match_id.in_(
+                    match_ids
+                )
+            )
+            .order_by(DbTournamentMatchToContestant.created_at)
+        )
+        .scalars()
+        .all()
+    )
+    result: dict[TournamentMatchID, list[TournamentMatchToContestant]] = {}
+    for db_c in db_contestants:
+        contestant = _db_contestant_to_contestant(db_c)
+        result.setdefault(contestant.tournament_match_id, []).append(contestant)
+    return result
+
+
 def find_contestant_for_match(
     match_id: TournamentMatchID,
     participant_id: TournamentParticipantID | None = None,
@@ -1754,3 +1889,20 @@ def get_ready_unconfirmed_match_ids(
         .all()
     )
     return list(match_ids)
+
+
+def delete_log_entries_older_than(occurred_before: datetime) -> int:
+    """Delete tournament log entries which occurred before the given date.
+
+    Return the number of deleted log entries.
+    """
+    result = db.session.execute(
+        delete(DbTournamentLogEntry).filter(
+            DbTournamentLogEntry.occurred_at < occurred_before
+        )
+    )
+    db.session.commit()
+
+    num_deleted = result.rowcount
+    return num_deleted
+

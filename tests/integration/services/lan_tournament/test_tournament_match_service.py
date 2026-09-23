@@ -498,3 +498,82 @@ def test_bracket_generation_rejects_empty_team(
     error_msg = result.unwrap_err()
     assert 'Ghost Team' in error_msg
     assert 'no members' in error_msg
+
+
+def test_get_contestants_for_matches_is_bounded_and_grouped(
+    party, user1, user2, user3, user4, grant_ticket
+):
+    """The batched fetch returns only the matches it was asked for.
+
+    The admin correction panel lists the contestants and scores of
+    every match a correction reaches; it must not pull the contestant
+    table of the whole tournament to do so.
+    """
+    tournament = _create_tournament(
+        'Batched Contestants Test',
+        contestant_type=ContestantType.SOLO,
+        max_players=8,
+    )
+    _join_all(tournament, [user1, user2, user3, user4], grant_ticket)
+    tournament_service.change_status(
+        tournament.id, TournamentStatus.REGISTRATION_CLOSED
+    )
+    assert tournament_match_service.generate_single_elimination_bracket(
+        tournament.id
+    ).is_ok()
+
+    matches = tournament_match_service.get_matches_for_tournament(
+        tournament.id
+    )
+    seeded = [m for m in matches if m.round == 0]
+    assert len(seeded) == 2
+
+    by_match_id = tournament_match_service.get_contestants_for_matches(
+        [m.id for m in seeded]
+    )
+
+    assert set(by_match_id) == {m.id for m in seeded}
+    for match in seeded:
+        one_by_one = tournament_match_service.get_contestants_for_match(
+            match.id
+        )
+        assert by_match_id[match.id] == one_by_one
+        assert all(
+            c.tournament_match_id == match.id for c in by_match_id[match.id]
+        )
+
+
+def test_get_contestants_for_matches_without_ids_queries_nothing():
+    assert tournament_match_service.get_contestants_for_matches([]) == {}
+
+
+def test_get_contestants_for_matches_omits_matches_without_contestants(
+    party, user1, user2, user3, user4, grant_ticket
+):
+    """An unseeded later-round match simply has no entry."""
+    tournament = _create_tournament(
+        'Empty Contestants Test',
+        contestant_type=ContestantType.SOLO,
+        max_players=8,
+    )
+    _join_all(tournament, [user1, user2, user3, user4], grant_ticket)
+    tournament_service.change_status(
+        tournament.id, TournamentStatus.REGISTRATION_CLOSED
+    )
+    assert tournament_match_service.generate_single_elimination_bracket(
+        tournament.id
+    ).is_ok()
+
+    matches = tournament_match_service.get_matches_for_tournament(
+        tournament.id
+    )
+    later = [m for m in matches if m.round and m.round > 0]
+    assert later
+
+    by_match_id = tournament_match_service.get_contestants_for_matches(
+        [m.id for m in later]
+    )
+
+    # Four players, so no byes advance anyone yet: the later rounds
+    # hold no contestants and must not appear as empty keys.
+    assert by_match_id == {}

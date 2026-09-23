@@ -6,12 +6,16 @@
 {% set current_page_party = party %}
 {% set current_tab = 'tournaments' %}
 {% set page_title = [_('Match'), tournament.name, party.title] %}
-{% set is_ffa = tournament.game_format and tournament.game_format.name == 'FREE_FOR_ALL' %}
+{#- Same question, same answer as views.py's _is_ffa(): ask the
+    domain enum, not its member name. The FFA branch of this template
+    and the two server-side gates must not be able to drift apart. -#}
+{% set is_ffa = tournament.game_format and tournament.game_format.uses_placements %}
 
 {% block head %}{{ super() }}{{ hover_card_styles() }}
   {%- if is_ffa %}
   <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_ffa_admin.css') }}">
   {%- endif %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_match_admin.css') }}">
 {%- endblock %}
 
 {% block before_body %}
@@ -22,6 +26,10 @@
 {% block body %}
 
   <h1 class='title'>{{ render_match_ref(match) }}</h1>
+  {#- The shorthand above is what the bracket calls this match; this
+      says it in words, for everyone who does not read WB/LB codes
+      fluently. -#}
+  <p class='lt-match__position'>{{ match_label }}</p>
 
   {# Match status #}
   <div class='block'>
@@ -239,13 +247,24 @@
   {%- if match.confirmed_by and
          g.user.has_permission('lan_tournament.administrate') %}
   <div class='block'>
+    {%- if ffa_result_consumed %}
+    <div class='notification color-info'>{{ render_icon('information') }}
+      {{ _('A later round has already been built from this result, so it can no longer be unconfirmed.') }}
+    </div>
+    {%- else %}
     <form action='{{ url_for('.unconfirm_match', match_id=match.id) }}'
           method='post'
           onsubmit="return confirm('{{ _('This will unconfirm the match. Continue?') }}');">
+      <div class='form-group'>
+        <label for='ffa_unconfirm_reason'>{{ _('Reason') }}</label>
+        <textarea name='reason' id='ffa_unconfirm_reason' rows='2'
+                  required maxlength='2000' style='width: 100%;'></textarea>
+      </div>
       <button type='submit' class='button color-warning'>
         {{ render_icon('warning') }} {{ _('Unconfirm Match') }}
       </button>
     </form>
+    {%- endif %}
   </div>
   {%- endif %}
 
@@ -265,7 +284,7 @@
       <div style='flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;'>
         <strong>
           {%- if contestant.team_id %}
-            {{ _('Team') }}:
+            {{ _('Team') }}:&nbsp;
             {%- set _team = teams_by_id.get(contestant.team_id) -%}
             {%- if _team -%}
               {{ render_hover_name(_team.name, team_id=_team.id, link_profiles=False, team_members_by_team_id=team_members_by_team_id) }}
@@ -273,7 +292,7 @@
               {{ contestant.team_id|string }}
             {%- endif -%}
           {%- elif contestant.participant_id %}
-            {{ _('Player') }}:
+            {{ _('Player') }}:&nbsp;
             {%- set _user = participants_by_id.get(contestant.participant_id) -%}
             {%- if _user -%}
               {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted, link_profiles=False, seats_by_user_id=seats_by_user_id) }}
@@ -310,14 +329,165 @@
     {%- endif %}
   </div>
 
-  {%- if match.confirmed_by and
+  {%- if match.confirmed_by and is_walkover and
          g.user.has_permission('lan_tournament.administrate') %}
   <div class='block'>
-    <form action='{{ url_for('.unconfirm_match', match_id=match.id) }}'
+    <div class='notification color-info'>{{ render_icon('information') }}
+      {{ _('This match was decided by a walkover, so it has no result to correct.') }}
+    </div>
+  </div>
+  {%- elif match.confirmed_by and
+         g.user.has_permission('lan_tournament.administrate') %}
+  <div class='box block' id='correction'>
+    {#- The cascade ledger. The panel used to list the affected
+        matches as bare bracket shorthand (LB R3 M2), which told an
+        admin how many matches were involved and nothing else: to see
+        whether a result was actually at stake, they had to open each
+        one in another tab. Each row now carries what the shorthand
+        means, where that match stands right now, its current scores,
+        and what this correction does to it specifically.
+
+        Defined inside the panel, not above it, so the panel still
+        renders on its own — see
+        tests/unit/services/lan_tournament/test_correction_panel_render.py. -#}
+    {%- macro render_cascade(rows, teams_by_id, participants_by_id) -%}
+    {%- set status_tag_classes = {
+         'confirmed': 'color-success',
+         'defwin': 'color-info',
+         'reported': 'color-warning',
+         'pending': 'color-disabled'} -%}
+    <ol class='lt-cascade'>
+      {%- for row in rows %}
+      <li class='lt-cascade__match{% if row.destructive %} lt-cascade__match--destructive{% endif %}'>
+        <div class='lt-cascade__head'>
+          <span class='lt-cascade__code'>{{ render_match_ref(row.match) }}</span>
+          <span class='lt-cascade__label'>{{ row.label }}</span>
+          <span class='lt-cascade__tags'>
+            {{ render_tag(row.status_label, class=status_tag_classes.get(row.status)) }}
+            {{ render_tag(row.impact_label, class='color-danger' if row.destructive else 'tag--outlined') }}
+          </span>
+        </div>
+        <div class='lt-cascade__scores'>
+          {%- for contestant in row.contestants %}
+          <span class='lt-cascade__name'>
+            {%- if contestant.team_id -%}
+              {%- set _team = teams_by_id.get(contestant.team_id) -%}
+              {{ _team.name if _team else contestant.team_id|string }}
+            {%- elif contestant.participant_id -%}
+              {%- set _user = participants_by_id.get(contestant.participant_id) -%}
+              {{ _user.screen_name if _user else contestant.participant_id|string }}
+            {%- else -%}
+              {{ _('defwin') }}
+            {%- endif -%}
+          </span>
+          <span class='lt-cascade__score'>{{ contestant.score if contestant.score is not none else '–' }}</span>
+          {%- endfor %}
+          {%- for _slot in range(row.open_slots) %}
+          <span class='lt-cascade__name lt-cascade__name--open'>{{ _('Not yet determined') }}</span>
+          <span class='lt-cascade__score'>–</span>
+          {%- endfor %}
+        </div>
+        <a class='lt-cascade__link'
+           href='{{ url_for('.view_match', match_id=row.match.id) }}'>{{ _('Open match') }}</a>
+      </li>
+      {%- endfor %}
+    </ol>
+    {%- endmacro -%}
+
+    <h2>{{ _('Correct Result') }}</h2>
+
+    {%- if correction_case and correction_case.value == 'no_downstream' %}
+    <div class='notification color-info'>{{ render_icon('information') }}
+      {{ _('No downstream matches are affected by this correction.') }}
+    </div>
+    {%- elif correction_case and correction_case.value == 'unconfirmed_downstream' %}
+    <div class='notification color-warning'>{{ render_icon('warning') }}
+      {{ _('The following downstream matches are not yet confirmed. The contestant who advanced from this match will be removed from them and must be re-determined once this correction is confirmed:') }}
+      {{ render_cascade(downstream_impact, teams_by_id, participants_by_id) }}
+    </div>
+    {%- elif correction_case and correction_case.value == 'confirmed_downstream' %}
+    <div class='notification color-danger'>{{ render_icon('warning') }}
+      {{ _('Critical: the following downstream matches have already been confirmed. Confirming this correction will retract them and clear their entered scores. If the retraction reaches a tournament-deciding match, the tournament winner will be cleared and the tournament will revert to ongoing. Those results must be re-entered manually afterwards.') }}
+      {{ render_cascade(downstream_impact, teams_by_id, participants_by_id) }}
+    </div>
+    {%- elif correction_case and correction_case.value == 'bracket_reset_deletion' %}
+    <div class='notification color-danger'>{{ render_icon('warning') }}
+      {{ _('Critical: this is the first grand final and the bracket has been reset. Confirming this correction does not just retract the following bracket-reset match — it deletes it, together with its contestants and comments. The tournament winner will be cleared and the tournament will revert to ongoing. If the reset is still warranted after the correction, the bracket-reset match is recreated when this match is confirmed again.') }}
+      {{ render_cascade(downstream_impact, teams_by_id, participants_by_id) }}
+    </div>
+    {%- endif %}
+
+    {#- The two critical cases say this in their own text already. -#}
+    {%- if correction_clears_winner and correction_case.value not in
+           ('confirmed_downstream', 'bracket_reset_deletion') %}
+    <div class='notification color-warning'>{{ render_icon('warning') }}
+      {{ _('No further match follows this one, so correcting it also clears the tournament winner and returns the tournament to ongoing.') }}
+    </div>
+    {%- endif %}
+
+    <form action='{{ url_for('.correct_match_result', match_id=match.id) }}'
           method='post'
-          onsubmit="return confirm('{{ _('This will also unconfirm any downstream matches that used this result. Continue?') }}');">
-      <button type='submit' class='button color-warning'>
-        {{ render_icon('warning') }} {{ _('Unconfirm Match') }}
+          onsubmit="return confirm('{{ _('This will retract this result. Any already-confirmed downstream matches will also be retracted and their scores cleared. Continue?') }}');">
+      {%- set _needs_ack = correction_case and correction_case.value in
+             ('confirmed_downstream', 'bracket_reset_deletion') %}
+      {%- if _needs_ack %}
+      {#- Required on the client as well as the server: an admin who
+          missed the checkbox used to learn about it only from a
+          flash message after the round trip. The server still
+          refuses an unacknowledged correction — this only spares
+          the trip. -#}
+      <input type='hidden' name='ack_match_ids' value='{{ ack_match_ids|join(",") }}'>
+      <div class='lt-correct__consent'>
+        <input type='checkbox' name='ack_critical' value='y'
+               id='ack_critical' required>
+        <label for='ack_critical'>
+          {%- if correction_case.value == 'confirmed_downstream' %}
+          {{ _('I acknowledge that the confirmed downstream matches listed above will be retracted and their scores cleared.') }}
+          {%- else %}
+          {{ _('I acknowledge that the bracket-reset match listed above will be deleted, not merely retracted.') }}
+          {%- endif %}
+        </label>
+      </div>
+      {%- endif %}
+      {#- Inputs are named by contestant key, never by position: the
+          contestant query sorts on a created_at that is identical for
+          every row of a generated bracket, so list order is not
+          stable and a positional home/away binding could write a
+          score to the wrong contestant. Mirrors the confirm form
+          above. DEFWIN slots carry no key and are skipped. -#}
+      <div class='lt-correct__scores'>
+        {%- for contestant in contestants %}
+        {%- if contestant.team_id or contestant.participant_id %}
+        {%- set _key = (contestant.team_id or contestant.participant_id)|string %}
+        <div class='lt-correct__field'>
+          <label for='corrected_score_{{ _key }}'>
+            {%- if contestant.team_id %}
+              {%- set _team = teams_by_id.get(contestant.team_id) -%}
+              {{ _team.name if _team else _key }}
+            {%- else %}
+              {%- set _user = participants_by_id.get(contestant.participant_id) -%}
+              {{ _user.screen_name if _user else _key }}
+            {%- endif %}
+          </label>
+          <input class='lt-correct__score' type='number'
+                 name='corrected_score_{{ _key }}'
+                 id='corrected_score_{{ _key }}' min='0'
+                 max='{{ max_match_score }}'
+                 value='{{ contestant.score if contestant.score is not none else '' }}'>
+        </div>
+        {%- endif %}
+        {%- endfor %}
+      </div>
+      <p class='lt-correct__hint'>{{ _('The fields hold the current scores. Change at least one to re-enter the result, or clear them all to only retract it. Submitting the scores unchanged is rejected, because the retraction would still clear any confirmed downstream results.') }}</p>
+      <div class='form-group lt-correct__group'>
+        <label for='correction_reason'>{{ _('Reason') }}</label>
+        <textarea class='lt-correct__reason' name='reason'
+                  id='correction_reason' rows='3'
+                  required maxlength='2000'></textarea>
+      </div>
+      <button type='submit'
+              class='button {{ 'color-danger' if _needs_ack else 'color-warning' }}'>
+        {{ render_icon('warning') }} {{ _('Correct Result') }}
       </button>
     </form>
   </div>

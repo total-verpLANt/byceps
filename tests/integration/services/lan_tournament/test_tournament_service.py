@@ -5,7 +5,10 @@ tests.integration.services.lan_tournament.test_tournament_service
 
 import pytest
 
-from byceps.services.lan_tournament import tournament_service
+from byceps.services.lan_tournament import (
+    tournament_log_service,
+    tournament_service,
+)
 from byceps.services.lan_tournament.models import (
     ContestantType,
     EliminationMode,
@@ -21,6 +24,11 @@ PARTY_ID = PartyID('lan-party-2024')
 @pytest.fixture(scope='module')
 def party(make_party, brand):
     return make_party(brand, PARTY_ID, 'LAN Party 2024')
+
+
+@pytest.fixture(scope='module')
+def initiator(make_user):
+    return make_user('TournamentDeletionInitiator')
 
 
 def _create_ok(*args, **kwargs):
@@ -221,3 +229,43 @@ def test_delete_tournament(party):
 
     # Verify it's gone
     assert tournament_service.find_tournament(tournament_id) is None
+
+
+def test_delete_tournament_with_log_entries(party, initiator):
+    title = 'Test Tournament 11'
+
+    tournament, _ = _create_ok(PARTY_ID, title, max_players=16)
+
+    tournament_id = tournament.id
+
+    tournament_log_service.create_log_entry(
+        'tournament-updated',
+        tournament_id,
+        initiator.id,
+        data={'note': 'pre-deletion log entry'},
+    )
+
+    entries_before = tournament_log_service.get_entries_for_tournament(
+        tournament_id
+    )
+    assert len(entries_before) == 1
+
+    # Migration 013 dropped the FK from log entries to the
+    # tournament, so the deletion no longer needs -- and must no
+    # longer perform -- a purge of the audit trail.
+    tournament_service.delete_tournament(tournament_id, initiator.id)
+
+    assert tournament_service.find_tournament(tournament_id) is None
+
+    # The audit trail outlives its subject: the pre-existing entry
+    # survives, and the deletion itself is recorded. Only the CLI
+    # retention purge removes entries from here on.
+    entries_after = tournament_log_service.get_entries_for_tournament(
+        tournament_id
+    )
+    event_types = [entry.event_type for entry in entries_after]
+    assert event_types == ['tournament-updated', 'tournament-deleted']
+
+    deletion_entry = entries_after[-1]
+    assert deletion_entry.initiator_id == initiator.id
+    assert deletion_entry.data['name'] == title

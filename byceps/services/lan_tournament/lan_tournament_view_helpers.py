@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from dataclasses import dataclass
 
 from flask_babel import gettext
 
@@ -17,7 +18,9 @@ from byceps.services.lan_tournament.models.tournament import (
     TournamentID,
 )
 from byceps.services.lan_tournament.models.tournament_match import (
+    CorrectionCase,
     TournamentMatch,
+    TournamentMatchID,
 )
 from byceps.services.lan_tournament.models.tournament_match_to_contestant import (
     TournamentMatchToContestant,
@@ -253,6 +256,153 @@ def build_ffa_standings(
         })
 
     return result
+
+
+@dataclass(frozen=True, kw_only=True)
+class DownstreamImpact:
+    """One affected downstream match, as the correction panel shows it.
+
+    The panel used to list nothing but the bracket shorthand
+    (``LB R3 M2``), which forced an admin to open every affected
+    match in another tab before daring to correct anything. This
+    carries the whole row: what the shorthand means, where the match
+    stands right now, and what correcting the subject match does to
+    it.
+    """
+
+    match: TournamentMatch
+    label: str
+    status: str
+    status_label: str
+    impact_label: str
+    destructive: bool
+    contestants: list[TournamentMatchToContestant]
+    open_slots: int
+
+
+def build_match_label(match: TournamentMatch) -> str:
+    """Spell out a match's bracket position in words.
+
+    The shorthand (``WB R2 M1``) stays on screen next to this -- it
+    is what organisers call across the room -- but it is not
+    self-explanatory to everyone who may be sitting at the admin
+    machine.
+    """
+    round_number = (match.round or 0) + 1
+    match_number = (match.match_order or 0) + 1
+    bracket = match.bracket.value if match.bracket else None
+
+    if bracket == 'GF':
+        return gettext('Grand final, match %(match)d', match=match_number)
+
+    if bracket == 'P3':
+        return gettext('Third-place match')
+
+    if bracket == 'WB':
+        return gettext(
+            'Winners bracket, round %(round)d, match %(match)d',
+            round=round_number,
+            match=match_number,
+        )
+
+    if bracket == 'LB':
+        return gettext(
+            'Losers bracket, round %(round)d, match %(match)d',
+            round=round_number,
+            match=match_number,
+        )
+
+    return gettext(
+        'Round %(round)d, match %(match)d',
+        round=round_number,
+        match=match_number,
+    )
+
+
+def _classify_match_state(
+    match: TournamentMatch,
+    contestants: list[TournamentMatchToContestant],
+) -> tuple[str, str]:
+    """Return (status, translated status label) for a match.
+
+    Mirrors the status column of the match list so one match does not
+    read differently in two places.
+    """
+    real = [c for c in contestants if c.team_id or c.participant_id]
+
+    if match.confirmed_by and len(real) < 2:
+        return 'defwin', gettext('DEFWIN')
+
+    if match.confirmed_by:
+        return 'confirmed', gettext('Confirmed')
+
+    if any(c.score is not None for c in real):
+        return 'reported', gettext('Awaiting confirmation')
+
+    return 'pending', gettext('Pending')
+
+
+def build_downstream_impact(
+    matches: list[TournamentMatch],
+    contestants_by_match_id: dict[
+        TournamentMatchID, list[TournamentMatchToContestant]
+    ],
+    correction_case: CorrectionCase | None,
+) -> list[DownstreamImpact]:
+    """Describe what a correction does to each affected match.
+
+    The consequence is per match, not per panel: in the
+    CONFIRMED_DOWNSTREAM case only the already-confirmed matches lose
+    a result, while the rest merely lose the contestant that advanced
+    into them.
+    """
+    rows: list[DownstreamImpact] = []
+
+    for match in matches:
+        contestants = contestants_by_match_id.get(match.id, [])
+        status, status_label = _classify_match_state(match, contestants)
+
+        # Destructive means a result disappears. Losing the
+        # contestant that advanced into a match that was never played
+        # is routine; losing an entered, confirmed result is not, and
+        # the panel must not weigh the two the same.
+        if correction_case is CorrectionCase.BRACKET_RESET_DELETION:
+            impact_label = gettext('Will be deleted')
+            destructive = True
+        elif status == 'defwin':
+            # A defwin holds no score, so "the result will be
+            # retracted" reads as a contradiction next to its own
+            # em-dash. What it loses is the free advancement.
+            impact_label = gettext('Defwin will be retracted')
+            destructive = True
+        elif status == 'confirmed':
+            impact_label = gettext('Result will be retracted')
+            destructive = True
+        else:
+            impact_label = gettext('Contestant will be removed')
+            destructive = False
+
+        real_count = len(
+            [c for c in contestants if c.team_id or c.participant_id]
+        )
+        open_slots = (
+            max(0, 2 - real_count) if not match.confirmed_by else 0
+        )
+
+        rows.append(
+            DownstreamImpact(
+                match=match,
+                label=build_match_label(match),
+                status=status,
+                status_label=status_label,
+                impact_label=impact_label,
+                destructive=destructive,
+                contestants=contestants,
+                open_slots=open_slots,
+            )
+        )
+
+    return rows
 
 
 def _resolve_contestant_name(

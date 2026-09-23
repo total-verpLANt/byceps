@@ -18,6 +18,169 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
 
+msgid "A correction reason is required."
+msgstr "Eine Begründung für die Korrektur ist erforderlich."
+
+msgid "Correct Result"
+msgstr "Ergebnis korrigieren"
+
+msgid ""
+"Correcting the first grand final deletes the bracket-reset match; "
+"explicit acknowledgement is required."
+msgstr ""
+"Die Korrektur des ersten Grand Finals löscht die Bracket-Reset-Partie; "
+"eine ausdrückliche Bestätigung ist erforderlich."
+
+msgid ""
+"Critical: the following downstream matches have already been confirmed. "
+"Confirming this correction will retract them and clear their entered "
+"scores. If the retraction reaches a tournament-deciding match, the "
+"tournament winner will be cleared and the tournament will revert to "
+"ongoing. Those results must be re-entered manually afterwards."
+msgstr ""
+"Kritisch: Die folgenden Folgepartien wurden bereits bestätigt. Mit dem "
+"Bestätigen dieser Korrektur werden sie zurückgesetzt und ihre "
+"eingetragenen Ergebnisse gelöscht. Erreicht die Rücknahme eine "
+"turnierentscheidende Partie, wird der Turniersieger gelöscht und das "
+"Turnier wieder auf laufend gesetzt. Diese Ergebnisse müssen danach "
+"manuell neu eingetragen werden."
+
+msgid ""
+"Critical: this is the first grand final and the bracket has been reset. "
+"Confirming this correction does not just retract the following bracket-"
+"reset match — it deletes it, together with its contestants and comments. "
+"The tournament winner will be cleared and the tournament will revert to "
+"ongoing. If the reset is still warranted after the correction, the "
+"bracket-reset match is recreated when this match is confirmed again."
+msgstr ""
+"Kritisch: Dies ist das erste Grand Final und das Bracket wurde "
+"zurückgesetzt. Mit dem Bestätigen dieser Korrektur wird die folgende "
+"Bracket-Reset-Partie nicht nur zurückgesetzt, sondern gelöscht – samt "
+"ihrer Teilnehmer und Kommentare. Der Turniersieger wird gelöscht und das "
+"Turnier wieder auf laufend gesetzt. Ist der Reset nach der Korrektur "
+"weiterhin berechtigt, wird die Bracket-Reset-Partie beim erneuten "
+"Bestätigen dieser Partie neu angelegt."
+
+msgid ""
+"Bracket matches are retracted in the result correction panel, which "
+"requires acknowledging the impact on downstream matches."
+msgstr ""
+"Bracket-Partien werden über das Korrekturfeld zurückgezogen, das eine "
+"Bestätigung der Auswirkungen auf Folgepartien verlangt."
+
+msgid ""
+"Downstream matches already started or completed; explicit acknowledgement"
+" is required."
+msgstr ""
+"Folgepartien wurden bereits begonnen oder abgeschlossen; eine "
+"ausdrückliche Bestätigung ist erforderlich."
+
+msgid "Enter a score for every contestant, or leave them all empty."
+msgstr "Für jeden Teilnehmer ein Ergebnis eingeben oder alle Felder leer lassen."
+
+msgid ""
+"Error correcting match result: %(error)s Nothing was changed; the original"
+" result remains confirmed."
+msgstr ""
+"Fehler bei der Korrektur des Partieergebnisses: %(error)s Es wurde nichts "
+"geändert; das ursprüngliche Ergebnis bleibt bestätigt."
+
+msgid ""
+"Free-for-all matches are corrected by unconfirming them and re-entering "
+"the placements."
+msgstr ""
+"Free-for-All-Partien werden korrigiert, indem die Bestätigung aufgehoben "
+"und die Platzierungen neu eingetragen werden."
+
+msgid ""
+"I acknowledge that the confirmed downstream matches listed above will be "
+"retracted and their scores cleared."
+msgstr ""
+"Ich bestätige, dass die oben aufgeführten bestätigten Folgepartien "
+"zurückgesetzt und ihre Ergebnisse gelöscht werden."
+
+msgid ""
+"I acknowledge that the bracket-reset match listed above will be deleted, "
+"not merely retracted."
+msgstr ""
+"Ich bestätige, dass die oben aufgeführte Bracket-Reset-Partie gelöscht "
+"und nicht nur zurückgesetzt wird."
+
+msgid ""
+"The fields hold the current scores. Change at least one to re-enter the "
+"result, or clear them all to only retract it. Submitting the scores "
+"unchanged is rejected, because the retraction would still clear any "
+"confirmed downstream results."
+msgstr ""
+"Die Felder enthalten die aktuellen Ergebnisse. Ändere mindestens eines, um "
+"das Ergebnis neu einzutragen, oder leere alle, um es nur zurückzusetzen. "
+"Unveränderte Ergebnisse werden abgelehnt, da das Zurücksetzen trotzdem alle "
+"bestätigten Folgepartien löschen würde."
+
+msgid ""
+"The submitted scores are identical to the current result; nothing was "
+"corrected. Change a score, or clear every score field to retract the "
+"result."
+msgstr ""
+"Die übermittelten Ergebnisse sind mit dem aktuellen Ergebnis identisch; "
+"es wurde nichts korrigiert. Ändere ein Ergebnis oder leere alle "
+"Ergebnisfelder, um das Ergebnis zurückzusetzen."
+
+msgid "Match result has been corrected and the new scores confirmed."
+msgstr "Partieergebnis wurde korrigiert und die neuen Ergebnisse bestätigt."
+
+msgid "Match result has been corrected."
+msgstr "Partieergebnis wurde korrigiert."
+
+msgid "No downstream matches are affected by this correction."
+msgstr "Keine Folgepartien sind von dieser Korrektur betroffen."
+
+msgid ""
+"No further match follows this one, so correcting it also clears the "
+"tournament winner and returns the tournament to ongoing."
+msgstr ""
+"Auf diese Partie folgt keine weitere, daher setzt die Korrektur auch den "
+"Turniersieger zurück und versetzt das Turnier wieder auf laufend."
+
+msgid "Reason cannot be empty."
+msgstr "Die Begründung darf nicht leer sein."
+
+msgid "Awaiting confirmation"
+msgstr "Wartet auf Bestätigung"
+
+msgid "Contestant will be removed"
+msgstr "Teilnehmer wird entfernt"
+
+msgid "Defwin will be retracted"
+msgstr "Freilos wird zurückgesetzt"
+
+msgid "Grand final, match %(match)d"
+msgstr "Großes Finale, Partie %(match)d"
+
+msgid "Losers bracket, round %(round)d, match %(match)d"
+msgstr "Verliererseite, Runde %(round)d, Partie %(match)d"
+
+msgid "Not yet determined"
+msgstr "Noch nicht ermittelt"
+
+msgid "Open match"
+msgstr "Partie öffnen"
+
+msgid "Result will be retracted"
+msgstr "Ergebnis wird zurückgesetzt"
+
+msgid "Round %(round)d, match %(match)d"
+msgstr "Runde %(round)d, Partie %(match)d"
+
+msgid "Third-place match"
+msgstr "Spiel um Platz 3"
+
+msgid "Will be deleted"
+msgstr "Wird gelöscht"
+
+msgid "Winners bracket, round %(round)d, match %(match)d"
+msgstr "Gewinnerseite, Runde %(round)d, Partie %(match)d"
+
 #: byceps/announce/helpers.py:41
 #: byceps/services/shop/order/blueprints/admin/templates/admin/shop/order/_view_events.html:171
 #: byceps/services/shop/order/blueprints/admin/templates/admin/shop/order/_view_events.html:187
@@ -164,6 +327,23 @@ msgstr "Erstellen"
 #: byceps/services/more/blueprints/admin/item_service.py:91
 msgid "API"
 msgstr "API"
+
+msgid ""
+"The following downstream matches are not yet confirmed. The contestant "
+"who advanced from this match will be removed from them and must be re-"
+"determined once this correction is confirmed:"
+msgstr ""
+"Die folgenden Folgepartien sind noch nicht bestätigt. Der aus dieser "
+"Partie aufgestiegene Teilnehmer wird aus ihnen entfernt und muss nach dem"
+" Bestätigen dieser Korrektur neu ermittelt werden:"
+
+msgid ""
+"This will retract this result. Any already-confirmed downstream matches "
+"will also be retracted and their scores cleared. Continue?"
+msgstr ""
+"Dadurch wird dieses Ergebnis zurückgesetzt. Bereits bestätigte "
+"Folgepartien werden ebenfalls zurückgesetzt und ihre Ergebnisse gelöscht."
+" Fortfahren?"
 
 #: byceps/services/api/blueprints/admin/templates/admin/api/index.html:43
 #: byceps/services/authn/identity_tag/blueprints/admin/forms.py:22
@@ -11312,6 +11492,9 @@ msgstr "Teilnehmer können in diesem Turnierstatus nicht entfernt werden."
 msgid "Cannot remove the captain. Transfer captain role first."
 msgstr "Der Kapitän kann nicht entfernt werden. Übertrage zuerst die Kapitänsrolle."
 
+msgid "Cannot transition the tournament to the requested status from its current status."
+msgstr "Das Turnier kann von seinem aktuellen Status nicht in den gewünschten Status wechseln."
+
 msgid "Cannot start tournament without generated brackets. Generate brackets first."
 msgstr "Turnier kann nicht gestartet werden ohne generierten Turnierbaum. Generiere zuerst den Turnierbaum."
 
@@ -11434,6 +11617,12 @@ msgstr "Teilnehmer können nur während der Anmeldephase hinzugefügt werden."
 
 msgid "Registration is not open for this tournament."
 msgstr "Die Anmeldung für dieses Turnier ist nicht geöffnet."
+
+msgid "A score is missing for one of the contestants."
+msgstr "Für einen der Teilnehmer fehlt ein Ergebnis."
+
+msgid "Score cannot exceed 999,999,999."
+msgstr "Das Ergebnis darf 999.999.999 nicht überschreiten."
 
 msgid "Score cannot be negative."
 msgstr "Ergebnis darf nicht negativ sein."
@@ -11668,3 +11857,30 @@ msgstr "Deine Nummer wurde aufgerufen!"
 
 msgid "not linked"
 msgstr "nicht verknüpft"
+
+msgid "A walkover cannot be corrected: the match has fewer than 2 contestants."
+msgstr ""
+"Ein Freilos kann nicht korrigiert werden: Die Partie hat weniger als 2 "
+"Teilnehmer."
+
+msgid "This match was decided by a walkover, so it has no result to correct."
+msgstr ""
+"Diese Partie wurde durch ein Freilos entschieden; es gibt kein Ergebnis "
+"zu korrigieren."
+
+msgid ""
+"The downstream matches changed since this page was loaded. Review the "
+"correction and acknowledge it again."
+msgstr ""
+"Die Folgepartien haben sich seit dem Laden dieser Seite geändert. Prüfe "
+"die Korrektur und bestätige sie erneut."
+
+msgid "Cannot modify placements of a confirmed match."
+msgstr "Platzierungen einer bestätigten Partie können nicht geändert werden."
+
+msgid ""
+"A later round has already been built from this result, so it can no "
+"longer be unconfirmed."
+msgstr ""
+"Aus diesem Ergebnis wurde bereits eine spätere Runde gebildet, daher kann"
+" es nicht mehr zurückgesetzt werden."

@@ -3,9 +3,6 @@ tests.unit.services.lan_tournament.test_match_ready_signal
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Unit tests for ``_collect_ready_match_events``.
-
-:Copyright: 2014-2026 Jochen Kupperschmidt
-:License: Revised BSD (see `LICENSE` file for details)
 """
 
 from datetime import UTC, datetime

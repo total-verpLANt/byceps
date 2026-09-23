@@ -257,6 +257,34 @@ class AddTeamMemberForm(LocalizedForm):
         form.user = user
 
 
+class MatchCorrectionForm(LocalizedForm):
+    """Validate the non-score fields of a result correction.
+
+    The corrected scores themselves are NOT declared here. They are
+    submitted as one ``corrected_score_<contestant key>`` field per
+    real contestant, so their names are only known at render time;
+    the view parses them by key and ``_validate_match_scores`` bounds
+    their values.
+    """
+
+    reason = TextAreaField(
+        lazy_gettext('Reason'), validators=[InputRequired(), Length(max=2000)]
+    )
+    ack_critical = BooleanField(
+        lazy_gettext(
+            'I acknowledge that the confirmed downstream matches '
+            'listed above will be retracted and their scores cleared.'
+        ),
+        validators=[Optional()],
+    )
+
+
+class MatchUnconfirmForm(LocalizedForm):
+    reason = TextAreaField(
+        lazy_gettext('Reason'), validators=[InputRequired(), Length(max=2000)]
+    )
+
+
 class HighscoreSubmitForm(LocalizedForm):
     contestant = SelectField(lazy_gettext('Contestant'))
     score = IntegerField(

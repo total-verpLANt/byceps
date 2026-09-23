@@ -4,9 +4,6 @@ tests.unit.services.lan_tournament.test_notification_handlers
 
 Unit tests for notification handler gating and catch-up logic
 in ``notification_handlers.py``.
-
-:Copyright: 2014-2026 Jochen Kupperschmidt
-:License: Revised BSD (see `LICENSE` file for details)
 """
 
 from datetime import UTC, datetime
