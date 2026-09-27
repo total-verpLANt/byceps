@@ -11,13 +11,14 @@ from flask import abort, request
 from flask_babel import gettext
 
 from byceps.services.chair_optout import chair_optout_service
-from byceps.services.party import party_service
-from byceps.services.party.models import Party
+from byceps.services.party import party_service, party_setting_service
+from byceps.services.party.models import Party, PartyID
 from byceps.services.seating import seating_area_service, seat_service
 from byceps.services.site import site_service
 from byceps.util.export import serialize_tuples_to_csv
 from byceps.util.framework.blueprint import create_blueprint
 from byceps.util.framework.templating import templated
+from byceps.util.templating import SITES_PATH
 from byceps.util.views import permission_required, textified
 
 
@@ -83,6 +84,7 @@ def chair_information_seating_plan(party_id):
         'party': party,
         'areas_with_seats': areas_with_seats,
         'chair_information_by_ticket_id': chair_information_by_ticket_id,
+        'seat_stylesheet_site_id': _find_seat_stylesheet_site_id(party.id),
         'selected_filter': _get_selected_filter(),
     }
 
@@ -157,6 +159,35 @@ def _filter_report_entries(report_entries, selected_filter: str):
             return [entry for entry in report_entries if not entry.has_seat]
         case _:
             return list(report_entries)
+
+
+def _find_seat_stylesheet_site_id(party_id: PartyID) -> str | None:
+    site_id = party_setting_service.find_setting_value(
+        party_id, 'primary_party_site_id'
+    )
+    if site_id is not None:
+        return site_id if _seat_stylesheet_exists(site_id) else None
+
+    site_ids = [
+        site.id
+        for site in site_service.get_all_sites()
+        if site.party_id == party_id and _seat_stylesheet_exists(site.id)
+    ]
+    return site_ids[0] if len(site_ids) == 1 else None
+
+
+def _seat_stylesheet_exists(site_id: str) -> bool:
+    if (SITES_PATH / site_id).name != site_id:
+        return False
+
+    sites_path = SITES_PATH.resolve()
+    stylesheet_path = (
+        SITES_PATH / site_id / 'static/style/seating.css'
+    ).resolve()
+    if not stylesheet_path.is_relative_to(sites_path):
+        return False
+
+    return stylesheet_path.is_file()
 
 
 def _find_site_server_name_for_party(party: Party) -> str | None:

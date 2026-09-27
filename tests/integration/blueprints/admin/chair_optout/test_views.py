@@ -2,10 +2,15 @@
 :License: Revised BSD (see `LICENSE` file for details)
 """
 
+from types import SimpleNamespace
+
 from flask_babel import gettext
 
 from byceps.services.chair_optout import chair_optout_service
+from byceps.services.chair_optout.blueprints.admin import views
+from byceps.services.party import party_setting_service
 from byceps.services.seating import seat_service, seating_area_service
+from byceps.services.site import site_service
 from byceps.services.ticketing import (
     ticket_creation_service,
     ticket_seat_management_service,
@@ -38,6 +43,99 @@ def test_seat_management_landing_page(chair_admin_client, party):
     assert (
         _translate(chair_admin_client, 'Participant chair information') in text
     )
+
+
+def test_graphical_plan_uses_primary_site_seating_stylesheet(
+    chair_admin_client, party
+):
+    party_setting_service.create_or_update_setting(
+        party.id, 'primary_party_site_id', 'totalverplant'
+    )
+
+    try:
+        response = chair_admin_client.get(
+            f'/chair_optout/for_party/{party.id}/chair_information/seating_plan'
+        )
+        html = response.get_data(as_text=True)
+        site_stylesheet = '/static_sites/totalverplant/style/seating.css'
+
+        assert response.status_code == 200
+        assert (
+            html.index('/static/style/seating.css')
+            < html.index(site_stylesheet)
+            < html.index('style/chair_optout.css')
+        )
+    finally:
+        party_setting_service.remove_setting(party.id, 'primary_party_site_id')
+
+
+def test_graphical_plan_uses_unique_party_site_seating_stylesheet(
+    chair_admin_client, party, monkeypatch, tmp_path
+):
+    site_id = 'custom-site'
+    stylesheet_path = tmp_path / site_id / 'static/style/seating.css'
+    stylesheet_path.parent.mkdir(parents=True)
+    stylesheet_path.touch()
+    monkeypatch.setattr(views, 'SITES_PATH', tmp_path)
+    monkeypatch.setattr(
+        site_service,
+        'get_all_sites',
+        lambda: [SimpleNamespace(id=site_id, party_id=party.id)],
+    )
+
+    response = chair_admin_client.get(
+        f'/chair_optout/for_party/{party.id}/chair_information/seating_plan'
+    )
+
+    assert response.status_code == 200
+    assert f'/static_sites/{site_id}/style/seating.css' in response.get_data(
+        as_text=True
+    )
+
+
+def test_graphical_plan_does_not_guess_between_site_stylesheets(
+    chair_admin_client, party, monkeypatch, tmp_path
+):
+    site_ids = ['custom-site-1', 'custom-site-2']
+    for site_id in site_ids:
+        stylesheet_path = tmp_path / site_id / 'static/style/seating.css'
+        stylesheet_path.parent.mkdir(parents=True)
+        stylesheet_path.touch()
+    monkeypatch.setattr(views, 'SITES_PATH', tmp_path)
+    monkeypatch.setattr(
+        site_service,
+        'get_all_sites',
+        lambda: [
+            SimpleNamespace(id=site_id, party_id=party.id)
+            for site_id in site_ids
+        ],
+    )
+
+    response = chair_admin_client.get(
+        f'/chair_optout/for_party/{party.id}/chair_information/seating_plan'
+    )
+    html = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert all(f'/static_sites/{site_id}/' not in html for site_id in site_ids)
+
+
+def test_graphical_plan_ignores_noncanonical_site_stylesheet_path(
+    chair_admin_client, party
+):
+    party_setting_service.create_or_update_setting(
+        party.id, 'primary_party_site_id', '../sites/totalverplant'
+    )
+
+    try:
+        response = chair_admin_client.get(
+            f'/chair_optout/for_party/{party.id}/chair_information/seating_plan'
+        )
+
+        assert response.status_code == 200
+        assert '/static_sites/' not in response.get_data(as_text=True)
+    finally:
+        party_setting_service.remove_setting(party.id, 'primary_party_site_id')
 
 
 def test_overview_and_csv_include_all_states_and_multiple_areas(

@@ -37,6 +37,9 @@
 
 {% block head %}
     <link rel="stylesheet" href="{{ url_for('static', filename='style/seating.css') }}">
+    {%- if seat_stylesheet_site_id %}
+    <link rel="stylesheet" href="{{ url_for('site_file', site_id=seat_stylesheet_site_id, filename='style/seating.css') }}">
+    {%- endif %}
     <link rel="stylesheet" href="{{ url_for('.static', filename='style/chair_optout.css') }}">
 {%- endblock %}
 
@@ -48,18 +51,16 @@
     {{ render_chair_information_navigation(party, 'seating_plan', selected_filter) }}
   </div>
 
-  <div class="block">
-    <ol class="bare chair-seats-legend">
-      <li><span class="seat seat--occupied seat--own-chair"></span> {{ _('Green outline and dot: Brings own chair') }}</li>
-    </ol>
-  </div>
-
   {%- for area, seats in areas_with_seats|sort(attribute='0.title') %}
   <section class="block">
     <h2 class="title">{{ area.title }}</h2>
     {{ render_area(area, seats, chair_information_by_ticket_id) }}
   </section>
   {%- endfor %}
+
+  <div class="block">
+    <p class="chair-seats-legend"><span class="seat seat--occupied seat--own-chair" aria-hidden="true"></span> {{ _('Green outline and dot: Brings own chair') }}</p>
+  </div>
 
 {% endblock %}
 

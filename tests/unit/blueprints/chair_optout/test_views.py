@@ -328,6 +328,11 @@ def test_graphical_overview_uses_all_areas_and_chair_information(
             'get_area_seats',
             lambda area_id: [f'seat-{area_id}'],
         )
+        monkeypatch.setattr(
+            admin_views,
+            '_find_seat_stylesheet_site_id',
+            lambda *_: 'test-site',
+        )
 
         context = _unwrap(admin_views.chair_information_seating_plan)('party-1')
 
@@ -340,6 +345,7 @@ def test_graphical_overview_uses_all_areas_and_chair_information(
         entries[1].ticket_id: False,
         entries[2].ticket_id: None,
     }
+    assert context['seat_stylesheet_site_id'] == 'test-site'
 
 
 @pytest.mark.parametrize(

@@ -19,11 +19,16 @@
   margin-top: 0.25rem;
 }
 
-.chair-seats-legend li {
+.chair-seats-legend {
   align-items: center;
   display: flex;
+  font-size: 0.875rem;
+  margin: 0;
 }
 
 .chair-seats-legend .seat {
+  flex: 0 0 auto;
+  height: 1rem !important;
   margin: 0 0.5rem 0 0;
+  width: 1rem !important;
 }
