@@ -27,6 +27,9 @@ from tests.helpers import generate_uuid
 
 
 @patch(
+    'byceps.services.lan_tournament.tournament_service.tournament_request_repository'
+)
+@patch(
     'byceps.services.lan_tournament.tournament_service.tournament_orga_repository'
 )
 @patch(
@@ -35,12 +38,17 @@ from tests.helpers import generate_uuid
 @patch('byceps.services.lan_tournament.tournament_service.signals')
 @patch('byceps.services.lan_tournament.tournament_service.create_log_entry')
 def test_delete_tournament_cascades_all_dependencies(
-    mock_create_log_entry, mock_signals, mock_repository, mock_orga_repository
+    mock_create_log_entry,
+    mock_signals,
+    mock_repository,
+    mock_orga_repository,
+    mock_request_repository,
 ):
     """Test that delete_tournament() deletes all dependent entities in correct order."""
     from byceps.services.lan_tournament import tournament_service
 
     tournament_id = TournamentID(generate_uuid())
+    mock_request_repository.unlink_created_tournament_flush.return_value = []
 
     # Execute deletion
     tournament_service.delete_tournament(tournament_id)
@@ -67,6 +75,12 @@ def test_delete_tournament_cascades_all_dependencies(
         call.delete_orgas_for_tournament(tournament_id, commit=False)
     ]
 
+    # workspace-dim0.17: the request link is cleared as part of the
+    # same cascade, before the tournament row itself is deleted.
+    mock_request_repository.unlink_created_tournament_flush.assert_called_once_with(
+        tournament_id
+    )
+
     # A tournament-deleted entry is written.
     assert mock_create_log_entry.call_args.args[0] == 'tournament-deleted'
 
@@ -74,6 +88,9 @@ def test_delete_tournament_cascades_all_dependencies(
     assert mock_signals.tournament_deleted.send.called
 
 
+@patch(
+    'byceps.services.lan_tournament.tournament_service.tournament_request_repository'
+)
 @patch(
     'byceps.services.lan_tournament.tournament_service.tournament_orga_repository'
 )
@@ -83,11 +100,16 @@ def test_delete_tournament_cascades_all_dependencies(
 @patch('byceps.services.lan_tournament.tournament_service.signals')
 @patch('byceps.services.lan_tournament.tournament_service.create_log_entry')
 def test_delete_tournament_removes_orgas_before_the_tournament_row(
-    mock_create_log_entry, mock_signals, mock_repository, mock_orga_repository
+    mock_create_log_entry,
+    mock_signals,
+    mock_repository,
+    mock_orga_repository,
+    mock_request_repository,
 ):
     from byceps.services.lan_tournament import tournament_service
 
     tournament_id = TournamentID(generate_uuid())
+    mock_request_repository.unlink_created_tournament_flush.return_value = []
 
     # Attach both mocks to one parent to record their relative order.
     parent = MagicMock()
@@ -109,6 +131,9 @@ def test_delete_tournament_removes_orgas_before_the_tournament_row(
 
 
 @patch(
+    'byceps.services.lan_tournament.tournament_service.tournament_request_repository'
+)
+@patch(
     'byceps.services.lan_tournament.tournament_service.tournament_orga_repository'
 )
 @patch(
@@ -117,12 +142,17 @@ def test_delete_tournament_removes_orgas_before_the_tournament_row(
 @patch('byceps.services.lan_tournament.tournament_service.signals')
 @patch('byceps.services.lan_tournament.tournament_service.create_log_entry')
 def test_delete_tournament_does_not_delete_log_entries(
-    mock_create_log_entry, mock_signals, mock_repository, mock_orga_repository
+    mock_create_log_entry,
+    mock_signals,
+    mock_repository,
+    mock_orga_repository,
+    mock_request_repository,
 ):
     """Deleting a tournament leaves its log entries in place."""
     from byceps.services.lan_tournament import tournament_service
 
     tournament_id = TournamentID(generate_uuid())
+    mock_request_repository.unlink_created_tournament_flush.return_value = []
 
     tournament_service.delete_tournament(tournament_id)
 
@@ -133,6 +163,9 @@ def test_delete_tournament_does_not_delete_log_entries(
 
 
 @patch(
+    'byceps.services.lan_tournament.tournament_service.tournament_request_repository'
+)
+@patch(
     'byceps.services.lan_tournament.tournament_service.tournament_orga_repository'
 )
 @patch(
@@ -141,7 +174,11 @@ def test_delete_tournament_does_not_delete_log_entries(
 @patch('byceps.services.lan_tournament.tournament_service.signals')
 @patch('byceps.services.lan_tournament.tournament_service.create_log_entry')
 def test_delete_tournament_writes_tournament_deleted_entry(
-    mock_create_log_entry, mock_signals, mock_repository, mock_orga_repository
+    mock_create_log_entry,
+    mock_signals,
+    mock_repository,
+    mock_orga_repository,
+    mock_request_repository,
 ):
     """Write a `tournament-deleted` entry with the tournament's context."""
     from byceps.services.lan_tournament.models.contestant_type import (
@@ -181,6 +218,7 @@ def test_delete_tournament_writes_tournament_deleted_entry(
         elimination_mode=None,
     )
     mock_repository.get_tournament.return_value = mock_tournament
+    mock_request_repository.unlink_created_tournament_flush.return_value = []
 
     tournament_service.delete_tournament(
         tournament_id, initiator_id=initiator_id
@@ -201,6 +239,9 @@ def test_delete_tournament_writes_tournament_deleted_entry(
 
 
 @patch(
+    'byceps.services.lan_tournament.tournament_service.tournament_request_repository'
+)
+@patch(
     'byceps.services.lan_tournament.tournament_service.tournament_orga_repository'
 )
 @patch(
@@ -209,12 +250,17 @@ def test_delete_tournament_writes_tournament_deleted_entry(
 @patch('byceps.services.lan_tournament.tournament_service.signals')
 @patch('byceps.services.lan_tournament.tournament_service.create_log_entry')
 def test_delete_tournament_writes_log_entry_before_cascade_deletes(
-    mock_create_log_entry, mock_signals, mock_repository, mock_orga_repository
+    mock_create_log_entry,
+    mock_signals,
+    mock_repository,
+    mock_orga_repository,
+    mock_request_repository,
 ):
     """Stage the `tournament-deleted` entry before the cascade runs."""
     from byceps.services.lan_tournament import tournament_service
 
     tournament_id = TournamentID(generate_uuid())
+    mock_request_repository.unlink_created_tournament_flush.return_value = []
 
     # One parent mock records both mocks' calls in one sequence.
     parent = MagicMock()
@@ -235,6 +281,9 @@ def test_delete_tournament_writes_log_entry_before_cascade_deletes(
 
 
 @patch(
+    'byceps.services.lan_tournament.tournament_service.tournament_request_repository'
+)
+@patch(
     'byceps.services.lan_tournament.tournament_service.tournament_orga_repository'
 )
 @patch(
@@ -243,13 +292,18 @@ def test_delete_tournament_writes_log_entry_before_cascade_deletes(
 @patch('byceps.services.lan_tournament.tournament_service.signals')
 @patch('byceps.services.lan_tournament.tournament_service.create_log_entry')
 def test_delete_tournament_with_winner_clears_winner_before_children(
-    mock_create_log_entry, mock_signals, mock_repository, mock_orga_repository
+    mock_create_log_entry,
+    mock_signals,
+    mock_repository,
+    mock_orga_repository,
+    mock_request_repository,
 ):
     """Test that clear_winner_for_tournament() is called before
     participant and team deletion to avoid FK violations."""
     from byceps.services.lan_tournament import tournament_service
 
     tournament_id = TournamentID(generate_uuid())
+    mock_request_repository.unlink_created_tournament_flush.return_value = []
 
     tournament_service.delete_tournament(tournament_id)
 

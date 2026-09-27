@@ -7,6 +7,13 @@
 
   <h1 class="title">{{ page_title }}</h1>
 
+  {%- if g.user.authenticated %}
+  <div class="button-row is-hcentered">
+    <a class="button is-outlined" href="{{ url_for('.propose_form') }}">{{ render_icon('add') }} {{ _('Propose a tournament') }}</a>
+    <a class="button is-outlined" href="{{ url_for('.my_requests') }}">{{ render_icon('clipboard') }} {{ _('My tournament requests') }}</a>
+  </div>
+  {%- endif %}
+
   <div class="main-body-box">
   {%- if tournaments %}
     {%- for tournament in tournaments %}

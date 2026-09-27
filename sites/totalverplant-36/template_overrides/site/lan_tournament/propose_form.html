@@ -1,0 +1,286 @@
+{% extends 'layout/base.html' %}
+{% from 'macros/forms.html' import form_buttons, form_field, form_field_errors %}
+{% from 'macros/icons.html' import render_icon %}
+{% set current_page = 'tournaments' %}
+{% set page_title = _('Propose a tournament') if mode == 'create' else _('Tournament request') %}
+
+{% block head %}
+{% include 'site/lan_tournament/_bote_request_style.html' %}
+{%- endblock %}
+
+{% block body %}
+<div class="bote-page tournament-page request-page">
+
+  {%- set request_no = ('%04d'|format(tournament_request.number)) if tournament_request else none %}
+
+  <div class="page-folio">
+    <span class="pf-ressort">{{ _('Tournament office') }} &middot; {% if mode == 'create' %}{{ _('New submission') }}{% else %}{{ _('Request no. %(number)s', number=request_no) }}{% endif %}</span>
+    <span>Der Rentenbote &middot; Ausgabe 36</span>
+  </div>
+
+  <header class="page-head">
+    <h1 class="ph-title">
+      {%- if mode == 'create' -%}
+      {{ _('Propose a tournament') }}
+      {%- elif mode == 'edit' -%}
+      {{ _('Edit request') }}
+      {%- else -%}
+      {{ tournament_request.name }}
+      {%- endif -%}
+    </h1>
+    {%- if mode != 'create' %}
+    {#- Hand-written status stamp -- compromise C9: no render_tag here. -#}
+    {%- set status_value = tournament_request.status.value %}
+    {%- set status_labels = {
+      'submitted': _('Open'),
+      'accepted': _('Accepted'),
+      'tournament_created': _('Tournament created'),
+      'rejected': _('Rejected'),
+      'withdrawn': _('Withdrawn'),
+    } %}
+    {%- if tournament_request.tournament_deleted %}
+    <span class="stamp stamp-tournament_deleted">{{ _('Tournament deleted') }}</span>
+    {%- else %}
+    <span class="stamp stamp-{{ status_value }}">{{ status_labels.get(status_value, status_value) }}</span>
+    {%- endif %}
+    {%- endif %}
+    <p class="ph-standfirst">
+      {%- if mode == 'create' -%}
+      {{ _('Fill in all four sections below, then your request goes to the tournament office.') }}
+      {%- elif mode == 'edit' -%}
+      {{ _('This request is still awaiting review. Changes go straight to the editors.') }}
+      {%- else -%}
+      {{ _('Decided by the tournament office.') }}
+      {%- endif -%}
+    </p>
+  </header>
+
+  {%- if mode == 'frozen' %}
+
+  <div class="fs">
+    <div class="sh"><h2>{{ _('Overview') }}</h2></div>
+    {%- if tournament_request.tournament_deleted %}
+    <p class="dimmed">{{ _('The tournament created from your request has been deleted.') }}</p>
+    {%- endif %}
+    <dl class="summary">
+      <dt>{{ _('Name') }}</dt>
+      <dd>{{ tournament_request.name }}</dd>
+
+      <dt>{{ _('Game') }}</dt>
+      <dd>{{ tournament_request.game }}</dd>
+
+      <dt>{{ _('Game format') }}</dt>
+      <dd>{{ tournament_request.game_format.label }}</dd>
+
+      <dt>{{ _('Elimination mode') }}</dt>
+      <dd>{{ elimination_mode_label }}</dd>
+
+      <dt>{{ _('Team size') }}</dt>
+      <dd>{{ tournament_request.team_size }}</dd>
+
+      <dt>{{ _('Participant limit') }}</dt>
+      <dd>{{ tournament_request.participant_limit }}</dd>
+
+      <dt>{{ _('Preferred start') }}</dt>
+      <dd>{{ tournament_request.preferred_start_time|dateformat }}, {{ tournament_request.preferred_start_time|timeformat('short') }}</dd>
+
+      <dt>{{ _('Preferred end') }}</dt>
+      <dd>{{ tournament_request.preferred_end_time|dateformat }}, {{ tournament_request.preferred_end_time|timeformat('short') }}</dd>
+
+      <dt>{{ _('Description') }}</dt>
+      <dd>{{ tournament_request.description }}</dd>
+
+      {%- if tournament_request.special_rules %}
+      <dt>{{ _('Special rules') }}</dt>
+      <dd>{{ tournament_request.special_rules }}</dd>
+      {%- endif %}
+
+      {%- if tournament_request.notes %}
+      <dt>{{ _('Notes') }}</dt>
+      <dd>{{ tournament_request.notes }}</dd>
+      {%- endif %}
+
+      {%- if tournament_request.desired_template %}
+      <dt>{{ _('Desired template') }}</dt>
+      <dd>{{ tournament_request.desired_template }}</dd>
+      {%- endif %}
+
+      {%- if tournament_request.rejection_reason %}
+      <dt>{{ _('Rejection reason') }}</dt>
+      <dd>{{ tournament_request.rejection_reason }}</dd>
+      {%- endif %}
+    </dl>
+  </div>
+
+  {%- if history %}
+  <aside class="desk">
+    <div class="sh"><h2>{{ render_icon('history') }} {{ _('History') }}</h2></div>
+    {%- set event_labels = {
+      'tournament-request-submitted': _('Request submitted'),
+      'tournament-request-edited': _('Request edited'),
+      'tournament-request-accepted': _('Request accepted'),
+      'tournament-request-rejected': _('Request rejected'),
+      'tournament-request-withdrawn': _('Request withdrawn'),
+      'tournament-request-tournament-created': _('Tournament created'),
+      'tournament-request-tournament-deleted': _('Tournament deleted'),
+    } %}
+    <ul class="desk-list">
+      {%- for entry in history %}
+      <li>
+        <time>{{ entry.occurred_at|dateformat }}, {{ entry.occurred_at|timeformat('short') }}</time>
+        <span>
+          {{- event_labels.get(entry.event_type, entry.event_type) }}
+          {%- if entry.event_type == 'tournament-request-tournament-deleted'
+              and entry.data.get('tournament_name') %}: {{ entry.data.get('tournament_name') }}{% endif -%}
+        </span>
+      </li>
+      {%- endfor %}
+    </ul>
+  </aside>
+  {%- endif %}
+
+  <div class="button-row is-hcentered">
+    <a class="button is-outlined" href="{{ url_for('.my_requests') }}">{{ _('Back to my requests') }}</a>
+  </div>
+
+  {%- else %}
+
+  {%- if form and form.errors %}
+  <div class="errs">
+    <p>{{ _('Please fix the following before submitting:') }}</p>
+    <ul>
+      {%- for field_name, errors in form.errors.items() %}
+      <li><a href="#{{ field_name }}">{{ form[field_name].label.text }}</a>: {{ errors[0] }}</li>
+      {%- endfor %}
+    </ul>
+  </div>
+  {%- endif %}
+
+  {%- set participant_limit_caption = (
+    _('Capped by this party\'s ticket capacity (%(capacity)s), divided by team size.', capacity=party_capacity)
+    if party_capacity is not none else none
+  ) %}
+  {%- set participant_limit_max = (
+    form.participant_limit.validators
+    | selectattr('max', 'defined') | map(attribute='max') | list | first
+  ) %}
+
+  <form method="post" action="{{ url_for('.propose') if mode == 'create' else url_for('.update_request', request_id=tournament_request.id) }}"{% if party_capacity is not none %} data-capacity="{{ party_capacity }}"{% endif %} data-max-limit="{{ participant_limit_max }}">
+
+    <section class="fs">
+      <div class="sh"><h2>{{ _('I. What it is') }}</h2></div>
+      {{ form_field(form.name, maxlength=80, autofocus='autofocus') }}
+      {{ form_field(form.game, maxlength=80) }}
+      {{ form_field(form.description) }}
+    </section>
+
+    <section class="fs">
+      <div class="sh"><h2>{{ _('II. Format') }}</h2></div>
+
+      <div class="form-control-block{% if form.game_format.errors %} invalid{% endif %}">
+        <label class="form-label">{{ form.game_format.label.text }}</label>
+        <div class="seg" id="game_format">
+          {%- for value, label in form.game_format.choices %}
+          <label class="seg-option{% if form.game_format.data == value %} on{% endif %}">
+            <input type="radio" name="game_format" value="{{ value }}"{% if form.game_format.data == value %} checked{% endif %}>
+            <span>{{ label }}</span>
+          </label>
+          {%- endfor %}
+        </div>
+        {{ form_field_errors(form.game_format) }}
+      </div>
+
+      <div class="form-control-block{% if form.elimination_mode.errors %} invalid{% endif %}">
+        <label class="form-label">{{ form.elimination_mode.label.text }}</label>
+        <div class="opts" id="elimination_mode">
+          {%- for option in form.elimination_mode_options %}
+          <label class="opt{% if option['disabled'] %} dis{% endif %}{% if form.elimination_mode.data == option['value'] %} on{% endif %}">
+            <input
+              type="radio"
+              name="elimination_mode"
+              value="{{ option['value'] }}"
+              {%- if form.elimination_mode.data == option['value'] %} checked{% endif %}
+              {%- if option['disabled'] %} disabled{% endif %}
+              data-reasons='{{ option['reasons']|tojson }}'
+            >
+            <span class="opt-label{% if option['disabled'] %} struck{% endif %}">{{ option['label'] }}</span>
+            <span class="opt-reason" data-mode-reason{% if not option['reason'] %} hidden{% endif %}>{{ option['reason'] or '' }}</span>
+          </label>
+          {%- endfor %}
+        </div>
+        {{ form_field_errors(form.elimination_mode) }}
+      </div>
+
+      {{ form_field(form.team_size, data_team=true) }}
+      {{ form_field(form.participant_limit,
+           data_limit_inp=true,
+           data_label_players=_('Participant limit')|forceescape,
+           data_label_teams=_('Team limit')|forceescape,
+           **({'data_caption_template': (_('At most {max} with this team size (party capacity: %(capacity)s).', capacity=party_capacity))|forceescape} if party_capacity is not none else {})) }}
+      {%- if participant_limit_caption is not none %}
+      <p class="cap" data-limit-caption>{{ participant_limit_caption }}</p>
+      {%- endif %}
+    </section>
+
+    <section class="fs">
+      <div class="sh"><h2>{{ _('III. When') }}</h2></div>
+      {{ form_field(form.preferred_start_time) }}
+      {{ form_field(form.preferred_end_time) }}
+    </section>
+
+    <section class="fs">
+      <div class="sh"><h2>{{ _('IV. If you like') }}</h2></div>
+      {{ form_field(form.special_rules) }}
+      {{ form_field(form.notes) }}
+      {{ form_field(form.desired_template) }}
+    </section>
+
+    {{ form_buttons(_('Save') if mode == 'edit' else _('Submit request'), cancel_url=url_for('.my_requests')) }}
+  </form>
+
+  <script src="{{ url_for('static', filename='behavior/lan_tournament_request.js') }}"></script>
+
+  {%- if mode == 'edit' %}
+
+  {%- if history %}
+  <aside class="desk">
+    <div class="sh"><h2>{{ render_icon('history') }} {{ _('History') }}</h2></div>
+    {%- set event_labels = {
+      'tournament-request-submitted': _('Request submitted'),
+      'tournament-request-edited': _('Request edited'),
+      'tournament-request-accepted': _('Request accepted'),
+      'tournament-request-rejected': _('Request rejected'),
+      'tournament-request-withdrawn': _('Request withdrawn'),
+      'tournament-request-tournament-created': _('Tournament created'),
+      'tournament-request-tournament-deleted': _('Tournament deleted'),
+    } %}
+    <ul class="desk-list">
+      {%- for entry in history %}
+      <li>
+        <time>{{ entry.occurred_at|dateformat }}, {{ entry.occurred_at|timeformat('short') }}</time>
+        <span>
+          {{- event_labels.get(entry.event_type, entry.event_type) }}
+          {%- if entry.event_type == 'tournament-request-tournament-deleted'
+              and entry.data.get('tournament_name') %}: {{ entry.data.get('tournament_name') }}{% endif -%}
+        </span>
+      </li>
+      {%- endfor %}
+    </ul>
+  </aside>
+  {%- endif %}
+
+  <div class="desk desk-danger">
+    <div class="sh"><h2>{{ _('Danger zone') }}</h2></div>
+    <p class="dimmed">{{ _('Withdrawing removes this request from consideration. This cannot be undone.') }}</p>
+    <form method="post" action="{{ url_for('.withdraw_request', request_id=tournament_request.id) }}"
+          onsubmit='return confirm({{ _("This will withdraw the request. Continue?")|tojson }});'>
+      <button type="submit" class="button color-danger">{{ render_icon('delete') }} {{ _('Withdraw request') }}</button>
+    </form>
+  </div>
+
+  {%- endif %}
+
+  {%- endif %}
+
+</div>
+{%- endblock %}

@@ -31,4 +31,10 @@ contestant_advanced = lan_tournament_signals.signal('contestant-advanced')
 
 tournament_orga_assigned = lan_tournament_signals.signal('tournament-orga-assigned')
 tournament_orga_revoked  = lan_tournament_signals.signal('tournament-orga-revoked')
+
+tournament_request_submitted = lan_tournament_signals.signal('tournament-request-submitted')
+tournament_request_edited    = lan_tournament_signals.signal('tournament-request-edited')
+tournament_request_withdrawn = lan_tournament_signals.signal('tournament-request-withdrawn')
+tournament_request_accepted  = lan_tournament_signals.signal('tournament-request-accepted')
+tournament_request_rejected  = lan_tournament_signals.signal('tournament-request-rejected')
 # fmt: on

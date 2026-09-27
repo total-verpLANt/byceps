@@ -26,9 +26,9 @@
 -- Idempotent: deleting rows that are not there is a no-op.
 -- Transaction-wrapped.
 --
--- AFTER RUNNING: BYCEPS resolves a session's permissions at login, so
--- anyone already signed in keeps the permission until they log out
--- and back in.
+-- AFTER RUNNING: BYCEPS resolves a session's permissions on every
+-- request, not at login, so the revoke takes effect on the very next
+-- request -- not only once the user logs out and back in.
 
 BEGIN;
 

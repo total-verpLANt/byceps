@@ -18,6 +18,7 @@
   <h1 class="title">{{ page_title }}</h1>
 
   <form action="{{ url_for('.create', party_id=party.id) }}" method="post">
+    {{ form.from_request_id() }}
     <div class="box">
       {{ form_field(form.name, maxlength=80, autofocus='autofocus') }}
       {{ form_field(form.game) }}

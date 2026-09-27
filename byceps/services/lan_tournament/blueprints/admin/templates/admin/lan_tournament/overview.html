@@ -99,7 +99,7 @@
     <div class="row row--space-between" style="align-items: center;">
       <div>
         <strong>{{ _('Setup') }}</strong><br>
-        <span class="dimmed">{{ _('Email templates for match notifications have not been set up yet.') }}</span>
+        <span class="dimmed">{{ _('Email templates for tournament notifications are not fully set up yet.') }}</span>
       </div>
       <form action="{{ url_for('.setup_email_templates_for_party', party_id=party.id) }}" method="post">
         <button type="submit" class="button">{{ render_icon('email') }} {{ _('Setup email templates') }}</button>

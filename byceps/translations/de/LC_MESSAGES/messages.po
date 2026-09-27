@@ -10785,6 +10785,15 @@ msgstr "Spiel"
 msgid "Game format"
 msgstr "Spielformat"
 
+msgid "Game must not be empty."
+msgstr "Das Spiel darf nicht leer sein."
+
+msgid "Game must not contain line breaks or control characters."
+msgstr "Das Spiel darf keine Zeilenumbrüche oder Steuerzeichen enthalten."
+
+msgid "Game must not exceed 80 characters."
+msgstr "Das Spiel darf 80 Zeichen nicht überschreiten."
+
 msgid "Generate First Round"
 msgstr "Erste Runde generieren"
 
@@ -12166,3 +12175,425 @@ msgid ""
 msgstr ""
 "Beim Wiederöffnen wird der eingetragene Sieger gelöscht und das Turnier "
 "wird wieder auf laufend gesetzt."
+
+# lan_tournament: F-17 tournament requests
+msgid "A reason is required to reject a request."
+msgstr "Für eine Ablehnung ist eine Begründung erforderlich."
+
+msgid "Accept"
+msgstr "Annehmen"
+
+msgid "Accepted"
+msgstr "Angenommen"
+
+msgid "Appoint %(name)s as orga"
+msgstr "%(name)s zur Orga ernennen"
+
+msgid "At most {max} with this team size (party capacity: %(capacity)s)."
+msgstr "Höchstens {max} bei dieser Teamgröße (Party-Kapazität: %(capacity)s)."
+
+msgid "Back to my requests"
+msgstr "Zurück zu meinen Anfragen"
+
+msgid "Blocks tournament creation"
+msgstr "Verhindert die Turniererstellung"
+
+msgid "By"
+msgstr "Von"
+
+msgid "Capped by this party's ticket capacity (%(capacity)s), divided by team size."
+msgstr "Begrenzt durch die Ticket-Kapazität dieser Party (%(capacity)s), geteilt durch die Teamgröße."
+
+msgid "Could not allocate a request number."
+msgstr "Es konnte keine Antragsnummer vergeben werden."
+
+msgid "Danger zone"
+msgstr "Gefahrenbereich"
+
+msgid "Decide on tournament requests"
+msgstr "Über Turnieranfragen entscheiden"
+
+msgid "Decided"
+msgstr "Entschieden"
+
+msgid "Decision"
+msgstr "Entscheidung"
+
+msgid "Decision pending"
+msgstr "Entscheidung ausstehend"
+
+msgid "Description must not be empty."
+msgstr "Die Beschreibung darf nicht leer sein."
+
+msgid "Description must not exceed 2000 characters."
+msgstr "Die Beschreibung darf 2000 Zeichen nicht überschreiten."
+
+msgid "Desired template"
+msgstr "Gewünschte Vorlage"
+
+msgid "Desired template must not exceed 200 characters."
+msgstr "Die gewünschte Vorlage darf 200 Zeichen nicht überschreiten."
+
+msgid "Edit request"
+msgstr "Anfrage bearbeiten"
+
+msgid "Email templates for tournament notifications are not fully set up yet."
+msgstr "E-Mail-Vorlagen für Turnierbenachrichtigungen sind noch nicht vollständig eingerichtet."
+
+msgid "Event"
+msgstr "Ereignis"
+
+msgid "Fields for tournament creation"
+msgstr "Felder für die Turniererstellung"
+
+msgid "Filled in by the admin"
+msgstr "Vom Admin ausgefüllt"
+
+msgid "General"
+msgstr "Allgemein"
+
+msgid "Happens automatically once the tournament is created."
+msgstr "Geschieht automatisch, sobald das Turnier erstellt wurde."
+
+msgid "I. What it is"
+msgstr "I. Worum es geht"
+
+msgid "II. Format"
+msgstr "II. Format"
+
+msgid "III. When"
+msgstr "III. Wann"
+
+msgid "IV. If you like"
+msgstr "IV. Nach Belieben"
+
+msgid "In program"
+msgstr "Im Programm"
+
+msgid "In progress"
+msgstr "In Bearbeitung"
+
+msgid "In the program"
+msgstr "Im Programm"
+
+msgid "Invalid game format or elimination mode selected."
+msgstr "Ungültiges Spielformat oder ungültiger Eliminationsmodus ausgewählt."
+
+msgid "Missing tournament notification email templates created."
+msgstr "Fehlende E-Mail-Vorlagen für Turnierbenachrichtigungen wurden angelegt."
+
+msgid "My requests"
+msgstr "Meine Anfragen"
+
+msgid "My tournament requests"
+msgstr "Meine Turnieranfragen"
+
+msgid "No history yet."
+msgstr "Noch keine Historie."
+
+msgid "No requests have been decided yet."
+msgstr "Es wurden noch keine Anfragen entschieden."
+
+msgid "No tournament requests are awaiting a decision."
+msgstr "Es liegen keine Turnieranfragen zur Entscheidung vor."
+
+msgid "No."
+msgstr "Nr."
+
+msgid "Not available for %(format)s"
+msgstr "Nicht verfügbar für %(format)s"
+
+msgid "Notes must not exceed 2000 characters."
+msgstr "Anmerkungen dürfen 2000 Zeichen nicht überschreiten."
+
+msgid "Only available for %(format)s"
+msgstr "Nur verfügbar für %(format)s"
+
+msgid "Only the proposer may edit this request."
+msgstr "Nur der Antragsteller kann diese Anfrage bearbeiten."
+
+msgid "Only the proposer may withdraw this request."
+msgstr "Nur der Antragsteller kann diese Anfrage zurückziehen."
+
+msgid "Optional"
+msgstr "Optional"
+
+msgid "Origin"
+msgstr "Herkunft"
+
+msgid "Participant limit"
+msgstr "Teilnehmerlimit"
+
+msgid "Participant limit exceeds party capacity."
+msgstr "Das Teilnehmerlimit überschreitet die Partykapazität."
+
+msgid "Participant limit must be at least 2."
+msgstr "Das Teilnehmerlimit muss mindestens 2 betragen."
+
+msgid "Participant limit must not exceed 1024."
+msgstr "Das Teilnehmerlimit darf 1024 nicht überschreiten."
+
+msgid "Please fix the following before submitting:"
+msgstr "Bitte behebe Folgendes, bevor du absendest:"
+
+msgid "Preferred end"
+msgstr "Bevorzugtes Ende"
+
+msgid "Preferred end time must not precede start time."
+msgstr "Das bevorzugte Ende darf nicht vor dem bevorzugten Beginn liegen."
+
+msgid "Preferred start"
+msgstr "Bevorzugter Beginn"
+
+msgid "Prefilled from the request"
+msgstr "Aus der Anfrage vorbefüllt"
+
+msgid "Private note"
+msgstr "Interner Vermerk"
+
+msgid "Propose a tournament"
+msgstr "Turnier vorschlagen"
+
+msgid "Proposer"
+msgstr "Antragsteller"
+
+msgid "Registered %(count)s of %(max)s"
+msgstr "%(count)s von %(max)s angemeldet"
+
+msgid "Reject"
+msgstr "Ablehnen"
+
+msgid "Rejected"
+msgstr "Abgelehnt"
+
+msgid "Rejection reason"
+msgstr "Ablehnungsgrund"
+
+msgid "Request accepted"
+msgstr "Anfrage angenommen"
+
+msgid "Request edited"
+msgstr "Anfrage bearbeitet"
+
+msgid "Request is no longer in the expected state."
+msgstr "Die Anfrage befindet sich nicht mehr im erwarteten Status."
+
+msgid "Request name must not be empty."
+msgstr "Der Name darf nicht leer sein."
+
+msgid "Request name must not contain line breaks or control characters."
+msgstr "Der Name darf keine Zeilenumbrüche oder Steuerzeichen enthalten."
+
+msgid "Request name must not exceed 80 characters."
+msgstr "Der Name darf 80 Zeichen nicht überschreiten."
+
+msgid "Request rejected"
+msgstr "Anfrage abgelehnt"
+
+msgid "Request submitted"
+msgstr "Anfrage eingereicht"
+
+msgid "Request withdrawn"
+msgstr "Anfrage zurückgezogen"
+
+msgid "Resolved"
+msgstr "Erledigt"
+
+msgid "Review"
+msgstr "Prüfen"
+
+msgid "Short description"
+msgstr "Kurzbeschreibung"
+
+msgid "Special rules"
+msgstr "Besondere Regeln"
+
+msgid "Special rules must not exceed 2000 characters."
+msgstr "Besondere Regeln dürfen 2000 Zeichen nicht überschreiten."
+
+msgid "Still missing"
+msgstr "Fehlt noch"
+
+msgid "Submit request"
+msgstr "Antrag einreichen"
+
+msgid "Submitted"
+msgstr "Eingereicht"
+
+msgid "Supplied by the request"
+msgstr "Aus der Anfrage übernommen"
+
+msgid "System"
+msgstr "System"
+
+msgid "Team limit"
+msgstr "Teamlimit"
+
+msgid "Team size must be between 1 and 64."
+msgstr "Die Teamgröße muss zwischen 1 und 64 liegen."
+
+msgid "The proposer could not be appointed as orga of the tournament."
+msgstr "Der Antragsteller konnte nicht als Orga des Turniers eingesetzt werden."
+
+msgid "The proposer sees these changes immediately, and they are recorded in the request's history."
+msgstr "Der Antragsteller sieht diese Änderungen sofort, und sie werden in der Historie der Anfrage festgehalten."
+
+msgid "This Free-for-All request cannot become a tournament until %(field_1)s and %(field_2)s are set."
+msgstr "Dieser Free-for-All-Antrag kann erst zum Turnier werden, wenn %(field_1)s und %(field_2)s gesetzt sind."
+
+msgid "This request can no longer be edited."
+msgstr "Diese Anfrage kann nicht mehr bearbeitet werden."
+
+msgid "This request is no longer editable."
+msgstr "Diese Anfrage ist nicht mehr bearbeitbar."
+
+msgid "This will withdraw the request. Continue?"
+msgstr "Damit ziehst du die Anfrage zurück. Fortfahren?"
+
+msgid "Time frame"
+msgstr "Zeitraum"
+
+msgid "Too many open tournament requests."
+msgstr "Zu viele offene Turnieranfragen."
+
+msgid "Tournament created"
+msgstr "Turnier erstellt"
+
+msgid "Tournament created from this request"
+msgstr "Turnier aus dieser Anfrage erstellt"
+
+msgid "Tournament notification email templates already exist."
+msgstr "E-Mail-Vorlagen für Turnierbenachrichtigungen sind bereits vorhanden."
+
+msgid "Tournament request"
+msgstr "Turnieranfrage"
+
+msgid "Tournament request \"%(name)s\" has been submitted."
+msgstr "Die Turnieranfrage \"%(name)s\" wurde eingereicht."
+
+msgid "Tournament request has been accepted."
+msgstr "Die Turnieranfrage wurde angenommen."
+
+msgid "Tournament request has been rejected."
+msgstr "Die Turnieranfrage wurde abgelehnt."
+
+msgid "Tournament request has been updated."
+msgstr "Die Turnieranfrage wurde aktualisiert."
+
+msgid "Tournament request has been withdrawn."
+msgstr "Die Turnieranfrage wurde zurückgezogen."
+
+msgid "Tournament requests"
+msgstr "Turnieranfragen"
+
+msgid "Tournament requests (%(count)s)"
+msgstr "Turnieranfragen (%(count)s)"
+
+msgid "View tournament requests"
+msgstr "Turnieranfragen ansehen"
+
+msgid "Withdraw request"
+msgstr "Zurückziehen"
+
+msgid "Withdrawing removes this request from consideration. This cannot be undone."
+msgstr "Wenn du sie zurückziehst, wird die Anfrage aus der Prüfung genommen. Das kann nicht rückgängig gemacht werden."
+
+msgid "Withdrawn"
+msgstr "Zurückgezogen"
+
+msgid "You have not proposed any tournaments for this party yet."
+msgstr "Du hast für diese Party noch kein Turnier vorgeschlagen."
+
+msgid "You must have a valid ticket for this party to propose a tournament."
+msgstr "Du benötigst ein gültiges Ticket für diese Party, um ein Turnier vorzuschlagen."
+
+msgid "%(num)s required field is missing"
+msgid_plural "%(num)s required fields are missing"
+msgstr[0] "%(num)s Pflichtfeld fehlt"
+msgstr[1] "%(num)s Pflichtfelder fehlen"
+
+msgid "Tournament office"
+msgstr "Turnierbüro"
+
+msgid "New submission"
+msgstr "Neuanmeldung"
+
+msgid "Request no. %(number)s"
+msgstr "Antrag Nº %(number)s"
+
+msgid "Fill in all four sections below, then your request goes to the tournament office."
+msgstr "Die Setzerei nimmt Vorschläge entgegen — vier Rubriken ausfüllen, dann liegt der Antrag beim Turnierbüro."
+
+msgid "This request is still awaiting review. Changes go straight to the editors."
+msgstr "Der Antrag steht noch zur Prüfung offen. Änderungen gehen direkt an die Setzerei."
+
+msgid "Decided by the tournament office."
+msgstr "Entschieden vom Turnierbüro."
+
+msgid "Every tournament you have proposed for this party, from submission to the schedule."
+msgstr "Der Stand aller selbst eingereichten Turniervorschläge — von der Einreichung bis zum Aushang im Spielplan."
+
+msgid "A tournament has already been created from this request."
+msgstr "Aus dieser Anfrage wurde bereits ein Turnier erstellt."
+
+msgid "No tournament yet"
+msgstr "Noch kein Turnier"
+
+msgid "%(num)s accepted request is still waiting for its tournament."
+msgid_plural "%(num)s accepted requests are still waiting for their tournament."
+msgstr[0] "%(num)s angenommene Anfrage wartet noch auf ihr Turnier."
+msgstr[1] "%(num)s angenommene Anfragen warten noch auf ihr Turnier."
+
+msgid "Tournament deleted"
+msgstr "Turnier gelöscht"
+
+msgid "Create tournament again"
+msgstr "Turnier erneut erstellen"
+
+msgid "The tournament created from this request has been deleted."
+msgstr "Das aus dieser Anfrage erstellte Turnier wurde gelöscht."
+
+msgid "The tournament created from your request has been deleted."
+msgstr "Das aus deiner Anfrage erstellte Turnier wurde gelöscht."
+
+msgid "This form is no longer linked to a tournament request. Submitting it again creates a tournament without a request link."
+msgstr "Dieses Formular ist nicht mehr mit einer Turnieranfrage verknüpft. Ein erneutes Absenden erstellt ein Turnier ohne Anfrage-Verknüpfung."
+
+msgid "The reason must not exceed 2000 characters."
+msgstr "Die Begründung darf 2000 Zeichen nicht überschreiten."
+
+msgid "In preparation"
+msgstr "In Vorbereitung"
+
+msgid "Please enter a date between the years 2000 and 2100."
+msgstr "Bitte gib ein Datum zwischen den Jahren 2000 und 2100 ein."
+
+msgid "Description must not contain control characters."
+msgstr "Die Beschreibung darf keine Steuerzeichen enthalten."
+
+msgid "Special rules must not contain control characters."
+msgstr "Besondere Regeln dürfen keine Steuerzeichen enthalten."
+
+msgid "Notes must not contain control characters."
+msgstr "Anmerkungen dürfen keine Steuerzeichen enthalten."
+
+msgid "Desired template must not contain control characters."
+msgstr "Die gewünschte Vorlage darf keine Steuerzeichen enthalten."
+
+msgid "The reason must not contain control characters."
+msgstr "Die Begründung darf keine Steuerzeichen enthalten."
+
+msgid "You are not allowed to create a tournament from a request."
+msgstr "Du bist nicht berechtigt, ein Turnier aus einer Anfrage zu erstellen."
+
+msgid "Deleted user"
+msgstr "Gelöschter Benutzer"
+
+msgid "Number must be at least %(min)s."
+msgstr "Die Zahl muss mindestens %(min)s betragen."
+
+msgid "Number must be at most %(max)s."
+msgstr "Die Zahl darf höchstens %(max)s betragen."
+
+msgid "Number must be between %(min)s and %(max)s."
+msgstr "Die Zahl muss zwischen %(min)s und %(max)s liegen."

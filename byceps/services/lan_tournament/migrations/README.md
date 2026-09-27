@@ -142,9 +142,10 @@ Idempotent via `ON CONFLICT DO NOTHING` against the
 `(role_id, permission_id)` primary key, so a re-run is a no-op and an install
 already granted by hand is left alone. Transaction-wrapped.
 
-Note: BYCEPS resolves a session's permissions at login. Anyone already signed
-in must log out and back in before the grant takes effect — a re-run of the
-grant will not help them.
+Note: BYCEPS resolves a session's permissions on every request, not at login
+(`byceps/util/user_session.py::get_current_user`, called from each
+blueprint's `before_app_request`). The grant takes effect on the very next
+request — no re-login needed.
 
 Note: check the highest migration number in sibling branches before merging;
 014 is already shared with `prd/f04-match-ready`, so 015 may need renumbering
@@ -157,6 +158,124 @@ current grants first if any were deliberate. Existing rows in
 `lan_tournament_orgas` are untouched — already-appointed orgas keep their
 scoped site-side rights, which are checked against that table rather than this
 permission.
+
+### 016_add_tournament_requests.sql
+
+Creates the `lan_tournament_requests` table, the user-facing propose-a-
+tournament queue (PRD §22), and adds `lan_tournaments.created_from_request_id`
+linking an accepted request to the tournament it produced:
+
+1. **`id UUID`** primary key — application-generated uuid7
+2. **`party_id TEXT NOT NULL`** — FK to `parties.id`, indexed via
+   `ix_lan_tournament_requests_party_id`
+3. **`number INTEGER NOT NULL`** — sequential per-party request number (e.g.
+   `#0142`), allocated as `MAX(number)+1`; `ck_lan_tournament_requests_number`
+   requires it positive
+4. **`uq_lan_tournament_requests_party_number`** — `UNIQUE (party_id, number)`
+   backs that per-party sequence
+5. **`proposer_id UUID NOT NULL`** — FK to `users.id`, indexed via
+   `ix_lan_tournament_requests_proposer_id`
+6. **`status TEXT NOT NULL`** — one of the five request statuses, indexed via
+   `ix_lan_tournament_requests_status` for the admin queue filter
+7. **`created_at TIMESTAMPTZ NOT NULL`** / **`updated_at TIMESTAMPTZ NULL`**
+8. **`name`, `game`, `game_format`, `elimination_mode`, `description`** — all
+   `TEXT NOT NULL`; **`team_size INTEGER NOT NULL`**
+   (`ck_lan_tournament_requests_team_size` requires `>= 1`) and
+   **`participant_limit INTEGER NOT NULL`**
+   (`ck_lan_tournament_requests_limit` requires `>= 2`)
+9. **`preferred_start_time` / `preferred_end_time TIMESTAMPTZ NOT NULL`** —
+   `ck_lan_tournament_requests_period` requires the end at or after the start
+10. **`special_rules`, `notes`, `desired_template`** — all `TEXT NULL`
+11. **`decided_at TIMESTAMPTZ NULL`**, **`decided_by_id UUID NULL`** (FK to
+    `users.id`), **`rejection_reason TEXT NULL`** —
+    `ck_lan_tournament_requests_rejection_reason` requires a reason once
+    `status = 'rejected'`
+12. **`created_tournament_id UUID NULL`** — FK to `lan_tournaments.id`, set
+    once the request is accepted and a tournament created from it
+13. **`ix_lan_tournament_requests_created_tournament_id`** — partial index on
+    `created_tournament_id` (`WHERE created_tournament_id IS NOT NULL`); backs
+    `unlink_created_tournament_flush`'s lookup by created tournament during
+    `delete_tournament`'s cascade, and the
+    `fk_lan_tournament_requests_created_tournament_id` FK check that Postgres
+    runs against this table on every `lan_tournaments` row delete
+
+The inverse link, `lan_tournaments.created_from_request_id UUID NULL`, is
+guarded by the partial unique index
+`uq_lan_tournaments_created_from_request_id` (`WHERE created_from_request_id
+IS NOT NULL`) — the PRD §26 idempotency guard: a second create from the same
+request cannot produce a second tournament. Zero CASCADE behaviors (BYCEPS
+convention).
+
+Note: the branch `prd/f15-dispute-review` also uses 016
+(`016_add_match_dispute_and_score_history.sql`). This collision is a deliberate,
+accepted decision -- whichever of the two branches is merged second must
+renumber its migration, its rollback and its README entry before merging.
+
+**Rollback:** `rollback_016.sql` (drops the partial unique index, the
+`created_from_request_id` column, all four request indexes, then deletes every
+`lan_tournament_log_entries` row whose `event_type` starts with
+`'tournament-request-'` before dropping the table — irreversible: all request
+audit history is lost)
+
+Note: `ix_lan_tournament_requests_created_tournament_id` was added to this file
+after its first commit; an operator who already applied an earlier version
+should re-run 016 — every statement is idempotent, so the re-run only adds
+the missing index and changes nothing else.
+
+Note: `rollback_016.sql` requires PostgreSQL 11 or higher (it calls
+`starts_with()`).
+
+#### Required follow-up: apply migration 017
+
+This migration's feature ships with TWO new permissions,
+`lan_tournament.request_view` and `lan_tournament.request_decide`
+(`permissions.py`). Permissions are registered in code but the mapping
+from a role to its permissions lives in the database, so deploying the
+code alone grants them to nobody. Until 017 is applied, every request
+admin route (queue, detail, accept, reject, edit) answers `403` and the
+nav tab is hidden, while participants can keep submitting requests
+through the site surface.
+
+**Apply `017_grant_tournament_request_permissions.sql` after this
+one.** Do not reach for `import-roles`: it is create-only and cannot
+add a permission to a role that already exists. See 017's header for
+the fuller writeup (the same reasoning as 015, for `orga_assign`).
+
+### 017_grant_tournament_request_permissions.sql
+
+Data-only; no schema change. Grants both `lan_tournament.request_view`
+and `lan_tournament.request_decide` to every role that already holds
+`lan_tournament.administrate`. Data-driven rather than hardcoded, because
+a deployment need not use the role from `lan_tournament_roles.toml` —
+staging does not — and naming one role would silently fix nothing on
+the installations that need it most. `lan_tournament_viewer` gets
+neither permission: it is read-only and request review is a privileged
+action.
+
+There is no `authz_permissions` table to populate first —
+`authz_role_permissions.permission_id` carries no foreign key;
+permissions exist only as strings registered in code at app start.
+
+Idempotent via `ON CONFLICT DO NOTHING` against the
+`(role_id, permission_id)` primary key, so a re-run is a no-op and an
+install already granted by hand is left alone. Transaction-wrapped.
+
+Note: BYCEPS resolves a session's permissions on every request, not at
+login (`byceps/util/user_session.py::get_current_user`, called from
+each blueprint's `before_app_request`). The grant takes effect on the
+very next request — no re-login needed.
+
+Note: the branch `prd/f05-dq-reasons` also uses 017. This collision is
+a deliberate, accepted decision -- whichever of the two branches is
+merged second must renumber its migration, its rollback and this
+README entry before merging.
+
+**Rollback:** `rollback_017.sql` — revokes both permissions from every
+role that holds either one. Not a precise undo: after
+`ON CONFLICT DO NOTHING`, a row granted by 017 is indistinguishable
+from one granted by hand beforehand, so record the current grants
+first if any were deliberate. Every other grant, including
+`lan_tournament.administrate` itself, is untouched.
 
 ## Pre-Application Checklist
 

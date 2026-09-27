@@ -13,6 +13,7 @@ from .elimination_mode import EliminationMode
 if TYPE_CHECKING:
     from .tournament_participant import TournamentParticipantID
     from .tournament_team import TournamentTeamID
+    from .tournament_request import TournamentRequestID
 
 TournamentID = NewType('TournamentID', UUID)
 
@@ -49,3 +50,8 @@ class Tournament:
     use_bracket_reset: bool = True
     winner_team_id: 'TournamentTeamID | None' = None
     winner_participant_id: 'TournamentParticipantID | None' = None
+    created_from_request_id: 'TournamentRequestID | None' = None
+
+    @property
+    def is_user_organized(self) -> bool:
+        return self.created_from_request_id is not None

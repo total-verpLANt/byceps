@@ -10,6 +10,8 @@ assigned_permissions = [
     'lan_tournament.create',
     'lan_tournament.delete',
     'lan_tournament.orga_assign',
+    'lan_tournament.request_decide',
+    'lan_tournament.request_view',
     'lan_tournament.update',
     'lan_tournament.view',
 ]

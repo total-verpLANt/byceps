@@ -2082,3 +2082,340 @@ a.lt-hover-name-link:hover {
   min-height: 0;
   resize: vertical;
 }
+
+
+/* ------------------------------------------------------------
+   16. Tournament requests (site)
+   ------------------------------------------------------------ */
+
+/* `zurückgezogen` needs its own colour: it shares an archive list with
+   `abgelehnt` (color-danger) and reusing one colour for both would make
+   them indistinguishable. Site-only -- the admin queue reuses the
+   shared `color-disabled` token instead. */
+.lt-dark .tag.color-neutral {
+  background: color-mix(in srgb, var(--lt-white) 6%, transparent);
+  border: 1px dashed var(--lt-border);
+  color: var(--lt-muted);
+}
+
+.lt-dark .form-error-summary {
+  border: 1px solid var(--lt-brand-danger);
+  border-radius: var(--lt-radius-sm);
+  background: color-mix(in srgb, var(--lt-brand-danger) 12%, transparent);
+  color: var(--lt-text);
+  padding: 0.9rem 1.1rem;
+  margin-bottom: 1rem;
+}
+
+.lt-dark .form-error-summary p {
+  margin: 0 0 0.4rem;
+  font-weight: 700;
+}
+
+.lt-dark .form-error-summary ul {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.lt-dark .form-error-summary a {
+  color: var(--lt-brand-danger);
+}
+
+.lt-dark .request-section h2 {
+  font-size: 1rem;
+  letter-spacing: 0.02em;
+  color: var(--lt-muted);
+  margin-bottom: 0.9rem;
+}
+
+/* Segmented control (game format): a row of equal-width toggle labels
+   standing in for the RadioField's real, visually-hidden inputs. */
+.lt-dark .seg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  border: 1px solid var(--lt-border);
+  border-radius: var(--lt-radius-sm);
+  padding: 0.3rem;
+  background: var(--lt-card);
+}
+
+.lt-dark .seg-option {
+  flex: 1 1 auto;
+  text-align: center;
+  padding: 0.45rem 0.8rem;
+  border-radius: var(--lt-radius-sm);
+  cursor: pointer;
+  color: var(--lt-muted);
+  white-space: nowrap;
+}
+
+.lt-dark .seg-option input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+
+.lt-dark .seg-option.is-selected,
+.lt-dark .seg-option:has(input:checked) {
+  background: var(--lt-brand-blue);
+  color: var(--lt-white);
+}
+
+.lt-dark .seg-option:has(input:focus-visible) {
+  outline: 2px solid var(--lt-brand-blue);
+  outline-offset: 2px;
+}
+
+/* Elimination-mode option list: every mode is always rendered, the
+   ones invalid for the current game format struck through with their
+   reason shown rather than hidden. */
+.lt-dark .opts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.lt-dark .opt {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  border: 1px solid var(--lt-border);
+  border-radius: var(--lt-radius-sm);
+  padding: 0.5rem 0.8rem;
+  cursor: pointer;
+}
+
+.lt-dark .opt.is-selected,
+.lt-dark .opt:has(input:checked) {
+  border-color: var(--lt-brand-blue);
+  background: color-mix(in srgb, var(--lt-brand-blue) 14%, transparent);
+}
+
+.lt-dark .opt.is-disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.lt-dark .opt-label.is-struck {
+  text-decoration: line-through;
+}
+
+.lt-dark .opt-reason {
+  font-size: 0.78rem;
+  color: var(--lt-muted);
+}
+
+/* Cap-exceeded state on the participant/team-limit input. JS-driven
+   only (convenience feedback); the server is the actual gate. */
+.lt-dark input.form-control.over {
+  border-color: var(--lt-brand-danger);
+  color: var(--lt-brand-danger);
+}
+
+.lt-dark .request-frozen dl.request-summary {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.35rem 1rem;
+  margin: 0;
+}
+
+.lt-dark .request-summary dt {
+  color: var(--lt-muted);
+  font-size: 0.82rem;
+}
+
+.lt-dark .request-summary dd {
+  margin: 0;
+  color: var(--lt-text);
+}
+
+.lt-dark .request-history-list,
+.lt-dark .request-archive-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.lt-dark .request-history-list li {
+  display: flex;
+  gap: 0.8rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--lt-border);
+}
+
+.lt-dark .request-history-list li:last-child {
+  border-bottom: 0;
+}
+
+.lt-dark .request-history-list time {
+  flex: 0 0 auto;
+  color: var(--lt-muted);
+  font-size: 0.82rem;
+}
+
+.lt-dark .request-danger-zone {
+  border: 1px solid var(--lt-brand-danger);
+}
+
+.lt-dark .request-empty-state {
+  text-align: center;
+}
+
+.lt-dark .request-status-counts {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.6rem;
+  margin: 1rem 0;
+}
+
+.lt-dark .request-status-count {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  border: 1px solid var(--lt-border);
+  border-radius: var(--lt-radius-sm);
+  background: var(--lt-card);
+  padding: 0.7rem 0.4rem;
+}
+
+.lt-dark .request-status-count-value {
+  font-size: 1.4rem;
+  font-weight: 800;
+}
+
+.lt-dark .request-status-count-label {
+  font-size: 0.72rem;
+  color: var(--lt-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.lt-dark .request-live-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  border: 1px solid var(--lt-border);
+  border-radius: var(--lt-radius-sm);
+  background: var(--lt-card);
+  padding: 0.7rem 0.9rem;
+}
+
+.lt-dark .request-live-name {
+  font-weight: 700;
+  color: var(--lt-text);
+}
+
+.lt-dark .request-live-participants {
+  color: var(--lt-muted);
+  font-size: 0.82rem;
+}
+
+.lt-dark .request-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 0.8rem;
+  margin-top: 0.8rem;
+}
+
+.lt-dark .request-card {
+  border: 1px solid var(--lt-border);
+  border-radius: var(--lt-radius);
+  background: var(--lt-card);
+  padding: 0.9rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.lt-dark .request-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.lt-dark .request-card-number {
+  font-family: monospace;
+  color: var(--lt-muted);
+}
+
+.lt-dark .request-card-name {
+  font-weight: 700;
+  color: var(--lt-text);
+}
+
+.lt-dark .request-card-meta {
+  color: var(--lt-muted);
+  font-size: 0.82rem;
+}
+
+.lt-dark .request-tracker {
+  display: flex;
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  gap: 0.3rem;
+}
+
+.lt-dark .request-tracker-step {
+  flex: 1 1 0;
+  text-align: center;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--lt-muted);
+  border-top: 3px solid var(--lt-border);
+  padding-top: 0.3rem;
+}
+
+.lt-dark .request-tracker-step.is-done {
+  color: var(--lt-brand-success);
+  border-top-color: var(--lt-brand-success);
+}
+
+.lt-dark .request-tracker-step.is-current {
+  color: var(--lt-brand-blue);
+  border-top-color: var(--lt-brand-blue);
+}
+
+.lt-dark .request-archive-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--lt-border);
+}
+
+.lt-dark .request-archive-item:last-child {
+  border-bottom: 0;
+}
+
+.lt-dark .request-archive-number {
+  font-family: monospace;
+  color: var(--lt-muted);
+}
+
+.lt-dark .request-archive-name {
+  font-weight: 600;
+}
+
+.lt-dark .request-archive-reason {
+  flex-basis: 100%;
+  margin: 0.2rem 0 0;
+}
+
+@media (max-width: 30rem) {
+  .lt-dark .request-status-counts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .lt-dark .request-frozen dl.request-summary {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,139 @@
+{% extends 'layout/site/lan_tournament.html' %}
+{% from 'macros/icons.html' import render_icon %}
+{% from 'macros/misc.html' import render_tag %}
+{% set page_title = _('My tournament requests') %}
+
+{% block body %}
+
+  <nav class="breadcrumbs">
+    <ol>
+      <li><a href="{{ url_for('.index') }}">{{ _('Tournaments') }}</a></li>
+      <li>{{ _('My requests') }}</li>
+    </ol>
+  </nav>
+
+  <h1 class="title">{{ _('My tournament requests') }}</h1>
+
+  {%- if not requests %}
+
+  <div class="main-body-box request-empty-state">
+    <p class="dimmed">{{ _('You have not proposed any tournaments for this party yet.') }}</p>
+    <a class="button color-info" href="{{ url_for('.propose_form') }}">{{ render_icon('add') }} {{ _('Propose a tournament') }}</a>
+  </div>
+
+  {%- else %}
+
+  <div class="button-row is-hcentered">
+    <a class="button color-info" href="{{ url_for('.propose_form') }}">{{ render_icon('add') }} {{ _('Propose a tournament') }}</a>
+  </div>
+
+  <div class="request-status-counts">
+    <div class="request-status-count">
+      <span class="request-status-count-value">{{ status_counts.get('submitted', 0) }}</span>
+      <span class="request-status-count-label">{{ _('Open') }}</span>
+    </div>
+    <div class="request-status-count">
+      <span class="request-status-count-value">{{ status_counts.get('accepted', 0) }}</span>
+      <span class="request-status-count-label">{{ _('Accepted') }}</span>
+    </div>
+    <div class="request-status-count">
+      <span class="request-status-count-value">{{ status_counts.get('tournament_created', 0) }}</span>
+      <span class="request-status-count-label">{{ _('Tournament created') }}</span>
+    </div>
+    <div class="request-status-count">
+      <span class="request-status-count-value">{{ status_counts.get('rejected', 0) }}</span>
+      <span class="request-status-count-label">{{ _('Rejected') }}</span>
+    </div>
+    <div class="request-status-count">
+      <span class="request-status-count-value">{{ status_counts.get('withdrawn', 0) }}</span>
+      <span class="request-status-count-label">{{ _('Withdrawn') }}</span>
+    </div>
+  </div>
+
+  {%- if live_requests %}
+  <aside class="request-live">
+    <h2>{{ render_icon('trophy') }} {{ _('In the program') }}</h2>
+    {%- for r in live_requests %}
+      {%- set tournament = tournaments_by_request_id.get(r.id) %}
+      {%- if tournament %}
+      <div class="request-live-card">
+        {{ render_tag(_('Tournament created'), class='color-success') }}
+        {%- if tournament.id in draft_tournament_ids %}
+        <span class="request-live-name dimmed">{{ tournament.name }}</span>
+        {{ render_tag(_('In preparation'), class='color-neutral') }}
+        {%- else %}
+        <a href="{{ url_for('.view', tournament_id=tournament.id) }}" class="request-live-name disguised">{{ tournament.name }}</a>
+        {%- endif %}
+        {%- if tournament.max_players %}
+        <span class="request-live-participants">
+          {{ _('Registered %(count)s of %(max)s', count=participant_counts.get(tournament.id, 0), max=tournament.max_players) }}
+        </span>
+        {%- endif %}
+      </div>
+      {%- elif r.tournament_deleted %}
+      <div class="request-live-card">
+        {{ render_tag(_('Tournament deleted'), class='color-neutral') }}
+        <span class="request-live-name dimmed">{{ _('The tournament created from your request has been deleted.') }}</span>
+      </div>
+      {%- endif %}
+    {%- endfor %}
+  </aside>
+  {%- endif %}
+
+  {%- if open_requests %}
+  <section class="request-open">
+    <h2>{{ _('In progress') }}</h2>
+    <div class="request-card-grid">
+      {%- for r in open_requests %}
+      {%- set step = 1 if r.status.value == 'submitted' else 2 %}
+      <div class="request-card">
+        <div class="request-card-header">
+          <span class="request-card-number">{{ '#%04d'|format(r.number) }}</span>
+          {%- if r.status.value == 'submitted' %}
+          {{ render_tag(_('Open'), class='color-info') }}
+          {%- else %}
+          {{ render_tag(_('Accepted'), class='color-success') }}
+          {%- endif %}
+        </div>
+        <a href="{{ url_for('.update_request_form', request_id=r.id) }}" class="request-card-name disguised">{{ r.name }}</a>
+        <div class="request-card-meta">{{ r.game }} &middot; {{ r.game_format.label }}</div>
+
+        <ol class="request-tracker">
+          <li class="request-tracker-step{% if step > 1 %} is-done{% elif step == 1 %} is-current{% endif %}">{{ _('Submitted') }}</li>
+          <li class="request-tracker-step{% if step == 2 %} is-current{% endif %}">{{ _('Decided') }}</li>
+          <li class="request-tracker-step">{{ _('In program') }}</li>
+        </ol>
+      </div>
+      {%- endfor %}
+    </div>
+  </section>
+  {%- endif %}
+
+  {%- if archived_requests %}
+  <section class="request-archive">
+    <h2>{{ _('Archive') }}</h2>
+    <ul class="request-archive-list">
+      {%- for r in archived_requests %}
+      <li class="request-archive-item">
+        <span class="request-archive-number">{{ '#%04d'|format(r.number) }}</span>
+        <span class="request-archive-name">{{ r.name }}</span>
+        {%- if r.status.value == 'rejected' %}
+        {{ render_tag(_('Rejected'), class='color-danger') }}
+        {%- if r.rejection_reason %}
+        <p class="request-archive-reason dimmed">{{ r.rejection_reason }}</p>
+        {%- endif %}
+        {%- else %}
+        {#- Issue 8 introduces a `color-neutral` tag class; `color-warning`
+            is a temporary stand-in for `withdrawn` here so it reads
+            differently from `rejected`'s `color-danger` in the meantime. -#}
+        {{ render_tag(_('Withdrawn'), class='color-warning') }}
+        {%- endif %}
+      </li>
+      {%- endfor %}
+    </ul>
+  </section>
+  {%- endif %}
+
+  {%- endif %}
+
+{%- endblock %}

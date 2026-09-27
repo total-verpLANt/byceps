@@ -1,0 +1,166 @@
+{% extends 'layout/admin/lan_tournament.html' %}
+{% from 'macros/admin.html' import render_extra_in_heading %}
+{% from 'macros/misc.html' import render_notification_block, render_tag %}
+{% set current_page_party = party %}
+{% set current_tab = 'requests' %}
+{% set page_title = [_('Tournament requests'), party.title] %}
+
+{% block body %}
+
+  <h1 class="title">{{ _('Tournament requests') }} {{ render_extra_in_heading(total_count) }}</h1>
+
+  {# Status filter bar #}
+  <div class="button-row is-compact block">
+    <a class="tag{% if status_filter is none %} color-info{% endif %}"
+       href="{{ url_for('.requests_for_party', party_id=party.id) }}"
+      >{{ _('All') }} ({{ total_count }})</a>
+    {%- for status_value, status_label in [
+      ('submitted', _('Submitted')),
+      ('accepted', _('Accepted')),
+      ('tournament_created', _('Tournament created')),
+      ('rejected', _('Rejected')),
+      ('withdrawn', _('Withdrawn')),
+    ] %}
+    <a class="tag{% if status_filter and status_filter.value == status_value %} color-info{% endif %}"
+       href="{{ url_for('.requests_for_party', party_id=party.id, status=status_value) }}"
+      >{{ status_label }} ({{ status_counts.get(status_value, 0) }})</a>
+    {%- endfor %}
+  </div>
+
+  {# Requests awaiting a decision #}
+  <h2>{{ _('Decision pending') }} {{ render_extra_in_heading(pending_requests|length) }}</h2>
+  {%- if pending_requests %}
+  {%- set stale_count = stale_request_ids|length %}
+  {%- if stale_count %}
+  {%- call render_notification_block(category='warning', icon='warning') %}
+    {{ ngettext(
+      '%(num)s accepted request is still waiting for its tournament.',
+      '%(num)s accepted requests are still waiting for their tournament.',
+      stale_count
+    ) }}
+  {%- endcall %}
+  {%- endif %}
+  <table class="itemlist is-vcentered is-wide block">
+    <thead>
+      <tr>
+        <th>{{ _('No.') }}</th>
+        <th>{{ _('Name') }}</th>
+        <th>{{ _('Proposer') }}</th>
+        <th>{{ _('Mode') }}</th>
+        <th>{{ _('Status') }}</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {%- for tournament_request in pending_requests %}
+      {%- set gap = gaps_by_request_id.get(tournament_request.id) %}
+      {%- set _proposer = users_by_id.get(tournament_request.proposer_id) %}
+      {%- set is_stale = tournament_request.id in stale_request_ids %}
+      <tr class="{% if tournament_request.status.value == 'submitted' %}is-open{% elif tournament_request.status.value == 'accepted' %}is-accepted{% if is_stale %} is-stale{% endif %}{% endif %}">
+        <td>
+          <a href="{{ url_for('.view_request', request_id=tournament_request.id) }}" class="disguised">#{{ '%04d'|format(tournament_request.number) }}</a>
+        </td>
+        <td>
+          <a href="{{ url_for('.view_request', request_id=tournament_request.id) }}" class="disguised">
+            <strong>{{ tournament_request.name }}</strong>
+          </a>
+        </td>
+        <td>
+          {%- if _proposer and _proposer.screen_name -%}
+            {{ _proposer.screen_name }}
+          {%- elif _proposer -%}
+            {{ _('Deleted user') }}
+          {%- else -%}
+            {{ tournament_request.proposer_id|string }}
+          {%- endif -%}
+        </td>
+        <td>
+          {{ tournament_request.game_format.label }} / {{ elimination_mode_labels.get(tournament_request.elimination_mode, tournament_request.elimination_mode.name) }}
+          {%- if gap and gap.blocking %}
+          <div class="details">
+            {{ ngettext('%(num)s required field is missing', '%(num)s required fields are missing', gap.blocking|length) }}
+          </div>
+          {%- endif %}
+        </td>
+        <td>
+          {%- if tournament_request.status.value == 'submitted' %}
+            {{ render_tag(_('Submitted'), class='color-warning') }}
+          {%- elif tournament_request.status.value == 'accepted' %}
+            {{ render_tag(_('Accepted'), class='color-info') }}
+            {%- if is_stale %}
+            {{ render_tag(_('No tournament yet'), class='color-danger') }}
+            {%- endif %}
+          {%- endif %}
+        </td>
+        <td class="bared">
+          <div class="button-row is-compact is-right-aligned">
+            {%- if tournament_request.status.value == 'submitted' %}
+            <a class="button is-compact" href="{{ url_for('.view_request', request_id=tournament_request.id) }}">{{ _('Review') }}</a>
+            {%- elif tournament_request.status.value == 'accepted' and g.user.has_permission('lan_tournament.create') and g.user.has_permission('lan_tournament.request_decide') %}
+            <a class="button is-compact color-success" href="{{ url_for('.create_form', party_id=party.id, from_request=tournament_request.id) }}">{{ _('Create tournament') }}</a>
+            {%- endif %}
+          </div>
+        </td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+  {%- else %}
+  <p class="dimmed">{{ _('No tournament requests are awaiting a decision.') }}</p>
+  {%- endif %}
+
+  {# Decided requests #}
+  <h2>{{ _('Resolved') }} {{ render_extra_in_heading(done_requests|length) }}</h2>
+  {%- if done_requests %}
+  <table class="itemlist is-vcentered is-wide block">
+    <thead>
+      <tr>
+        <th>{{ _('No.') }}</th>
+        <th>{{ _('Name') }}</th>
+        <th>{{ _('Proposer') }}</th>
+        <th>{{ _('Mode') }}</th>
+        <th>{{ _('Status') }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {%- for tournament_request in done_requests %}
+      {%- set _proposer = users_by_id.get(tournament_request.proposer_id) %}
+      <tr>
+        <td>
+          <a href="{{ url_for('.view_request', request_id=tournament_request.id) }}" class="disguised">#{{ '%04d'|format(tournament_request.number) }}</a>
+        </td>
+        <td>
+          <a href="{{ url_for('.view_request', request_id=tournament_request.id) }}" class="disguised">{{ tournament_request.name }}</a>
+        </td>
+        <td>
+          {%- if _proposer and _proposer.screen_name -%}
+            {{ _proposer.screen_name }}
+          {%- elif _proposer -%}
+            {{ _('Deleted user') }}
+          {%- else -%}
+            {{ tournament_request.proposer_id|string }}
+          {%- endif -%}
+        </td>
+        <td>{{ tournament_request.game_format.label }} / {{ elimination_mode_labels.get(tournament_request.elimination_mode, tournament_request.elimination_mode.name) }}</td>
+        <td>
+          {%- if tournament_request.status.value == 'tournament_created' %}
+            {%- if tournament_request.tournament_deleted %}
+            {{ render_tag(_('Tournament deleted'), class='color-disabled') }}
+            {%- else %}
+            {{ render_tag(_('Tournament created'), class='color-success') }}
+            {%- endif %}
+          {%- elif tournament_request.status.value == 'rejected' %}
+            {{ render_tag(_('Rejected'), class='color-danger') }}
+          {%- elif tournament_request.status.value == 'withdrawn' %}
+            {{ render_tag(_('Withdrawn'), class='color-disabled') }}
+          {%- endif %}
+        </td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+  {%- else %}
+  <p class="dimmed">{{ _('No requests have been decided yet.') }}</p>
+  {%- endif %}
+
+{%- endblock %}

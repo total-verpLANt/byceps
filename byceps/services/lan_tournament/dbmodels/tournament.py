@@ -1,5 +1,7 @@
 from datetime import datetime
+from uuid import UUID
 
+from sqlalchemy import text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from byceps.database import db
@@ -21,6 +23,14 @@ class DbTournament(db.Model):
     """A LAN tournament."""
 
     __tablename__ = 'lan_tournaments'
+    __table_args__ = (
+        db.Index(
+            'uq_lan_tournaments_created_from_request_id',
+            'created_from_request_id',
+            unique=True,
+            postgresql_where=text('created_from_request_id IS NOT NULL'),
+        ),
+    )
 
     id: Mapped[TournamentID] = mapped_column(
         db.Uuid, default=generate_uuid7, primary_key=True
@@ -78,6 +88,7 @@ class DbTournament(db.Model):
             ),
         )
     )
+    created_from_request_id: Mapped[UUID | None] = mapped_column(db.Uuid)
 
     def __init__(
         self,
@@ -109,6 +120,7 @@ class DbTournament(db.Model):
         points_carry_to_losers: bool | None = None,
         winner_team_id: TournamentTeamID | None = None,
         winner_participant_id: TournamentParticipantID | None = None,
+        created_from_request_id: UUID | None = None,
     ) -> None:
         self.id = tournament_id
         self.party_id = party_id
@@ -138,6 +150,7 @@ class DbTournament(db.Model):
         self.points_carry_to_losers = points_carry_to_losers
         self.winner_team_id = winner_team_id
         self.winner_participant_id = winner_participant_id
+        self.created_from_request_id = created_from_request_id
 
     def __repr__(self) -> str:
         return (

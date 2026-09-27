@@ -1,0 +1,239 @@
+<style>
+  /* ============================================================
+     TURNIERANFRAGEN -- "Formular / Turnierbuero" treatment.
+
+     Used by the participant-facing tournament-request pages -- the
+     generic base layer's request flow, re-skinned for the newspaper
+     theme.
+
+     Both pages extend the site's own layout base directly, so neither
+     ever carries the module layout's lt-dark body class. This partial
+     therefore does not lean on the module stylesheet's dark-theme
+     rules at all -- every class below is defined from scratch here,
+     the same way the sibling tournament-page style re-implements
+     .tournament-card rather than depending on the module CSS.
+     .page-folio / .page-head come from the site's own base stylesheet
+     already (the masthead strip shared by every bote page); nothing
+     else is assumed to exist.
+
+     PAGE FURNITURE: .fs ("Formularabschnitt") is a numbered form
+     section -- stock rendered it as a bare .main-body-box with a
+     plain h2; .sh is the ruled section head inside it, wrapping that
+     same heading text unchanged (its own copy already numbers itself,
+     "I.", "II." and so on, so no extra numeral chip is needed here).
+
+     STATUS: .stamp is a rotated, double-bordered rubber stamp for the
+     page-header status on the single-request page (propose / edit /
+     frozen); .st is the flatter inline tag used wherever a status
+     needs to sit in a row instead (status counts, request cards, the
+     archive list). Neither uses the shared tag helper -- both are
+     hand-written markup here, unlike the generic base layer, which
+     keeps using that helper with color-* classes unchanged.
+
+     FORM CONTROLS: .seg (segmented control, game format) and
+     .opts / .opt (elimination-mode option list) dress up the same
+     underlying radio inputs the base layer posts, just with the
+     newspaper's own chrome; a disabled option carries .dis instead of
+     the base layer's is-disabled. The team-size / limit fields, the
+     .cap caption and the .over cap-exceeded state read the same
+     data- attributes the shared request-form script reads elsewhere
+     -- nothing here duplicates that script's arithmetic, and the
+     server-side domain rules are what actually enforce the cap.
+
+     REQUEST LIST: .req is a request card, .req.win the variant for a
+     request that already has a live tournament; .trk is its
+     three-step tracker.
+
+     Every colour is a theme token, so Spaetausgabe (dark) is
+     automatic. Everything below is scoped under .request-page, the
+     marker class both templates add next to .bote-page .tournament-
+     page, so nothing here can leak onto an unrelated page.
+     ============================================================ */
+
+  .tournament-page.request-page { max-width: 52rem; margin-inline: auto; }
+
+  /* ----- numbered form sections ----- */
+  .request-page .fs { margin: 0 0 clamp(20px, 3vw, 32px); }
+  .request-page .fs .sh {
+    border-bottom: 3px double var(--ink); margin-bottom: 14px; padding-bottom: 6px;
+  }
+  .request-page .fs .sh h2 {
+    font-family: var(--display); font-weight: 800; font-size: clamp(18px, 2vw, 22px);
+    letter-spacing: -.01em; color: var(--ink); margin: 0;
+  }
+  .request-page .fs.empty {
+    text-align: center; border: 1.5px solid var(--ink); background: var(--paperLite);
+    box-shadow: 6px 6px 0 var(--ink); padding: clamp(24px, 4vw, 40px) clamp(16px, 3vw, 28px);
+  }
+  .request-page .fs.empty p { font-family: var(--body); font-size: 19px; margin: 0 0 16px; }
+
+  /* ----- page-header stamp (rotated, double border) ----- */
+  .request-page .page-head .stamp {
+    display: inline-block; margin-top: 8px; transform: rotate(-4deg);
+    font-family: var(--mono); font-weight: 700; font-size: 12px; letter-spacing: .18em;
+    text-transform: uppercase; padding: 5px 12px; border: 2.5px double var(--ink);
+    color: var(--ink); background: transparent;
+  }
+  .request-page .page-head .stamp.stamp-accepted,
+  .request-page .page-head .stamp.stamp-tournament_created { color: var(--green); border-color: var(--green); }
+  .request-page .page-head .stamp.stamp-rejected { color: var(--red); border-color: var(--red); }
+  .request-page .page-head .stamp.stamp-withdrawn {
+    color: var(--inkMute); border-color: var(--inkMute); border-style: dashed;
+  }
+  .request-page .page-head .stamp.stamp-submitted { color: var(--redDeep); border-color: var(--redDeep); }
+
+  /* ----- inline list tag (status counts, request cards, archive) ----- */
+  .request-page .st {
+    display: inline-block; font-family: var(--mono); font-weight: 700; font-size: 9.5px;
+    letter-spacing: .16em; text-transform: uppercase; padding: 3px 8px;
+    border: 1.5px solid var(--ink); color: var(--ink); background: var(--paper);
+  }
+  .request-page .st.st-accepted,
+  .request-page .st.st-tournament_created { color: var(--green); border-color: var(--green); }
+  .request-page .st.st-rejected { color: var(--red); border-color: var(--red); }
+  .request-page .st.st-withdrawn { color: var(--inkMute); border-color: var(--inkMute); border-style: dashed; }
+  .request-page .st.st-submitted { color: var(--redDeep); border-color: var(--redDeep); }
+  .request-page .st.st-draft { color: var(--inkMute); border-color: var(--inkMute); border-style: dashed; }
+
+  /* ----- error summary ----- */
+  .request-page .errs {
+    border: 1.5px solid var(--red); background: var(--paperLite); box-shadow: 4px 4px 0 var(--ink);
+    padding: 14px 18px; margin-bottom: 20px;
+  }
+  .request-page .errs p { font-weight: 700; margin: 0 0 6px; color: var(--redDeep); }
+  .request-page .errs ul { margin: 0; padding-left: 18px; }
+  .request-page .errs a { color: var(--redDeep); }
+
+  /* ----- segmented control (game format) ----- */
+  .request-page .seg { display: flex; flex-wrap: wrap; gap: 0; border: 1.5px solid var(--ink); margin-top: 4px; }
+  .request-page .seg-option {
+    flex: 1 1 0; text-align: center; padding: 9px 10px; cursor: pointer;
+    font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--inkSoft); border-right: 1px solid var(--ink);
+  }
+  .request-page .seg-option:last-child { border-right: 0; }
+  .request-page .seg-option input {
+    position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none;
+  }
+  .request-page .seg-option.on,
+  .request-page .seg-option:has(input:checked) { background: var(--ink); color: var(--paper); }
+  .request-page .seg-option:has(input:focus-visible) { outline: 2px solid var(--redDeep); outline-offset: 2px; }
+
+  /* ----- elimination-mode option list ----- */
+  .request-page .opts { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+  .request-page .opt {
+    display: flex; align-items: baseline; gap: 10px; border: 1px solid var(--ink);
+    padding: 8px 12px; cursor: pointer;
+  }
+  .request-page .opt input { margin: 0; }
+  .request-page .opt.on,
+  .request-page .opt:has(input:checked) {
+    border-color: var(--redDeep); background: color-mix(in srgb, var(--redDeep) 8%, var(--paperLite));
+  }
+  .request-page .opt.dis { cursor: not-allowed; opacity: .55; }
+  .request-page .opt-label.struck { text-decoration: line-through; }
+  .request-page .opt-reason {
+    font-family: var(--body); font-style: italic; font-size: 14px; color: var(--inkMute);
+  }
+
+  /* ----- JS-driven cap caption / over-limit state -----
+     the shared request-form script writes this text from data-caption-
+     template at load and on every input; the markup only supplies
+     the initial server-rendered sentence and the hook. */
+  .request-page .cap {
+    font-family: var(--body); font-style: italic; font-size: 15px; color: var(--inkMute); margin: 4px 0 0;
+  }
+  .request-page input.form-control.over { border-color: var(--red); color: var(--red); }
+
+  /* ----- request summary (frozen mode) ----- */
+  .request-page .summary { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; }
+  .request-page .summary dt {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--inkMute);
+  }
+  .request-page .summary dd { margin: 0; font-family: var(--body); font-size: 17px; color: var(--ink); }
+
+  /* ----- editorial desk aside (history, danger zone) ----- */
+  .request-page .desk {
+    border: 1.5px solid var(--ink); background: var(--paperLite); box-shadow: 5px 5px 0 var(--ink);
+    padding: 16px clamp(16px, 2.4vw, 24px); margin-top: 20px;
+  }
+  .request-page .desk .sh { border-bottom: 1px solid var(--ink); margin-bottom: 10px; padding-bottom: 4px; }
+  .request-page .desk .sh h2 {
+    font-family: var(--display); font-weight: 800; font-size: 16px; margin: 0; color: var(--ink);
+  }
+  .request-page .desk-list { list-style: none; margin: 0; padding: 0; }
+  .request-page .desk-list li { display: flex; gap: 10px; padding: 6px 0; border-top: 1px solid var(--ink); }
+  .request-page .desk-list li:first-child { border-top: 0; }
+  .request-page .desk-list time {
+    flex: 0 0 auto; font-family: var(--mono); font-size: 10.5px; color: var(--inkMute);
+  }
+  .request-page .desk.desk-danger { border-color: var(--red); }
+  .request-page .desk.desk-danger .sh { border-color: var(--red); }
+  .request-page .desk.desk-danger .sh h2 { color: var(--redDeep); }
+
+  /* ----- status counts strip ----- */
+  .request-page .counts {
+    display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin: 18px 0;
+  }
+  .request-page .count {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    border: 1px solid var(--ink); padding: 10px 4px; background: var(--paperLite);
+  }
+  .request-page .count-value { font-family: var(--display); font-weight: 800; font-size: 22px; color: var(--ink); }
+  .request-page .count-label {
+    font-family: var(--mono); font-size: 8.5px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--inkMute);
+  }
+
+  /* ----- "in the program" card ----- */
+  .request-page .req.win {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+    border: 1.5px solid var(--green); background: var(--paperLite); padding: 12px 16px; margin-top: 10px;
+  }
+  .request-page .req.win .req-name { font-family: var(--display); font-weight: 800; font-size: 18px; color: var(--ink); }
+  .request-page .req.win .req-meta { font-family: var(--body); font-style: italic; color: var(--inkMute); }
+
+  /* ----- request card grid ----- */
+  .request-page .req-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 14px; margin-top: 10px;
+  }
+  .request-page .req {
+    border: 1.5px solid var(--ink); background: var(--paperLite); box-shadow: 4px 4px 0 var(--ink);
+    padding: 14px 16px; display: flex; flex-direction: column; gap: 6px;
+  }
+  .request-page .req-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .request-page .req-no { font-family: var(--mono); font-size: 11px; color: var(--inkMute); }
+  .request-page .req-name { font-family: var(--display); font-weight: 800; font-size: 18px; color: var(--ink); }
+  .request-page .req-meta { font-family: var(--mono); font-size: 11px; letter-spacing: .06em; color: var(--inkSoft); }
+
+  /* ----- three-step tracker ----- */
+  .request-page .trk { display: flex; list-style: none; margin: 6px 0 0; padding: 0; gap: 4px; }
+  .request-page .trk-step {
+    flex: 1 1 0; text-align: center; font-family: var(--mono); font-size: 9px; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--inkMute); border-top: 3px solid var(--ink); padding-top: 5px;
+  }
+  .request-page .trk-step.done { color: var(--green); border-top-color: var(--green); }
+  .request-page .trk-step.now { color: var(--redDeep); border-top-color: var(--redDeep); }
+
+  /* ----- archive list ----- */
+  .request-page .archive-list { list-style: none; margin: 10px 0 0; padding: 0; border-top: 3px double var(--ink); }
+  .request-page .archive-item {
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; padding: 10px 2px;
+    border-bottom: 1px solid var(--ink);
+  }
+  .request-page .archive-name { font-family: var(--body); font-size: 17px; color: var(--ink); }
+  .request-page .archive-reason { flex-basis: 100%; margin: 2px 0 0; }
+
+  /* ----- responsive: 390px first ----- */
+  @media (max-width: 47rem) {
+    .request-page .counts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 24.4rem) {
+    .request-page .summary { grid-template-columns: 1fr; }
+    .request-page .seg { flex-direction: column; }
+    .request-page .seg-option { border-right: 0; border-bottom: 1px solid var(--ink); }
+    .request-page .seg-option:last-child { border-bottom: 0; }
+    .request-page .req-head { flex-wrap: wrap; }
+  }
+</style>
