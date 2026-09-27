@@ -4,10 +4,22 @@ from __future__ import annotations
 
 import structlog
 
+from byceps.services.brand import brand_service
+from byceps.services.party import party_service
+
 from .models.tournament import TournamentID
 from .models.tournament_status import TournamentStatus
-from .signals import match_ready, tournament_status_changed
-from . import tournament_notification_service, tournament_repository
+from .signals import (
+    match_ready,
+    tournament_request_accepted,
+    tournament_request_rejected,
+    tournament_status_changed,
+)
+from . import (
+    tournament_notification_service,
+    tournament_repository,
+    tournament_request_repository,
+)
 
 log = structlog.get_logger()
 
@@ -65,7 +77,65 @@ def _on_tournament_status_changed(sender, *, event=None) -> None:
             )
 
 
+def _on_tournament_request_accepted(sender, *, event=None) -> None:
+    if event is None:
+        return
+    try:
+        request = tournament_request_repository.find_request(
+            event.request_id
+        )
+        if request is None:
+            log.warning(
+                'Tournament request not found, skipping accepted email',
+                request_id=str(event.request_id),
+            )
+            return
+
+        party = party_service.get_party(event.party_id)
+        brand = brand_service.get_brand(party.brand_id)
+
+        tournament_notification_service.send_request_accepted_email(
+            brand, request,
+        )
+    except Exception:
+        log.exception(
+            'Failed to send tournament-request-accepted email',
+            request_id=str(event.request_id),
+        )
+
+
+def _on_tournament_request_rejected(sender, *, event=None) -> None:
+    if event is None:
+        return
+    try:
+        request = tournament_request_repository.find_request(
+            event.request_id
+        )
+        if request is None:
+            log.warning(
+                'Tournament request not found, skipping rejected email',
+                request_id=str(event.request_id),
+            )
+            return
+
+        party = party_service.get_party(event.party_id)
+        brand = brand_service.get_brand(party.brand_id)
+
+        tournament_notification_service.send_request_rejected_email(
+            brand, request,
+        )
+    except Exception:
+        log.exception(
+            'Failed to send tournament-request-rejected email',
+            request_id=str(event.request_id),
+        )
+
+
 def enable_match_notifications() -> None:
-    """Register signal handlers for match notifications."""
+    """Register signal handlers for match notifications and for
+    tournament-request accept/reject decisions.
+    """
     match_ready.connect(_on_match_ready)
     tournament_status_changed.connect(_on_tournament_status_changed)
+    tournament_request_accepted.connect(_on_tournament_request_accepted)
+    tournament_request_rejected.connect(_on_tournament_request_rejected)

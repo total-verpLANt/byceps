@@ -1,5 +1,6 @@
 from datetime import datetime, UTC
 from math import ceil
+from typing import TYPE_CHECKING
 
 from byceps.services.party.models import PartyID
 from byceps.util.result import Err, Ok, Result
@@ -19,6 +20,9 @@ from .models.tournament_match_to_contestant import (
     TournamentMatchToContestant,
 )
 from .models.tournament_status import TournamentStatus
+
+if TYPE_CHECKING:
+    from .models.tournament_request import TournamentRequestID
 
 
 _VALID_STATUS_TRANSITIONS: dict[TournamentStatus, set[TournamentStatus]] = {
@@ -88,6 +92,7 @@ def create_tournament(
     group_size_max: int | None = None,
     points_carry_to_losers: bool | None = None,
     position: int = 0,
+    created_from_request_id: 'TournamentRequestID | None' = None,
 ) -> tuple[Tournament, TournamentCreatedEvent]:
     """Create a new tournament."""
     tournament_id = TournamentID(generate_uuid7())
@@ -120,6 +125,7 @@ def create_tournament(
         group_size_max=group_size_max,
         points_carry_to_losers=points_carry_to_losers,
         position=position,
+        created_from_request_id=created_from_request_id,
     )
 
     event = TournamentCreatedEvent(

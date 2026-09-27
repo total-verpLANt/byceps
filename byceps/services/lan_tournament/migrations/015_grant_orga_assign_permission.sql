@@ -52,9 +52,10 @@
 -- Transaction-wrapped.
 -- Rollback: rollback_015.sql
 --
--- AFTER RUNNING: BYCEPS resolves a session's permissions at login.
--- Anyone already signed in must log out and back in before the grant
--- takes effect.
+-- AFTER RUNNING: BYCEPS resolves a session's permissions on every
+-- request (byceps/util/user_session.py::get_current_user, called from
+-- each blueprint's before_app_request), not at login. The grant takes
+-- effect on the next request; no re-login needed.
 -- =================================================================
 
 BEGIN;

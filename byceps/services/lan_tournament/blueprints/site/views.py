@@ -1,11 +1,13 @@
 import uuid
 from flask import abort, g, request
-from flask_babel import gettext
+from flask_babel import gettext, to_user_timezone, to_utc
 
 from byceps.services.lan_tournament import (
     tournament_match_service,
     tournament_orga_service,
     tournament_participant_service,
+    tournament_request_domain_service,
+    tournament_request_service,
     tournament_score_service,
     tournament_service,
     tournament_team_service,
@@ -19,6 +21,11 @@ from byceps.services.lan_tournament.models.tournament_team import (
 )
 from byceps.services.lan_tournament.models.tournament_status import (
     TournamentStatus,
+)
+from byceps.services.lan_tournament.models.tournament_request import (
+    TournamentRequest,
+    TournamentRequestID,
+    TournamentRequestStatus,
 )
 from byceps.services.lan_tournament.lan_tournament_view_helpers import (
     build_contestant_name_lookups,
@@ -47,6 +54,7 @@ from byceps.services.lan_tournament.models.game_format import (
     GameFormat,
 )
 from byceps.services.party import party_service
+from byceps.services.ticketing import ticket_service
 from byceps.services.user import user_service
 from byceps.services.user.models import UserID
 from byceps.util.framework.blueprint import create_blueprint
@@ -63,6 +71,8 @@ from .forms import (
     OrgaMatchUnconfirmForm,
     SiteTeamCreateForm,
     SiteTeamUpdateForm,
+    TournamentProposeForm,
+    elimination_mode_label,
 )
 
 
@@ -1772,3 +1782,350 @@ def highscore_submit(tournament_id):
         case Err(error_message):
             flash_error(gettext(error_message))
     return redirect_to('.highscore', tournament_id=tournament_id)
+
+
+# -------------------------------------------------------------------- #
+# tournament requests
+
+
+@blueprint.get('/requests/propose')
+@login_required
+@templated
+def propose_form(erroneous_form=None):
+    """Show the form to propose a new tournament."""
+    party = _get_current_party_or_404()
+
+    form = erroneous_form if erroneous_form else TournamentProposeForm()
+    form.set_format_choices()
+
+    return {
+        'mode': 'create',
+        'form': form,
+        'party': party,
+        'party_capacity': party.max_ticket_quantity,
+        'tournament_request': None,
+        'history': None,
+    }
+
+
+@blueprint.post('/requests/propose')
+@login_required
+def propose():
+    """Submit a new tournament request."""
+    party = _get_current_party_or_404()
+
+    has_ticket = ticket_service.uses_any_ticket_for_party(g.user.id, party.id)
+    if not has_ticket:
+        flash_error(
+            gettext(
+                'You must have a valid ticket for this party to propose '
+                'a tournament.'
+            )
+        )
+        return redirect_to('.propose_form')
+
+    form = TournamentProposeForm(request.form)
+    form.set_format_choices()
+
+    if not form.validate():
+        return propose_form(form)
+
+    try:
+        game_format = GameFormat(form.game_format.data)
+        elimination_mode = EliminationMode(form.elimination_mode.data)
+    except ValueError:
+        flash_error(
+            gettext('Invalid game format or elimination mode selected.')
+        )
+        return propose_form(form)
+
+    special_rules = tournament_request_domain_service.normalize_optional_text(
+        form.special_rules.data
+    )
+    notes = tournament_request_domain_service.normalize_optional_text(
+        form.notes.data
+    )
+    desired_template = (
+        tournament_request_domain_service.normalize_optional_text(
+            form.desired_template.data
+        )
+    )
+
+    match tournament_request_service.submit_request(
+        party.id,
+        g.user.id,
+        party_capacity=party.max_ticket_quantity,
+        name=form.name.data.strip(),
+        game=form.game.data.strip(),
+        game_format=game_format,
+        elimination_mode=elimination_mode,
+        team_size=form.team_size.data,
+        participant_limit=form.participant_limit.data,
+        preferred_start_time=to_utc(form.preferred_start_time.data),
+        preferred_end_time=to_utc(form.preferred_end_time.data),
+        description=form.description.data.strip(),
+        special_rules=special_rules,
+        notes=notes,
+        desired_template=desired_template,
+    ):
+        case Ok((tournament_request, _event)):
+            flash_success(
+                gettext(
+                    'Tournament request "%(name)s" has been submitted.',
+                    name=tournament_request.name,
+                )
+            )
+            return redirect_to('.my_requests')
+        case Err(error_message):
+            flash_error(gettext(error_message))
+            return propose_form(form)
+
+
+@blueprint.get('/requests')
+@login_required
+@templated
+def my_requests():
+    """Show the current user's own tournament requests for this party."""
+    party = _get_current_party_or_404()
+
+    requests = tournament_request_service.get_visible_requests_for_user(
+        party.id, g.user.id, is_admin=False
+    )
+
+    status_counts = {status.value: 0 for status in TournamentRequestStatus}
+    for tournament_request in requests:
+        status_counts[tournament_request.status.value] += 1
+
+    open_requests = [
+        r
+        for r in requests
+        if r.status
+        in (
+            TournamentRequestStatus.submitted,
+            TournamentRequestStatus.accepted,
+        )
+    ]
+    archived_requests = [
+        r
+        for r in requests
+        if r.status
+        in (
+            TournamentRequestStatus.rejected,
+            TournamentRequestStatus.withdrawn,
+        )
+    ]
+    live_requests = [
+        r
+        for r in requests
+        if r.status == TournamentRequestStatus.tournament_created
+    ]
+
+    tournaments_by_request_id = {}
+    tournament_ids = []
+    for tournament_request in live_requests:
+        if tournament_request.created_tournament_id is None:
+            continue
+        tournament = tournament_service.find_tournament(
+            tournament_request.created_tournament_id
+        )
+        if tournament is not None:
+            tournaments_by_request_id[tournament_request.id] = tournament
+            tournament_ids.append(tournament.id)
+
+    participant_counts = (
+        tournament_service.get_participant_counts_for_tournaments(
+            tournament_ids
+        )
+    )
+
+    # Site `view` 404s DRAFT tournaments for everyone, proposer included;
+    # my_requests must not link to one it would only 404 on.
+    draft_tournament_ids = {
+        tournament.id
+        for tournament in tournaments_by_request_id.values()
+        if tournament.tournament_status == TournamentStatus.DRAFT
+    }
+
+    return {
+        'requests': requests,
+        'status_counts': status_counts,
+        'open_requests': open_requests,
+        'archived_requests': archived_requests,
+        'live_requests': live_requests,
+        'tournaments_by_request_id': tournaments_by_request_id,
+        'participant_counts': participant_counts,
+        'draft_tournament_ids': draft_tournament_ids,
+    }
+
+
+@blueprint.get('/requests/<request_id>/update')
+@login_required
+@templated('site/lan_tournament/propose_form')
+def update_request_form(request_id, erroneous_form=None):
+    """Show the form to edit an open tournament request.
+
+    Renders the frozen, read-only variant instead once the request is
+    no longer editable.
+    """
+    party = _get_current_party_or_404()
+    tournament_request = _get_own_request_or_404(party, request_id)
+
+    history = tournament_request_service.get_request_history(
+        tournament_request.id
+    )
+
+    if not tournament_request.is_editable:
+        return {
+            'mode': 'frozen',
+            'tournament_request': tournament_request,
+            'elimination_mode_label': elimination_mode_label(
+                tournament_request.elimination_mode
+            ),
+            'party': party,
+            'party_capacity': party.max_ticket_quantity,
+            'history': history,
+            'form': None,
+        }
+
+    if erroneous_form is not None:
+        form = erroneous_form
+    else:
+        form = TournamentProposeForm(
+            data={
+                'name': tournament_request.name,
+                'game': tournament_request.game,
+                'game_format': tournament_request.game_format.value,
+                'elimination_mode': (
+                    tournament_request.elimination_mode.value
+                ),
+                'team_size': tournament_request.team_size,
+                'participant_limit': tournament_request.participant_limit,
+                'preferred_start_time': to_user_timezone(
+                    tournament_request.preferred_start_time
+                ),
+                'preferred_end_time': to_user_timezone(
+                    tournament_request.preferred_end_time
+                ),
+                'description': tournament_request.description,
+                'special_rules': tournament_request.special_rules or '',
+                'notes': tournament_request.notes or '',
+                'desired_template': (
+                    tournament_request.desired_template or ''
+                ),
+            }
+        )
+    form.set_format_choices()
+
+    return {
+        'mode': 'edit',
+        'tournament_request': tournament_request,
+        'form': form,
+        'party': party,
+        'party_capacity': party.max_ticket_quantity,
+        'history': history,
+    }
+
+
+@blueprint.post('/requests/<request_id>/update')
+@login_required
+def update_request(request_id):
+    """Update an open tournament request."""
+    party = _get_current_party_or_404()
+    tournament_request = _get_own_request_or_404(party, request_id)
+
+    if not tournament_request.is_editable:
+        flash_error(gettext('This request can no longer be edited.'))
+        return redirect_to('.my_requests')
+
+    form = TournamentProposeForm(request.form)
+    form.set_format_choices()
+
+    if not form.validate():
+        return update_request_form(request_id, form)
+
+    try:
+        game_format = GameFormat(form.game_format.data)
+        elimination_mode = EliminationMode(form.elimination_mode.data)
+    except ValueError:
+        flash_error(
+            gettext('Invalid game format or elimination mode selected.')
+        )
+        return update_request_form(request_id, form)
+
+    special_rules = tournament_request_domain_service.normalize_optional_text(
+        form.special_rules.data
+    )
+    notes = tournament_request_domain_service.normalize_optional_text(
+        form.notes.data
+    )
+    desired_template = (
+        tournament_request_domain_service.normalize_optional_text(
+            form.desired_template.data
+        )
+    )
+
+    match tournament_request_service.update_request(
+        TournamentRequestID(request_id),
+        g.user.id,
+        party_capacity=party.max_ticket_quantity,
+        name=form.name.data.strip(),
+        game=form.game.data.strip(),
+        game_format=game_format,
+        elimination_mode=elimination_mode,
+        team_size=form.team_size.data,
+        participant_limit=form.participant_limit.data,
+        preferred_start_time=to_utc(form.preferred_start_time.data),
+        preferred_end_time=to_utc(form.preferred_end_time.data),
+        description=form.description.data.strip(),
+        special_rules=special_rules,
+        notes=notes,
+        desired_template=desired_template,
+    ):
+        case Ok(_):
+            flash_success(gettext('Tournament request has been updated.'))
+            return redirect_to('.my_requests')
+        case Err(error_message):
+            flash_error(gettext(error_message))
+            return update_request_form(request_id, form)
+
+
+@blueprint.post('/requests/<request_id>/withdraw')
+@login_required
+def withdraw_request(request_id):
+    """Withdraw an open tournament request."""
+    party = _get_current_party_or_404()
+    _get_own_request_or_404(party, request_id)
+
+    match tournament_request_service.withdraw_request(
+        TournamentRequestID(request_id), g.user.id
+    ):
+        case Ok(_):
+            flash_success(gettext('Tournament request has been withdrawn.'))
+        case Err(error_message):
+            flash_error(gettext(error_message))
+
+    return redirect_to('.my_requests')
+
+
+def _get_own_request_or_404(party, request_id) -> TournamentRequest:
+    """Return the request, or abort with 404 if it is not this user's own.
+
+    `get_visible_requests_for_user` with `is_admin=False` already scopes
+    to both the current party and the current user; a request that
+    fails to show up there is either someone else's, some other
+    party's, or does not exist at all -- all three are indistinguishable
+    404s here, so the client-supplied ID is never trusted on its own.
+    """
+    try:
+        uuid.UUID(str(request_id))
+    except ValueError:
+        abort(404)
+
+    visible_requests = tournament_request_service.get_visible_requests_for_user(
+        party.id, g.user.id, is_admin=False
+    )
+    for tournament_request in visible_requests:
+        if str(tournament_request.id) == str(request_id):
+            return tournament_request
+
+    abort(404)

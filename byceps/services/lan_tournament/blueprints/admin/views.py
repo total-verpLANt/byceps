@@ -1,4 +1,6 @@
+from collections import Counter
 import dataclasses
+from datetime import datetime, UTC
 from uuid import UUID
 
 from flask import abort, g, request, url_for
@@ -6,7 +8,7 @@ from flask_babel import gettext, to_user_timezone, to_utc
 
 from byceps.services.brand import brand_service
 from byceps.services.party import party_service
-from byceps.services.party.models import Party
+from byceps.services.party.models import Party, PartyID
 from byceps.services.user import user_service
 from byceps.services.user.models import UserID
 from byceps.util.framework.blueprint import create_blueprint
@@ -25,6 +27,9 @@ from byceps.services.lan_tournament import (
     tournament_notification_service,
     tournament_orga_service,
     tournament_participant_service,
+    tournament_request_domain_service,
+    tournament_request_repository,
+    tournament_request_service,
     tournament_score_service,
     tournament_service,
     tournament_stats_service,
@@ -33,6 +38,11 @@ from byceps.services.lan_tournament import (
 from byceps.services.lan_tournament.models.tournament import (
     Tournament,
     TournamentID,
+)
+from byceps.services.lan_tournament.models.tournament_request import (
+    TournamentRequest,
+    TournamentRequestID,
+    TournamentRequestStatus,
 )
 from byceps.services.lan_tournament.models.contestant_type import (
     ContestantType,
@@ -101,7 +111,10 @@ from .forms import (
     TransferCaptainForm,
     TournamentCreateForm,
     TournamentOrgaAssignForm,
+    TournamentRequestRejectForm,
+    TournamentRequestUpdateForm,
     TournamentUpdateForm,
+    _REQUEST_ELIMINATION_MODE_LABELS,
 )
 
 
@@ -298,7 +311,61 @@ def create_form(party_id, erroneous_form=None):
     """Show form to create a tournament."""
     party = _get_party_or_404(party_id)
 
-    form = erroneous_form if erroneous_form else TournamentCreateForm()
+    if erroneous_form:
+        form = erroneous_form
+    else:
+        form = TournamentCreateForm()
+
+        from_request_raw = request.args.get('from_request')
+        if from_request_raw:
+            if not (
+                g.user.has_permission('lan_tournament.request_view')
+                and g.user.has_permission('lan_tournament.request_decide')
+            ):
+                # Prefilling needs both permissions, in lockstep with
+                # `create`'s own from-request branch below: submitting
+                # a prefilled form is what actually consumes the
+                # request (a decision), so a `request_view`-only admin
+                # must not be shown a prefill that submit will refuse
+                # anyway -- that refusal clears the hidden field, and a
+                # second submit would then create an unlinked
+                # tournament while the request stays accepted forever.
+                # A `request_decide`-only admin must not learn anything
+                # about the request (its content, or even whether it
+                # exists) through the prefill either -- refuse before
+                # the lookup, not after.
+                flash_error(
+                    gettext(
+                        'You are not allowed to create a tournament '
+                        'from a request.'
+                    )
+                )
+            else:
+                source_request = _find_request_for_party(
+                    from_request_raw, party.id
+                )
+                if source_request is not None:
+                    if _is_request_recreatable(source_request):
+                        _prefill_form_from_request(form, source_request)
+                    else:
+                        # The request moved on (decided by another admin,
+                        # withdrawn) since whatever link led here, or it
+                        # is `tournament_created` with a still-live link.
+                        # Render the empty form rather than prefill from a
+                        # request `create`'s own re-check would refuse.
+                        flash_error(
+                            gettext(
+                                'Request is no longer in the expected state.'
+                            )
+                        )
+                else:
+                    # Malformed, unknown, or belongs to another party.
+                    flash_error(
+                        gettext(
+                            'Request is no longer in the expected state.'
+                        )
+                    )
+
     form.set_contestant_type_choices()
     form.set_game_format_choices()
     form.set_elimination_mode_choices()
@@ -434,6 +501,62 @@ def create(party_id):
         ):
             points_carry_to_losers = form.points_carry_to_losers.data
 
+    # `from_request_id` arrives from a hidden form field -- client
+    # supplied, so re-load and re-verify party ownership rather than
+    # trusting it outright.
+    source_request = None
+    created_from_request_id = None
+    if form.from_request_id.data:
+        if not (
+            g.user.has_permission('lan_tournament.request_decide')
+            and g.user.has_permission('lan_tournament.request_view')
+        ):
+            # Consuming a request here moves it to `tournament_created`
+            # and appoints its proposer as orga -- that is a decision,
+            # not a view, so `create`-only permission must not reach
+            # it even with a forged hidden field. `request_view` is
+            # required too, in lockstep with `create_form`'s own
+            # prefill gate above: without it, a `request_decide`-only
+            # admin could convert a request blind here and then hit a
+            # 403 on `view_request`'s own gate when the redirect (or
+            # the appoint-orga flash) tried to point back at it.
+            flash_error(
+                gettext(
+                    'You are not allowed to create a tournament from a request.'
+                )
+            )
+            _clear_stale_request_link(form)
+            return create_form(party.id, form)
+
+        source_request = _find_request_for_party(
+            form.from_request_id.data, party.id
+        )
+        if source_request is None:
+            # Malformed, unknown, or belongs to another party -- never
+            # silently fall through to an unlinked create; the admin
+            # asked to create *from* a request.
+            flash_error(
+                gettext('Request is no longer in the expected state.')
+            )
+            _clear_stale_request_link(form)
+            return create_form(party.id, form)
+
+        if not _is_request_recreatable(source_request):
+            # The request's status can have moved on (decided by
+            # another admin, withdrawn) between opening this form and
+            # submitting it, or it is `tournament_created` with a
+            # still-live link -- that link must never be overwritten.
+            # This is a UX fast path only: `create_tournament` re-runs
+            # the same check under a row lock before it ever commits,
+            # which is what actually prevents an orphan tournament for
+            # a request that can never reach `tournament_created`.
+            flash_error(
+                gettext('Request is no longer in the expected state.')
+            )
+            _clear_stale_request_link(form)
+            return create_form(party.id, form)
+        created_from_request_id = source_request.id
+
     result = tournament_service.create_tournament(
         party.id,
         name,
@@ -458,12 +581,35 @@ def create(party_id):
         group_size_min=group_size_min,
         group_size_max=group_size_max,
         points_carry_to_losers=points_carry_to_losers,
+        created_from_request_id=created_from_request_id,
+        initiator_id=g.user.id,
     )
     if result.is_err():
-        flash_error(gettext(result.unwrap_err()))
+        error_message = result.unwrap_err()
+        flash_error(gettext(error_message))
+        if created_from_request_id is not None and error_message in (
+            'Request is no longer in the expected state.',
+            'A tournament has already been created from this request.',
+        ):
+            # The row-locked re-check inside create_tournament caught
+            # what the UX fast path above missed (a race, or the
+            # unique constraint on created_from_request_id) -- the
+            # link is just as dead as if _is_request_recreatable had
+            # caught it, so clear it the same way.
+            _clear_stale_request_link(form)
         return create_form(party.id, form)
 
     tournament, _event = result.unwrap()
+
+    if source_request is not None:
+        # The request is already linked at this point -- create_tournament
+        # committed both in one transaction. This is best-effort only:
+        # a failure never rolls back the tournament that already exists.
+        orga_result = tournament_request_service.appoint_proposer_orga(
+            tournament.id, source_request.proposer_id, g.user.id
+        )
+        if orga_result.is_err():
+            flash_notice(gettext(orga_result.unwrap_err()))
 
     flash_success(
         gettext(
@@ -473,6 +619,481 @@ def create(party_id):
     )
 
     return redirect_to('.view', tournament_id=tournament.id)
+
+
+# --- Tournament requests (party-wide admin queue + detail) ---
+
+_PENDING_REQUEST_STATUSES = frozenset(
+    {TournamentRequestStatus.submitted, TournamentRequestStatus.accepted}
+)
+
+
+def _build_elimination_mode_labels() -> dict:
+    """Resolve `_REQUEST_ELIMINATION_MODE_LABELS` to plain strings.
+
+    Must run inside a request (each `lazy_gettext` label only resolves
+    to text, in the current locale, once `str()`'d), so this builds
+    the dict per-view-call rather than once at import time.
+    """
+    return {
+        mode: str(label)
+        for mode, label in _REQUEST_ELIMINATION_MODE_LABELS.items()
+    }
+
+
+@blueprint.app_template_global('lan_tournament_pending_request_count')
+def _pending_request_count_for_nav(party_id) -> int:
+    """Return the party's open-request count for the admin nav tab badge.
+
+    Registered as a Jinja global rather than threaded through every
+    view's template context: the layout template's `before_body`
+    block, shared by every page in this blueprint, is where the tab
+    label is built (compromise C1 -- see guardrails), and most of
+    those views and templates belong to other issues.
+
+    Viewers without `request_view` never see the requests tab this
+    count feeds, so skip the query for them entirely rather than
+    loading every request row on every lan_tournament admin page.
+    """
+    if not g.user.has_permission('lan_tournament.request_view'):
+        return 0
+
+    return (
+        tournament_request_repository.count_requests_for_party_with_statuses(
+            PartyID(party_id), _PENDING_REQUEST_STATUSES
+        )
+    )
+
+
+@blueprint.get('/for_party/<party_id>/requests')
+@permission_required('lan_tournament.request_view')
+@templated
+def requests_for_party(party_id):
+    """List tournament requests for that party."""
+    party = _get_party_or_404(party_id)
+
+    all_requests = tournament_request_service.get_visible_requests_for_user(
+        party.id, g.user.id, is_admin=True
+    )
+
+    status_counts = Counter(r.status.value for r in all_requests)
+
+    status_filter = None
+    status_filter_raw = request.args.get('status')
+    if status_filter_raw:
+        try:
+            status_filter = TournamentRequestStatus(status_filter_raw)
+        except ValueError:
+            status_filter = None
+
+    visible_requests = (
+        [r for r in all_requests if r.status is status_filter]
+        if status_filter is not None
+        else all_requests
+    )
+
+    pending_requests = [
+        r for r in visible_requests if r.status in _PENDING_REQUEST_STATUSES
+    ]
+    done_requests = [
+        r
+        for r in visible_requests
+        if r.status not in _PENDING_REQUEST_STATUSES
+    ]
+
+    now = datetime.now(UTC)
+    stale_request_ids = {
+        r.id
+        for r in pending_requests
+        if tournament_request_domain_service.is_stale_accepted(r, now)
+    }
+
+    gaps_by_request_id = {
+        r.id: tournament_request_domain_service.analyze_field_gap(r)
+        for r in visible_requests
+    }
+
+    users_by_id = user_service.get_users_indexed_by_id(
+        {r.proposer_id for r in all_requests}
+    )
+
+    return {
+        'party': party,
+        'pending_requests': pending_requests,
+        'done_requests': done_requests,
+        'stale_request_ids': stale_request_ids,
+        'gaps_by_request_id': gaps_by_request_id,
+        'users_by_id': users_by_id,
+        'status_counts': status_counts,
+        'status_filter': status_filter,
+        'total_count': len(all_requests),
+        'elimination_mode_labels': _build_elimination_mode_labels(),
+    }
+
+
+@blueprint.get('/requests/<request_id>')
+@permission_required('lan_tournament.request_view')
+@templated
+def view_request(request_id, erroneous_reject_form=None):
+    """Show a tournament request's detail, with the create-gap preview."""
+    tournament_request = _get_request_or_404(request_id)
+    party = party_service.get_party(tournament_request.party_id)
+
+    gap = tournament_request_domain_service.analyze_field_gap(
+        tournament_request
+    )
+    history = tournament_request_service.get_request_history(
+        tournament_request.id
+    )
+
+    user_ids = {tournament_request.proposer_id}
+    if tournament_request.decided_by_id:
+        user_ids.add(tournament_request.decided_by_id)
+    user_ids.update(
+        entry.initiator_id for entry in history if entry.initiator_id
+    )
+    users_by_id = user_service.get_users_indexed_by_id(user_ids)
+
+    reject_form = (
+        erroneous_reject_form
+        if erroneous_reject_form is not None
+        else TournamentRequestRejectForm()
+    )
+
+    return {
+        'party': party,
+        'tournament_request': tournament_request,
+        'gap': gap,
+        'history': history,
+        'users_by_id': users_by_id,
+        'reject_form': reject_form,
+        'elimination_mode_labels': _build_elimination_mode_labels(),
+    }
+
+
+@blueprint.post('/requests/<request_id>/accept')
+@permission_required('lan_tournament.request_decide')
+def accept_request(request_id):
+    """Accept a tournament request.
+
+    Checked upfront, before the service call: both success and error
+    paths below redirect to `.view_request`/`.requests_for_party`,
+    which themselves require `request_view` -- without this check, a
+    decide-only admin (who lacks `request_view`) would commit the
+    decision, then get a 403 from their own redirect.
+    """
+    if not g.user.has_permission('lan_tournament.request_view'):
+        abort(403)
+
+    tournament_request = _get_request_or_404(request_id)
+
+    match tournament_request_service.accept_request(
+        tournament_request.id, g.user.id
+    ):
+        case Ok(_):
+            flash_success(gettext('Tournament request has been accepted.'))
+        case Err(error_message):
+            flash_error(gettext(error_message))
+
+    return redirect_to('.view_request', request_id=tournament_request.id)
+
+
+@blueprint.post('/requests/<request_id>/reject')
+@permission_required('lan_tournament.request_decide')
+def reject_request(request_id):
+    """Reject a tournament request.
+
+    Checked upfront, before the service call: both the validation-error
+    re-render (`view_request`, whose own decorator re-checks
+    `request_view`) and the success/error redirects need `request_view`
+    -- without this check, a decide-only admin (who lacks
+    `request_view`) would commit the decision, then get a 403 either
+    from the over-long-reason re-render or from their own redirect.
+    """
+    if not g.user.has_permission('lan_tournament.request_view'):
+        abort(403)
+
+    tournament_request = _get_request_or_404(request_id)
+
+    form = TournamentRequestRejectForm(request.form)
+    if not form.validate():
+        # `InputRequired` only rejects a wholly empty field -- a
+        # whitespace-only reason is truthy and slips past it, so an
+        # empty-after-strip reason is the one case with nothing worth
+        # preserving (mirroring the service's own `reason.strip()`
+        # check, and its precedence over every other form validator).
+        if not (form.reason.data or '').strip():
+            flash_error(gettext('A reason is required to reject a request.'))
+            return redirect_to(
+                '.view_request', request_id=tournament_request.id
+            )
+
+        # Any other validator failure (too long, control characters,
+        # or any future one) keeps the typed text -- flash the form's
+        # own message for the field instead of assuming it was the
+        # length check, and re-render with the bound (erroneous) form.
+        error_message = (
+            form.reason.errors[0]
+            if form.reason.errors
+            else 'The reason must not exceed 2000 characters.'
+        )
+        flash_error(gettext(error_message))
+        return view_request(request_id, erroneous_reject_form=form)
+
+    reason = form.reason.data.strip()
+
+    match tournament_request_service.reject_request(
+        tournament_request.id, g.user.id, reason
+    ):
+        case Ok(_):
+            flash_success(gettext('Tournament request has been rejected.'))
+            return redirect_to(
+                '.requests_for_party', party_id=tournament_request.party_id
+            )
+        case Err(error_message):
+            flash_error(gettext(error_message))
+            if error_message in (
+                'The reason must not contain control characters.',
+                'The reason must not exceed 2000 characters.',
+            ):
+                # The form itself didn't catch this (e.g. the control-
+                # character check isn't wired into the form yet) -- the
+                # service did, so preserve the typed text the same way
+                # the form-validation branch above does, instead of
+                # redirecting it into oblivion.
+                return view_request(request_id, erroneous_reject_form=form)
+            return redirect_to(
+                '.requests_for_party', party_id=tournament_request.party_id
+            )
+
+
+def _clear_stale_request_link(form) -> None:
+    """Clear the hidden `from_request_id` and explain why.
+
+    Without this, a re-render after a request-link refusal keeps the
+    same hidden field, so every resubmit of that form is refused
+    again for the same reason -- the admin has no way to proceed
+    except abandoning the form and starting a fresh, unlinked create.
+    """
+    form.from_request_id.data = ''
+    flash_notice(
+        gettext(
+            'This form is no longer linked to a tournament request. '
+            'Submitting it again creates a tournament without a '
+            'request link.'
+        )
+    )
+
+
+def _find_request_for_party(raw_request_id, party_id):
+    """Look up a tournament request and verify it belongs to that party.
+
+    `raw_request_id` arrives from a query string or a hidden form
+    field -- client supplied, so treat it as untrusted: return
+    ``None`` on anything that doesn't parse to a UUID, doesn't exist,
+    or belongs to a different party. There is no silent cross-party
+    fallback.
+    """
+    try:
+        parsed_id = TournamentRequestID(UUID(str(raw_request_id)))
+    except ValueError:
+        return None
+
+    tournament_request = tournament_request_repository.find_request(
+        parsed_id
+    )
+    if tournament_request is None or tournament_request.party_id != party_id:
+        return None
+
+    return tournament_request
+
+
+def _is_request_recreatable(tournament_request) -> bool:
+    """Return whether a create form may be filled/submitted from this request.
+
+    Mirrors `tournament_request_service._is_linkable`'s status check:
+    either `accepted` (linking for the first time) or
+    `tournament_created` with `tournament_deleted` (re-linking after
+    the prior tournament was deleted). This is a UX fast path only --
+    `tournament_service.create_tournament` re-runs the equivalent
+    check under a row lock, which is what actually enforces it.
+    """
+    return (
+        tournament_request.status is TournamentRequestStatus.accepted
+        or tournament_request.tournament_deleted
+    )
+
+
+def _prefill_form_from_request(form, tournament_request):
+    """Prefill the create-tournament form from an accepted request.
+
+    Only fields with an unambiguous `create_tournament` counterpart are
+    copied. `team_size`/`participant_limit` are deliberately left out:
+    they depend on a contestant type (solo vs. team) the request never
+    supplies, so the admin maps them by hand -- see `analyze_field_gap`.
+    """
+    form.from_request_id.data = str(tournament_request.id)
+    form.name.data = tournament_request.name
+    form.game.data = tournament_request.game
+    form.description.data = tournament_request.description
+    form.ruleset.data = tournament_request.special_rules
+    form.game_format.data = tournament_request.game_format.name
+    form.elimination_mode.data = tournament_request.elimination_mode.name
+    form.start_time.data = to_user_timezone(
+        tournament_request.preferred_start_time
+    )
+
+
+def _get_request_or_404(request_id) -> TournamentRequest:
+    # Same parse-before-query reason as _get_tournament_or_404 above.
+    try:
+        request_id = TournamentRequestID(UUID(str(request_id)))
+    except ValueError:
+        abort(404)
+
+    tournament_request = tournament_request_repository.find_request(
+        request_id
+    )
+
+    if tournament_request is None:
+        abort(404)
+
+    return tournament_request
+
+
+@blueprint.get('/requests/<request_id>/update')
+@permission_required('lan_tournament.request_decide')
+@templated
+def update_request_form(request_id, erroneous_form=None):
+    """Show the admin form to edit an open tournament request."""
+    if not g.user.has_permission('lan_tournament.request_view'):
+        abort(403)
+
+    tournament_request = _get_request_or_404(request_id)
+
+    if not tournament_request.is_editable:
+        flash_error(gettext('This request can no longer be edited.'))
+        return redirect_to(
+            '.view_request', request_id=tournament_request.id
+        )
+
+    party = party_service.get_party(tournament_request.party_id)
+
+    if erroneous_form is not None:
+        form = erroneous_form
+    else:
+        form = TournamentRequestUpdateForm(
+            data={
+                'name': tournament_request.name,
+                'game': tournament_request.game,
+                'game_format': tournament_request.game_format.value,
+                'elimination_mode': (
+                    tournament_request.elimination_mode.value
+                ),
+                'team_size': tournament_request.team_size,
+                'participant_limit': tournament_request.participant_limit,
+                'preferred_start_time': to_user_timezone(
+                    tournament_request.preferred_start_time
+                ),
+                'preferred_end_time': to_user_timezone(
+                    tournament_request.preferred_end_time
+                ),
+                'description': tournament_request.description,
+                'special_rules': tournament_request.special_rules or '',
+                'notes': tournament_request.notes or '',
+                'desired_template': (
+                    tournament_request.desired_template or ''
+                ),
+            }
+        )
+    form.set_format_choices()
+
+    return {
+        'party': party,
+        'tournament_request': tournament_request,
+        'form': form,
+        'party_capacity': party.max_ticket_quantity,
+    }
+
+
+@blueprint.post('/requests/<request_id>/update')
+@permission_required('lan_tournament.request_decide')
+def update_request(request_id):
+    """Update an open tournament request (admin edit).
+
+    Refuses upfront, by redirect, once `tournament_request.is_editable`
+    is false (any status but `submitted`) -- `update_request`'s own
+    `expected_status`-narrowed precondition (still effectively
+    `submitted`) stays as the row-locked defense-in-depth for the
+    race between this check and the service's own re-read, not the
+    primary guard.
+    """
+    if not g.user.has_permission('lan_tournament.request_view'):
+        abort(403)
+
+    tournament_request = _get_request_or_404(request_id)
+
+    if not tournament_request.is_editable:
+        flash_error(gettext('This request can no longer be edited.'))
+        return redirect_to(
+            '.view_request', request_id=tournament_request.id
+        )
+
+    party = party_service.get_party(tournament_request.party_id)
+
+    form = TournamentRequestUpdateForm(request.form)
+    form.set_format_choices()
+
+    if not form.validate():
+        return update_request_form(request_id, form)
+
+    try:
+        game_format = GameFormat(form.game_format.data)
+        elimination_mode = EliminationMode(form.elimination_mode.data)
+    except ValueError:
+        flash_error(
+            gettext('Invalid game format or elimination mode selected.')
+        )
+        return update_request_form(request_id, form)
+
+    special_rules = tournament_request_domain_service.normalize_optional_text(
+        form.special_rules.data
+    )
+    notes = tournament_request_domain_service.normalize_optional_text(
+        form.notes.data
+    )
+    desired_template = (
+        tournament_request_domain_service.normalize_optional_text(
+            form.desired_template.data
+        )
+    )
+
+    match tournament_request_service.update_request(
+        tournament_request.id,
+        g.user.id,
+        by='admin',
+        party_capacity=party.max_ticket_quantity,
+        name=form.name.data.strip(),
+        game=form.game.data.strip(),
+        game_format=game_format,
+        elimination_mode=elimination_mode,
+        team_size=form.team_size.data,
+        participant_limit=form.participant_limit.data,
+        preferred_start_time=to_utc(form.preferred_start_time.data),
+        preferred_end_time=to_utc(form.preferred_end_time.data),
+        description=form.description.data.strip(),
+        special_rules=special_rules,
+        notes=notes,
+        desired_template=desired_template,
+    ):
+        case Ok(_):
+            flash_success(gettext('Tournament request has been updated.'))
+            return redirect_to(
+                '.view_request', request_id=tournament_request.id
+            )
+        case Err(error_message):
+            flash_error(gettext(error_message))
+            return update_request_form(request_id, form)
 
 
 @blueprint.get('/tournaments/<tournament_id>/update')
@@ -982,21 +1603,29 @@ def generate_bracket(tournament_id):
 @blueprint.post('/for_party/<party_id>/setup_email_templates')
 @permission_required('lan_tournament.administrate')
 def setup_email_templates_for_party(party_id):
-    """Create default match-ready email snippets for the party's brand."""
+    """Create default tournament notification email snippets (match-ready
+    and request accept/reject) for the party's brand.
+    """
     party = _get_party_or_404(party_id)
     brand = brand_service.get_brand(party.brand_id)
     current_user = g.user
 
-    created = tournament_notification_service.create_match_ready_email_snippets(
-        brand, current_user,
+    created_match_ready = (
+        tournament_notification_service.create_match_ready_email_snippets(
+            brand, current_user,
+        )
     )
-    if created:
+    created_request = (
+        tournament_notification_service
+        .create_tournament_request_email_snippets(brand, current_user)
+    )
+    if created_match_ready or created_request:
         flash_success(
-            gettext('Match notification email templates created.')
+            gettext('Missing tournament notification email templates created.')
         )
     else:
         flash_notice(
-            gettext('Match notification email templates already exist.')
+            gettext('Tournament notification email templates already exist.')
         )
 
     return redirect_to('.overview', party_id=party.id)

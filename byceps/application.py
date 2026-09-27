@@ -149,8 +149,9 @@ def _create_app(
 
     enable_announcements()
 
-    from byceps.services.lan_tournament.notification_handlers import enable_match_notifications
-    enable_match_notifications()
+    if importlib_util.find_spec('byceps.services.lan_tournament.notification_handlers'):
+        from byceps.services.lan_tournament.notification_handlers import enable_match_notifications
+        enable_match_notifications()
 
     if importlib_util.find_spec('byceps.services.pizza_delivery.notification_handlers'):
         from byceps.services.pizza_delivery.notification_handlers import enable_pizza_delivery_notifications

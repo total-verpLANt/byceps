@@ -632,3 +632,307 @@ def test_send_match_ready_emails_both_contestants_receive(
     assert 'B2' in alice_msg.body
     assert 'Alice' in bob_msg.body
     assert 'A1' in bob_msg.body
+
+
+# --------------------------------------------------------------------- #
+# format() error isolation -- item o
+# --------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    'bad_body_template',
+    [
+        pytest.param('{0}', id='IndexError'),
+        pytest.param('{tournament_name.x}', id='AttributeError'),
+        pytest.param('{tournament_name[a]}', id='TypeError'),
+    ],
+)
+@patch(f'{MODULE}.log')
+@patch(f'{MODULE}.email_service')
+@patch(f'{MODULE}.email_footer_service')
+@patch(f'{MODULE}.snippet_service')
+@patch(f'{MODULE}.user_service')
+@patch(f'{MODULE}.get_default_locale')
+def test_malformed_snippet_is_caught_not_raised_for_every_error_type(
+    mock_default_locale,
+    mock_user_service,
+    mock_snippet_service,
+    mock_footer_service,
+    mock_email_service,
+    mock_log,
+    bad_body_template,
+):
+    """A body snippet raising IndexError/AttributeError/TypeError out of
+    `.format()` is logged and skipped, never raised (previously only
+    KeyError/ValueError were caught).
+    """
+    from byceps.services.lan_tournament import (
+        tournament_notification_service as notif,
+    )
+
+    user_id = UserID(generate_uuid())
+
+    mock_default_locale.return_value = Locale('en')
+    mock_user_service.find_email_address.return_value = 'alice@example.com'
+    mock_user_service.find_locale.return_value = None
+
+    def snippet_side_effect(scope, name, language_code):
+        if name == 'email_match_ready_body':
+            return Ok(bad_body_template)
+        elif name == 'email_match_ready_subject':
+            return Ok(SUBJECT_TEMPLATE)
+        return Err(f'Unknown snippet: {name}')
+
+    mock_snippet_service.get_snippet_body.side_effect = snippet_side_effect
+    mock_footer_service.get_footer.return_value = Ok('-- Test Footer')
+
+    # Must not raise.
+    notif._send_email_to_user(
+        user_id=user_id,
+        sender=SENDER,
+        brand=BRAND,
+        tournament_name='CS2 Cup',
+        match_round=3,
+        opponent_name='Bob',
+        opponent_seat='B2',
+        your_seat='A1',
+    )
+
+    mock_email_service.enqueue_message.assert_not_called()
+    mock_log.error.assert_called()
+
+
+@patch(f'{MODULE}.email_service')
+@patch(f'{MODULE}.email_footer_service')
+@patch(f'{MODULE}.snippet_service')
+@patch(f'{MODULE}.user_service')
+@patch(f'{MODULE}.tournament_participant_service')
+@patch(f'{MODULE}.tournament_repository')
+@patch(f'{MODULE}.email_config_service')
+@patch(f'{MODULE}.party_service')
+@patch(f'{MODULE}.brand_service')
+def test_one_bad_recipient_snippet_does_not_abort_the_others(
+    mock_brand_service,
+    mock_party_service,
+    mock_email_config_service,
+    mock_repo,
+    mock_participant_service,
+    mock_user_service,
+    mock_snippet_service,
+    mock_footer_service,
+    mock_email_service,
+):
+    """A `{0}`-style body snippet that only breaks for one recipient's
+    resolved language (de) must not stop the other recipient (en) from
+    getting their match-ready email.
+    """
+    from byceps.services.lan_tournament import tournament_notification_service
+
+    tournament = _make_tournament(contestant_type=ContestantType.SOLO)
+    match = _make_match()
+
+    user_a_id = UserID(generate_uuid())
+    user_b_id = UserID(generate_uuid())
+    participant_a_id = TournamentParticipantID(generate_uuid())
+    participant_b_id = TournamentParticipantID(generate_uuid())
+
+    user_a = _make_user(user_a_id, 'Alice')
+    user_b = _make_user(user_b_id, 'Bob')
+
+    participant_a = TournamentParticipant(
+        id=participant_a_id,
+        user_id=user_a_id,
+        tournament_id=TOURNAMENT_ID,
+        substitute_player=False,
+        team_id=None,
+        created_at=NOW,
+    )
+    participant_b = TournamentParticipant(
+        id=participant_b_id,
+        user_id=user_b_id,
+        tournament_id=TOURNAMENT_ID,
+        substitute_player=False,
+        team_id=None,
+        created_at=NOW,
+    )
+
+    contestant_a = TournamentMatchToContestant(
+        id=TournamentMatchToContestantID(generate_uuid()),
+        tournament_match_id=MATCH_ID,
+        team_id=None,
+        participant_id=participant_a_id,
+        score=None,
+        created_at=NOW,
+    )
+    contestant_b = TournamentMatchToContestant(
+        id=TournamentMatchToContestantID(generate_uuid()),
+        tournament_match_id=MATCH_ID,
+        team_id=None,
+        participant_id=participant_b_id,
+        score=None,
+        created_at=NOW,
+    )
+
+    mock_brand_service.get_brand.return_value = BRAND
+    mock_party_service.get_party.return_value = PARTY
+    mock_email_config_service.get_config.return_value = EMAIL_CONFIG
+    mock_repo.get_tournament.return_value = tournament
+    mock_repo.get_match.return_value = match
+    mock_repo.get_contestants_for_match.return_value = [
+        contestant_a,
+        contestant_b,
+    ]
+    mock_repo.get_participant.side_effect = lambda pid: (
+        participant_a if pid == participant_a_id else participant_b
+    )
+
+    mock_participant_service.get_seats_for_users.return_value = {}
+
+    mock_user_service.find_email_address.side_effect = lambda uid: (
+        'alice@example.com' if uid == user_a_id else 'bob@example.com'
+    )
+    # Alice resolves to 'de' (the broken snippet), Bob to 'en' (fine).
+    mock_user_service.find_locale.side_effect = lambda uid: (
+        Locale('de') if uid == user_a_id else Locale('en')
+    )
+    mock_user_service.get_user.side_effect = lambda uid, **kw: (
+        user_a if uid == user_a_id else user_b
+    )
+
+    def snippet_side_effect(scope, name, language_code):
+        if name == 'email_match_ready_body':
+            if language_code == 'de':
+                return Ok('{0}')  # malformed -- raises IndexError
+            return Ok(BODY_TEMPLATE)
+        elif name == 'email_match_ready_subject':
+            return Ok(SUBJECT_TEMPLATE)
+        return Err(f'Unknown snippet: {name}')
+
+    mock_snippet_service.get_snippet_body.side_effect = snippet_side_effect
+    mock_footer_service.get_footer.return_value = Ok('-- Test Footer')
+
+    with patch(f'{MODULE}.get_default_locale', return_value=Locale('en')):
+        tournament_notification_service.send_match_ready_emails(
+            TOURNAMENT_ID, MATCH_ID
+        )
+
+    # Alice's malformed de snippet is skipped; Bob still gets his email.
+    assert mock_email_service.enqueue_message.call_count == 1
+    message = mock_email_service.enqueue_message.call_args[0][0]
+    assert message.recipients == ['bob@example.com']
+
+
+@patch(f'{MODULE}.log')
+@patch(f'{MODULE}.email_service')
+@patch(f'{MODULE}.email_footer_service')
+@patch(f'{MODULE}.snippet_service')
+@patch(f'{MODULE}.user_service')
+@patch(f'{MODULE}.tournament_participant_service')
+@patch(f'{MODULE}.tournament_repository')
+@patch(f'{MODULE}.email_config_service')
+@patch(f'{MODULE}.party_service')
+@patch(f'{MODULE}.brand_service')
+def test_send_match_ready_emails_isolates_unexpected_recipient_error(
+    mock_brand_service,
+    mock_party_service,
+    mock_email_config_service,
+    mock_repo,
+    mock_participant_service,
+    mock_user_service,
+    mock_snippet_service,
+    mock_footer_service,
+    mock_email_service,
+    mock_log,
+):
+    """An unexpected error unrelated to snippet formatting (e.g. a
+    locale lookup blowing up) for one recipient is logged and does not
+    stop the other recipient's email.
+    """
+    from byceps.services.lan_tournament import tournament_notification_service
+
+    tournament = _make_tournament(contestant_type=ContestantType.SOLO)
+    match = _make_match()
+
+    user_a_id = UserID(generate_uuid())
+    user_b_id = UserID(generate_uuid())
+    participant_a_id = TournamentParticipantID(generate_uuid())
+    participant_b_id = TournamentParticipantID(generate_uuid())
+
+    user_a = _make_user(user_a_id, 'Alice')
+    user_b = _make_user(user_b_id, 'Bob')
+
+    participant_a = TournamentParticipant(
+        id=participant_a_id,
+        user_id=user_a_id,
+        tournament_id=TOURNAMENT_ID,
+        substitute_player=False,
+        team_id=None,
+        created_at=NOW,
+    )
+    participant_b = TournamentParticipant(
+        id=participant_b_id,
+        user_id=user_b_id,
+        tournament_id=TOURNAMENT_ID,
+        substitute_player=False,
+        team_id=None,
+        created_at=NOW,
+    )
+
+    contestant_a = TournamentMatchToContestant(
+        id=TournamentMatchToContestantID(generate_uuid()),
+        tournament_match_id=MATCH_ID,
+        team_id=None,
+        participant_id=participant_a_id,
+        score=None,
+        created_at=NOW,
+    )
+    contestant_b = TournamentMatchToContestant(
+        id=TournamentMatchToContestantID(generate_uuid()),
+        tournament_match_id=MATCH_ID,
+        team_id=None,
+        participant_id=participant_b_id,
+        score=None,
+        created_at=NOW,
+    )
+
+    mock_brand_service.get_brand.return_value = BRAND
+    mock_party_service.get_party.return_value = PARTY
+    mock_email_config_service.get_config.return_value = EMAIL_CONFIG
+    mock_repo.get_tournament.return_value = tournament
+    mock_repo.get_match.return_value = match
+    mock_repo.get_contestants_for_match.return_value = [
+        contestant_a,
+        contestant_b,
+    ]
+    mock_repo.get_participant.side_effect = lambda pid: (
+        participant_a if pid == participant_a_id else participant_b
+    )
+
+    mock_participant_service.get_seats_for_users.return_value = {}
+
+    mock_user_service.find_email_address.side_effect = lambda uid: (
+        'alice@example.com' if uid == user_a_id else 'bob@example.com'
+    )
+
+    def find_locale_side_effect(uid):
+        if uid == user_a_id:
+            raise RuntimeError('locale lookup exploded')
+        return None
+
+    mock_user_service.find_locale.side_effect = find_locale_side_effect
+    mock_user_service.get_user.side_effect = lambda uid, **kw: (
+        user_a if uid == user_a_id else user_b
+    )
+
+    mock_snippet_service.get_snippet_body.side_effect = _snippet_side_effect
+    mock_footer_service.get_footer.return_value = Ok('-- Test Footer')
+
+    with patch(f'{MODULE}.get_default_locale', return_value=Locale('en')):
+        tournament_notification_service.send_match_ready_emails(
+            TOURNAMENT_ID, MATCH_ID
+        )
+
+    assert mock_email_service.enqueue_message.call_count == 1
+    message = mock_email_service.enqueue_message.call_args[0][0]
+    assert message.recipients == ['bob@example.com']
+    mock_log.exception.assert_called_once()

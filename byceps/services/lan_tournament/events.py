@@ -1,11 +1,13 @@
 from dataclasses import dataclass
 
 from byceps.services.core.events import BaseEvent
+from byceps.services.party.models import PartyID
 from byceps.services.user.models import UserID
 
 from .models.tournament import TournamentID
 from .models.tournament_match import TournamentMatchID
 from .models.tournament_participant import TournamentParticipantID
+from .models.tournament_request import TournamentRequestID
 from .models.tournament_status import TournamentStatus
 from .models.tournament_team import TournamentTeamID
 
@@ -155,3 +157,39 @@ class ContestantAdvancedEvent(_BaseMatchEvent):
 @dataclass(frozen=True, kw_only=True)
 class MatchReadyEvent(_BaseMatchEvent):
     pass
+
+
+# tournament request
+
+
+@dataclass(frozen=True, kw_only=True)
+class _BaseTournamentRequestEvent(BaseEvent):
+    request_id: TournamentRequestID
+    party_id: PartyID
+    proposer_id: UserID
+
+
+@dataclass(frozen=True, kw_only=True)
+class TournamentRequestSubmittedEvent(_BaseTournamentRequestEvent):
+    pass
+
+
+@dataclass(frozen=True, kw_only=True)
+class TournamentRequestEditedEvent(_BaseTournamentRequestEvent):
+    pass
+
+
+@dataclass(frozen=True, kw_only=True)
+class TournamentRequestWithdrawnEvent(_BaseTournamentRequestEvent):
+    pass
+
+
+@dataclass(frozen=True, kw_only=True)
+class TournamentRequestAcceptedEvent(_BaseTournamentRequestEvent):
+    decided_by_id: UserID
+
+
+@dataclass(frozen=True, kw_only=True)
+class TournamentRequestRejectedEvent(_BaseTournamentRequestEvent):
+    decided_by_id: UserID
+    reason: str

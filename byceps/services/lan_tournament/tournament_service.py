@@ -1,6 +1,9 @@
 import dataclasses
 from datetime import datetime, UTC
+from typing import TYPE_CHECKING
 from urllib.parse import urlparse
+
+from sqlalchemy.exc import IntegrityError
 
 from byceps.services.party.models import PartyID
 from byceps.services.user.models import UserID
@@ -13,9 +16,12 @@ from . import (
     tournament_orga_repository,
     tournament_participant_service,
     tournament_repository,
+    tournament_request_repository,
+    tournament_request_service,
     tournament_score_service,
     tournament_team_service,
 )
+from .db_error_helpers import extract_constraint_name
 from .models.bracket import Bracket
 from .events import (
     TournamentCreatedEvent,
@@ -30,6 +36,9 @@ from .models.game_format import GameFormat, is_valid_combination
 from .models.elimination_mode import EliminationMode
 from .models.tournament_status import TournamentStatus
 from .tournament_log_service import create_log_entry
+
+if TYPE_CHECKING:
+    from .models.tournament_request import TournamentRequestID
 
 
 # Statuses where only cosmetic fields may be edited.
@@ -122,12 +131,26 @@ def create_tournament(
     group_size_max: int | None = None,
     points_carry_to_losers: bool | None = None,
     position: int | None = None,
+    created_from_request_id: 'TournamentRequestID | None' = None,
+    initiator_id: UserID | None = None,
 ) -> Result[tuple[Tournament, TournamentCreatedEvent], str]:
     """Create a tournament.
 
     SECURITY NOTE: Authorization must be checked at blueprint layer before
     calling this function (requires 'lan_tournament.create' permission).
+
+    `initiator_id` is required when `created_from_request_id` is set:
+    it is who the request-link audit entry is filed under. Passing
+    one without the other is a caller bug, not a user-facing error, so
+    it raises rather than returning `Err`.
     """
+    if created_from_request_id is not None:
+        if initiator_id is None:
+            raise ValueError(
+                'initiator_id is required when created_from_request_id '
+                'is set.'
+            )
+
     # Auto-assign position if not explicitly provided.
     if position is None:
         position = tournament_repository.get_max_position_for_party(party_id) + 1
@@ -182,9 +205,65 @@ def create_tournament(
         group_size_max=group_size_max,
         points_carry_to_losers=points_carry_to_losers,
         position=position,
+        created_from_request_id=created_from_request_id,
     )
 
-    tournament_repository.create_tournament(tournament)
+    try:
+        tournament_repository.create_tournament(
+            tournament, commit=created_from_request_id is None
+        )
+    except IntegrityError as e:
+        tournament_repository.rollback_session()
+        if (
+            extract_constraint_name(e)
+            == 'uq_lan_tournaments_created_from_request_id'
+        ):
+            return Err(
+                'A tournament has already been created from this request.'
+            )
+        raise
+    except Exception:
+        # A DataError/OperationalError from the flush must not leave
+        # the session pending-rollback for the caller.
+        tournament_repository.rollback_session()
+        raise
+
+    if created_from_request_id is not None:
+        if initiator_id is None:
+            # Structurally unreachable -- the guard at the top of this
+            # function already refused this combination. Repeated here
+            # (as a `raise`, not an `assert`, which ruff's bandit
+            # rules flag in non-test code) so the type checker can
+            # narrow `initiator_id` for the call below.
+            raise ValueError(
+                'initiator_id is required when created_from_request_id '
+                'is set.'
+            )
+
+        # The tournament row above is flushed but not yet committed:
+        # lock and re-check the request, then stage its link update
+        # and audit entry in the same transaction, so the two either
+        # both land in the one commit below or neither does (an
+        # unrecoverable error here must not leave a committed
+        # tournament pointing at a request that never got linked).
+        try:
+            link_result = (
+                tournament_request_service.link_created_tournament_flush(
+                    created_from_request_id,
+                    party_id,
+                    tournament.id,
+                    initiator_id,
+                )
+            )
+        except Exception:
+            tournament_repository.rollback_session()
+            raise
+
+        if link_result.is_err():
+            tournament_repository.rollback_session()
+            return Err(link_result.unwrap_err())
+
+        tournament_repository.commit_session()
 
     signals.tournament_created.send(None, event=event)
 
@@ -360,7 +439,12 @@ def delete_tournament(
     6. Participants
     7. Teams
     8. Orga assignments
-    9. Tournament itself
+    9. Tournament request link (`fk_lan_tournament_requests_created_
+       tournament_id` carries no ON DELETE; a request that produced
+       this tournament has its `created_tournament_id` cleared here,
+       and the clearing recorded in its own history, before the
+       tournament row that FK points at is removed)
+    10. Tournament itself
     """
     tournament_repository.lock_tournament_for_update(tournament_id)
 
@@ -414,6 +498,30 @@ def delete_tournament(
         tournament_orga_repository.delete_orgas_for_tournament(
             tournament_id, commit=False
         )
+
+        # Clear the reverse link before the row it points at is
+        # deleted -- migration 016's FK carries no ON DELETE (by
+        # design: the linkage is "removed explicitly at the
+        # application service layer"). Record the clearing in the
+        # request's own history so its timeline shows the tournament
+        # was deleted, not just silently unlinked.
+        unlinked_requests = (
+            tournament_request_repository.unlink_created_tournament_flush(
+                tournament_id
+            )
+        )
+        for request in unlinked_requests:
+            create_log_entry(
+                'tournament-request-tournament-deleted',
+                TournamentID(request.id),
+                initiator_id,
+                data={
+                    'tournament_id': str(tournament_id),
+                    'tournament_name': tournament.name,
+                },
+                commit=False,
+            )
+
         tournament_repository.delete_tournament(tournament_id, commit=False)
 
         tournament_repository.commit_session()

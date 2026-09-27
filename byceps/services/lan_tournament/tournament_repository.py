@@ -1,7 +1,7 @@
 import json
 import logging
 from datetime import datetime
-from typing import TypeVar
+from typing import TYPE_CHECKING, TypeVar, cast
 
 from sqlalchemy import delete, func, select, update
 
@@ -42,6 +42,9 @@ from .models.tournament_participant import (
 from .models.tournament_status import TournamentStatus
 from .models.tournament_team import TournamentTeam, TournamentTeamID
 
+if TYPE_CHECKING:
+    from .models.tournament_request import TournamentRequestID
+
 logger = logging.getLogger(__name__)
 
 _E = TypeVar('_E')
@@ -75,8 +78,8 @@ def _safe_enum_lookup(
         return default
 
 
-def create_tournament(tournament: Tournament) -> None:
-    """Persist a tournament."""
+def create_tournament(tournament: Tournament, *, commit: bool = True) -> None:
+    """Persist a tournament (flush only when `commit` is `False`)."""
     db_tournament = DbTournament(
         tournament.id,
         tournament.party_id,
@@ -127,12 +130,16 @@ def create_tournament(tournament: Tournament) -> None:
         group_size_min=tournament.group_size_min,
         group_size_max=tournament.group_size_max,
         points_carry_to_losers=tournament.points_carry_to_losers,
+        created_from_request_id=tournament.created_from_request_id,
     )
 
     db_tournament.position = tournament.position
 
     db.session.add(db_tournament)
-    db.session.commit()
+    if commit:
+        db.session.commit()
+    else:
+        db.session.flush()
 
 
 def update_tournament(tournament: Tournament) -> None:
@@ -420,6 +427,9 @@ def _db_tournament_to_tournament(
         use_bracket_reset=db_tournament.use_bracket_reset,
         winner_team_id=db_tournament.winner_team_id,
         winner_participant_id=db_tournament.winner_participant_id,
+        created_from_request_id=cast(
+            'TournamentRequestID | None', db_tournament.created_from_request_id
+        ),
     )
 
 

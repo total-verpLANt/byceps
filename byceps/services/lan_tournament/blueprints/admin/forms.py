@@ -1,7 +1,10 @@
+import json
+
 from flask_babel import lazy_gettext
 from wtforms import (
     BooleanField,
     DateTimeLocalField,
+    HiddenField,
     IntegerField,
     SelectField,
     StringField,
@@ -10,7 +13,6 @@ from wtforms import (
 from wtforms.validators import (
     InputRequired,
     Length,
-    NumberRange,
     Optional,
     ValidationError,
 )
@@ -18,6 +20,8 @@ from wtforms.validators import (
 from byceps.services.user import screen_name_validator, user_service
 from byceps.util.l10n import LocalizedForm
 
+from byceps.services.lan_tournament import tournament_request_domain_service
+from byceps.services.lan_tournament.form_validators import SafeNumberRange
 from byceps.services.lan_tournament.models.contestant_type import (
     ContestantType,
 )
@@ -82,7 +86,11 @@ class _BaseForm(LocalizedForm):
         lazy_gettext('Ruleset'), [Optional(), Length(max=10000)]
     )
     start_time = DateTimeLocalField(
-        lazy_gettext('Start time'), validators=[Optional()]
+        lazy_gettext('Start time'),
+        validators=[
+            Optional(),
+            tournament_request_domain_service.year_in_range_validator,
+        ],
     )
     contestant_type = SelectField(
         lazy_gettext('Contestant type'), validators=[Optional()]
@@ -112,15 +120,15 @@ class _BaseForm(LocalizedForm):
     )
     group_size_min = IntegerField(
         lazy_gettext('Min. group size'),
-        [Optional(), NumberRange(min=2)],
+        [Optional(), SafeNumberRange(min=2)],
     )
     group_size_max = IntegerField(
         lazy_gettext('Max. group size'),
-        [Optional(), NumberRange(min=2)],
+        [Optional(), SafeNumberRange(min=2)],
     )
     advancement_count = IntegerField(
         lazy_gettext('Advance per group'),
-        [Optional(), NumberRange(min=1)],
+        [Optional(), SafeNumberRange(min=1)],
     )
     points_carry_to_losers = BooleanField(
         lazy_gettext('Points carry to losers pool'),
@@ -140,7 +148,11 @@ class _BaseForm(LocalizedForm):
 
 
 class TournamentCreateForm(_BaseForm):
-    pass
+    # Set by `create_form` when opened from an accepted tournament
+    # request (`?from_request=<uuid>`); read back by `create`, which
+    # passes it to `tournament_service.create_tournament` to link the
+    # tournament to that request in the same transaction.
+    from_request_id = HiddenField()
 
 
 class TournamentUpdateForm(_BaseForm):
@@ -288,10 +300,200 @@ class MatchUnconfirmForm(LocalizedForm):
     )
 
 
+class TournamentRequestRejectForm(LocalizedForm):
+    reason = TextAreaField(
+        lazy_gettext('Reason'), [InputRequired(), Length(min=1, max=2000)]
+    )
+
+    @staticmethod
+    def validate_reason(form, field):
+        """Mirror `tournament_request_service.reject_request`'s check.
+
+        Without this, a reason containing a disallowed control
+        character (NUL foremost) only fails once it reaches the
+        service, at which point the view's form-error re-render path
+        is the one preserving the submitted text -- so the same check
+        belongs here too, with the identical message, rather than the
+        request only failing downstream.
+        """
+        if field.data is not None and (
+            tournament_request_domain_service.contains_disallowed_control_char(
+                field.data
+            )
+        ):
+            raise ValidationError(
+                lazy_gettext('The reason must not contain control characters.')
+            )
+
+
+_REQUEST_ELIMINATION_MODE_LABELS = {
+    EliminationMode.SINGLE_ELIMINATION: lazy_gettext('Single Elimination'),
+    EliminationMode.DOUBLE_ELIMINATION: lazy_gettext('Double Elimination'),
+    EliminationMode.ROUND_ROBIN: lazy_gettext('Round Robin'),
+    EliminationMode.NONE: lazy_gettext('None'),
+}
+
+
+def _describe_request_elimination_mode_reason(reason: str):
+    """Turn an `allowed_elimination_modes` reason code into text.
+
+    Mirrors the identically-named helper in `blueprints/site/forms.py`
+    byte-for-byte on the msgids, so the two surfaces share one catalog
+    entry per reason instead of two.
+    """
+    if reason.startswith('only_'):
+        game_format = GameFormat[reason.removeprefix('only_').upper()]
+        return lazy_gettext(
+            'Only available for %(format)s', format=game_format.label
+        )
+    if reason.startswith('invalid_for_'):
+        game_format = GameFormat[reason.removeprefix('invalid_for_').upper()]
+        return lazy_gettext(
+            'Not available for %(format)s', format=game_format.label
+        )
+    return reason
+
+
+def _reasons_by_format(
+    mode: EliminationMode,
+    modes_by_format: dict[GameFormat, dict[EliminationMode, str | None]],
+) -> dict[str, str | None]:
+    """Map every `GameFormat` value to `mode`'s reason for that format.
+
+    Mirrors the identically-named helper in `blueprints/site/forms.py`.
+    ``None`` marks `mode` as valid for that format. Serialized to the
+    `<option>`'s `data-reasons` JSON so `lan_tournament_request.js` can
+    re-disable/re-enable options after a client-side game-format
+    switch, with no server round trip and no hardcoded copy of its own.
+    """
+    result: dict[str, str | None] = {}
+    for fmt, modes in modes_by_format.items():
+        reason = modes[mode]
+        result[fmt.value] = (
+            str(_describe_request_elimination_mode_reason(reason))
+            if reason is not None
+            else None
+        )
+    return result
+
+
+class TournamentRequestUpdateForm(LocalizedForm):
+    """Edit an open tournament request. Admin surface.
+
+    Same field set as the site's `TournamentProposeForm`
+    (`blueprints/site/forms.py`). Compromise C2 is the one deliberate
+    difference: `game_format`/`elimination_mode` render as
+    `SelectField`s here rather than the site's `RadioField`s, per the
+    admin design. Invalid elimination modes are rendered `disabled`,
+    with the reason folded into the option label -- decision D10:
+    never hidden.
+    """
+
+    name = StringField(lazy_gettext('Name'), [InputRequired(), Length(max=80)])
+    game = StringField(lazy_gettext('Game'), [InputRequired(), Length(max=80)])
+    game_format = SelectField(lazy_gettext('Game format'), [InputRequired()])
+    elimination_mode = SelectField(
+        lazy_gettext('Elimination mode'), [InputRequired()]
+    )
+    team_size = IntegerField(
+        lazy_gettext('Team size'),
+        [InputRequired(), SafeNumberRange(min=1, max=64)],
+    )
+    participant_limit = IntegerField(
+        lazy_gettext('Participant limit'),
+        [
+            InputRequired(),
+            SafeNumberRange(
+                min=2,
+                max=tournament_request_domain_service.MAX_PARTICIPANT_LIMIT,
+            ),
+        ],
+    )
+    preferred_start_time = DateTimeLocalField(
+        lazy_gettext('Preferred start'),
+        validators=[
+            InputRequired(),
+            tournament_request_domain_service.year_in_range_validator,
+        ],
+    )
+    preferred_end_time = DateTimeLocalField(
+        lazy_gettext('Preferred end'),
+        validators=[
+            InputRequired(),
+            tournament_request_domain_service.year_in_range_validator,
+        ],
+    )
+    description = TextAreaField(
+        lazy_gettext('Short description'), [InputRequired(), Length(max=2000)]
+    )
+    special_rules = TextAreaField(
+        lazy_gettext('Special rules'), [Optional(), Length(max=2000)]
+    )
+    notes = TextAreaField(lazy_gettext('Notes'), [Optional(), Length(max=2000)])
+    desired_template = StringField(
+        lazy_gettext('Desired template'), [Optional(), Length(max=200)]
+    )
+
+    def set_format_choices(self) -> None:
+        """Populate `game_format` and `elimination_mode` choices.
+
+        Mirrors `TournamentProposeForm.set_format_choices`: every
+        elimination mode is listed regardless of the selected game
+        format, so a stale POST never trips a bare "invalid choice"
+        error; only the *rendering* marks the currently-invalid modes
+        disabled. Every `<option>` also carries a `data-reasons` JSON
+        mapping (every `GameFormat` value to that mode's reason, or
+        `None`) and a `data-label-base` (the plain label, no reason
+        suffix), so `lan_tournament_request.js` can rewrite the
+        disabled state and option text after a client-side game-format
+        switch. `validate_request_fields`/`is_valid_combination`
+        (called again in the view) is the real enforcement point.
+        """
+        self.game_format.choices = [
+            (fmt.value, fmt.label) for fmt in GameFormat
+        ]
+
+        try:
+            selected_format = GameFormat(self.game_format.data)
+        except (ValueError, TypeError):
+            selected_format = GameFormat.ONE_V_ONE
+
+        modes_by_format = {
+            fmt: dict(
+                tournament_request_domain_service.allowed_elimination_modes(fmt)
+            )
+            for fmt in GameFormat
+        }
+
+        choices: list[tuple[str, str, dict[str, object]]] = []
+        for mode, reason in modes_by_format[selected_format].items():
+            label = _REQUEST_ELIMINATION_MODE_LABELS[mode]
+            label_text = str(label)
+            render_kw: dict[str, object] = {
+                'data_label_base': label_text,
+                'data_reasons': json.dumps(
+                    _reasons_by_format(mode, modes_by_format)
+                ),
+            }
+            if reason is None:
+                choices.append((mode.value, label_text, render_kw))
+            else:
+                reason_text = _describe_request_elimination_mode_reason(reason)
+                render_kw['disabled'] = True
+                choices.append(
+                    (
+                        mode.value,
+                        f'{label_text} ({reason_text})',
+                        render_kw,
+                    )
+                )
+        self.elimination_mode.choices = choices
+
+
 class HighscoreSubmitForm(LocalizedForm):
     contestant = SelectField(lazy_gettext('Contestant'))
     score = IntegerField(
         lazy_gettext('Score'),
-        validators=[InputRequired(), NumberRange(min=0)],
+        validators=[InputRequired(), SafeNumberRange(min=0)],
     )
     note = StringField(lazy_gettext('Note'))

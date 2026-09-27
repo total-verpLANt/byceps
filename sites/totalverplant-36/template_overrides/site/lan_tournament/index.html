@@ -21,6 +21,13 @@
     <p class="ph-standfirst">Die Setzerei arbeitet bereits an den Tableaus — gespielt wird, da legt sich der Stammtisch fest. Hier erscheinen die Disziplinen, sobald die Auslosung steht und die Anmeldung öffnet.</p>
   </header>
 
+  {%- if g.user.authenticated %}
+  <div class="button-row is-hcentered">
+    <a class="button is-outlined" href="{{ url_for('.propose_form') }}">{{ render_icon('add') }} {{ _('Propose a tournament') }}</a>
+    <a class="button is-outlined" href="{{ url_for('.my_requests') }}">{{ render_icon('clipboard') }} {{ _('My tournament requests') }}</a>
+  </div>
+  {%- endif %}
+
   <div class="main-body-box">
   {%- if tournaments %}
     {# ===== populated: stock .tournament-card markup, re-set as Spielplan rows ===== #}
