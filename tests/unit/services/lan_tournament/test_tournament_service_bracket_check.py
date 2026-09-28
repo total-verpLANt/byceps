@@ -32,6 +32,7 @@ from byceps.services.lan_tournament.models.tournament_status import (
     TournamentStatus,
 )
 from byceps.services.party.models import PartyID
+from byceps.util.result import Ok
 
 from tests.helpers import generate_uuid
 
@@ -114,6 +115,9 @@ def test_start_bracketless_mode_without_matches_succeeds(
     )
 
     mock_repository.get_tournament.return_value = tournament
+    # workspace-pv3b.24: the status is now written through this
+    # targeted, `Result`-returning setter, not the full-row writer.
+    mock_repository.set_tournament_status_flush.return_value = Ok(None)
 
     result = tournament_service.change_status(
         tournament.id, TournamentStatus.ONGOING
@@ -195,6 +199,7 @@ def test_start_bracket_mode_with_matches_succeeds(
     matches, contestants_by_match = _build_valid_se_bracket(tournament.id)
 
     mock_repository.get_tournament.return_value = tournament
+    mock_repository.set_tournament_status_flush.return_value = Ok(None)
     mock_match_repo.get_matches_for_tournament_ordered.return_value = matches
     mock_match_repo.get_contestants_for_tournament.return_value = (
         contestants_by_match
@@ -310,6 +315,7 @@ def test_resume_from_paused_skips_bracket_validation(
     )
 
     mock_repository.get_tournament.return_value = tournament
+    mock_repository.set_tournament_status_flush.return_value = Ok(None)
 
     result = tournament_service.change_status(
         tournament.id, TournamentStatus.ONGOING
@@ -344,6 +350,7 @@ def test_resume_from_paused_succeeds_with_wired_grand_final(
     )
 
     mock_repository.get_tournament.return_value = tournament
+    mock_repository.set_tournament_status_flush.return_value = Ok(None)
     # An empty bracket would fail start validation, were it run.
     mock_match_repo.get_matches_for_tournament_ordered.return_value = []
     mock_match_repo.get_contestants_for_tournament.return_value = {}

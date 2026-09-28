@@ -4,6 +4,7 @@ tests.unit.services.lan_tournament.test_tournament_request_service
 """
 
 from datetime import datetime, UTC
+import json
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -447,6 +448,58 @@ def test_update_request_by_admin_skips_proposer_ownership_check(
 @patch(f'{MOCK_PREFIX}.signals')
 @patch(f'{MOCK_PREFIX}.tournament_log_service')
 @patch(f'{MOCK_PREFIX}.tournament_request_repository')
+def test_admin_may_update_accepted_request(
+    mock_repo, mock_log_service, mock_signals, mock_db
+):
+    """An admin edit keeps an accepted request `accepted`."""
+    existing = _make_request(status=TournamentRequestStatus.accepted)
+    admin_id = UserID(generate_uuid())
+    mock_repo.get_request_for_update.return_value = existing
+
+    result = tournament_request_service.update_request(
+        existing.id,
+        admin_id,
+        by='admin',
+        **_submit_kwargs(name='New Name'),
+    )
+
+    assert result.is_ok()
+    updated, _event = result.unwrap()
+    assert updated.name == 'New Name'
+    assert updated.status is TournamentRequestStatus.accepted
+    mock_repo.update_request_flush.assert_called_once_with(updated)
+
+
+@patch(f'{MOCK_PREFIX}.db')
+@patch(f'{MOCK_PREFIX}.signals')
+@patch(f'{MOCK_PREFIX}.tournament_log_service')
+@patch(f'{MOCK_PREFIX}.tournament_request_repository')
+def test_proposer_may_not_update_accepted_request(
+    mock_repo, mock_log_service, mock_signals, mock_db
+):
+    """The proposer may still edit only `submitted` requests."""
+    existing = _make_request(status=TournamentRequestStatus.accepted)
+    mock_repo.get_request_for_update.return_value = existing
+
+    result = tournament_request_service.update_request(
+        existing.id,
+        existing.proposer_id,
+        by='proposer',
+        **_submit_kwargs(),
+    )
+
+    assert result.is_err()
+    assert result.unwrap_err() == (
+        'Request is no longer in the expected state.'
+    )
+    mock_repo.update_request_flush.assert_not_called()
+    mock_signals.tournament_request_edited.send.assert_not_called()
+
+
+@patch(f'{MOCK_PREFIX}.db')
+@patch(f'{MOCK_PREFIX}.signals')
+@patch(f'{MOCK_PREFIX}.tournament_log_service')
+@patch(f'{MOCK_PREFIX}.tournament_request_repository')
 def test_update_request_expected_status_cannot_widen_past_submitted(
     mock_repo, mock_log_service, mock_signals, mock_db
 ):
@@ -496,6 +549,69 @@ def test_update_request_expected_status_narrowing_still_refuses_mismatch(
         'Request is no longer in the expected state.'
     )
     mock_repo.update_request_flush.assert_not_called()
+
+
+@patch(f'{MOCK_PREFIX}.db')
+@patch(f'{MOCK_PREFIX}.signals')
+@patch(f'{MOCK_PREFIX}.tournament_log_service')
+@patch(f'{MOCK_PREFIX}.tournament_request_repository')
+def test_update_request_logs_previous_values(
+    mock_repo, mock_log_service, mock_signals, mock_db
+):
+    """The edit log records the previous participant limit."""
+    existing = _make_request(participant_limit=32)
+    editor_id = existing.proposer_id
+    mock_repo.get_request_for_update.return_value = existing
+
+    result = tournament_request_service.update_request(
+        existing.id,
+        editor_id,
+        **_submit_kwargs(participant_limit=40),
+    )
+
+    assert result.is_ok()
+
+    _args, kwargs = mock_log_service.create_log_entry.call_args
+    assert kwargs['data']['previous_values'] == {'participant_limit': 32}
+    assert kwargs['data']['new_values'] == {'participant_limit': 40}
+
+
+@patch(f'{MOCK_PREFIX}.db')
+@patch(f'{MOCK_PREFIX}.signals')
+@patch(f'{MOCK_PREFIX}.tournament_log_service')
+@patch(f'{MOCK_PREFIX}.tournament_request_repository')
+def test_update_request_previous_values_are_json_safe(
+    mock_repo, mock_log_service, mock_signals, mock_db
+):
+    """`previous_values` holds JSON-safe display values."""
+    existing = _make_request(
+        elimination_mode=EliminationMode.SINGLE_ELIMINATION,
+        preferred_start_time=datetime(2026, 10, 24, 18, 0, tzinfo=UTC),
+        preferred_end_time=datetime(2026, 10, 24, 22, 0, tzinfo=UTC),
+    )
+    editor_id = existing.proposer_id
+    mock_repo.get_request_for_update.return_value = existing
+
+    result = tournament_request_service.update_request(
+        existing.id,
+        editor_id,
+        **_submit_kwargs(
+            elimination_mode=EliminationMode.DOUBLE_ELIMINATION,
+            preferred_start_time=datetime(2026, 10, 24, 19, 0),
+            preferred_end_time=datetime(2026, 10, 24, 22, 0),
+        ),
+    )
+
+    assert result.is_ok()
+
+    _args, kwargs = mock_log_service.create_log_entry.call_args
+    data = kwargs['data']
+    assert data['previous_values']['preferred_start_time'] == (
+        '2026-10-24T18:00:00+00:00'
+    )
+    assert data['previous_values']['elimination_mode'] == 'SINGLE_ELIMINATION'
+
+    json.dumps(data)
 
 
 # -------------------------------------------------------------------- #
@@ -1237,6 +1353,38 @@ def test_tournament_deleted_property(status, created_tournament_id, expected):
     )
 
     assert request.tournament_deleted is expected
+
+
+# fmt: off
+@pytest.mark.parametrize(
+    ('status', 'expected'),
+    [
+        (TournamentRequestStatus.submitted, True),
+        (TournamentRequestStatus.accepted, True),
+        (TournamentRequestStatus.rejected, False),
+        (TournamentRequestStatus.withdrawn, False),
+        (TournamentRequestStatus.tournament_created, False),
+    ],
+)
+# fmt: on
+def test_is_editable_by_admin_property(status, expected):
+    """Admins may edit `submitted` and `accepted` requests only."""
+    request = _make_request(status=status)
+
+    assert request.is_editable_by_admin is expected
+
+
+def test_is_editable_by_admin_covers_every_status():
+    """Every status is covered by the admin-editable table."""
+    tested_statuses = {
+        TournamentRequestStatus.submitted,
+        TournamentRequestStatus.accepted,
+        TournamentRequestStatus.rejected,
+        TournamentRequestStatus.withdrawn,
+        TournamentRequestStatus.tournament_created,
+    }
+
+    assert tested_statuses == set(TournamentRequestStatus)
 
 
 # -------------------------------------------------------------------- #

@@ -21,6 +21,7 @@ from byceps.services.lan_tournament.models.tournament_status import (
     TournamentStatus,
 )
 from byceps.services.party.models import PartyID
+from byceps.util.result import Ok
 
 from tests.helpers import generate_uuid
 
@@ -59,6 +60,10 @@ def repository():
         patch(f'{_S}.signals'),
         patch(f'{_S}.create_log_entry'),
     ):
+        # workspace-pv3b.24: `change_status` now writes the status
+        # through this targeted, `Result`-returning setter instead of
+        # the full-row `update_tournament`.
+        repository.set_tournament_status_flush.return_value = Ok(None)
         yield repository
 
 

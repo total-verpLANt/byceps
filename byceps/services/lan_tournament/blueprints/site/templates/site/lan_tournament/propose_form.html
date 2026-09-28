@@ -66,7 +66,7 @@
       {%- endif %}
 
       {%- if tournament_request.notes %}
-      <dt>{{ _('Notes') }}</dt>
+      <dt>{{ _('Notes for the orga') }}</dt>
       <dd>{{ tournament_request.notes }}</dd>
       {%- endif %}
 
@@ -114,6 +114,13 @@
   </div>
 
   {%- else %}
+
+  {%- if mode == 'create' and has_ticket is defined and not has_ticket %}
+  <div class="notification color-warning">{{ render_icon('warning') }}
+    {{ _('Ticket required') }}
+    {{ _('You need a ticket for this party to propose a tournament.') }}
+  </div>
+  {%- endif %}
 
   {%- if form and form.errors %}
   <div class="form-error-summary">
@@ -202,7 +209,14 @@
       {{ form_field(form.desired_template) }}
     </section>
 
+    {%- if mode == 'create' and has_ticket is defined and not has_ticket %}
+    <div class="button-row is-hcentered">
+      <button type="submit" class="button color-primary" disabled><span>{{ _('Submit request') }}</span></button>
+      <a class="button is-outlined" href="{{ url_for('.my_requests') }}">{{ _('Cancel') }}</a>
+    </div>
+    {%- else %}
     {{ form_buttons(_('Save') if mode == 'edit' else _('Submit request'), cancel_url=url_for('.my_requests')) }}
+    {%- endif %}
   </form>
 
   <script src="{{ url_for('static', filename='behavior/lan_tournament_request.js') }}"></script>

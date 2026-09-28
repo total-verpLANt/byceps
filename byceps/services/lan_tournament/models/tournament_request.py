@@ -3,7 +3,7 @@ byceps.services.lan_tournament.models.tournament_request
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import NewType
@@ -68,6 +68,13 @@ class TournamentRequest:
         return self.status is TournamentRequestStatus.submitted
 
     @property
+    def is_editable_by_admin(self) -> bool:
+        return self.status in (
+            TournamentRequestStatus.submitted,
+            TournamentRequestStatus.accepted,
+        )
+
+    @property
     def is_terminal(self) -> bool:
         return self.status in _TERMINAL_STATUSES
 
@@ -91,3 +98,4 @@ class TournamentFieldGap:
     supplied: list[str]
     admin_fills: list[str]
     blocking: list[str]
+    info_only: list[str] = field(default_factory=list)

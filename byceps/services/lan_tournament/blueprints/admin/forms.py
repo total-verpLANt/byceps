@@ -302,7 +302,16 @@ class MatchUnconfirmForm(LocalizedForm):
 
 class TournamentRequestRejectForm(LocalizedForm):
     reason = TextAreaField(
-        lazy_gettext('Reason'), [InputRequired(), Length(min=1, max=2000)]
+        lazy_gettext('Reason'),
+        [
+            InputRequired(),
+            Length(
+                max=2000,
+                message=lazy_gettext(
+                    'The reason must not exceed 2000 characters.'
+                ),
+            ),
+        ],
     )
 
     @staticmethod
@@ -327,30 +336,21 @@ class TournamentRequestRejectForm(LocalizedForm):
 
 
 _REQUEST_ELIMINATION_MODE_LABELS = {
-    EliminationMode.SINGLE_ELIMINATION: lazy_gettext('Single Elimination'),
-    EliminationMode.DOUBLE_ELIMINATION: lazy_gettext('Double Elimination'),
-    EliminationMode.ROUND_ROBIN: lazy_gettext('Round Robin'),
-    EliminationMode.NONE: lazy_gettext('None'),
+    EliminationMode.SINGLE_ELIMINATION: lazy_gettext('Single knockout'),
+    EliminationMode.DOUBLE_ELIMINATION: lazy_gettext('Double knockout'),
+    EliminationMode.ROUND_ROBIN: lazy_gettext('Everyone plays everyone'),
+    EliminationMode.NONE: lazy_gettext('No knockout'),
 }
 
 
 def _describe_request_elimination_mode_reason(reason: str):
-    """Turn an `allowed_elimination_modes` reason code into text.
-
-    Mirrors the identically-named helper in `blueprints/site/forms.py`
-    byte-for-byte on the msgids, so the two surfaces share one catalog
-    entry per reason instead of two.
-    """
+    """Turn an `allowed_elimination_modes` reason code into text."""
     if reason.startswith('only_'):
         game_format = GameFormat[reason.removeprefix('only_').upper()]
-        return lazy_gettext(
-            'Only available for %(format)s', format=game_format.label
-        )
+        return lazy_gettext('only %(format)s', format=game_format.label)
     if reason.startswith('invalid_for_'):
         game_format = GameFormat[reason.removeprefix('invalid_for_').upper()]
-        return lazy_gettext(
-            'Not available for %(format)s', format=game_format.label
-        )
+        return lazy_gettext('not with %(format)s', format=game_format.label)
     return reason
 
 
@@ -393,7 +393,7 @@ class TournamentRequestUpdateForm(LocalizedForm):
     game = StringField(lazy_gettext('Game'), [InputRequired(), Length(max=80)])
     game_format = SelectField(lazy_gettext('Game format'), [InputRequired()])
     elimination_mode = SelectField(
-        lazy_gettext('Elimination mode'), [InputRequired()]
+        lazy_gettext('Tournament mode'), [InputRequired()]
     )
     team_size = IntegerField(
         lazy_gettext('Team size'),
@@ -429,7 +429,9 @@ class TournamentRequestUpdateForm(LocalizedForm):
     special_rules = TextAreaField(
         lazy_gettext('Special rules'), [Optional(), Length(max=2000)]
     )
-    notes = TextAreaField(lazy_gettext('Notes'), [Optional(), Length(max=2000)])
+    notes = TextAreaField(
+        lazy_gettext('Notes for the orga'), [Optional(), Length(max=2000)]
+    )
     desired_template = StringField(
         lazy_gettext('Desired template'), [Optional(), Length(max=200)]
     )

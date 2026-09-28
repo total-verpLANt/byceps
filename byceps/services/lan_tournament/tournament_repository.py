@@ -41,6 +41,7 @@ from .models.tournament_participant import (
 )
 from .models.tournament_status import TournamentStatus
 from .models.tournament_team import TournamentTeam, TournamentTeamID
+from .tournament_domain_service import derive_contestant_type
 
 if TYPE_CHECKING:
     from .models.tournament_request import TournamentRequestID
@@ -399,8 +400,10 @@ def _db_tournament_to_tournament(
         max_teams=db_tournament.max_teams,
         min_players_in_team=db_tournament.min_players_in_team,
         max_players_in_team=db_tournament.max_players_in_team,
-        contestant_type=_safe_enum_lookup(
-            ContestantType, db_tournament.contestant_type
+        contestant_type=derive_contestant_type(
+            _safe_enum_lookup(ContestantType, db_tournament.contestant_type),
+            db_tournament.max_players_in_team,
+            db_tournament.min_players_in_team,
         ),
         tournament_status=_safe_enum_lookup(
             TournamentStatus, db_tournament.tournament_status

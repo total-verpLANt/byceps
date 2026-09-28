@@ -311,8 +311,36 @@ def create_form(party_id, erroneous_form=None):
     """Show form to create a tournament."""
     party = _get_party_or_404(party_id)
 
+    # Set below whenever the form on screen was (or was meant to be)
+    # prefilled from a request, so the template can show a provenance
+    # banner and link back to it. Stays `None` for a plain create and
+    # for a request that turned out not to be prefillable -- the
+    # banner would otherwise claim a prefill that never happened.
+    source_request = None
+
     if erroneous_form:
         form = erroneous_form
+        # Same permission gate as the GET prefill branch below: a
+        # forged hidden field must not let a `create`-only admin learn
+        # about a request they cannot view/decide, just because their
+        # submission happened to fail validation.
+        if (
+            erroneous_form.from_request_id.data
+            and g.user.has_permission('lan_tournament.request_view')
+            and g.user.has_permission('lan_tournament.request_decide')
+        ):
+            found_request = _find_request_for_party(
+                erroneous_form.from_request_id.data, party.id
+            )
+            # Same recreatability check as the GET prefill branch
+            # below: a request that moved on (decided by another
+            # admin, withdrawn) since this render's inputs were built
+            # must not keep showing a banner that claims a prefill
+            # `create`'s own re-check would refuse.
+            if found_request is not None and _is_request_recreatable(
+                found_request
+            ):
+                source_request = found_request
     else:
         form = TournamentCreateForm()
 
@@ -341,12 +369,13 @@ def create_form(party_id, erroneous_form=None):
                     )
                 )
             else:
-                source_request = _find_request_for_party(
+                found_request = _find_request_for_party(
                     from_request_raw, party.id
                 )
-                if source_request is not None:
-                    if _is_request_recreatable(source_request):
-                        _prefill_form_from_request(form, source_request)
+                if found_request is not None:
+                    if _is_request_recreatable(found_request):
+                        _prefill_form_from_request(form, found_request)
+                        source_request = found_request
                     else:
                         # The request moved on (decided by another admin,
                         # withdrawn) since whatever link led here, or it
@@ -371,9 +400,28 @@ def create_form(party_id, erroneous_form=None):
     form.set_elimination_mode_choices()
     form.set_score_ordering_choices()
 
+    source_proposer_name = None
+    source_request_blocking_field_labels: list[str] = []
+    if source_request is not None:
+        source_proposer_name = user_service.find_screen_name(
+            source_request.proposer_id
+        )
+        gap = tournament_request_domain_service.analyze_field_gap(
+            source_request
+        )
+        source_request_blocking_field_labels = [
+            str(getattr(form, field_name).label.text)
+            for field_name in gap.blocking
+        ]
+
     return {
         'party': party,
         'form': form,
+        'source_request': source_request,
+        'source_proposer_name': source_proposer_name,
+        'source_request_blocking_field_labels': (
+            source_request_blocking_field_labels
+        ),
     }
 
 
@@ -458,12 +506,21 @@ def create(party_id):
     max_players_in_team = form.max_players_in_team.data
 
     # Clear constraints irrelevant to the selected contestant type.
-    if contestant_type == ContestantType.SOLO:
+    # A blank `contestant_type` still derives to TEAM/SOLO from team
+    # size at the service layer, so branch on that same derived type
+    # here too -- otherwise a blank type deriving to TEAM keeps
+    # `max_players`, which then caps participant joins meant for solo.
+    effective_contestant_type = (
+        tournament_domain_service.derive_contestant_type(
+            contestant_type, max_players_in_team, min_players_in_team
+        )
+    )
+    if effective_contestant_type == ContestantType.SOLO:
         min_teams = None
         max_teams = None
         min_players_in_team = None
         max_players_in_team = None
-    elif contestant_type == ContestantType.TEAM:
+    elif effective_contestant_type == ContestantType.TEAM:
         min_players = None
         max_players = None
 
@@ -627,6 +684,9 @@ _PENDING_REQUEST_STATUSES = frozenset(
     {TournamentRequestStatus.submitted, TournamentRequestStatus.accepted}
 )
 
+# Only `submitted` requests count as open for the nav tab badge.
+_OPEN_REQUEST_STATUSES = frozenset({TournamentRequestStatus.submitted})
+
 
 def _build_elimination_mode_labels() -> dict:
     """Resolve `_REQUEST_ELIMINATION_MODE_LABELS` to plain strings.
@@ -660,7 +720,7 @@ def _pending_request_count_for_nav(party_id) -> int:
 
     return (
         tournament_request_repository.count_requests_for_party_with_statuses(
-            PartyID(party_id), _PENDING_REQUEST_STATUSES
+            PartyID(party_id), _OPEN_REQUEST_STATUSES
         )
     )
 
@@ -692,14 +752,22 @@ def requests_for_party(party_id):
         else all_requests
     )
 
-    pending_requests = [
-        r for r in visible_requests if r.status in _PENDING_REQUEST_STATUSES
-    ]
-    done_requests = [
-        r
-        for r in visible_requests
-        if r.status not in _PENDING_REQUEST_STATUSES
-    ]
+    # Submitted requests lead, then accepted ones; newest first in each.
+    pending_requests = sorted(
+        (r for r in visible_requests if r.status in _PENDING_REQUEST_STATUSES),
+        key=lambda r: (
+            r.status is not TournamentRequestStatus.submitted,
+            -r.created_at.timestamp(),
+        ),
+    )
+    done_requests = sorted(
+        (
+            r
+            for r in visible_requests
+            if r.status not in _PENDING_REQUEST_STATUSES
+        ),
+        key=lambda r: -r.created_at.timestamp(),
+    )
 
     now = datetime.now(UTC)
     stale_request_ids = {
@@ -746,13 +814,30 @@ def view_request(request_id, erroneous_reject_form=None):
         tournament_request.id
     )
 
+    created_tournament = (
+        tournament_service.find_tournament(
+            tournament_request.created_tournament_id
+        )
+        if tournament_request.created_tournament_id
+        else None
+    )
+    proposer_is_orga = (
+        tournament_orga_service.is_orga_for_tournament(
+            tournament_request.proposer_id, created_tournament.id
+        )
+        if created_tournament
+        else False
+    )
+
     user_ids = {tournament_request.proposer_id}
     if tournament_request.decided_by_id:
         user_ids.add(tournament_request.decided_by_id)
-    user_ids.update(
+    initiator_ids = {
         entry.initiator_id for entry in history if entry.initiator_id
-    )
+    }
+    user_ids.update(initiator_ids)
     users_by_id = user_service.get_users_indexed_by_id(user_ids)
+    seats_by_user_id = build_seat_lookup(initiator_ids, party.id)
 
     reject_form = (
         erroneous_reject_form
@@ -766,8 +851,11 @@ def view_request(request_id, erroneous_reject_form=None):
         'gap': gap,
         'history': history,
         'users_by_id': users_by_id,
+        'seats_by_user_id': seats_by_user_id,
         'reject_form': reject_form,
         'elimination_mode_labels': _build_elimination_mode_labels(),
+        'created_tournament': created_tournament,
+        'proposer_is_orga': proposer_is_orga,
     }
 
 
@@ -798,18 +886,19 @@ def accept_request(request_id):
     return redirect_to('.view_request', request_id=tournament_request.id)
 
 
+_REJECT_REASON_ERRORS = frozenset(
+    {
+        'A reason is required to reject a request.',
+        'The reason must not contain control characters.',
+        'The reason must not exceed 2000 characters.',
+    }
+)
+
+
 @blueprint.post('/requests/<request_id>/reject')
 @permission_required('lan_tournament.request_decide')
 def reject_request(request_id):
-    """Reject a tournament request.
-
-    Checked upfront, before the service call: both the validation-error
-    re-render (`view_request`, whose own decorator re-checks
-    `request_view`) and the success/error redirects need `request_view`
-    -- without this check, a decide-only admin (who lacks
-    `request_view`) would commit the decision, then get a 403 either
-    from the over-long-reason re-render or from their own redirect.
-    """
+    """Reject a tournament request."""
     if not g.user.has_permission('lan_tournament.request_view'):
         abort(403)
 
@@ -817,27 +906,13 @@ def reject_request(request_id):
 
     form = TournamentRequestRejectForm(request.form)
     if not form.validate():
-        # `InputRequired` only rejects a wholly empty field -- a
-        # whitespace-only reason is truthy and slips past it, so an
-        # empty-after-strip reason is the one case with nothing worth
-        # preserving (mirroring the service's own `reason.strip()`
-        # check, and its precedence over every other form validator).
+        # Show one error; a blank reason gets the service's required message.
         if not (form.reason.data or '').strip():
-            flash_error(gettext('A reason is required to reject a request.'))
-            return redirect_to(
-                '.view_request', request_id=tournament_request.id
-            )
-
-        # Any other validator failure (too long, control characters,
-        # or any future one) keeps the typed text -- flash the form's
-        # own message for the field instead of assuming it was the
-        # length check, and re-render with the bound (erroneous) form.
-        error_message = (
-            form.reason.errors[0]
-            if form.reason.errors
-            else 'The reason must not exceed 2000 characters.'
-        )
-        flash_error(gettext(error_message))
+            form.reason.errors = [
+                gettext('A reason is required to reject a request.')
+            ]
+        else:
+            form.reason.errors = list(form.reason.errors[:1])
         return view_request(request_id, erroneous_reject_form=form)
 
     reason = form.reason.data.strip()
@@ -850,21 +925,30 @@ def reject_request(request_id):
             return redirect_to(
                 '.requests_for_party', party_id=tournament_request.party_id
             )
+        case Err(error_message) if error_message in _REJECT_REASON_ERRORS:
+            # Whitespace-only input passes `validate()`; `errors` is a tuple.
+            form.reason.errors = [
+                *form.reason.errors,
+                gettext(error_message),
+            ]
+            return view_request(request_id, erroneous_reject_form=form)
         case Err(error_message):
             flash_error(gettext(error_message))
-            if error_message in (
-                'The reason must not contain control characters.',
-                'The reason must not exceed 2000 characters.',
-            ):
-                # The form itself didn't catch this (e.g. the control-
-                # character check isn't wired into the form yet) -- the
-                # service did, so preserve the typed text the same way
-                # the form-validation branch above does, instead of
-                # redirecting it into oblivion.
-                return view_request(request_id, erroneous_reject_form=form)
             return redirect_to(
-                '.requests_for_party', party_id=tournament_request.party_id
+                '.view_request', request_id=tournament_request.id
             )
+
+
+@blueprint.get('/requests/<request_id>/reject')
+@permission_required('lan_tournament.request_decide')
+def reject_request_redirect(request_id):
+    """Redirect a GET on the reject URL to the request detail."""
+    if not g.user.has_permission('lan_tournament.request_view'):
+        abort(403)
+
+    tournament_request = _get_request_or_404(request_id)
+
+    return redirect_to('.view_request', request_id=tournament_request.id)
 
 
 def _clear_stale_request_link(form) -> None:
@@ -927,10 +1011,14 @@ def _is_request_recreatable(tournament_request) -> bool:
 def _prefill_form_from_request(form, tournament_request):
     """Prefill the create-tournament form from an accepted request.
 
-    Only fields with an unambiguous `create_tournament` counterpart are
-    copied. `team_size`/`participant_limit` are deliberately left out:
-    they depend on a contestant type (solo vs. team) the request never
-    supplies, so the admin maps them by hand -- see `analyze_field_gap`.
+    Contestant type is derived from `team_size` (`analyze_field_gap`'s
+    12/6 split): 1 means solo, so the limit maps to `max_players`;
+    anything higher means team, so the limit maps to `max_teams` and
+    the team size fills both `min_players_in_team` and
+    `max_players_in_team`. `create`'s own clearing of the unselected
+    type's fields (its contestant-type branch) is what keeps the
+    other type's fields from leaking through on submit -- this
+    function only ever sets one side.
     """
     form.from_request_id.data = str(tournament_request.id)
     form.name.data = tournament_request.name
@@ -942,6 +1030,14 @@ def _prefill_form_from_request(form, tournament_request):
     form.start_time.data = to_user_timezone(
         tournament_request.preferred_start_time
     )
+    if tournament_request.team_size == 1:
+        form.contestant_type.data = ContestantType.SOLO.name
+        form.max_players.data = tournament_request.participant_limit
+    else:
+        form.contestant_type.data = ContestantType.TEAM.name
+        form.max_teams.data = tournament_request.participant_limit
+        form.min_players_in_team.data = tournament_request.team_size
+        form.max_players_in_team.data = tournament_request.team_size
 
 
 def _get_request_or_404(request_id) -> TournamentRequest:
@@ -965,13 +1061,13 @@ def _get_request_or_404(request_id) -> TournamentRequest:
 @permission_required('lan_tournament.request_decide')
 @templated
 def update_request_form(request_id, erroneous_form=None):
-    """Show the admin form to edit an open tournament request."""
+    """Show the admin form to edit a submitted or accepted request."""
     if not g.user.has_permission('lan_tournament.request_view'):
         abort(403)
 
     tournament_request = _get_request_or_404(request_id)
 
-    if not tournament_request.is_editable:
+    if not tournament_request.is_editable_by_admin:
         flash_error(gettext('This request can no longer be edited.'))
         return redirect_to(
             '.view_request', request_id=tournament_request.id
@@ -1008,32 +1104,35 @@ def update_request_form(request_id, erroneous_form=None):
         )
     form.set_format_choices()
 
+    users_by_id = user_service.get_users_indexed_by_id(
+        {tournament_request.proposer_id}
+    )
+    proposer = users_by_id.get(tournament_request.proposer_id)
+    if proposer is None:
+        proposer_name = str(tournament_request.proposer_id)
+    else:
+        proposer_name = proposer.screen_name or gettext('Deleted user')
+
     return {
         'party': party,
         'tournament_request': tournament_request,
         'form': form,
         'party_capacity': party.max_ticket_quantity,
+        'users_by_id': users_by_id,
+        'proposer_name': proposer_name,
     }
 
 
 @blueprint.post('/requests/<request_id>/update')
 @permission_required('lan_tournament.request_decide')
 def update_request(request_id):
-    """Update an open tournament request (admin edit).
-
-    Refuses upfront, by redirect, once `tournament_request.is_editable`
-    is false (any status but `submitted`) -- `update_request`'s own
-    `expected_status`-narrowed precondition (still effectively
-    `submitted`) stays as the row-locked defense-in-depth for the
-    race between this check and the service's own re-read, not the
-    primary guard.
-    """
+    """Update a submitted or accepted tournament request (admin edit)."""
     if not g.user.has_permission('lan_tournament.request_view'):
         abort(403)
 
     tournament_request = _get_request_or_404(request_id)
 
-    if not tournament_request.is_editable:
+    if not tournament_request.is_editable_by_admin:
         flash_error(gettext('This request can no longer be edited.'))
         return redirect_to(
             '.view_request', request_id=tournament_request.id
@@ -1332,12 +1431,21 @@ def update(tournament_id):
     max_players_in_team = form.max_players_in_team.data
 
     # Clear constraints irrelevant to the selected contestant type.
-    if contestant_type == ContestantType.SOLO:
+    # A blank `contestant_type` still derives to TEAM/SOLO from team
+    # size at the service layer, so branch on that same derived type
+    # here too -- otherwise a blank type deriving to TEAM keeps
+    # `max_players`, which then caps participant joins meant for solo.
+    effective_contestant_type = (
+        tournament_domain_service.derive_contestant_type(
+            contestant_type, max_players_in_team, min_players_in_team
+        )
+    )
+    if effective_contestant_type == ContestantType.SOLO:
         min_teams = None
         max_teams = None
         min_players_in_team = None
         max_players_in_team = None
-    elif contestant_type == ContestantType.TEAM:
+    elif effective_contestant_type == ContestantType.TEAM:
         min_players = None
         max_players = None
 

@@ -112,6 +112,15 @@ def test_admin_request_update_form_accepts_participant_limit_at_the_cap(app):
         assert not form.participant_limit.errors
 
 
+def test_admin_request_update_form_notes_label_is_notes_for_the_orga(app):
+    """Issue 12: the request-specific label, not the shared "Notes"
+    msgid used elsewhere in the module."""
+    with app.test_request_context('/'):
+        form = TournamentRequestUpdateForm(MultiDict(_BASE_FORM_DATA))
+
+        assert form.notes.label.text == 'Notes for the orga'
+
+
 # -------------------------------------------------------------------- #
 # I1 -- 309/4300-digit ints must not crash NumberRange/SafeNumberRange
 

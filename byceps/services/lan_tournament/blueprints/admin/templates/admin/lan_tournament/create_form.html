@@ -10,12 +10,28 @@
 {%- endblock %}
 
 {% block before_body %}
+{% if source_request %}
+{{ render_backlink(url_for('.view_request', request_id=source_request.id), _('Tournament request #%(number)s', number='%04d'|format(source_request.number))) }}
+{% else %}
 {{ render_backlink(url_for('.index', party_id=party.id), _('Tournaments')) }}
+{% endif %}
 {%- endblock %}
 
 {% block body %}
 
   <h1 class="title">{{ page_title }}</h1>
+
+  {# Provenance banner: what was copied from the request, what has no #}
+  {# create-form counterpart, and what still blocks its creation. #}
+  {% if source_request %}
+  <div class="notification color-info block">
+    <p>{{ _('Prefilled from request #%(number)s by %(name)s.', number='%04d'|format(source_request.number), name=source_proposer_name or _('Unknown')) }} {{ _('Team size: %(team_size)s, limit: %(limit)s.', team_size=source_request.team_size, limit=source_request.participant_limit) }}</p>
+    <p>{{ _('Preferred end (not a field here):') }} {{ source_request.preferred_end_time|dateformat }}, {{ source_request.preferred_end_time|timeformat('short') }}</p>
+    {% if source_request_blocking_field_labels %}
+    <p>{{ _('Still missing before this request can become a tournament: %(fields)s.', fields=source_request_blocking_field_labels|join(', ')) }}</p>
+    {% endif %}
+  </div>
+  {% endif %}
 
   <form action="{{ url_for('.create', party_id=party.id) }}" method="post">
     {{ form.from_request_id() }}

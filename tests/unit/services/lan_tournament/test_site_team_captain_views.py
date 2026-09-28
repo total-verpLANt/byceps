@@ -96,6 +96,8 @@ def _make_tournament(
     t.elimination_mode = EliminationMode.SINGLE_ELIMINATION
     t.contestant_type = ContestantType.TEAM
     t.max_players = None
+    t.max_players_in_team = None
+    t.min_players_in_team = None
     return t
 
 

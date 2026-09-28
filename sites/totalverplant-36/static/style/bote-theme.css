@@ -28,15 +28,14 @@ html[data-theme="dark"] {
 /* Smooth the flip */
 body { transition: background-color 0.25s ease, color 0.25s ease; }
 
-/* ---------- Paper grain: dark vignette + faint light flecks ---------- */
-html[data-theme="dark"] body::before {
-  background-image:
-    radial-gradient(ellipse at center, transparent 58%, rgba(0,0,0,0.40) 100%),
-    radial-gradient(circle at 25% 25%, rgba(255,255,255,0.022) 1px, transparent 1.5px),
-    radial-gradient(circle at 75% 75%, rgba(255,255,255,0.022) 1px, transparent 1.5px);
-  background-size: auto, 8px 8px, 8px 8px;
-  mix-blend-mode: normal;
-  opacity: 1;
+/* ---------- Paper ground: faint light flecks + desk shade ---------- */
+html[data-theme="dark"] {
+  --groundTex:
+    radial-gradient(circle at 25% 25%, color-mix(in srgb, var(--ink) 2.4%, transparent) 1px, transparent 1.5px),
+    radial-gradient(circle at 75% 75%, color-mix(in srgb, var(--ink) 2.4%, transparent) 1px, transparent 1.5px);
+  --groundTexSize: 8px 8px, 8px 8px;
+  --groundShadeInk: black;
+  --groundShadeK: 0.40;
 }
 
 /* ---------- Plain panels inherit byceps core's hardcoded #ffffff

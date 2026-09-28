@@ -56,6 +56,7 @@ from .models.contestant_type import ContestantType
 from .tournament_domain_service import (
     contestant_id,
     compute_ffa_cumulative_standings,
+    derive_contestant_type,
     determine_match_winner,
     generate_round_robin_schedule,
     map_placement_to_points,
@@ -129,12 +130,17 @@ def set_seed(
     from .events import MatchCreatedEvent
     from .models.contestant_type import ContestantType
 
-    # Get tournament to check contestant type
+    # Get tournament to check contestant type. A legacy row can still
+    # have a NULL contestant type; derive it from team size in memory
+    # rather than persisting it here (no lock is held in this path).
     tournament = tournament_repository.get_tournament(tournament_id)
-    if tournament.contestant_type is None:
-        return Err('Tournament contestant type is not set.')
+    contestant_type = derive_contestant_type(
+        tournament.contestant_type,
+        tournament.max_players_in_team,
+        tournament.min_players_in_team,
+    )
 
-    is_team_tournament = tournament.contestant_type == ContestantType.TEAM
+    is_team_tournament = contestant_type == ContestantType.TEAM
 
     now = datetime.now(UTC)
 
@@ -320,10 +326,19 @@ def _prepare_bracket_generation(
             ' and rebuild.'
         )
 
-    # Get tournament to check contestant type.
+    # Get tournament to check contestant type. A legacy row can still
+    # have a NULL contestant type; derive it from team size in memory
+    # for the rest of this call (and its caller), rather than
+    # persisting it here.
     tournament = tournament_repository.get_tournament(tournament_id)
-    if tournament.contestant_type is None:
-        return Err('Tournament contestant type is not set.')
+    tournament = replace(
+        tournament,
+        contestant_type=derive_contestant_type(
+            tournament.contestant_type,
+            tournament.max_players_in_team,
+            tournament.min_players_in_team,
+        ),
+    )
 
     # Get contestants (participants or teams).
     if tournament.contestant_type == ContestantType.TEAM:
