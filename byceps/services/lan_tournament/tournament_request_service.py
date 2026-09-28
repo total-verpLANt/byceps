@@ -5,7 +5,9 @@ byceps.services.lan_tournament.tournament_request_service
 
 import dataclasses
 from datetime import datetime, UTC
+from enum import Enum
 import logging
+from typing import cast
 
 from sqlalchemy.exc import IntegrityError
 
@@ -68,6 +70,13 @@ MAX_OPEN_REQUESTS_PER_PROPOSER = 3
 # `status in _..._ALLOWED_STATUSES and (expected_status is None or
 # status is expected_status)` check.
 _UPDATE_ALLOWED_STATUSES = frozenset({TournamentRequestStatus.submitted})
+# Admins may also edit `accepted` requests.
+_ADMIN_UPDATE_ALLOWED_STATUSES = frozenset(
+    {
+        TournamentRequestStatus.submitted,
+        TournamentRequestStatus.accepted,
+    }
+)
 _WITHDRAW_ALLOWED_STATUSES = frozenset({TournamentRequestStatus.submitted})
 _ACCEPT_ALLOWED_STATUSES = frozenset({TournamentRequestStatus.submitted})
 _REJECT_ALLOWED_STATUSES = frozenset(
@@ -231,6 +240,17 @@ def submit_request(
     return Err('Could not allocate a request number.')
 
 
+def _display_value(value: object) -> str | int | None:
+    """Return `value` in a JSON-safe, log-friendly display form."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, Enum):
+        return value.name
+    return cast('str | int', value)
+
+
 def update_request(
     request_id: TournamentRequestID,
     editor_id: UserID,
@@ -254,8 +274,13 @@ def update_request(
     """Edit an open tournament request's fields, re-validating them."""
     request = tournament_request_repository.get_request_for_update(request_id)
 
+    allowed_statuses = (
+        _ADMIN_UPDATE_ALLOWED_STATUSES
+        if by == 'admin'
+        else _UPDATE_ALLOWED_STATUSES
+    )
     if not (
-        request.status in _UPDATE_ALLOWED_STATUSES
+        request.status in allowed_statuses
         and (expected_status is None or request.status is expected_status)
     ):
         return Err('Request is no longer in the expected state.')
@@ -323,6 +348,15 @@ def update_request(
         for field in _EDITABLE_FIELDS
         if getattr(request, field) != new_values[field]
     ]
+    previous_values = {
+        field: _display_value(getattr(request, field))
+        for field in changed_fields
+    }
+    log_new_values = {
+        field: _display_value(new_values[field])
+        for field in changed_fields
+        if field in ('team_size', 'participant_limit')
+    }
 
     now = datetime.now(UTC)
     updated = dataclasses.replace(
@@ -348,7 +382,12 @@ def update_request(
         'tournament-request-edited',
         TournamentID(updated.id),
         editor_id,
-        data={'changed_fields': changed_fields, 'by': by},
+        data={
+            'changed_fields': changed_fields,
+            'by': by,
+            'previous_values': previous_values,
+            'new_values': log_new_values,
+        },
         commit=False,
     )
 

@@ -3,7 +3,7 @@ byceps.services.lan_tournament.blueprints.site.forms
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 """
 
-from flask_babel import lazy_gettext
+from flask_babel import gettext, lazy_gettext
 from wtforms import (
     BooleanField,
     DateTimeLocalField,
@@ -12,7 +12,13 @@ from wtforms import (
     StringField,
     TextAreaField,
 )
-from wtforms.validators import InputRequired, Length, Optional
+from wtforms.validators import (
+    InputRequired,
+    Length,
+    Optional,
+    StopValidation,
+    ValidationError,
+)
 
 from byceps.services.lan_tournament import tournament_request_domain_service
 from byceps.services.lan_tournament.form_validators import SafeNumberRange
@@ -101,23 +107,30 @@ def elimination_mode_label(mode: EliminationMode):
     return _ELIMINATION_MODE_LABELS[mode]
 
 
-def _describe_elimination_mode_reason(reason: str):
-    """Turn a domain-service reason code into a human-readable string.
+_REQUEST_MODE_LABELS = {
+    EliminationMode.SINGLE_ELIMINATION: lazy_gettext('Single knockout'),
+    EliminationMode.DOUBLE_ELIMINATION: lazy_gettext('Double knockout'),
+    EliminationMode.ROUND_ROBIN: lazy_gettext('Everyone plays everyone'),
+    EliminationMode.NONE: lazy_gettext('No knockout'),
+}
 
-    `allowed_elimination_modes` names a reason `only_<format>` when
-    exactly one other game format accepts the mode, or
-    `invalid_for_<format>` otherwise; both name a `GameFormat` member
-    by its lower-cased `name`.
-    """
+
+def request_mode_label(mode: EliminationMode) -> str:
+    """Return the request flow's label for an elimination mode."""
+    return str(_REQUEST_MODE_LABELS[mode])
+
+
+def _describe_elimination_mode_reason(reason: str):
+    """Turn a domain-service reason code into a readable string."""
     if reason.startswith('only_'):
         game_format = GameFormat[reason.removeprefix('only_').upper()]
         return lazy_gettext(
-            'Only available for %(format)s', format=game_format.label
+            'only %(format)s', format=game_format_label(game_format)
         )
     if reason.startswith('invalid_for_'):
         game_format = GameFormat[reason.removeprefix('invalid_for_').upper()]
         return lazy_gettext(
-            'Not available for %(format)s', format=game_format.label
+            'not with %(format)s', format=game_format_label(game_format)
         )
     return reason
 
@@ -147,55 +160,206 @@ def _reasons_by_format(
     return result
 
 
+_REQUIRED_FIELD_MESSAGE = lazy_gettext('Required field')
+
+
+class _RequiredStripped:
+    """Reject empty or whitespace-only input."""
+
+    field_flags = {'required': True}
+
+    def __call__(self, form, field) -> None:
+        if not (field.data or '').strip():
+            raise StopValidation(_REQUIRED_FIELD_MESSAGE)
+
+
+_required_stripped = _RequiredStripped()
+
+
+class _ParticipantLimitRange(SafeNumberRange):
+    """`SafeNumberRange` with a message that depends on which bound
+    failed.
+
+    Below `min`, the message names the real minimum. Above `max`, the
+    message must never repeat `MAX_PARTICIPANT_LIMIT` -- that number
+    is only this form's technical ceiling; the real upper bound is the
+    party's ticket capacity, which `tournament_request_domain_service`
+    enforces separately with its own message. One validator object
+    still carries `.min`/`.max` (inherited unchanged), which
+    `propose_form.html` reads via `selectattr('max', 'defined')`.
+    """
+
+    def __init__(
+        self, *, min=None, max=None, min_message=None, max_message=None
+    ):
+        super().__init__(min=min, max=max)
+        self.min_message = min_message
+        self.max_message = max_message
+
+    def __call__(self, form, field):
+        data = field.data
+        if data is None:
+            # `IntegerField` already reports its own "Not a valid
+            # integer value." for non-integer input (`2e1`, `abc`,
+            # `2.5`); do not also raise a range message here, which
+            # would repeat `.max` (1024) for a value that never
+            # reached a numeric comparison.
+            return
+        if self.min is not None and data < self.min:
+            raise ValidationError(
+                self.min_message % dict(min=self.min, max=self.max)
+            )
+        if self.max is not None and data > self.max:
+            raise ValidationError(
+                self.max_message % dict(min=self.min, max=self.max)
+            )
+
+
+_GAME_FORMAT_METADATA = {
+    GameFormat.ONE_V_ONE: (
+        lazy_gettext('One on one'),
+        lazy_gettext('Duel'),
+    ),
+    GameFormat.FREE_FOR_ALL: (
+        lazy_gettext('Free-for-all'),
+        lazy_gettext('Free-for-All'),
+    ),
+    GameFormat.HIGHSCORE: (
+        lazy_gettext('Highscore'),
+        # Deliberately not the shared `Leaderboard` msgid (nav tab,
+        # already "Rangliste"): the draft's subtitle here is
+        # "Bestenliste", a different word for a different UI spot.
+        lazy_gettext('Ranking'),
+    ),
+}
+
+
+def game_format_label(fmt: GameFormat) -> str:
+    """Return the label of a game format."""
+    return str(_GAME_FORMAT_METADATA[fmt][0])
+
+
+_ELIMINATION_MODE_DESCRIPTIONS = {
+    EliminationMode.SINGLE_ELIMINATION: lazy_gettext('Whoever loses is out.'),
+    EliminationMode.DOUBLE_ELIMINATION: lazy_gettext(
+        'A second chance in the losers bracket.'
+    ),
+    EliminationMode.ROUND_ROBIN: lazy_gettext(
+        'League, everyone plays everyone.'
+    ),
+    EliminationMode.NONE: lazy_gettext('Leaderboard only, no rounds.'),
+}
+
+
+_END_BEFORE_START_MSGID = 'End is before the start (%(time)s)'
+
+
 class TournamentProposeForm(LocalizedForm):
     """Propose a new tournament, or edit one still in `submitted` status."""
 
-    name = StringField(lazy_gettext('Name'), [InputRequired(), Length(max=80)])
-    game = StringField(lazy_gettext('Game'), [InputRequired(), Length(max=80)])
-    game_format = RadioField(lazy_gettext('Game format'), [InputRequired()])
+    name = StringField(
+        lazy_gettext('Tournament name'), [_required_stripped, Length(max=80)]
+    )
+    game = StringField(
+        lazy_gettext('Game'), [_required_stripped, Length(max=80)]
+    )
+    game_format = RadioField(
+        lazy_gettext('Game format'),
+        [InputRequired(message=_REQUIRED_FIELD_MESSAGE)],
+    )
     elimination_mode = RadioField(
-        lazy_gettext('Elimination mode'), [InputRequired()]
+        lazy_gettext('Tournament mode'),
+        [InputRequired(message=_REQUIRED_FIELD_MESSAGE)],
     )
     team_size = IntegerField(
         lazy_gettext('Team size'),
-        [InputRequired(), SafeNumberRange(min=1, max=64)],
+        [
+            InputRequired(message=_REQUIRED_FIELD_MESSAGE),
+            SafeNumberRange(min=1, max=64),
+        ],
     )
     participant_limit = IntegerField(
         lazy_gettext('Participant limit'),
         [
-            InputRequired(),
-            SafeNumberRange(
+            InputRequired(message=_REQUIRED_FIELD_MESSAGE),
+            _ParticipantLimitRange(
                 min=2,
                 max=tournament_request_domain_service.MAX_PARTICIPANT_LIMIT,
+                min_message=lazy_gettext('Enter at least %(min)s.'),
+                max_message=lazy_gettext('This limit is too high.'),
             ),
         ],
     )
     preferred_start_time = DateTimeLocalField(
         lazy_gettext('Preferred start'),
         validators=[
-            InputRequired(),
+            InputRequired(message=_REQUIRED_FIELD_MESSAGE),
             tournament_request_domain_service.year_in_range_validator,
         ],
     )
     preferred_end_time = DateTimeLocalField(
         lazy_gettext('Preferred end'),
         validators=[
-            InputRequired(),
+            InputRequired(message=_REQUIRED_FIELD_MESSAGE),
             tournament_request_domain_service.year_in_range_validator,
         ],
     )
     description = TextAreaField(
-        lazy_gettext('Short description'), [InputRequired(), Length(max=2000)]
+        lazy_gettext('Short description'),
+        [_required_stripped, Length(max=2000)],
     )
     special_rules = TextAreaField(
         lazy_gettext('Special rules'), [Optional(), Length(max=2000)]
     )
     notes = TextAreaField(
-        lazy_gettext('Notes'), [Optional(), Length(max=2000)]
+        lazy_gettext('Notes for the orga'),
+        [Optional(), Length(max=2000)],
+        id='request_notes',
     )
     desired_template = StringField(
         lazy_gettext('Desired template'), [Optional(), Length(max=200)]
     )
+
+    def validate_preferred_end_time(self, field) -> None:
+        """Reject an end time before the start time."""
+        start = self.preferred_start_time.data
+        if field.data is not None and start is not None and field.data < start:
+            raise ValidationError(
+                gettext(
+                    _END_BEFORE_START_MSGID,
+                    time=start.strftime('%H:%M'),
+                )
+            )
+
+    def error_summary(self) -> list[tuple[str, str, str]]:
+        """Map each field error to the draft's short summary phrase."""
+        required_field_text = str(_REQUIRED_FIELD_MESSAGE)
+        too_small_prefix = str(
+            gettext('Enter at least %(min)s.', min=2)
+        ).rstrip('.')
+        before_start_prefix = str(gettext(_END_BEFORE_START_MSGID)).split(
+            '%(time)s'
+        )[0]
+
+        summary: list[tuple[str, str, str]] = []
+        for name, errors in self.errors.items():
+            field = self[name]
+            for error in errors:
+                error_text = str(error)
+                if error_text == required_field_text:
+                    phrase = str(gettext('is missing'))
+                elif name == 'participant_limit' and error_text.startswith(
+                    too_small_prefix
+                ):
+                    phrase = str(gettext('is too small'))
+                elif name == 'preferred_end_time' and error_text.startswith(
+                    before_start_prefix
+                ):
+                    phrase = str(gettext('is before the start'))
+                else:
+                    phrase = error_text
+                summary.append((field.id, str(field.label.text), phrase))
+        return summary
 
     # Populated by `set_format_choices`: one dict per elimination mode,
     # `{'value', 'label', 'disabled', 'reason', 'reasons'}`, in the
@@ -206,6 +370,10 @@ class TournamentProposeForm(LocalizedForm):
     # valid), so `lan_tournament_request.js` can re-evaluate every
     # option after a client-side game-format switch.
     elimination_mode_options: list[dict[str, object]]
+
+    # Populated by `set_format_choices`: one dict per `GameFormat`,
+    # `{'value', 'label', 'subtitle'}`, in `GameFormat` enum order.
+    game_format_options: list[dict[str, object]]
 
     def set_format_choices(self) -> None:
         """Populate `game_format` and `elimination_mode` choices.
@@ -224,6 +392,14 @@ class TournamentProposeForm(LocalizedForm):
         """
         self.game_format.choices = [
             (fmt.value, fmt.label) for fmt in GameFormat
+        ]
+        self.game_format_options = [
+            {
+                'value': fmt.value,
+                'label': label,
+                'subtitle': subtitle,
+            }
+            for fmt, (label, subtitle) in _GAME_FORMAT_METADATA.items()
         ]
 
         try:
@@ -248,7 +424,7 @@ class TournamentProposeForm(LocalizedForm):
         self.elimination_mode_options = []
         for mode, raw_reason in modes_by_format[selected_format].items():
             reason = raw_reason if has_selected_format else None
-            label = _ELIMINATION_MODE_LABELS[mode]
+            label = request_mode_label(mode)
             self.elimination_mode.choices.append((mode.value, label))
             self.elimination_mode_options.append(
                 {
@@ -261,5 +437,6 @@ class TournamentProposeForm(LocalizedForm):
                         else None
                     ),
                     'reasons': _reasons_by_format(mode, modes_by_format),
+                    'description': _ELIMINATION_MODE_DESCRIPTIONS[mode],
                 }
             )

@@ -19,32 +19,62 @@
     --border-radius: 0;              /* newspapers don't have rounded corners */
     --bote-stamp-radius: 2px;        /* reintroduce only on ticket-coupon CTA */
     --grain: url("grain.svg#g");
+
+    /* Ground: texture tile + horizontal desk shade. Dark mode swaps these. */
+    --groundTex: var(--grain);
+    --groundTexSize: 240px 240px;
+    --groundShadeInk: var(--redDeep);
+    --groundShadeK: 0.025;
+    /* Column-mean of the former viewport ellipse; x only, so it never stretches. */
+    --groundShade: linear-gradient(to right,
+      color-mix(in srgb, var(--groundShadeInk) calc(var(--groundShadeK) * 55.15%), transparent) 0%,
+      color-mix(in srgb, var(--groundShadeInk) calc(var(--groundShadeK) * 40.46%), transparent) 5%,
+      color-mix(in srgb, var(--groundShadeInk) calc(var(--groundShadeK) * 26.56%), transparent) 10%,
+      color-mix(in srgb, var(--groundShadeInk) calc(var(--groundShadeK) * 17.96%), transparent) 15%,
+      color-mix(in srgb, var(--groundShadeInk) calc(var(--groundShadeK) * 12.37%), transparent) 20%,
+      color-mix(in srgb, var(--groundShadeInk) calc(var(--groundShadeK) * 6.08%), transparent) 30%,
+      color-mix(in srgb, var(--groundShadeInk) calc(var(--groundShadeK) * 2.72%), transparent) 50%,
+      color-mix(in srgb, var(--groundShadeInk) calc(var(--groundShadeK) * 6.08%), transparent) 70%,
+      color-mix(in srgb, var(--groundShadeInk) calc(var(--groundShadeK) * 12.37%), transparent) 80%,
+      color-mix(in srgb, var(--groundShadeInk) calc(var(--groundShadeK) * 17.96%), transparent) 85%,
+      color-mix(in srgb, var(--groundShadeInk) calc(var(--groundShadeK) * 26.56%), transparent) 90%,
+      color-mix(in srgb, var(--groundShadeInk) calc(var(--groundShadeK) * 40.46%), transparent) 95%,
+      color-mix(in srgb, var(--groundShadeInk) calc(var(--groundShadeK) * 55.15%), transparent) 100%);
   }
 
   *, *::before, *::after { box-sizing: border-box; }
   html { scroll-behavior: smooth; }
   html, body { margin: 0; padding: 0; }
+  /* Paper ground on body: propagates to the canvas and tiles over the full
+     document height (scrolling, full-page capture, print). No fixed layer. */
   body {
-    background: var(--paper);
+    background-color: var(--paper);
+    background-image: var(--groundShade), var(--groundTex);
+    background-size: 100% 100%, var(--groundTexSize);
+    background-repeat: repeat;
     color: var(--ink);
     font-family: var(--body);
     overflow-x: hidden;
     position: relative;
     font-weight: 600;
   }
-  /* paper grain + edge vignette — replaces L25-28 invisible dot pattern */
-  body::before {
-    content: "";
-    position: fixed; inset: 0;
-    pointer-events: none;
-    z-index: 0;
-    background-image:
-      radial-gradient(ellipse at center, transparent 55%, rgba(116,23,15,0.045) 100%),
-      var(--grain);
-    mix-blend-mode: multiply;
-    opacity: 0.55;
-  }
+  /* No longer lifts content over a ground layer. Kept because it contains the
+     z-index:-1 pull-quote mark inside its sheet and keeps the fixed .mobile-cta
+     (z 80, inside main) below the sticky header (z 70). */
   body > * { position: relative; z-index: 1; }
+
+  /* Flat fallback: plain paper, sheet edge drawn in ink. */
+  @media (prefers-reduced-transparency: reduce), (forced-colors: active) {
+    body { background-image: none; }
+    .bote-page,
+    .page-header-fixed,
+    .page-footer-modern { border-left-color: var(--inkMute); border-right-color: var(--inkMute); }
+  }
+
+  /* Print the ground and paper tones as on screen. */
+  @media print {
+    html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
 
   /* ---------- Form controls (site-wide newspaper inputs) ----------
      common.css styles every form field via

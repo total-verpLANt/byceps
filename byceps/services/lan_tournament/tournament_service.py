@@ -151,6 +151,12 @@ def create_tournament(
                 'is set.'
             )
 
+    # Never store a NULL contestant type: derive it from team size
+    # before validation, so the FFA/team cross-check below sees it too.
+    contestant_type = tournament_domain_service.derive_contestant_type(
+        contestant_type, max_players_in_team, min_players_in_team
+    )
+
     # Auto-assign position if not explicitly provided.
     if position is None:
         position = tournament_repository.get_max_position_for_party(party_id) + 1
@@ -304,6 +310,12 @@ def update_tournament(
     changes must go through ``change_status`` to enforce the
     state machine.
     """
+    # Never store a NULL contestant type: derive it from team size
+    # before validation, so the FFA/team cross-check below sees it too.
+    contestant_type = tournament_domain_service.derive_contestant_type(
+        contestant_type, max_players_in_team, min_players_in_team
+    )
+
     # Validate name length
     if len(name.strip()) > 80:
         return Err('Tournament name must not exceed 80 characters.')
@@ -340,7 +352,17 @@ def update_tournament(
             locked_changes.append('game')
         if start_time != tournament.start_time:
             locked_changes.append('start_time')
-        if contestant_type != tournament.contestant_type:
+        # Compare derived-vs-derived: a legacy NULL `contestant_type`
+        # whose team size derives to the same effective type as the
+        # incoming (also derived) one is not a change.
+        stored_contestant_type = (
+            tournament_domain_service.derive_contestant_type(
+                tournament.contestant_type,
+                tournament.max_players_in_team,
+                tournament.min_players_in_team,
+            )
+        )
+        if contestant_type != stored_contestant_type:
             locked_changes.append('contestant_type')
         if game_format != tournament.game_format:
             locked_changes.append('game_format')
@@ -663,8 +685,8 @@ def change_status(
     # status (the admin `reopen` and `resume`/`start` routes all land
     # on change_status), and mirrors what the retraction cascade in
     # _unconfirm_match_impl already does when it reverts a completion.
-    # Flush only: update_tournament below owns the commit, so a
-    # failure there discards this with it.
+    # Flush only: commit_session below owns the commit, so a failure
+    # before it discards this with it.
     if (
         tournament.tournament_status == TournamentStatus.COMPLETED
         and new_status != TournamentStatus.COMPLETED
@@ -681,7 +703,8 @@ def change_status(
             updated, winner_team_id=None, winner_participant_id=None
         )
 
-    # `update_tournament` commits this entry together with the status.
+    # `commit_session` below commits this entry together with the
+    # status change.
     create_log_entry(
         'tournament-status-changed',
         tournament_id,
@@ -697,7 +720,19 @@ def change_status(
         commit=False,
     )
 
-    tournament_repository.update_tournament(updated)
+    # Status-only write (flush): `update_tournament` is a full-row
+    # writer and would also persist `updated.contestant_type`, which a
+    # legacy NULL row's loading derives in memory from team size. Only
+    # the explicit edit-form save in `update_tournament` above may
+    # persist that derived value.
+    status_result = tournament_repository.set_tournament_status_flush(
+        tournament_id, new_status
+    )
+    if status_result.is_err():
+        tournament_repository.rollback_session()
+        return Err(status_result.unwrap_err())
+
+    tournament_repository.commit_session()
 
     signals.tournament_status_changed.send(None, event=event)
 

@@ -137,6 +137,32 @@ def create_tournament(
     return tournament, event
 
 
+def derive_contestant_type(
+    contestant_type: ContestantType | None,
+    max_players_in_team: int | None,
+    min_players_in_team: int | None,
+) -> ContestantType:
+    """Derive the contestant type from team size when not set explicitly.
+
+    An explicit `contestant_type` is returned unchanged. Otherwise, the
+    team size (`max_players_in_team`, falling back to
+    `min_players_in_team`) decides: bigger than 1 means TEAM; 1, or no
+    team size at all, means SOLO.
+    """
+    if contestant_type is not None:
+        return contestant_type
+
+    team_size = (
+        max_players_in_team
+        if max_players_in_team is not None
+        else min_players_in_team
+    )
+    if team_size is not None and team_size > 1:
+        return ContestantType.TEAM
+
+    return ContestantType.SOLO
+
+
 def validate_status_transition(
     current_status: TournamentStatus | None,
     new_status: TournamentStatus,

@@ -1,5 +1,4 @@
 {% extends 'layout/base.html' %}
-{% from 'macros/icons.html' import render_icon %}
 {% set current_page = 'tournaments' %}
 {% set page_title = _('My tournament requests') %}
 
@@ -10,131 +9,179 @@
 {% block body %}
 <div class="bote-page tournament-page request-page">
 
-  <div class="page-folio">
-    <span class="pf-ressort">{{ _('Tournament office') }} &middot; {{ _('My requests') }}</span>
-    <span>Der Rentenbote &middot; Ausgabe 36</span>
-  </div>
+  <nav class="crumbs">
+    <a href="{{ url_for('.index') }}">{{ _('Tournaments') }}</a>
+  </nav>
 
-  <header class="page-head">
-    <h1 class="ph-title">{{ _('My tournament requests') }}</h1>
-    <p class="ph-standfirst">{{ _('Every tournament you have proposed for this party, from submission to the schedule.') }}</p>
+  <header class="head">
+    <div>
+      <div class="kick">{{ _('Your submissions') }}</div>
+      <h1>{{ _('My tournament ideas') }}</h1>
+      <div class="sub">{{ _('Party %(title)s', title=g.party.title) }}</div>
+    </div>
+    {%- if requests %}
+    <div class="tags">
+      <a class="button btn-pri btn-full" href="{{ url_for('.propose_form') }}">+ {{ _('Propose a tournament') }}</a>
+    </div>
+    {%- endif %}
   </header>
 
   {%- if not requests %}
 
-  <div class="fs empty">
-    <p>{{ _('You have not proposed any tournaments for this party yet.') }}</p>
-    <a class="button color-info" href="{{ url_for('.propose_form') }}">{{ render_icon('add') }} {{ _('Propose a tournament') }}</a>
+  <div class="empty-box">
+    <h3>{{ _('No requests yet.') }}</h3>
+    <p>{{ _('Got an idea for the program? Propose a tournament, the orga will get back to you.') }}</p>
+    <a class="button btn-pri" href="{{ url_for('.propose_form') }}">{{ _('Propose a tournament') }}</a>
   </div>
 
   {%- else %}
 
-  <div class="button-row is-hcentered">
-    <a class="button color-info" href="{{ url_for('.propose_form') }}">{{ render_icon('add') }} {{ _('Propose a tournament') }}</a>
-  </div>
-
-  <div class="counts">
-    <div class="count">
-      <span class="count-value">{{ status_counts.get('submitted', 0) }}</span>
-      <span class="count-label">{{ _('Open') }}</span>
+  <dl class="facts cnt">
+    <div>
+      <dt>{{ _('Open') }}</dt>
+      <dd class="v-submitted">{{ status_counts.get('submitted', 0) }}</dd>
     </div>
-    <div class="count">
-      <span class="count-value">{{ status_counts.get('accepted', 0) }}</span>
-      <span class="count-label">{{ _('Accepted') }}</span>
+    <div>
+      <dt>{{ _('Accepted') }}</dt>
+      <dd class="v-accepted">{{ status_counts.get('accepted', 0) }}</dd>
     </div>
-    <div class="count">
-      <span class="count-value">{{ status_counts.get('tournament_created', 0) }}</span>
-      <span class="count-label">{{ _('Tournament created') }}</span>
+    <div>
+      <dt>{{ _('Tournament created') }}</dt>
+      <dd class="v-tournament_created">{{ status_counts.get('tournament_created', 0) }}</dd>
     </div>
-    <div class="count">
-      <span class="count-value">{{ status_counts.get('rejected', 0) }}</span>
-      <span class="count-label">{{ _('Rejected') }}</span>
+    <div>
+      <dt>{{ _('Rejected') }}</dt>
+      <dd class="v-rejected">{{ status_counts.get('rejected', 0) }}</dd>
     </div>
-    <div class="count">
-      <span class="count-value">{{ status_counts.get('withdrawn', 0) }}</span>
-      <span class="count-label">{{ _('Withdrawn') }}</span>
+    <div>
+      <dt>{{ _('Withdrawn') }}</dt>
+      <dd class="v-withdrawn">{{ status_counts.get('withdrawn', 0) }}</dd>
     </div>
-  </div>
-
-  {%- if live_requests %}
-  <aside class="desk">
-    <div class="sh"><h2>{{ render_icon('trophy') }} {{ _('In the program') }}</h2></div>
-    {%- for r in live_requests %}
-      {%- set tournament = tournaments_by_request_id.get(r.id) %}
-      {%- if tournament %}
-      <div class="req win">
-        <span class="st st-tournament_created">{{ _('Tournament created') }}</span>
-        {%- if tournament.id in draft_tournament_ids %}
-        <span class="req-name dimmed">{{ tournament.name }}</span>
-        <span class="st st-draft">{{ _('In preparation') }}</span>
-        {%- else %}
-        <a href="{{ url_for('.view', tournament_id=tournament.id) }}" class="req-name disguised">{{ tournament.name }}</a>
-        {%- endif %}
-        {%- if tournament.max_players %}
-        <span class="req-meta">
-          {{ _('Registered %(count)s of %(max)s', count=participant_counts.get(tournament.id, 0), max=tournament.max_players) }}
-        </span>
-        {%- endif %}
-      </div>
-      {%- elif r.tournament_deleted %}
-      <div class="req win">
-        <span class="st st-tournament_deleted">{{ _('Tournament deleted') }}</span>
-        <span class="req-name dimmed">{{ _('The tournament created from your request has been deleted.') }}</span>
-      </div>
-      {%- endif %}
-    {%- endfor %}
-  </aside>
-  {%- endif %}
+  </dl>
 
   {%- if open_requests %}
-  <div class="fs">
-    <div class="sh"><h2>{{ _('In progress') }}</h2></div>
-    <div class="req-grid">
-      {%- for r in open_requests %}
-      {%- set step = 1 if r.status.value == 'submitted' else 2 %}
-      <div class="req">
-        <div class="req-head">
-          <span class="req-no">{{ '#%04d'|format(r.number) }}</span>
-          {%- if r.status.value == 'submitted' %}
-          <span class="st st-submitted">{{ _('Open') }}</span>
-          {%- else %}
-          <span class="st st-accepted">{{ _('Accepted') }}</span>
-          {%- endif %}
-        </div>
-        <a href="{{ url_for('.update_request_form', request_id=r.id) }}" class="req-name disguised">{{ r.name }}</a>
-        <div class="req-meta">{{ r.game }} &middot; {{ r.game_format.label }}</div>
-
-        <ol class="trk">
-          <li class="trk-step{% if step > 1 %} done{% elif step == 1 %} now{% endif %}">{{ _('Submitted') }}</li>
-          <li class="trk-step{% if step == 2 %} now{% endif %}">{{ _('Decided') }}</li>
-          <li class="trk-step">{{ _('In program') }}</li>
-        </ol>
+  <div class="sh sh-top"><h2>{{ _('In progress') }}</h2><span>{{ open_requests|length }}</span></div>
+  <div class="cards two-c">
+    {%- for r in open_requests %}
+    {%- set is_submitted = r.status.value == 'submitted' %}
+    {#- "Submitted" is already behind a submitted request, so the
+       current (next) step is "Decided"; an accepted request has
+       both "Submitted" and "Decided" behind it, so "In program" is
+       current. #}
+    {%- set current_step = 2 if is_submitted else 3 %}
+    <article class="req {{ 'card-open' if is_submitted else 'card-accepted' }}">
+      <div class="card-t">
+        <span>{{ _('Wish start') }} <b>{{ r.preferred_start_time|datetimeformat('dd.MM. HH:mm') }}</b></span>
+        {%- if is_submitted %}
+        <span class="st st-submitted">{{ _('Open') }}</span>
+        {%- else %}
+        <span class="st st-accepted">{{ _('Accepted') }}</span>
+        {%- endif %}
       </div>
-      {%- endfor %}
-    </div>
+      <div class="card-b">
+        <div class="nm">{{ r.name }}</div>
+        <div class="gm">{{ r.game }}</div>
+        <ol class="trk">
+          {%- for label in [_('Submitted'), _('Decided'), _('In program')] %}
+          {%- set step_no = loop.index %}
+          <li class="{% if step_no < current_step %}done{% elif step_no == current_step %}next{% endif %}"{% if step_no == current_step %} aria-current="step"{% endif %}><i></i><span>{{ label }}</span></li>
+          {%- endfor %}
+        </ol>
+        <p class="hint">
+          {%- if is_submitted -%}
+          {%- set waiting_days = waiting_days_by_request_id.get(r.id, 0) -%}
+          {%- if waiting_days == 0 -%}
+          {{ _('Submitted today. Waiting for the orga.') }}
+          {%- else -%}
+          {{ ngettext('Waiting for the orga for %(days)s day.', 'Waiting for the orga for %(days)s days.', waiting_days, days=waiting_days) }}
+          {%- endif -%}
+          {%- else -%}
+          {{ _('Accepted on %(date)s. The orga is setting up the tournament.', date=r.decided_at|dateformat('dd.MM')) }}
+          {%- endif -%}
+        </p>
+      </div>
+      <div class="card-f">
+        <div class="btns">
+          {%- if is_submitted %}
+          <a class="button btn-sm" href="{{ url_for('.update_request_form', request_id=r.id) }}">{{ _('Edit') }}</a>
+          {%- endif %}
+          <a class="lnk" href="{{ url_for('.update_request_form', request_id=r.id) }}">{{ _('Details') }}</a>
+        </div>
+      </div>
+    </article>
+    {%- endfor %}
   </div>
   {%- endif %}
 
   {%- if archived_requests %}
-  <div class="fs">
-    <div class="sh"><h2>{{ _('Archive') }}</h2></div>
-    <ul class="archive-list">
-      {%- for r in archived_requests %}
-      <li class="archive-item">
-        <span class="req-no">{{ '#%04d'|format(r.number) }}</span>
-        <span class="archive-name">{{ r.name }}</span>
-        {%- if r.status.value == 'rejected' %}
-        <span class="st st-rejected">{{ _('Rejected') }}</span>
-        {%- if r.rejection_reason %}
-        <p class="archive-reason dimmed">{{ r.rejection_reason }}</p>
-        {%- endif %}
+  <div class="sh{% if not open_requests %} sh-top{% endif %}"><h2>{{ _('Archive') }}</h2><span>{{ archived_requests|length }}</span></div>
+  <ul class="dl-list">
+    {%- for r in archived_requests %}
+    <li>
+      <b>{{ r.name }}</b>
+      {%- if r.status.value == 'rejected' %}
+      <span class="st st-rejected">{{ _('Rejected') }}</span>
+      {%- else %}
+      <span class="st st-withdrawn">{{ _('Withdrawn') }}</span>
+      {%- endif %}
+      <span class="mt">
+        {{- r.game }} &middot;
+        {%- if r.status.value == 'withdrawn' %}
+        {{ _('withdrawn by you on %(date)s', date=(r.updated_at or r.created_at)|dateformat('dd.MM.')) }}
         {%- else %}
-        <span class="st st-withdrawn">{{ _('Withdrawn') }}</span>
+        {{ _('submitted %(date)s', date=r.created_at|dateformat('dd.MM.')) }}
+        {%- endif -%}
+      </span>
+      {%- set reason_lead = reason_leads_by_request_id.get(r.id) %}
+      {%- if reason_lead %}
+      <span class="why-sm">„{{ reason_lead[0] }}“{% if reason_lead[1] %} <a href="{{ url_for('.update_request_form', request_id=r.id) }}">{{ _('Full reason') }}</a>{% endif %}</span>
+      {%- endif %}
+    </li>
+    {%- endfor %}
+  </ul>
+  {%- endif %}
+
+  {%- if live_requests %}
+  <div class="sh sh-top"><h2>{{ _('In the program') }}</h2><span>{{ live_requests|length }}</span></div>
+  {%- for r in live_requests %}
+  {%- set tournament = tournaments_by_request_id.get(r.id) %}
+  {%- if tournament %}
+  <article class="req win">
+    <div class="win-h">{{ _('Your tournament') }}</div>
+    <div class="win-b">
+      <div>
+        <div class="nm">{{ tournament.name }}</div>
+        <div class="gm">{{ r.game }}</div>
+      </div>
+      <dl class="mini">
+        <dt>{{ _('Tournament start') }}</dt>
+        <dd>{% if tournament.start_time %}{{ tournament.start_time|datetimeformat("ccc dd.MM. '·' HH:mm") }}{% else %}&mdash;{% endif %}</dd>
+        {%- set signup = signup_counts.get(tournament.id) %}
+        {%- if signup and signup[1] %}
+        <dt>{{ _('Signed up') }}</dt>
+        <dd>{{ _('%(n)s of %(max)s', n=signup[0], max=signup[1]) }}</dd>
         {%- endif %}
-      </li>
-      {%- endfor %}
-    </ul>
-  </div>
+        {%- if tournament.id in orga_tournament_ids %}
+        <dt>{{ _('You are') }}</dt>
+        <dd>{{ _('Orga of this tournament') }}</dd>
+        {%- endif %}
+      </dl>
+      {%- if tournament.id in draft_tournament_ids %}
+      <span class="st st-draft">{{ _('In preparation') }}</span>
+      {%- else %}
+      <a class="button btn-ok btn-full" href="{{ url_for('.view', tournament_id=tournament.id) }}">{{ _('To the tournament') }} &rarr;</a>
+      {%- endif %}
+    </div>
+  </article>
+  {%- elif r.tournament_deleted %}
+  <article class="req win">
+    <div class="win-b">
+      <span class="st st-tournament_deleted">{{ _('Tournament deleted') }}</span>
+      <span class="req-name dimmed">{{ _('The tournament created from your request has been deleted.') }}</span>
+    </div>
+  </article>
+  {%- endif %}
+  {%- endfor %}
   {%- endif %}
 
   {%- endif %}

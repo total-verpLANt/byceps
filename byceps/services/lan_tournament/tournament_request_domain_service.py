@@ -56,10 +56,10 @@ _SUPPLIED_FIELDS = [
     'game',
     'game_format',
     'elimination_mode',
+    'contestant_type',
     'team_size',
     'participant_limit',
     'preferred_start_time',
-    'preferred_end_time',
     'description',
     'ruleset',
     'party',
@@ -69,14 +69,17 @@ _SUPPLIED_FIELDS = [
 # The `create_tournament` fields a request never supplies; the admin
 # must fill these in before accepting the request into a tournament.
 _ADMIN_FILLED_FIELDS = [
-    'contestant_type',
     'score_ordering',
     'min_players',
     'min_teams',
-    'image_url',
     'advancement_count',
     'points_carry_to_losers',
+    'image_url',
 ]
+
+# Fields the request captures that have no `create_tournament`
+# counterpart; the admin preview shows these for information only.
+_INFO_ONLY_FIELDS = ['preferred_end_time']
 
 
 def _formats_accepting(mode: EliminationMode) -> set[GameFormat]:
@@ -419,6 +422,7 @@ def analyze_field_gap(request: TournamentRequest) -> TournamentFieldGap:
         supplied=list(_SUPPLIED_FIELDS),
         admin_fills=list(_ADMIN_FILLED_FIELDS),
         blocking=blocking,
+        info_only=list(_INFO_ONLY_FIELDS),
     )
 
 

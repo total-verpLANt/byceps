@@ -1,0 +1,1707 @@
+{
+  "frames": {
+    "admin_A1": {
+      "app": "admin",
+      "draft_file": "Turnieranfragen F-17 Admin.html",
+      "draft_scope": "section[data-screen-label=\"A1 Admin Queue\"] .app .body",
+      "ours_scope": ".lt-request-page",
+      "page": "queue",
+      "theme": "light",
+      "viewport": [
+        1180,
+        900
+      ]
+    },
+    "admin_A2": {
+      "app": "admin",
+      "draft_file": "Turnieranfragen F-17 Admin.html",
+      "draft_scope": "section[data-screen-label=\"A2 Admin Queue 390\"] .app .body",
+      "ours_scope": ".lt-request-page",
+      "page": "queue",
+      "theme": "light",
+      "viewport": [
+        390,
+        900
+      ]
+    },
+    "admin_B1": {
+      "app": "admin",
+      "draft_file": "Turnieranfragen F-17 Admin.html",
+      "draft_scope": "section[data-screen-label=\"B1 Admin view offen\"] .app .body",
+      "ours_scope": ".lt-request-page",
+      "page": "detail_open",
+      "theme": "light",
+      "viewport": [
+        1180,
+        900
+      ]
+    },
+    "admin_B2": {
+      "app": "admin",
+      "draft_file": "Turnieranfragen F-17 Admin.html",
+      "draft_scope": "section[data-screen-label=\"B2 Admin view angenommen\"] .app .body",
+      "ours_scope": ".lt-request-page",
+      "page": "detail_accepted",
+      "theme": "light",
+      "viewport": [
+        1180,
+        900
+      ]
+    },
+    "admin_B3": {
+      "app": "admin",
+      "draft_file": "Turnieranfragen F-17 Admin.html",
+      "draft_scope": "section[data-screen-label=\"B3 Admin view 390\"] .app .body",
+      "ours_scope": ".lt-request-page",
+      "page": "detail_390",
+      "theme": "light",
+      "viewport": [
+        390,
+        900
+      ]
+    },
+    "admin_D1": {
+      "app": "admin",
+      "draft_file": "Turnieranfragen F-17 Admin.html",
+      "draft_scope": "section[data-screen-label=\"D1 Admin Anfrage bearbeiten\"] .app .body",
+      "ours_scope": ".lt-request-page",
+      "page": "edit_admin",
+      "theme": "light",
+      "viewport": [
+        1180,
+        900
+      ]
+    },
+    "admin_D2": {
+      "app": "admin",
+      "draft_file": "Turnieranfragen F-17 Admin.html",
+      "draft_scope": "section[data-screen-label=\"D2 Admin bearbeiten 390\"] .app .body",
+      "ours_scope": ".lt-request-page",
+      "page": "edit_admin",
+      "theme": "light",
+      "viewport": [
+        390,
+        900
+      ]
+    },
+    "site_A1": {
+      "app": "site",
+      "draft_file": "Papiergrund F-17.html",
+      "draft_scope": "section[data-screen-label=\"W2 Breite gewählt 1440\"] .slip",
+      "ours_scope": ".request-page",
+      "page": "propose",
+      "theme": "light",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    "site_A2": {
+      "app": "site",
+      "draft_file": "Papiergrund F-17.html",
+      "draft_scope": "section[data-screen-label=\"A2b propose_form 390 — auf Papiergrund\"] .slip",
+      "ours_scope": ".request-page",
+      "page": "propose",
+      "theme": "light",
+      "viewport": [
+        390,
+        900
+      ]
+    },
+    "site_A3": {
+      "app": "site",
+      "draft_file": "Turnieranfragen F-17.html",
+      "draft_scope": "section[data-screen-label=\"A3 propose_form Fehler\"] .pg",
+      "ours_scope": ".request-page",
+      "page": "propose_errors",
+      "theme": "light",
+      "viewport": [
+        390,
+        900
+      ]
+    },
+    "site_B3": {
+      "app": "site",
+      "draft_file": "Turnieranfragen F-17.html",
+      "draft_scope": "section[data-screen-label=\"B3 my_requests leer\"] .pg",
+      "ours_scope": ".request-page",
+      "page": "empty",
+      "theme": "light",
+      "viewport": [
+        390,
+        900
+      ]
+    },
+    "site_F1": {
+      "app": "site",
+      "draft_file": "Papiergrund F-17.html",
+      "draft_scope": "section[data-screen-label=\"A1b propose_form Desktop — auf Papiergrund\"] .slip",
+      "ours_scope": ".request-page",
+      "page": "edit",
+      "theme": "light",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    "site_F2": {
+      "app": "site",
+      "draft_file": "Turnieranfragen F-17.html",
+      "draft_scope": "section[data-screen-label=\"F2 Bearbeiten 390\"] .pg",
+      "ours_scope": ".request-page",
+      "page": "edit",
+      "theme": "light",
+      "viewport": [
+        390,
+        900
+      ]
+    },
+    "site_F3": {
+      "app": "site",
+      "draft_file": "Turnieranfragen F-17.html",
+      "draft_scope": "section[data-screen-label=\"F3 Bearbeiten gesperrt\"] .pg",
+      "ours_scope": ".request-page",
+      "page": "frozen",
+      "theme": "light",
+      "viewport": [
+        390,
+        900
+      ]
+    },
+    "site_G1": {
+      "app": "site",
+      "draft_file": "Papiergrund F-17.html",
+      "draft_scope": "section[data-screen-label=\"G1b Dashboard Desktop — auf Papiergrund\"] .slip",
+      "ours_scope": ".request-page",
+      "page": "dash",
+      "theme": "light",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    "site_G2": {
+      "app": "site",
+      "draft_file": "Papiergrund F-17.html",
+      "draft_scope": "section[data-screen-label=\"G2b Dashboard 390 — auf Papiergrund\"] .slip",
+      "ours_scope": ".request-page",
+      "page": "dash",
+      "theme": "light",
+      "viewport": [
+        390,
+        900
+      ]
+    },
+    "site_G3": {
+      "app": "site",
+      "draft_file": "Papiergrund F-17.html",
+      "draft_scope": "section[data-screen-label=\"G3b Dashboard Spätausgabe — auf Papiergrund\"] .slip",
+      "ours_scope": ".request-page",
+      "page": "dash",
+      "theme": "dark",
+      "viewport": [
+        1440,
+        900
+      ]
+    }
+  },
+  "pairs": {
+    "admin_A1": [
+      [
+        "filter",
+        ".filter",
+        ".lt-request-filter",
+        {
+          "draft_rules": [
+            ".filter"
+          ]
+        }
+      ],
+      [
+        "filter lbl",
+        ".filter .lbl",
+        ".lt-request-filter .dimmed",
+        {
+          "draft_rules": [
+            ".filter .lbl"
+          ]
+        }
+      ],
+      [
+        "filter all",
+        ".filter a .tag",
+        ".tag.lt-all",
+        {
+          "draft_rules": [
+            ".filter a .tag"
+          ]
+        }
+      ],
+      [
+        "filter open",
+        ".filter a:nth-of-type(2) .tag",
+        ".lt-request-filter a:nth-of-type(2) .tag",
+        {
+          "draft_rules": [
+            ".filter a .tag"
+          ]
+        }
+      ],
+      [
+        "details",
+        "td:first-child .details",
+        "table.itemlist td:first-child .details",
+        {
+          "draft_rules": [
+            ".details"
+          ]
+        }
+      ],
+      [
+        "gap note",
+        "td .details[style*=c00]",
+        ".details.lt-gap-note",
+        {
+          "draft_rules": [
+            ".details"
+          ]
+        }
+      ],
+      [
+        "period details",
+        "td:nth-child(5) .details",
+        "table.itemlist td:nth-child(5) .details",
+        {
+          "draft_rules": [
+            ".details"
+          ]
+        }
+      ],
+      [
+        "btn compact",
+        "td .button.is-compact",
+        "table.itemlist td .button.is-compact",
+        {
+          "draft_rules": [
+            ".button.is-compact"
+          ],
+          "allow": {
+            "padding-left": "core: common.css .button.is-compact sets padding: 0.125rem 0.25rem (2px/4px); the draft mock's own .button.is-compact rule uses 0.125rem 0.4rem (2px/6.4px) instead. lan_tournament does not override this core button class.",
+            "padding-right": "core: common.css .button.is-compact sets padding: 0.125rem 0.25rem (2px/4px); the draft mock's own .button.is-compact rule uses 0.125rem 0.4rem (2px/6.4px) instead. lan_tournament does not override this core button class."
+          }
+        }
+      ]
+    ],
+    "admin_A2": [
+      [
+        "li top",
+        ".li-top",
+        ".li-top",
+        {
+          "draft_rules": [
+            ".li-top"
+          ]
+        }
+      ],
+      [
+        "details",
+        "li .details:not([style])",
+        "ol.itemlist li .details",
+        {
+          "draft_rules": [
+            ".details"
+          ]
+        }
+      ],
+      [
+        "gap note",
+        "li .details[style*=c00]",
+        ".details.lt-gap-note",
+        {
+          "draft_rules": [
+            ".details"
+          ]
+        }
+      ],
+      [
+        "accepted note",
+        "li .details[style*='0a6fc2']",
+        ".details.lt-accepted-note",
+        {
+          "draft_rules": [
+            ".details"
+          ]
+        }
+      ]
+    ],
+    "admin_B1": [
+      [
+        "backlink",
+        ".backlink",
+        ".lt-backlink",
+        {
+          "draft_rules": [
+            ".backlink"
+          ]
+        }
+      ],
+      [
+        "h1 tag",
+        "h1 .tag",
+        "h1 .tag",
+        {
+          "draft_rules": [
+            "h1 .tag"
+          ]
+        }
+      ],
+      [
+        "cols",
+        ".cols",
+        ".lt-cols",
+        {
+          "draft_rules": [
+            ".cols"
+          ],
+          "allow": {
+            "grid-template-columns": "core: admin.css fixes .container at width: 1080px from a 1080px viewport up and .page-body-inner pads it with --layout-gutter (32px), so the content box is 1016px; the draft body is 1116px (1180px frame minus 2 x 32px padding). The 320px sidebar track and the two-track shape are identical, only the flexible first track differs (672px vs 772px). lan_tournament does not resize the core page container."
+          }
+        }
+      ],
+      [
+        "facts grid",
+        ".grid",
+        ".lt-facts",
+        {
+          "draft_rules": [
+            ".grid"
+          ],
+          "allow": {
+            "grid-template-columns": "core: admin.css fixes .container at width: 1080px from a 1080px viewport up and .page-body-inner pads it with --layout-gutter (32px), so the left column is 672px wide instead of the draft's 772px. auto-fill minmax(200px, 1fr) then yields three tracks of 213.33px instead of 246.67px; the track count, gap and box padding match. lan_tournament does not resize the core page container."
+          }
+        }
+      ],
+      [
+        "facts box",
+        ".grid .box",
+        ".lt-facts .box",
+        {
+          "draft_rules": [
+            ".grid"
+          ]
+        }
+      ],
+      [
+        "preview h2",
+        ".box h2",
+        ".lt-gap-preview h2",
+        {
+          "draft_rules": []
+        }
+      ],
+      [
+        "progress",
+        ".progress",
+        ".lt-progress",
+        {
+          "draft_rules": [
+            ".progress"
+          ]
+        }
+      ],
+      [
+        "progress i",
+        ".progress i",
+        ".lt-progress i",
+        {
+          "draft_rules": [
+            ".progress"
+          ]
+        }
+      ],
+      [
+        "legend",
+        ".legend",
+        ".legend",
+        {
+          "draft_rules": [
+            ".legend"
+          ]
+        }
+      ],
+      [
+        "legend sw",
+        ".legend span::before",
+        ".legend span::before",
+        {
+          "draft_rules": [
+            ".legend"
+          ]
+        }
+      ],
+      [
+        "notif danger",
+        ".notification.color-danger",
+        ".notification.color-danger",
+        {
+          "draft_rules": [
+            ".notification"
+          ]
+        }
+      ],
+      [
+        "index table",
+        "table.index",
+        "table.index",
+        {
+          "draft_rules": [
+            "table.index"
+          ]
+        }
+      ],
+      [
+        "index td",
+        "table.index td",
+        "table.index td",
+        {
+          "draft_rules": [
+            "table.index"
+          ]
+        }
+      ],
+      [
+        "gate td",
+        "table.index tr.gate td",
+        "table.index tr.gate td",
+        {
+          "draft_rules": [
+            "table.index",
+            "tr.gate"
+          ]
+        }
+      ],
+      [
+        "gate td1",
+        "table.index tr.gate td:first-child",
+        "table.index tr.gate td:first-child",
+        {
+          "draft_rules": [
+            "table.index",
+            "tr.gate"
+          ]
+        }
+      ],
+      [
+        "rej summary",
+        "details.rej > summary",
+        "details.rej > summary.button.lt-wide",
+        {
+          "draft_rules": [
+            "details.rej",
+            ".button.wide"
+          ]
+        }
+      ],
+      [
+        "rej rb",
+        "details.rej .rb",
+        "details.rej .rb",
+        {
+          "draft_rules": [
+            "details.rej"
+          ]
+        }
+      ]
+    ],
+    "admin_B2": [
+      [
+        "notif info",
+        ".notification.color-info",
+        ".notification.color-info",
+        {
+          "draft_rules": [
+            ".notification"
+          ]
+        }
+      ],
+      [
+        "sep line",
+        ".sep-line",
+        ".sep-line",
+        {
+          "draft_rules": [
+            ".sep-line"
+          ]
+        }
+      ],
+      [
+        "reject summary",
+        "details.rej > summary",
+        "details.rej > summary.button.lt-wide",
+        {
+          "draft_rules": [
+            "details.rej",
+            ".button.wide"
+          ]
+        }
+      ]
+    ],
+    "admin_B3": [
+      [
+        "rej rb",
+        "details.rej .rb",
+        "details.rej .rb",
+        {
+          "draft_rules": [
+            "details.rej"
+          ]
+        }
+      ],
+      [
+        "rej summary",
+        "details.rej > summary",
+        "details.rej > summary.button.lt-wide",
+        {
+          "draft_rules": [
+            "details.rej",
+            ".button.wide"
+          ]
+        }
+      ],
+      [
+        "facts grid",
+        ".grid",
+        ".lt-facts",
+        {
+          "draft_rules": [
+            ".grid"
+          ]
+        }
+      ],
+      [
+        "legend",
+        ".legend",
+        ".legend",
+        {
+          "draft_rules": [
+            ".legend"
+          ]
+        }
+      ]
+    ],
+    "admin_D1": [
+      [
+        "backlink",
+        ".backlink",
+        ".lt-backlink",
+        {
+          "draft_rules": [
+            ".backlink"
+          ]
+        }
+      ],
+      [
+        "notice",
+        ".notification.color-info",
+        ".notification.color-info.block",
+        {
+          "draft_rules": [
+            ".notification"
+          ]
+        }
+      ],
+      [
+        "fieldset fs",
+        "fieldset.fs",
+        ".lt-edit fieldset.fs",
+        {
+          "draft_rules": [
+            "fieldset.fs"
+          ]
+        }
+      ],
+      [
+        "legend",
+        "fieldset.fs legend",
+        ".lt-edit fieldset.fs legend",
+        {
+          "draft_rules": [
+            "fieldset.fs legend"
+          ]
+        }
+      ],
+      [
+        "frow",
+        ".frow",
+        ".frow",
+        {
+          "draft_rules": [
+            ".frow"
+          ]
+        }
+      ],
+      [
+        "fcb",
+        ".fcb",
+        ".lt-edit .form-control-block",
+        {
+          "draft_rules": [
+            ".fcb"
+          ]
+        }
+      ],
+      [
+        "form label",
+        ".fcb .form-label",
+        ".lt-edit .form-control-block .form-label",
+        {
+          "draft_rules": [
+            ".fcb .form-label"
+          ]
+        }
+      ],
+      [
+        "form control",
+        ".form-control:not(textarea)",
+        ".lt-edit .form-control:not(textarea)",
+        {
+          "draft_rules": [
+            ".form-control:not(textarea)"
+          ]
+        }
+      ]
+    ],
+    "admin_D2": [
+      [
+        "frow mobile",
+        ".frow",
+        ".frow",
+        {
+          "draft_rules": [
+            ".frow"
+          ]
+        }
+      ],
+      [
+        "frow keep",
+        ".frow.keep",
+        ".frow.keep",
+        {
+          "draft_rules": [
+            ".frow"
+          ]
+        }
+      ],
+      [
+        "fieldset fs",
+        "fieldset.fs",
+        ".lt-edit fieldset.fs",
+        {
+          "draft_rules": [
+            "fieldset.fs"
+          ]
+        }
+      ],
+      [
+        "fcb",
+        ".fcb",
+        ".lt-edit .form-control-block",
+        {
+          "draft_rules": [
+            ".fcb"
+          ]
+        }
+      ]
+    ],
+    "site_A1": [
+      [
+        "slip",
+        ".slip",
+        ".tournament-page.request-page",
+        {}
+      ],
+      [
+        "crumbs",
+        ".crumbs",
+        ".crumbs",
+        {}
+      ],
+      [
+        "crumbs a",
+        ".crumbs a",
+        ".crumbs a",
+        {}
+      ],
+      [
+        "head",
+        ".head",
+        ".head",
+        {}
+      ],
+      [
+        "kick",
+        ".kick",
+        ".kick",
+        {}
+      ],
+      [
+        "h1",
+        ".head h1",
+        ".head h1",
+        {}
+      ],
+      [
+        "sub",
+        ".head .sub",
+        ".head .sub",
+        {}
+      ],
+      [
+        "fs",
+        ".fs",
+        "section.fs",
+        {}
+      ],
+      [
+        "fgrid",
+        ".fgrid",
+        ".fgrid",
+        {}
+      ],
+      [
+        "sh",
+        ".sh",
+        ".sh",
+        {}
+      ],
+      [
+        "sh h2",
+        ".sh h2",
+        ".sh h2",
+        {}
+      ],
+      [
+        "sh em",
+        ".sh h2 em",
+        ".sh h2 em",
+        {}
+      ],
+      [
+        "sh span",
+        ".sh span",
+        ".sh span",
+        {}
+      ],
+      [
+        "two",
+        ".two",
+        ".two",
+        {}
+      ],
+      [
+        "label name",
+        ".fld .lbl",
+        "label.form-label",
+        {}
+      ],
+      [
+        "input game",
+        ".two.st1 .fld:nth-child(2) .ti",
+        "#game",
+        {}
+      ],
+      [
+        "textarea desc",
+        "textarea.ti",
+        "#description",
+        {}
+      ],
+      [
+        "placeholder notes",
+        ".fs:nth-child(4) .fld:nth-child(2) textarea::placeholder",
+        "#request_notes::placeholder",
+        {}
+      ],
+      [
+        "hint desc",
+        ".fld .hn",
+        "#description ~ .form-caption",
+        {}
+      ],
+      [
+        "seg",
+        ".seg",
+        ".seg",
+        {}
+      ],
+      [
+        "seg option",
+        ".seg label:first-child",
+        ".seg-option:first-child",
+        {}
+      ],
+      [
+        "seg option on",
+        ".seg label.on",
+        ".seg-option.on",
+        {}
+      ],
+      [
+        "seg b",
+        ".seg label:first-child b",
+        ".seg-option:first-child b",
+        {}
+      ],
+      [
+        "seg small",
+        ".seg label:first-child small",
+        ".seg-option:first-child small",
+        {}
+      ],
+      [
+        "seg on small",
+        ".seg label.on small",
+        ".seg-option.on small",
+        {}
+      ],
+      [
+        "opts",
+        ".opts",
+        ".opts",
+        {}
+      ],
+      [
+        "opt",
+        ".opt",
+        ".opt",
+        {}
+      ],
+      [
+        "opt input",
+        ".opt input",
+        ".opt input",
+        {}
+      ],
+      [
+        "opt b",
+        ".opt b",
+        ".opt-label b",
+        {}
+      ],
+      [
+        "opt small",
+        ".opt small",
+        ".opt-label small",
+        {}
+      ],
+      [
+        "opt dis",
+        ".opt.dis",
+        ".opt.dis",
+        {}
+      ],
+      [
+        "opt dis b",
+        ".opt.dis b",
+        ".opt.dis .opt-label b",
+        {}
+      ],
+      [
+        "opt dis small",
+        ".opt.dis small",
+        ".opt.dis .opt-label small",
+        {}
+      ],
+      [
+        "opt why",
+        ".opt .why",
+        ".opt.dis .opt-reason",
+        {}
+      ],
+      [
+        "modes hint",
+        ".opts + .hn",
+        ".opts + .form-caption",
+        {}
+      ],
+      [
+        "team input",
+        "[data-team]",
+        "#team_size",
+        {}
+      ],
+      [
+        "limit hint",
+        ".fld:has([data-cap]) .hn",
+        "[data-limit-caption]",
+        {}
+      ],
+      [
+        "datetime start",
+        "input[type=datetime-local]",
+        "#preferred_start_time",
+        {}
+      ],
+      [
+        "chip optional",
+        ".fld .lbl i",
+        ".opt-chip",
+        {}
+      ],
+      [
+        "btns",
+        ".btns",
+        ".btns",
+        {}
+      ],
+      [
+        "btn pri",
+        ".btn.pri",
+        ".request-page .btn-pri",
+        {}
+      ],
+      [
+        "lnk cancel",
+        ".lnk",
+        ".lnk",
+        {}
+      ]
+    ],
+    "site_A2": [
+      [
+        "slip",
+        ".slip",
+        ".tournament-page.request-page",
+        {
+          "allow": {
+            "margin-bottom": "D8: slip at <=720px uses Papiergrund Patch section 4 (.tournament-page.request-page { margin: 0; box-shadow: none; }) instead of the frame's .m .slip { margin: 14px 0 }.",
+            "margin-top": "D8: slip at <=720px uses Papiergrund Patch section 4 (.tournament-page.request-page { margin: 0; box-shadow: none; }) instead of the frame's .m .slip { margin: 14px 0 }."
+          }
+        }
+      ],
+      [
+        "head",
+        ".head",
+        ".head",
+        {}
+      ],
+      [
+        "h1",
+        ".head h1",
+        ".head h1",
+        {}
+      ],
+      [
+        "sub",
+        ".head .sub",
+        ".head .sub",
+        {}
+      ],
+      [
+        "fs",
+        ".fs",
+        "section.fs",
+        {}
+      ],
+      [
+        "sh h2",
+        ".sh h2",
+        ".sh h2",
+        {}
+      ],
+      [
+        "two",
+        ".two",
+        ".two",
+        {}
+      ],
+      [
+        "seg b",
+        ".seg label:first-child b",
+        ".seg-option:first-child b",
+        {}
+      ],
+      [
+        "opts",
+        ".opts",
+        ".opts",
+        {}
+      ],
+      [
+        "opt",
+        ".opt",
+        ".opt",
+        {}
+      ],
+      [
+        "team input",
+        "[data-team]",
+        "#team_size",
+        {}
+      ],
+      [
+        "btns",
+        ".btns",
+        ".btns",
+        {}
+      ],
+      [
+        "btn pri",
+        ".btn.pri",
+        ".request-page .btn-pri",
+        {}
+      ]
+    ],
+    "site_A3": [
+      [
+        "warn",
+        ".warn",
+        ".warn",
+        {}
+      ],
+      [
+        "warn h",
+        ".warn-h",
+        ".warn-h",
+        {}
+      ],
+      [
+        "warn ul",
+        ".warn ul",
+        ".warn ul",
+        {}
+      ],
+      [
+        "warn a",
+        ".warn ul a",
+        ".warn ul a",
+        {}
+      ],
+      [
+        "err label",
+        ".fld.err .lbl",
+        ".form-control-block.invalid label.form-label",
+        {}
+      ],
+      [
+        "err input",
+        ".fld.err .ti",
+        ".form-control-block.invalid .form-control",
+        {}
+      ],
+      [
+        "err msg",
+        ".fld.err .em",
+        ".form-control-block.invalid .form-errors",
+        {}
+      ],
+      [
+        "err msg li",
+        ".fld.err .em",
+        ".form-control-block.invalid .form-errors li",
+        {}
+      ],
+      [
+        "err msg li before",
+        ".fld.err .em",
+        ".form-control-block.invalid .form-errors li::before",
+        {}
+      ],
+      [
+        "opt dis small",
+        ".opt.dis small",
+        ".opt.dis .opt-label small",
+        {}
+      ]
+    ],
+    "site_B3": [
+      [
+        "head",
+        ".head",
+        ".head",
+        {}
+      ],
+      [
+        "h1",
+        ".head h1",
+        ".head h1",
+        {}
+      ],
+      [
+        "empty box",
+        ".empty-box",
+        ".empty-box",
+        {}
+      ],
+      [
+        "empty h3",
+        ".empty-box h3",
+        ".empty-box h3",
+        {}
+      ],
+      [
+        "empty p",
+        ".empty-box p",
+        ".empty-box p",
+        {}
+      ],
+      [
+        "empty cta",
+        ".empty-box .btn.pri",
+        ".empty-box .btn-pri",
+        {}
+      ]
+    ],
+    "site_F1": [
+      [
+        "stamp",
+        ".head .stamp",
+        ".head .stamp",
+        {}
+      ],
+      [
+        "tags",
+        ".head .tags",
+        ".head .tags",
+        {}
+      ],
+      [
+        "note box",
+        ".note-box",
+        ".note-box",
+        {}
+      ],
+      [
+        "note h",
+        ".note-h",
+        ".note-h",
+        {}
+      ],
+      [
+        "note h st",
+        ".note-h .st",
+        ".note-h .st",
+        {}
+      ],
+      [
+        "note p",
+        ".note-box p",
+        ".note-box p",
+        {}
+      ],
+      [
+        "fgrid",
+        ".fgrid",
+        ".fgrid",
+        {}
+      ],
+      [
+        "chip changed",
+        ".fld.chg .lbl .chg-t",
+        ".form-control-block.chg .opt-chip.chg-t",
+        {}
+      ],
+      [
+        "limit hint before",
+        ".fld.chg .hn",
+        "[data-limit-caption]",
+        {}
+      ],
+      [
+        "btn pri",
+        ".btn.pri",
+        ".request-page .btn-pri",
+        {}
+      ],
+      [
+        "lnk discard",
+        ".lnk",
+        ".lnk",
+        {}
+      ],
+      [
+        "danger zone",
+        ".danger-zone",
+        ".danger-zone",
+        {}
+      ],
+      [
+        "danger b",
+        ".danger-zone b",
+        ".danger-zone b",
+        {}
+      ],
+      [
+        "danger hint",
+        ".danger-zone .hint",
+        ".danger-zone .hint",
+        {}
+      ],
+      [
+        "out red",
+        ".btn.out-red",
+        ".out-red",
+        {}
+      ],
+      [
+        "desk",
+        ".desk",
+        ".desk",
+        {}
+      ],
+      [
+        "desk h",
+        ".desk-h",
+        ".desk-h",
+        {}
+      ],
+      [
+        "desk b",
+        ".desk-b",
+        ".desk-b",
+        {}
+      ],
+      [
+        "tl",
+        ".tl",
+        ".tl",
+        {}
+      ],
+      [
+        "tl li",
+        ".tl li",
+        ".tl li",
+        {}
+      ],
+      [
+        "tl li before",
+        ".tl li::before",
+        ".tl li::before",
+        {}
+      ],
+      [
+        "tl now before",
+        ".tl li.now::before",
+        ".tl li.now::before",
+        {}
+      ],
+      [
+        "tl lbl",
+        ".tl .lbl",
+        ".tl .lbl",
+        {}
+      ],
+      [
+        "tl now lbl",
+        ".tl li.now .lbl",
+        ".tl li.now .lbl",
+        {}
+      ],
+      [
+        "desk hint",
+        ".desk-b .hint",
+        ".desk-b .hint",
+        {}
+      ]
+    ],
+    "site_F2": [
+      [
+        "stamp",
+        ".head .stamp",
+        ".head .stamp",
+        {}
+      ],
+      [
+        "fgrid",
+        ".fgrid",
+        ".fgrid",
+        {}
+      ],
+      [
+        "btn pri",
+        ".btn.pri",
+        ".request-page .btn-pri",
+        {}
+      ],
+      [
+        "danger zone",
+        ".danger-zone",
+        ".danger-zone",
+        {}
+      ],
+      [
+        "out red",
+        ".btn.out-red",
+        ".out-red",
+        {}
+      ],
+      [
+        "two",
+        ".two",
+        ".two",
+        {}
+      ],
+      [
+        "opts",
+        ".opts",
+        ".opts",
+        {}
+      ]
+    ],
+    "site_F3": [
+      [
+        "stamp",
+        ".head .stamp",
+        ".head .stamp",
+        {}
+      ],
+      [
+        "note box lock",
+        ".note-box.lock",
+        ".note-box.lock",
+        {}
+      ],
+      [
+        "note h",
+        ".note-h",
+        ".note-h",
+        {}
+      ],
+      [
+        "note p",
+        ".note-box p",
+        ".note-box p",
+        {}
+      ],
+      [
+        "sup",
+        ".sup",
+        ".sup",
+        {}
+      ],
+      [
+        "sup div",
+        ".sup div",
+        ".sup div",
+        {}
+      ],
+      [
+        "sup dt",
+        ".sup dt",
+        ".sup dt",
+        {}
+      ],
+      [
+        "sup dd",
+        ".sup dd",
+        ".sup dd",
+        {}
+      ],
+      [
+        "btns back",
+        ".btns",
+        ".btns",
+        {}
+      ],
+      [
+        "btn full",
+        ".btn.full",
+        ".btn-full",
+        {}
+      ]
+    ],
+    "site_G1": [
+      [
+        "sub",
+        ".head .sub",
+        ".head .sub",
+        {}
+      ],
+      [
+        "cta",
+        ".head .btn.pri",
+        ".head .btn-pri",
+        {}
+      ],
+      [
+        "facts cnt",
+        ".facts.cnt",
+        ".facts.cnt",
+        {}
+      ],
+      [
+        "facts cell",
+        ".facts.cnt div",
+        ".facts.cnt > div",
+        {}
+      ],
+      [
+        "cnt dt",
+        ".facts.cnt dt",
+        ".facts.cnt dt",
+        {}
+      ],
+      [
+        "cnt dd",
+        ".facts.cnt dd",
+        ".facts.cnt dd",
+        {}
+      ],
+      [
+        "sh in progress",
+        ".sh",
+        ".sh.sh-top",
+        {}
+      ],
+      [
+        "sh span count",
+        ".sh > span",
+        ".sh > span",
+        {}
+      ],
+      [
+        "cards",
+        ".cards.two-c",
+        ".cards.two-c",
+        {}
+      ],
+      [
+        "card open",
+        ".card.open",
+        ".req.card-open",
+        {}
+      ],
+      [
+        "card t",
+        ".card-t",
+        ".card-t",
+        {}
+      ],
+      [
+        "card t b",
+        ".card-t b",
+        ".card-t b",
+        {}
+      ],
+      [
+        "card b nm",
+        ".card-b .nm",
+        ".card-b .nm",
+        {}
+      ],
+      [
+        "card b gm",
+        ".card-b .gm",
+        ".card-b .gm",
+        {}
+      ],
+      [
+        "trk",
+        ".trk",
+        ".trk",
+        {}
+      ],
+      [
+        "trk li",
+        ".trk li",
+        ".trk li",
+        {}
+      ],
+      [
+        "trk i",
+        ".trk li i",
+        ".trk li i",
+        {}
+      ],
+      [
+        "trk done i",
+        ".trk li.done i",
+        ".trk li.done i",
+        {}
+      ],
+      [
+        "card hint",
+        ".card-b .hint",
+        ".card-b .hint",
+        {}
+      ],
+      [
+        "card f",
+        ".card-f",
+        ".card-f",
+        {}
+      ],
+      [
+        "btn sm",
+        ".card-f .btn.sm",
+        ".card-f .btn-sm",
+        {}
+      ],
+      [
+        "lnk details",
+        ".card-f .lnk",
+        ".card-f .lnk",
+        {}
+      ],
+      [
+        "dl list li",
+        ".dl-list li",
+        ".dl-list li",
+        {}
+      ],
+      [
+        "dl b",
+        ".dl-list b",
+        ".dl-list b",
+        {}
+      ],
+      [
+        "dl st",
+        ".dl-list .st",
+        ".dl-list .st",
+        {}
+      ],
+      [
+        "why sm",
+        ".why-sm",
+        ".why-sm",
+        {}
+      ],
+      [
+        "win",
+        ".req.win",
+        ".req.win",
+        {}
+      ],
+      [
+        "win h",
+        ".win-h",
+        ".win-h",
+        {}
+      ],
+      [
+        "win b",
+        ".win-b",
+        ".win-b",
+        {}
+      ],
+      [
+        "win nm",
+        ".win-b .nm",
+        ".win-b .nm",
+        {}
+      ],
+      [
+        "win gm",
+        ".win-b .gm",
+        ".win-b .gm",
+        {}
+      ],
+      [
+        "mini",
+        ".mini",
+        ".mini",
+        {}
+      ],
+      [
+        "mini dt",
+        ".mini dt",
+        ".mini dt",
+        {}
+      ],
+      [
+        "mini dd",
+        ".mini dd",
+        ".mini dd",
+        {}
+      ]
+    ],
+    "site_G2": [
+      [
+        "slip",
+        ".slip",
+        ".tournament-page.request-page",
+        {
+          "allow": {
+            "margin-bottom": "D8: slip at <=720px uses Papiergrund Patch section 4 (.tournament-page.request-page { margin: 0; box-shadow: none; }) instead of the frame's .m .slip { margin: 14px 0 }.",
+            "margin-top": "D8: slip at <=720px uses Papiergrund Patch section 4 (.tournament-page.request-page { margin: 0; box-shadow: none; }) instead of the frame's .m .slip { margin: 14px 0 }."
+          }
+        }
+      ],
+      [
+        "cta full",
+        ".head .btn.pri",
+        ".head .btn-full.btn-pri",
+        {}
+      ],
+      [
+        "facts cnt",
+        ".facts.cnt",
+        ".facts.cnt",
+        {}
+      ],
+      [
+        "cnt dt",
+        ".facts.cnt dt",
+        ".facts.cnt dt",
+        {}
+      ],
+      [
+        "cnt dd",
+        ".facts.cnt dd",
+        ".facts.cnt dd",
+        {}
+      ],
+      [
+        "cards",
+        ".cards.two-c",
+        ".cards.two-c",
+        {}
+      ],
+      [
+        "card open",
+        ".card.open",
+        ".req.card-open",
+        {}
+      ]
+    ],
+    "site_G3": [
+      [
+        "ochre dd",
+        ".facts.cnt div:first-child dd",
+        ".facts.cnt div:first-child dd",
+        {}
+      ],
+      [
+        "sub",
+        ".head .sub",
+        ".head .sub",
+        {}
+      ],
+      [
+        "card open",
+        ".card.open",
+        ".req.card-open",
+        {}
+      ],
+      [
+        "win h",
+        ".win-h",
+        ".win-h",
+        {}
+      ],
+      [
+        "win b",
+        ".win-b",
+        ".win-b",
+        {}
+      ],
+      [
+        "trk done i",
+        ".trk li.done i",
+        ".trk li.done i",
+        {}
+      ]
+    ]
+  }
+}

@@ -1,13 +1,12 @@
 {% extends 'layout/admin/lan_tournament.html' %}
-{% from 'macros/admin.html' import render_backlink %}
-{% from 'macros/forms.html' import form_buttons, form_field %}
-{% from 'macros/misc.html' import render_distribution_bar, render_notification_block, render_tag %}
+{% from 'macros/forms.html' import form_field_errors %}
+{% from 'macros/misc.html' import render_notification_block, render_tag %}
 {% set current_page_party = party %}
 {% set current_tab = 'requests' %}
 {% set page_title = [_('Tournament request'), tournament_request.name, party.title] %}
 
-{% block before_body %}
-{{ render_backlink(url_for('.requests_for_party', party_id=party.id), _('Tournament requests')) }}
+{% block head %}{{ super() }}
+  <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_match_admin.css') }}">
 {%- endblock %}
 
 {% block body %}
@@ -19,11 +18,16 @@
             else tournament_request.proposer_id|string)
   ) %}
 
-  <div class="row row--space-between block">
+<div class="lt-request-page">
+
+  <a class="lt-backlink" href="{{ url_for('.requests_for_party', party_id=party.id) }}">‹ {{ _('Tournament requests') }}</a>
+
+  <div class="row row--space-between row--wrap block" style="gap: 12px 16px;">
     <div>
-      <h1 class="title">
+      <h1 class="title" style="margin-bottom: 0;">
+        {{- tournament_request.name }}
         {%- if tournament_request.status.value == 'submitted' %}
-          {{ render_tag(_('Submitted'), class='color-warning') }}
+          {{ render_tag(_('Open'), class='color-warning') }}
         {%- elif tournament_request.status.value == 'accepted' %}
           {{ render_tag(_('Accepted'), class='color-info') }}
         {%- elif tournament_request.status.value == 'tournament_created' %}
@@ -33,81 +37,77 @@
         {%- elif tournament_request.status.value == 'withdrawn' %}
           {{ render_tag(_('Withdrawn'), class='color-disabled') }}
         {%- endif %}
-        {{ tournament_request.name }}
-        <small>#{{ '%04d'|format(tournament_request.number) }}</small>
       </h1>
-    </div>
-    {%- if tournament_request.is_editable and g.user.has_permission('lan_tournament.request_decide') %}
-    <div>
-      <div class="button-row is-right-aligned">
-        <a class="button" href="{{ url_for('.update_request_form', request_id=tournament_request.id) }}">✎ <span>{{ _('Edit') }}</span></a>
+      <div class="dimmed" style="margin-top: 4px;">
+        {{- _('Request #%(number)s by', number='%04d'|format(tournament_request.number)) }}
+        {%- if proposer %}
+        <a href="{{ url_for('user_admin.view', user_id=tournament_request.proposer_id) }}">{{ proposer_name }}</a>
+        {%- else %}
+        {{ proposer_name }}
+        {%- endif %}
+        · {{ _('submitted on %(date)s, %(time)s', date=tournament_request.created_at|dateformat, time=tournament_request.created_at|timeformat('short')) }}
       </div>
+    </div>
+    {%- if tournament_request.is_editable_by_admin and g.user.has_permission('lan_tournament.request_decide') %}
+    <div class="button-row" style="align-self: flex-start;">
+      <a class="button" href="{{ url_for('.update_request_form', request_id=tournament_request.id) }}">✎ <span>{{ _('Edit') }}</span></a>
     </div>
     {%- endif %}
   </div>
 
-  <div class="row row--space-between row--wrap block">
+  <div class="lt-cols">
 
-    <div class="column-cell--grow" style="flex: 2 1 480px;">
+    <div>
+      <div class="lt-request-stack">
 
       {# Six data tiles: format, mode, team size, limit, start, end #}
-      <div class="grid block">
-        <div class="column">
-          <div class="box column-cell--grow">
-            <div class="data-label">{{ _('Game format') }}</div>
-            <div class="data-value">{{ tournament_request.game_format.label }}</div>
-          </div>
+      <div class="lt-facts block">
+        <div class="box">
+          <div class="data-label">{{ _('Game format') }}</div>
+          <div class="data-value">{{ tournament_request.game_format.label }}</div>
         </div>
-        <div class="column">
-          <div class="box column-cell--grow">
-            <div class="data-label">{{ _('Elimination mode') }}</div>
-            <div class="data-value">{{ elimination_mode_labels.get(tournament_request.elimination_mode, tournament_request.elimination_mode.name) }}</div>
-          </div>
+        <div class="box">
+          <div class="data-label">{{ _('Tournament mode') }}</div>
+          <div class="data-value">{{ elimination_mode_labels.get(tournament_request.elimination_mode, tournament_request.elimination_mode.name) }}</div>
         </div>
-        <div class="column">
-          <div class="box column-cell--grow">
-            <div class="data-label">{{ _('Team size') }}</div>
-            <div class="data-value">{{ tournament_request.team_size }}</div>
-          </div>
+        <div class="box">
+          <div class="data-label">{{ _('Team size') }}</div>
+          <div class="data-value">{{ tournament_request.team_size }}</div>
         </div>
-        <div class="column">
-          <div class="box column-cell--grow">
-            <div class="data-label">{{ _('Participant limit') }}</div>
-            <div class="data-value">{{ tournament_request.participant_limit }}</div>
-          </div>
+        <div class="box">
+          <div class="data-label">{{ _('Participant limit') }}</div>
+          <div class="data-value">{{ tournament_request.participant_limit }}</div>
         </div>
-        <div class="column">
-          <div class="box column-cell--grow">
-            <div class="data-label">{{ _('Preferred start') }}</div>
-            <div class="data-value">{{ tournament_request.preferred_start_time|dateformat }}, {{ tournament_request.preferred_start_time|timeformat('short') }}</div>
-          </div>
+        <div class="box">
+          <div class="data-label">{{ _('Preferred start') }}</div>
+          <div class="data-value">{{ tournament_request.preferred_start_time|dateformat }}, {{ tournament_request.preferred_start_time|timeformat('short') }}</div>
         </div>
-        <div class="column">
-          <div class="box column-cell--grow">
-            <div class="data-label">{{ _('Preferred end') }}</div>
-            <div class="data-value">{{ tournament_request.preferred_end_time|dateformat }}, {{ tournament_request.preferred_end_time|timeformat('short') }}</div>
-          </div>
+        <div class="box">
+          <div class="data-label">{{ _('Preferred end') }}</div>
+          <div class="data-value">{{ tournament_request.preferred_end_time|dateformat }}, {{ tournament_request.preferred_end_time|timeformat('short') }}</div>
         </div>
       </div>
 
       <div class="box block">
-        <div class="data-label">{{ _('Game') }}</div>
-        <div class="data-value">{{ tournament_request.game|default(_('not set'), true) }}</div>
-        <div class="data-label mt">{{ _('Description') }}</div>
+        <div class="data-label">{{ _('Description') }}</div>
         <div class="data-value" style="white-space: pre-wrap;">{{ tournament_request.description }}</div>
+        <div class="data-label">{{ _('Special rules') }}</div>
         {%- if tournament_request.special_rules %}
-        <div class="data-label mt">{{ _('Special rules') }}</div>
         <div class="data-value" style="white-space: pre-wrap;">{{ tournament_request.special_rules }}</div>
+        {%- else %}
+        <div class="data-value dimmed">{{ _('not specified') }}</div>
         {%- endif %}
+        <div class="data-label">{{ _('Desired template') }}</div>
         {%- if tournament_request.desired_template %}
-        <div class="data-label mt">{{ _('Desired template') }}</div>
         <div class="data-value">{{ tournament_request.desired_template }}</div>
+        {%- else %}
+        <div class="data-value dimmed">{{ _('not specified') }}</div>
         {%- endif %}
       </div>
 
       {%- if tournament_request.notes %}
       <div class="box orga-note block">
-        <div class="data-label">{{ _('Private note') }}</div>
+        <div class="data-label">{{ _('Note to the orga (not public)') }}</div>
         <div class="data-value" style="white-space: pre-wrap;">{{ tournament_request.notes }}</div>
       </div>
       {%- endif %}
@@ -117,196 +117,219 @@
         'name': _('Name'),
         'game': _('Game'),
         'game_format': _('Game format'),
-        'elimination_mode': _('Elimination mode'),
+        'elimination_mode': _('Tournament mode'),
         'team_size': _('Team size'),
-        'participant_limit': _('Participant limit'),
-        'preferred_start_time': _('Preferred start'),
+        'participant_limit': _('Max. players') if tournament_request.team_size == 1 else _('Max. teams'),
+        'preferred_start_time': _('Tournament start'),
         'preferred_end_time': _('Preferred end'),
         'description': _('Description'),
         'ruleset': _('Ruleset'),
         'party': _('Party'),
         'origin': _('Origin'),
         'contestant_type': _('Contestant type'),
-        'score_ordering': _('Score ordering'),
+        'score_ordering': _('Points sorting'),
         'min_players': _('Min. players'),
         'min_teams': _('Min. teams'),
         'image_url': _('Image URL'),
-        'advancement_count': _('Advance per group'),
-        'points_carry_to_losers': _('Points carry to losers pool'),
+        'advancement_count': _('Advancers per group'),
+        'points_carry_to_losers': _('Points in losers round'),
         'point_table': _('Points by placement'),
         'group_size_max': _('Max. group size'),
+      } %}
+      {%- set supplied_values = {
+        'name': tournament_request.name,
+        'game': tournament_request.game,
+        'game_format': tournament_request.game_format.label,
+        'elimination_mode': elimination_mode_labels.get(tournament_request.elimination_mode, tournament_request.elimination_mode.name),
+        'contestant_type': _('Solo') if tournament_request.team_size == 1 else _('Team'),
+        'team_size': tournament_request.team_size,
+        'participant_limit': tournament_request.participant_limit,
+        'preferred_start_time': tournament_request.preferred_start_time|dateformat ~ ', ' ~ tournament_request.preferred_start_time|timeformat('short'),
+        'description': _('From the request'),
+        'ruleset': _('From the request'),
+        'party': party.title,
+        'origin': _('Request #%(number)s', number='%04d'|format(tournament_request.number)),
+      } %}
+      {%- set info_only_values = {
+        'preferred_end_time': tournament_request.preferred_end_time|dateformat ~ ', ' ~ tournament_request.preferred_end_time|timeformat('short'),
       } %}
       {%- set supplied_count = gap.supplied|length %}
       {%- set admin_fills_count = gap.admin_fills|length %}
       {%- set blocking_count = gap.blocking|length %}
       {%- set gap_total = supplied_count + admin_fills_count + blocking_count %}
 
-      <div class="box block">
-        <h2>{{ _('Fields for tournament creation') }}</h2>
+      {%- if not tournament_request.is_terminal or tournament_request.tournament_deleted %}
+      <div class="box block lt-gap-preview">
+        <div class="row row--space-between row--v-centered row--wrap" style="gap: 6px 16px;">
+          <h2 style="margin: 0;">{{ _('Preview: tournament from this request') }}</h2>
+          <span class="dimmed" style="font-size: 12px;">{{ _('%(num)s fields in the create form', num=gap_total) }}</span>
+        </div>
 
-        {{ render_distribution_bar(
-          [
-            (supplied_count, 'color-success'),
-            (admin_fills_count, 'color-disabled'),
-            (blocking_count, 'color-danger'),
-          ],
-          gap_total,
-        ) }}
+        <div class="lt-progress" style="margin-top: 12px;">
+          {%- if supplied_count %}<i class="lt-seg-supplied" style="flex: {{ supplied_count }};"></i>{% endif %}
+          {%- if admin_fills_count %}<i class="lt-seg-admin" style="flex: {{ admin_fills_count }};"></i>{% endif %}
+          {%- if blocking_count %}<i class="lt-seg-blocking" style="flex: {{ blocking_count }};"></i>{% endif %}
+        </div>
 
-        <ul class="legend bare">
-          <li>{{ render_tag('', class='color-success') }} {{ _('Supplied by the request') }} ({{ supplied_count }})</li>
-          <li>{{ render_tag('', class='color-disabled') }} {{ _('Filled in by the admin') }} ({{ admin_fills_count }})</li>
-          <li>{{ render_tag('', class='color-danger') }} {{ _('Blocks tournament creation') }} ({{ blocking_count }})</li>
-        </ul>
+        <div class="legend block">
+          <span class="lt-seg-supplied">{{ _('%(num)s from the request', num=supplied_count) }}</span>
+          <span class="lt-seg-admin">{{ _('%(num)s still open', num=admin_fills_count) }}</span>
+          <span class="lt-seg-blocking">{{ _('%(num)s block creation', num=blocking_count) }}</span>
+        </div>
 
         {%- if gap.blocking %}
-        {%- call render_notification_block(category='danger', icon='warning') %}
-          {{ _(
-            'This Free-for-All request cannot become a tournament until '
-            '%(field_1)s and %(field_2)s are set.',
-            field_1=field_labels.get('point_table', 'point_table'),
-            field_2=field_labels.get('group_size_max', 'group_size_max'),
-          ) }}
-        {%- endcall %}
+        <div class="notification color-danger block">
+          <strong>{{ _('Free-for-All needs points by placement and a max. group size.') }}</strong>
+          {{ _('The request supplies neither. Without these values the create form refuses.') }}
+        </div>
         {%- endif %}
 
-        <div class="row row--wrap block">
-          <div class="column-cell--grow">
-            <h3>{{ _('Still missing') }}</h3>
-            <table class="index">
-              <tbody>
-                {%- for field_name in gap.blocking %}
-                <tr class="gate">
-                  <td>{{ field_labels.get(field_name, field_name) }}</td>
-                </tr>
-                {%- endfor %}
-                {%- for field_name in gap.admin_fills %}
-                <tr>
-                  <td>{{ field_labels.get(field_name, field_name) }}</td>
-                </tr>
-                {%- endfor %}
-              </tbody>
-            </table>
-          </div>
-          <div class="column-cell--grow">
-            <h3>{{ _('Prefilled from the request') }}</h3>
-            <table class="index">
-              <tbody>
-                {%- for field_name in gap.supplied %}
-                <tr>
-                  <td>{{ field_labels.get(field_name, field_name) }}</td>
-                </tr>
-                {%- endfor %}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      {# History #}
-      <div class="box block">
-        <h2>{{ _('History') }}</h2>
-        {%- if history %}
-        <table class="index">
-          <thead>
-            <tr>
-              <th>{{ _('Time') }}</th>
-              <th>{{ _('Event') }}</th>
-              <th>{{ _('By') }}</th>
-            </tr>
-          </thead>
+        <div class="data-label">{{ _('Still missing') }} ({{ blocking_count + admin_fills_count }})</div>
+        <table class="index block">
           <tbody>
-            {%- for entry in history %}
-            {%- set _initiator = users_by_id.get(entry.initiator_id) if entry.initiator_id else none %}
+            {%- for field_name in gap.blocking %}
+            <tr class="gate">
+              <td>{{ field_labels.get(field_name, field_name) }} <span class="src">{{ field_name }}</span></td>
+              <td>{{ render_tag(_('Required for FFA'), class='color-danger') }}</td>
+            </tr>
+            {%- endfor %}
+            {%- for field_name in gap.admin_fills %}
             <tr>
-              <td>{{ entry.occurred_at|dateformat }}, {{ entry.occurred_at|timeformat('short') }}</td>
-              <td>
-                {%- if entry.event_type == 'tournament-request-submitted' -%}
-                  {{ _('Request submitted') }}
-                {%- elif entry.event_type == 'tournament-request-edited' -%}
-                  {{ _('Request edited') }}
-                {%- elif entry.event_type == 'tournament-request-withdrawn' -%}
-                  {{ _('Request withdrawn') }}
-                {%- elif entry.event_type == 'tournament-request-accepted' -%}
-                  {{ _('Request accepted') }}
-                {%- elif entry.event_type == 'tournament-request-rejected' -%}
-                  {{ _('Request rejected') }}
-                  {%- if entry.data.get('reason') %}: {{ entry.data.get('reason') }}{% endif -%}
-                {%- elif entry.event_type == 'tournament-request-tournament-created' -%}
-                  {{ _('Tournament created from this request') }}
-                {%- elif entry.event_type == 'tournament-request-tournament-deleted' -%}
-                  {{ _('Tournament deleted') }}
-                  {%- if entry.data.get('tournament_name') %}: {{ entry.data.get('tournament_name') }}{% endif -%}
-                {%- else -%}
-                  {{ entry.event_type }}
-                {%- endif -%}
-              </td>
-              <td>
-                {%- if _initiator -%}
-                  {{ _initiator.screen_name or _('Deleted user') }}
-                {%- else -%}
-                  {{ _('System') }}
-                {%- endif -%}
-              </td>
+              <td>{{ field_labels.get(field_name, field_name) }} <span class="src">{{ field_name }}</span></td>
+              <td><span class="dimmed">{{ _('by admin') }}</span></td>
             </tr>
             {%- endfor %}
           </tbody>
         </table>
-        {%- else %}
-        <p class="dimmed">{{ _('No history yet.') }}</p>
-        {%- endif %}
-      </div>
 
+        <div class="data-label">{{ _('Prefilled from the request') }} ({{ supplied_count }})</div>
+        <table class="index">
+          <tbody>
+            {%- for field_name in gap.supplied %}
+            <tr>
+              <td class="dimmed">{{ field_labels.get(field_name, field_name) }}</td>
+              <td>{{ supplied_values.get(field_name, '') }}</td>
+            </tr>
+            {%- endfor %}
+            {%- for field_name in gap.info_only %}
+            <tr>
+              <td class="dimmed">{{ field_labels.get(field_name, field_name) }} <span class="src">{{ field_name }}</span></td>
+              <td><span class="dimmed">{{ _('not a field in the create form') }}</span> · {{ info_only_values.get(field_name, '') }}</td>
+            </tr>
+            {%- endfor %}
+          </tbody>
+        </table>
+      </div>
+      {%- endif %}
+
+      {# History #}
+      {# The detail page shows no history table; the marker above is a boundary for the render tests. #}
+
+      </div>
     </div>
 
-    <div style="flex: 1 1 260px;">
-      <div class="box">
-        <h2>{{ _('Decision') }}</h2>
+    <div class="lt-decision box">
+      <h2>{{ _('Decision') }}</h2>
+      {%- set decided_by = users_by_id.get(tournament_request.decided_by_id) if tournament_request.decided_by_id else none %}
+      {%- set decided_by_name = (
+          decided_by.screen_name if decided_by and decided_by.screen_name
+          else (_('Deleted user') if decided_by
+                else (tournament_request.decided_by_id|string if tournament_request.decided_by_id else ''))
+      ) %}
 
-        {%- if tournament_request.status.value == 'submitted' %}
-        <form action="{{ url_for('.accept_request', request_id=tournament_request.id) }}" method="post">
-          <div class="button-row">
-            <button type="submit" class="button color-success">{{ _('Accept') }}</button>
+      {%- if tournament_request.status.value == 'submitted' %}
+      <form action="{{ url_for('.accept_request', request_id=tournament_request.id) }}" method="post">
+        <div class="button-row">
+          <button type="submit" class="button color-success lt-wide">{{ _('Accept') }}</button>
+        </div>
+      </form>
+      <div class="form-caption">{{ _('The request is frozen. You create the tournament next.') }}</div>
+      {%- elif tournament_request.status.value == 'accepted' %}
+      <div class="notification color-info block" style="font-size: 13px;">
+        {{ _(
+          'Accepted by %(name)s on %(date)s, %(time)s',
+          name=decided_by_name,
+          date=tournament_request.decided_at|dateformat,
+          time=tournament_request.decided_at|timeformat('short'),
+        ) }}
+      </div>
+      {%- if g.user.has_permission('lan_tournament.create') and g.user.has_permission('lan_tournament.request_decide') %}
+      <a class="button color-primary lt-wide" href="{{ url_for('.create_form', party_id=party.id, from_request=tournament_request.id) }}">{{ _('Create tournament') }}</a>
+      {%- endif %}
+      {%- if gap.blocking %}
+      <div class="form-caption" style="color: #c00;">{{ _('Still required in the form: points by placement, max. group size') }}</div>
+      {%- endif %}
+      <hr class="sep-line">
+      <button type="button" class="button lt-wide" disabled>{{ _('Appoint %(name)s as orga', name=proposer_name) }}</button>
+      <div class="form-caption">{{ _('Available once the tournament is created.') }}</div>
+      {%- elif tournament_request.tournament_deleted %}
+      {%- call render_notification_block(category='warning', icon='warning') %}
+        {{ _('The tournament created from this request has been deleted.') }}
+      {%- endcall %}
+      {%- if g.user.has_permission('lan_tournament.create') and g.user.has_permission('lan_tournament.request_decide') %}
+      <div class="button-row mt">
+        <a class="button color-success lt-wide" href="{{ url_for('.create_form', party_id=party.id, from_request=tournament_request.id) }}">{{ _('Create tournament again') }}</a>
+      </div>
+      {%- endif %}
+      {%- elif tournament_request.status.value == 'tournament_created' and created_tournament %}
+      <p class="dimmed">{{ _('Tournament created') }}</p>
+      <div class="button-row">
+        <a class="button color-success lt-wide" href="{{ url_for('.view', tournament_id=created_tournament.id) }}">{{ created_tournament.name }}</a>
+      </div>
+      {%- if proposer_is_orga %}
+      <div class="form-caption">{{ _('%(name)s is an orga of this tournament.', name=proposer_name) }}</div>
+      {%- endif %}
+      {%- elif tournament_request.status.value == 'rejected' %}
+      {%- call render_notification_block(category='danger') %}
+        {{ _(
+          'Rejected by %(name)s on %(date)s, %(time)s',
+          name=decided_by_name,
+          date=tournament_request.decided_at|dateformat,
+          time=tournament_request.decided_at|timeformat('short'),
+        ) }}
+      {%- endcall %}
+      {%- if tournament_request.rejection_reason %}
+      <blockquote class="pre">{{ tournament_request.rejection_reason }}</blockquote>
+      {%- endif %}
+      {%- elif tournament_request.status.value == 'withdrawn' %}
+      <p class="dimmed">
+        {{ _(
+          'Withdrawn by the proposer on %(date)s, %(time)s',
+          date=tournament_request.updated_at|dateformat,
+          time=tournament_request.updated_at|timeformat('short'),
+        ) }}
+      </p>
+      {%- endif %}
+
+      {%- if tournament_request.status.value in ('submitted', 'accepted') %}
+      <hr class="sep-line">
+      <details class="rej"{% if reject_form.reason.errors %} open{% endif %}>
+        <summary class="button lt-wide">
+          {%- if tournament_request.status.value == 'accepted' -%}
+            {{ _('Reject after all …') }}
+          {%- else -%}
+            {{ _('Reject…') }}
+          {%- endif -%}
+        </summary>
+        <form action="{{ url_for('.reject_request', request_id=tournament_request.id) }}" method="post">
+          <div class="rb">
+            <div{% if reject_form.reason.errors %} class="form-control-block invalid"{% endif %}>
+              <label class="form-label" for="{{ reject_form.reason.id }}">{{ _('Reason') }} <span class="dimmed">{{ _('(required, visible to %(name)s)', name=proposer_name) }}</span></label>
+              {{ reject_form.reason(class='form-control', style='height: 7rem;') }}
+              {{- form_field_errors(reject_form.reason) }}
+            </div>
+            <div class="form-caption">{{ _('Rejecting is final.') }}</div>
+            <div class="button-row" style="margin-top: 12px;">
+              <button type="submit" class="button color-danger">{{ _('Reject request') }}</button>
+            </div>
           </div>
         </form>
-        {%- elif tournament_request.status.value == 'accepted' %}
-        {%- if g.user.has_permission('lan_tournament.create') and g.user.has_permission('lan_tournament.request_decide') %}
-        <div class="button-row">
-          <a class="button color-success" href="{{ url_for('.create_form', party_id=party.id, from_request=tournament_request.id) }}">{{ _('Create tournament') }}</a>
-        </div>
-        {%- endif %}
-        <div class="button-row mt">
-          <button
-            type="button"
-            class="button"
-            disabled
-            title="{{ _('Happens automatically once the tournament is created.') }}"
-          >{{ _('Appoint %(name)s as orga', name=proposer_name) }}</button>
-        </div>
-        {%- elif tournament_request.tournament_deleted %}
-        {%- call render_notification_block(category='warning', icon='warning') %}
-          {{ _('The tournament created from this request has been deleted.') }}
-        {%- endcall %}
-        {%- if g.user.has_permission('lan_tournament.create') and g.user.has_permission('lan_tournament.request_decide') %}
-        <div class="button-row mt">
-          <a class="button color-success" href="{{ url_for('.create_form', party_id=party.id, from_request=tournament_request.id) }}">{{ _('Create tournament again') }}</a>
-        </div>
-        {%- endif %}
-        {%- endif %}
-
-        {%- if tournament_request.status.value in ('submitted', 'accepted') %}
-        <hr class="sep-line">
-        <details class="rej"{% if reject_form.reason.errors %} open{% endif %}>
-          <summary>{{ _('Reject') }}</summary>
-          <form action="{{ url_for('.reject_request', request_id=tournament_request.id) }}" method="post">
-            {{ form_field(reject_form.reason) }}
-            {{ form_buttons(_('Reject'), color='danger') }}
-          </form>
-        </details>
-        {%- endif %}
-      </div>
+      </details>
+      {%- endif %}
     </div>
 
   </div>
+
+</div>
 
 {%- endblock %}

@@ -28,6 +28,7 @@ the fix covers both surfaces.
 """
 
 from datetime import datetime, timedelta, UTC
+import re
 
 import pytest
 
@@ -38,6 +39,7 @@ from byceps.services.lan_tournament.models.elimination_mode import (
 )
 from byceps.services.lan_tournament.models.game_format import GameFormat
 from byceps.services.party.models import PartyID
+from byceps.services.site import site_service
 from byceps.services.site.models import Site, SiteID
 
 from tests.helpers import create_site, http_client, log_in_user
@@ -51,7 +53,12 @@ _BOTE_SITE_ID = SiteID('totalverplant-36')
 
 @pytest.fixture(scope='module')
 def party(make_party, brand):
-    return make_party(brand, PARTY_ID, 'LAN Party 2026 Site Update View')
+    return make_party(
+        brand,
+        PARTY_ID,
+        'LAN Party 2026 Site Update View',
+        max_ticket_quantity=240,
+    )
 
 
 @pytest.fixture(scope='module')
@@ -68,6 +75,10 @@ def base_site(party) -> Site:
 @pytest.fixture(scope='module')
 def bote_site(party) -> Site:
     """Bound to the real `totalverplant-36` override directory."""
+    site = site_service.find_site(_BOTE_SITE_ID)
+    if site is not None:
+        return site
+
     return create_site(
         _BOTE_SITE_ID,
         party.brand_id,
@@ -193,3 +204,137 @@ def test_update_request_erroneous_form_rerenders_instead_of_500(
 
     assert response.status_code == 200
     assert response.mimetype == 'text/html'
+
+
+def _flat(html: str) -> str:
+    return ' '.join(html.split())
+
+
+def _markup(response) -> str:
+    """Return the page's HTML without inline `<style>` blocks."""
+    return re.sub(
+        r'<style.*?</style>',
+        '',
+        response.get_data(as_text=True),
+        flags=re.DOTALL,
+    )
+
+
+def _edit(tournament_request, editor, **changes):
+    fields = dict(
+        party_capacity=None,
+        name=tournament_request.name,
+        game=tournament_request.game,
+        game_format=tournament_request.game_format,
+        elimination_mode=tournament_request.elimination_mode,
+        team_size=tournament_request.team_size,
+        participant_limit=tournament_request.participant_limit,
+        preferred_start_time=tournament_request.preferred_start_time,
+        preferred_end_time=tournament_request.preferred_end_time,
+        description=tournament_request.description,
+        special_rules=tournament_request.special_rules,
+        notes=tournament_request.notes,
+        desired_template=tournament_request.desired_template,
+    )
+    fields.update(changes)
+    result = tournament_request_service.update_request(
+        tournament_request.id, editor.id, **fields
+    )
+    assert result.is_ok(), result.unwrap_err()
+
+
+def test_bote_edit_page_marks_the_latest_edit_and_lists_it_in_the_history(
+    bote_site_app, party, make_user
+):
+    proposer = make_user()
+    tournament_request = _submit(party, proposer, participant_limit=8)
+    _edit(
+        tournament_request,
+        proposer,
+        name='Renamed Cup',
+        participant_limit=12,
+    )
+
+    log_in_user(proposer.id)
+    with http_client(bote_site_app, user_id=proposer.id) as client:
+        response = client.get(_update_form_path(tournament_request.id))
+
+    assert response.status_code == 200
+    html = _markup(response)
+    flat = _flat(html)
+
+    assert html.count('form-control-block chg') == 2
+    assert html.count('class="opt-chip chg-t"') == 2
+    assert '<div class="lbl-row"><label class="form-label"' in html
+    assert re.search(r'data-limit-caption data-before="[^"]*8[^"]*"', html)
+    assert re.search(
+        r'<div class="form-caption">[^<]*Site Update View Cup</div>', html
+    )
+    assert '<aside class="desk">' in html
+    assert '<div class="desk-h">' in html
+    assert re.search(r'Name, [^<]*8 → 12', flat), flat
+    assert '<ol class="tl">' in html
+
+
+def test_bote_edit_page_without_an_edit_shows_no_markers(
+    bote_site_app, party, make_user
+):
+    proposer = make_user()
+    tournament_request = _submit(party, proposer)
+
+    log_in_user(proposer.id)
+    with http_client(bote_site_app, user_id=proposer.id) as client:
+        response = client.get(_update_form_path(tournament_request.id))
+
+    html = _markup(response)
+    assert response.status_code == 200
+    assert 'chg-t' not in html
+    assert 'form-control-block chg' not in html
+    assert 'data-before' not in html
+    assert '<div class="desk-h">' in html
+
+
+def test_bote_frozen_page_shows_the_six_row_summary_with_short_dates(
+    bote_site_app, party, make_user
+):
+    proposer = make_user()
+    decider = make_user()
+    starts_at = datetime(2026, 10, 3, 19, 0, tzinfo=UTC)
+    tournament_request = _submit(
+        party,
+        proposer,
+        preferred_start_time=starts_at,
+        preferred_end_time=starts_at + timedelta(hours=2),
+        notes='Only for the orga.',
+    )
+    accept_result = tournament_request_service.accept_request(
+        tournament_request.id, decider.id
+    )
+    assert accept_result.is_ok(), accept_result.unwrap_err()
+
+    log_in_user(proposer.id)
+    with http_client(bote_site_app, user_id=proposer.id) as client:
+        response = client.get(_update_form_path(tournament_request.id))
+
+    assert response.status_code == 200
+    html = _markup(response)
+
+    assert html.count('<dl class="sup">') == 1
+    rows = re.findall(r'<div><dt>([^<]*)</dt><dd>([^<]*)</dd></div>', html)
+    assert len(rows) == 6
+    values = dict(rows)
+    assert 'Some Game' in values.values()
+    times = [value for _label, value in rows[-2:]]
+    assert all(re.fullmatch(r'03\.10\. \d{2}:\d{2}', t) for t in times), times
+    assert '2026' not in ''.join(times)
+    assert 'desk-h' not in html
+    assert 'class="desk"' not in html
+    assert 'Only for the orga.' not in html
+    lock_note = re.search(
+        r'class="note-box lock">.*?<p>(.*?)</p>', html, flags=re.DOTALL
+    )
+    assert lock_note, html
+    assert re.search(r'\b\d{2}\.\d{2}\.(?!\d)', lock_note.group(1))
+    assert '2026' not in lock_note.group(1)
+    assert '%(' not in html
+    assert 'class="btns" style="margin-top:22px"' in html

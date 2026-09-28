@@ -10,16 +10,27 @@ from unittest.mock import MagicMock, patch
 from flask import Flask, g
 from flask_babel import Babel
 import pytest
-from werkzeug.exceptions import Forbidden
+from werkzeug.exceptions import Forbidden, MethodNotAllowed, NotFound
 
+from byceps.services.lan_tournament import tournament_request_service
 from byceps.services.lan_tournament.blueprints.admin import views
 from byceps.services.lan_tournament.models.elimination_mode import (
     EliminationMode,
 )
 from byceps.services.lan_tournament.models.game_format import GameFormat
 from byceps.services.lan_tournament.models.tournament_request import (
+    TournamentRequest,
+    TournamentRequestID,
     TournamentRequestStatus,
 )
+from byceps.services.lan_tournament.models.tournament_status import (
+    TournamentStatus,
+)
+from byceps.services.lan_tournament.tournament_request_domain_service import (
+    analyze_field_gap,
+)
+from byceps.services.party.models import PartyID
+from byceps.services.user.models import UserID
 from byceps.util.result import Err, Ok
 
 
@@ -58,9 +69,14 @@ def _make_tournament_request(
     id='11111111-1111-1111-1111-111111111111',
     status=TournamentRequestStatus.submitted,
     proposer_id='u1',
+    created_at=None,
     decided_at=None,
+    decided_by_id=None,
     created_tournament_id=None,
     tournament_deleted=False,
+    team_size=1,
+    participant_limit=16,
+    special_rules=None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         id=id,
@@ -72,15 +88,18 @@ def _make_tournament_request(
         game='Some Game',
         game_format=GameFormat.ONE_V_ONE,
         elimination_mode=EliminationMode.SINGLE_ELIMINATION,
-        team_size=1,
-        participant_limit=16,
+        team_size=team_size,
+        participant_limit=participant_limit,
         preferred_start_time=datetime(2026, 1, 1, 10, 0, tzinfo=UTC),
         preferred_end_time=datetime(2026, 1, 1, 18, 0, tzinfo=UTC),
+        # `requests_for_party` sorts on `.created_at`, so default it.
+        created_at=created_at or datetime(2026, 1, 1, 9, 0, tzinfo=UTC),
         description='A description',
-        special_rules=None,
+        special_rules=special_rules,
         notes=None,
         desired_template=None,
         decided_at=decided_at,
+        decided_by_id=decided_by_id,
         created_tournament_id=created_tournament_id,
         # A `SimpleNamespace` has no computed properties, unlike the
         # real `TournamentRequest` dataclass -- callers that need a
@@ -92,6 +111,11 @@ def _make_tournament_request(
         # is submitted`) -- straightforward enough not to need its own
         # override param, unlike `tournament_deleted` above.
         is_editable=status is TournamentRequestStatus.submitted,
+        is_editable_by_admin=status
+        in (
+            TournamentRequestStatus.submitted,
+            TournamentRequestStatus.accepted,
+        ),
     )
 
 
@@ -187,6 +211,155 @@ def test_admin_queue_computes_stale_request_ids(app):
     assert context['stale_request_ids'] == {'r-stale'}
 
 
+# --------------------------------------------------------------------- #
+# Admin request detail -- created tournament (AC4)
+# --------------------------------------------------------------------- #
+
+
+def test_view_request_passes_created_tournament(app):
+    """AC4: the detail view resolves the created tournament (and
+    whether the proposer is one of its orgas), so the Decision box's
+    template can link to it and mention the appointment -- neither was
+    ever passed into the context before this issue."""
+    tournament_id = '22222222-2222-2222-2222-222222222222'
+    tournament_request = _make_tournament_request(
+        status=TournamentRequestStatus.tournament_created,
+        created_tournament_id=tournament_id,
+    )
+    tournament = SimpleNamespace(id=tournament_id, name='Spring Cup')
+    party = SimpleNamespace(id='p1')
+
+    with (
+        patch(f'{_V}.tournament_request_repository') as mock_repo,
+        patch(f'{_V}.party_service') as mock_party_svc,
+        patch(f'{_V}.tournament_request_service') as mock_request_svc,
+        patch(f'{_V}.tournament_service') as mock_tournament_svc,
+        patch(f'{_V}.tournament_orga_service') as mock_orga_svc,
+        patch(f'{_V}.user_service') as mock_user_svc,
+        patch(
+            'byceps.util.framework.templating.render_template'
+        ) as mock_render_template,
+        app.test_request_context('/'),
+    ):
+        mock_repo.find_request.return_value = tournament_request
+        mock_party_svc.get_party.return_value = party
+        mock_request_svc.get_request_history.return_value = []
+        mock_tournament_svc.find_tournament.return_value = tournament
+        mock_orga_svc.is_orga_for_tournament.return_value = True
+        mock_user_svc.get_users_indexed_by_id.return_value = {}
+        mock_render_template.return_value = 'rendered'
+        g.user = _make_user(
+            permissions=frozenset({'lan_tournament.request_view'})
+        )
+
+        views.view_request(tournament_request.id)
+
+    mock_tournament_svc.find_tournament.assert_called_once_with(tournament_id)
+    mock_orga_svc.is_orga_for_tournament.assert_called_once_with(
+        tournament_request.proposer_id, tournament_id
+    )
+    context = mock_render_template.call_args.kwargs
+    assert context['created_tournament'] is tournament
+    assert context['proposer_is_orga'] is True
+
+
+def test_view_request_skips_tournament_lookup_without_created_tournament_id(
+    app,
+):
+    """The common case (no tournament created yet, or its link was
+    cleared by a deletion cascade) must not call the tournament/orga
+    services at all -- `created_tournament_id` is `None`."""
+    tournament_request = _make_tournament_request(
+        status=TournamentRequestStatus.submitted,
+        created_tournament_id=None,
+    )
+    party = SimpleNamespace(id='p1')
+
+    with (
+        patch(f'{_V}.tournament_request_repository') as mock_repo,
+        patch(f'{_V}.party_service') as mock_party_svc,
+        patch(f'{_V}.tournament_request_service') as mock_request_svc,
+        patch(f'{_V}.tournament_service') as mock_tournament_svc,
+        patch(f'{_V}.tournament_orga_service') as mock_orga_svc,
+        patch(f'{_V}.user_service') as mock_user_svc,
+        patch(
+            'byceps.util.framework.templating.render_template'
+        ) as mock_render_template,
+        app.test_request_context('/'),
+    ):
+        mock_repo.find_request.return_value = tournament_request
+        mock_party_svc.get_party.return_value = party
+        mock_request_svc.get_request_history.return_value = []
+        mock_user_svc.get_users_indexed_by_id.return_value = {}
+        mock_render_template.return_value = 'rendered'
+        g.user = _make_user(
+            permissions=frozenset({'lan_tournament.request_view'})
+        )
+
+        views.view_request(tournament_request.id)
+
+    mock_tournament_svc.find_tournament.assert_not_called()
+    mock_orga_svc.is_orga_for_tournament.assert_not_called()
+    context = mock_render_template.call_args.kwargs
+    assert context['created_tournament'] is None
+    assert context['proposer_is_orga'] is False
+
+
+def test_view_request_passes_seats_for_history_initiators(app):
+    """Issue 13: the History table's seat column needs one batch seat
+    lookup, scoped to the request's party, over the history entries'
+    initiator IDs -- not the proposer, the decider, or a system entry
+    with no initiator at all."""
+    tournament_request = _make_tournament_request(
+        status=TournamentRequestStatus.accepted,
+        proposer_id='u1',
+        decided_by_id='u2',
+    )
+    party = SimpleNamespace(id='p1')
+    history = [
+        SimpleNamespace(
+            initiator_id='u3', event_type='tournament-request-submitted'
+        ),
+        SimpleNamespace(
+            initiator_id='u4', event_type='tournament-request-accepted'
+        ),
+        SimpleNamespace(
+            initiator_id=None,
+            event_type='tournament-request-tournament-deleted',
+        ),
+    ]
+
+    with (
+        patch(f'{_V}.tournament_request_repository') as mock_repo,
+        patch(f'{_V}.party_service') as mock_party_svc,
+        patch(f'{_V}.tournament_request_service') as mock_request_svc,
+        patch(f'{_V}.tournament_service') as mock_tournament_svc,
+        patch(f'{_V}.tournament_orga_service'),
+        patch(f'{_V}.user_service') as mock_user_svc,
+        patch(f'{_V}.build_seat_lookup') as mock_build_seat_lookup,
+        patch(
+            'byceps.util.framework.templating.render_template'
+        ) as mock_render_template,
+        app.test_request_context('/'),
+    ):
+        mock_repo.find_request.return_value = tournament_request
+        mock_party_svc.get_party.return_value = party
+        mock_request_svc.get_request_history.return_value = history
+        mock_user_svc.get_users_indexed_by_id.return_value = {}
+        mock_build_seat_lookup.return_value = {'u3': 'A12'}
+        mock_render_template.return_value = 'rendered'
+        g.user = _make_user(
+            permissions=frozenset({'lan_tournament.request_view'})
+        )
+
+        views.view_request(tournament_request.id)
+
+    mock_tournament_svc.find_tournament.assert_not_called()
+    mock_build_seat_lookup.assert_called_once_with({'u3', 'u4'}, party.id)
+    context = mock_render_template.call_args.kwargs
+    assert context['seats_by_user_id'] == {'u3': 'A12'}
+
+
 def test_admin_accept_requires_request_decide_permission(app):
     """Accepting a request is gated on `request_decide`, not `request_view`.
 
@@ -259,15 +432,29 @@ def test_admin_reject_request_requires_request_view_permission_too(app):
 
 
 # --------------------------------------------------------------------- #
-# Admin reject request -- reason validation (n)
 # --------------------------------------------------------------------- #
 
 
-def test_admin_reject_request_empty_reason_flashes_required_and_redirects(
-    app,
-):
-    """n: an empty reason keeps its existing behavior -- flash and
-    redirect (there is no typed text worth preserving)."""
+_REASON_REQUIRED = 'A reason is required to reject a request.'
+_REASON_CONTROL_CHARS = 'The reason must not contain control characters.'
+_REASON_TOO_LONG = 'The reason must not exceed 2000 characters.'
+
+
+def _translate(msg, **kw):
+    """Stand in for `gettext`: make a missed `gettext()` call visible."""
+    return f'[de] {msg}'
+
+
+def _decider_and_viewer() -> MagicMock:
+    return _make_user(
+        permissions=frozenset(
+            {'lan_tournament.request_decide', 'lan_tournament.request_view'}
+        )
+    )
+
+
+def test_reject_blank_reason_has_no_flash(app):
+    """An empty reason is one field error on the re-rendered detail page."""
     tournament_request = _make_tournament_request()
 
     with (
@@ -276,40 +463,29 @@ def test_admin_reject_request_empty_reason_flashes_required_and_redirects(
         patch(f'{_V}.view_request') as mock_view_request,
         patch(f'{_V}.redirect_to') as mock_redirect_to,
         patch(f'{_V}.flash_error') as mock_flash_error,
-        patch(f'{_V}.gettext', side_effect=lambda msg, **kw: msg),
-        app.test_request_context(
-            '/', method='POST', data={'reason': ''}
-        ),
+        patch(f'{_V}.gettext', side_effect=_translate),
+        app.test_request_context('/', method='POST', data={'reason': ''}),
     ):
         mock_repo.find_request.return_value = tournament_request
-        mock_redirect_to.return_value = 'redirected'
-        g.user = _make_user(
-            permissions=frozenset({'lan_tournament.request_decide', 'lan_tournament.request_view'})
-        )
+        mock_view_request.return_value = 'rendered-detail'
+        g.user = _decider_and_viewer()
 
         result = views.reject_request(tournament_request.id)
 
     mock_request_svc.reject_request.assert_not_called()
-    mock_view_request.assert_not_called()
-    mock_flash_error.assert_called_once_with(
-        'A reason is required to reject a request.'
-    )
-    mock_redirect_to.assert_called_once_with(
-        '.view_request', request_id=tournament_request.id
-    )
-    assert result == 'redirected'
+    mock_flash_error.assert_not_called()
+    mock_redirect_to.assert_not_called()
+    mock_view_request.assert_called_once()
+    call = mock_view_request.call_args
+    assert call.args[0] == tournament_request.id
+    erroneous_form = call.kwargs['erroneous_reject_form']
+    assert erroneous_form.reason.errors == [f'[de] {_REASON_REQUIRED}']
+    assert result == 'rendered-detail'
 
 
-def test_admin_reject_request_whitespace_only_reason_flashes_required(app):
-    """n: whitespace-only slips past `InputRequired`/`Length(min=1)` in
-    the form (both see a non-empty raw string) -- `form.validate()`
-    itself passes it through. It still reaches the user as 'reason
-    required', just via the service's own `reason.strip()` check
-    (mirrored at the service level by
-    `test_reject_request_requires_reason`) and the existing
-    Ok/Err `match` below, not the view's own pre-`validate()` branch."""
+def test_reject_whitespace_reason_has_no_flash(app):
+    """A whitespace-only reason passes the form and the service catches it."""
     tournament_request = _make_tournament_request()
-    err_message = 'A reason is required to reject a request.'
 
     with (
         patch(f'{_V}.tournament_request_repository') as mock_repo,
@@ -317,47 +493,35 @@ def test_admin_reject_request_whitespace_only_reason_flashes_required(app):
         patch(f'{_V}.view_request') as mock_view_request,
         patch(f'{_V}.redirect_to') as mock_redirect_to,
         patch(f'{_V}.flash_error') as mock_flash_error,
-        patch(f'{_V}.gettext', side_effect=lambda msg, **kw: msg),
-        app.test_request_context(
-            '/', method='POST', data={'reason': '   '}
-        ),
+        patch(f'{_V}.gettext', side_effect=_translate),
+        app.test_request_context('/', method='POST', data={'reason': '   '}),
     ):
         mock_repo.find_request.return_value = tournament_request
-        mock_request_svc.reject_request.return_value = Err(err_message)
-        mock_redirect_to.return_value = 'redirected'
-        user = _make_user(
-            permissions=frozenset({'lan_tournament.request_decide', 'lan_tournament.request_view'})
-        )
+        mock_request_svc.reject_request.return_value = Err(_REASON_REQUIRED)
+        mock_view_request.return_value = 'rendered-detail'
+        user = _decider_and_viewer()
         g.user = user
 
-        views.reject_request(tournament_request.id)
+        result = views.reject_request(tournament_request.id)
 
-    # `form.validate()` passed the whitespace-only reason through, so
-    # the service is what actually caught it -- called with the
-    # stripped (now empty) reason.
     mock_request_svc.reject_request.assert_called_once_with(
         tournament_request.id, user.id, ''
     )
-    mock_view_request.assert_not_called()
-    mock_flash_error.assert_called_once_with(err_message)
-    mock_redirect_to.assert_called_once_with(
-        '.requests_for_party', party_id=tournament_request.party_id
-    )
+    mock_flash_error.assert_not_called()
+    mock_redirect_to.assert_not_called()
+    mock_view_request.assert_called_once()
+    call = mock_view_request.call_args
+    assert call.args[0] == tournament_request.id
+    erroneous_form = call.kwargs['erroneous_reject_form']
+    assert erroneous_form.reason.data == '   '
+    assert erroneous_form.reason.errors == [f'[de] {_REASON_REQUIRED}']
+    assert result == 'rendered-detail'
 
 
 def test_admin_reject_request_over_max_length_preserves_text_and_rerenders(
     app,
 ):
-    """n: a too-long reason must not be lost -- re-render the request
-    detail page with the erroneous (bound) form instead of
-    redirecting, so the admin's typed text survives.
-
-    J3: the flashed message is now the form's own error text for the
-    field (gettext'd), not a hardcoded 'too long' string -- so any
-    other future validator failure (a control-char check, say) gets
-    the same treatment without a code change here. Reproduce the
-    expected text from the bound form itself rather than hardcoding
-    wtforms' internal wording."""
+    """A too-long reason re-renders the detail page with the bound form."""
     tournament_request = _make_tournament_request()
     long_reason = 'x' * 2001
 
@@ -374,41 +538,60 @@ def test_admin_reject_request_over_max_length_preserves_text_and_rerenders(
     ):
         mock_repo.find_request.return_value = tournament_request
         mock_view_request.return_value = 'rendered-detail'
-        g.user = _make_user(
-            permissions=frozenset({'lan_tournament.request_decide', 'lan_tournament.request_view'})
-        )
+        g.user = _decider_and_viewer()
 
         result = views.reject_request(tournament_request.id)
 
     mock_request_svc.reject_request.assert_not_called()
     mock_redirect_to.assert_not_called()
+    mock_flash_error.assert_not_called()
     mock_view_request.assert_called_once()
     call = mock_view_request.call_args
     assert call.args[0] == tournament_request.id
     erroneous_form = call.kwargs['erroneous_reject_form']
     assert erroneous_form.reason.data == long_reason
-    assert erroneous_form.reason.errors
-    mock_flash_error.assert_called_once_with(erroneous_form.reason.errors[0])
+    assert erroneous_form.reason.errors == [_REASON_TOO_LONG]
     assert result == 'rendered-detail'
 
 
-def test_admin_reject_request_other_form_error_flashes_form_message_and_rerenders(
+def test_reject_reason_failing_two_validators_shows_one_error(app):
+    """A reason failing two validators shows one error."""
+    tournament_request = _make_tournament_request()
+    bad_reason = 'x' * 2001 + '\x00'
+
+    with (
+        patch(f'{_V}.tournament_request_repository') as mock_repo,
+        patch(f'{_V}.tournament_request_service') as mock_request_svc,
+        patch(f'{_V}.view_request') as mock_view_request,
+        patch(f'{_V}.flash_error') as mock_flash_error,
+        patch(f'{_V}.gettext', side_effect=lambda msg, **kw: msg),
+        app.test_request_context(
+            '/', method='POST', data={'reason': bad_reason}
+        ),
+    ):
+        mock_repo.find_request.return_value = tournament_request
+        mock_view_request.return_value = 'rendered-detail'
+        g.user = _decider_and_viewer()
+
+        views.reject_request(tournament_request.id)
+
+    mock_request_svc.reject_request.assert_not_called()
+    mock_flash_error.assert_not_called()
+    erroneous_form = mock_view_request.call_args.kwargs['erroneous_reject_form']
+    assert erroneous_form.reason.data == bad_reason
+    assert erroneous_form.reason.errors == [_REASON_TOO_LONG]
+
+
+def test_admin_reject_request_other_form_error_shows_form_message_and_rerenders(
     app,
 ):
-    """J3: any non-empty-after-strip form validation failure -- not
-    just 'too long' -- must flash the form's own error message and
-    re-render with the bound form, so a future validator (a
-    control-char check, say) gets the same treatment without a code
-    change here. The form itself is mocked so this doesn't depend on
-    which validators the form module actually has wired up (or when)."""
+    """Any form validation failure shows its message on the field."""
     tournament_request = _make_tournament_request()
 
     mock_form = MagicMock()
     mock_form.validate.return_value = False
     mock_form.reason.data = 'bad\x00reason'
-    mock_form.reason.errors = [
-        'The reason must not contain control characters.'
-    ]
+    mock_form.reason.errors = [_REASON_CONTROL_CHARS]
 
     with (
         patch(f'{_V}.tournament_request_repository') as mock_repo,
@@ -424,35 +607,30 @@ def test_admin_reject_request_other_form_error_flashes_form_message_and_rerender
     ):
         mock_repo.find_request.return_value = tournament_request
         mock_view_request.return_value = 'rendered-detail'
-        g.user = _make_user(
-            permissions=frozenset({'lan_tournament.request_decide', 'lan_tournament.request_view'})
-        )
+        g.user = _decider_and_viewer()
 
         result = views.reject_request(tournament_request.id)
 
     mock_request_svc.reject_request.assert_not_called()
     mock_redirect_to.assert_not_called()
-    mock_flash_error.assert_called_once_with(
-        'The reason must not contain control characters.'
-    )
+    mock_flash_error.assert_not_called()
     mock_view_request.assert_called_once_with(
         tournament_request.id, erroneous_reject_form=mock_form
     )
+    assert mock_form.reason.errors == [_REASON_CONTROL_CHARS]
     assert result == 'rendered-detail'
 
 
-def test_admin_reject_request_service_control_char_err_preserves_text_and_rerenders(
-    app,
+@pytest.mark.parametrize(
+    'err_message',
+    [_REASON_CONTROL_CHARS, _REASON_TOO_LONG],
+)
+def test_reject_service_reason_err_is_a_field_error_not_a_flash(
+    app, err_message
 ):
-    """J3: when the SERVICE (not the form) is what catches an invalid
-    reason -- e.g. a control character the form doesn't validate for --
-    re-render with the bound form instead of redirecting, so the typed
-    text isn't lost. `form.validate()` is forced to pass regardless of
-    whether the form module's own control-char validator has landed
-    yet, so this targets the service's Err path specifically."""
+    """A service error on the reason is the field's one error."""
     tournament_request = _make_tournament_request()
     bad_reason = 'bad\x00reason'
-    err_message = 'The reason must not contain control characters.'
 
     with (
         patch(f'{_V}.tournament_request_repository') as mock_repo,
@@ -460,7 +638,7 @@ def test_admin_reject_request_service_control_char_err_preserves_text_and_rerend
         patch(f'{_V}.view_request') as mock_view_request,
         patch(f'{_V}.redirect_to') as mock_redirect_to,
         patch(f'{_V}.flash_error') as mock_flash_error,
-        patch(f'{_V}.gettext', side_effect=lambda msg, **kw: msg),
+        patch(f'{_V}.gettext', side_effect=_translate),
         # A real function, not a bare `MagicMock`: WTForms' `FormMeta`
         # rescans `dir(cls)` for unbound fields whenever `_unbound_fields`
         # is invalidated, and `hasattr(x, '_formfield')` is trivially
@@ -479,9 +657,7 @@ def test_admin_reject_request_service_control_char_err_preserves_text_and_rerend
         mock_repo.find_request.return_value = tournament_request
         mock_request_svc.reject_request.return_value = Err(err_message)
         mock_view_request.return_value = 'rendered-detail'
-        user = _make_user(
-            permissions=frozenset({'lan_tournament.request_decide', 'lan_tournament.request_view'})
-        )
+        user = _decider_and_viewer()
         g.user = user
 
         result = views.reject_request(tournament_request.id)
@@ -490,13 +666,37 @@ def test_admin_reject_request_service_control_char_err_preserves_text_and_rerend
         tournament_request.id, user.id, bad_reason
     )
     mock_redirect_to.assert_not_called()
-    mock_flash_error.assert_called_once_with(err_message)
+    mock_flash_error.assert_not_called()
     mock_view_request.assert_called_once()
     call = mock_view_request.call_args
     assert call.args[0] == tournament_request.id
     erroneous_form = call.kwargs['erroneous_reject_form']
     assert erroneous_form.reason.data == bad_reason
+    assert erroneous_form.reason.errors == [f'[de] {err_message}']
     assert result == 'rendered-detail'
+
+
+def test_reject_reason_error_msgids_match_the_service():
+    """The view routes a service `Err` to the reason field by msgid."""
+    request_id = '11111111-1111-1111-1111-111111111111'
+
+    service_errors = {
+        tournament_request_service.reject_request(
+            request_id, 'u1', reason
+        ).unwrap_err()
+        for reason in (
+            '   ',
+            'bad\x00reason',
+            'x' * 2001,
+        )
+    }
+
+    assert service_errors == views._REJECT_REASON_ERRORS
+    assert service_errors == {
+        _REASON_REQUIRED,
+        _REASON_CONTROL_CHARS,
+        _REASON_TOO_LONG,
+    }
 
 
 def test_admin_reject_request_valid_reason_calls_service_and_redirects_to_queue(
@@ -518,7 +718,9 @@ def test_admin_reject_request_valid_reason_calls_service_and_redirects_to_queue(
         mock_request_svc.reject_request.return_value = Ok(tournament_request)
         mock_redirect_to.return_value = 'redirected'
         user = _make_user(
-            permissions=frozenset({'lan_tournament.request_decide', 'lan_tournament.request_view'})
+            permissions=frozenset(
+                {'lan_tournament.request_decide', 'lan_tournament.request_view'}
+            )
         )
         g.user = user
 
@@ -534,19 +736,18 @@ def test_admin_reject_request_valid_reason_calls_service_and_redirects_to_queue(
     assert result == 'redirected'
 
 
-def test_admin_reject_request_service_err_is_flashed(app):
-    """The service's own `expected_status` precondition (a race lost
-    between page-load and submit) is still a defense-in-depth path
-    reachable through the view -- it must be flashed, not swallowed."""
+def test_reject_non_field_service_error_flashes_and_redirects(app):
+    """An `expected_status` failure is flashed, not put on the field."""
     tournament_request = _make_tournament_request()
     err_message = 'Request is no longer in the expected state.'
 
     with (
         patch(f'{_V}.tournament_request_repository') as mock_repo,
         patch(f'{_V}.tournament_request_service') as mock_request_svc,
+        patch(f'{_V}.view_request') as mock_view_request,
         patch(f'{_V}.redirect_to') as mock_redirect_to,
         patch(f'{_V}.flash_error') as mock_flash_error,
-        patch(f'{_V}.gettext', side_effect=lambda msg, **kw: msg),
+        patch(f'{_V}.gettext', side_effect=_translate),
         app.test_request_context(
             '/', method='POST', data={'reason': 'Venue unavailable'}
         ),
@@ -554,16 +755,121 @@ def test_admin_reject_request_service_err_is_flashed(app):
         mock_repo.find_request.return_value = tournament_request
         mock_request_svc.reject_request.return_value = Err(err_message)
         mock_redirect_to.return_value = 'redirected'
-        g.user = _make_user(
-            permissions=frozenset({'lan_tournament.request_decide', 'lan_tournament.request_view'})
-        )
+        g.user = _decider_and_viewer()
 
-        views.reject_request(tournament_request.id)
+        result = views.reject_request(tournament_request.id)
 
-    mock_flash_error.assert_called_once_with(err_message)
+    mock_view_request.assert_not_called()
+    mock_flash_error.assert_called_once_with(f'[de] {err_message}')
     mock_redirect_to.assert_called_once_with(
-        '.requests_for_party', party_id=tournament_request.party_id
+        '.view_request', request_id=tournament_request.id
     )
+    assert result == 'redirected'
+
+
+def test_reject_get_redirects_to_detail(app):
+    """A GET on the reject URL redirects to the detail page."""
+    tournament_request = _make_tournament_request()
+
+    with (
+        patch(f'{_V}.tournament_request_repository') as mock_repo,
+        patch(f'{_V}.redirect_to') as mock_redirect_to,
+        app.test_request_context('/'),
+    ):
+        mock_repo.find_request.return_value = tournament_request
+        mock_redirect_to.return_value = 'redirected'
+        g.user = _decider_and_viewer()
+
+        result = views.reject_request_redirect(tournament_request.id)
+
+    mock_redirect_to.assert_called_once_with(
+        '.view_request', request_id=tournament_request.id
+    )
+    assert result == 'redirected'
+
+
+def test_reject_get_requires_request_decide_permission(app):
+    """The GET carries the POST's `request_decide` gate."""
+    user = _make_user(permissions=frozenset({'lan_tournament.request_view'}))
+
+    with (
+        patch(f'{_V}.tournament_request_repository') as mock_repo,
+        patch(f'{_V}.redirect_to') as mock_redirect_to,
+        app.test_request_context('/'),
+    ):
+        g.user = user
+
+        with pytest.raises(Forbidden):
+            views.reject_request_redirect(
+                '11111111-1111-1111-1111-111111111111'
+            )
+
+        mock_repo.find_request.assert_not_called()
+        mock_redirect_to.assert_not_called()
+
+    user.has_permission.assert_called_with('lan_tournament.request_decide')
+
+
+def test_reject_get_requires_request_view_permission_too(app):
+    """The redirect target needs `request_view`."""
+    user = _make_user(permissions=frozenset({'lan_tournament.request_decide'}))
+
+    with (
+        patch(f'{_V}.tournament_request_repository') as mock_repo,
+        patch(f'{_V}.redirect_to') as mock_redirect_to,
+        app.test_request_context('/'),
+    ):
+        g.user = user
+
+        with pytest.raises(Forbidden):
+            views.reject_request_redirect(
+                '11111111-1111-1111-1111-111111111111'
+            )
+
+        mock_repo.find_request.assert_not_called()
+        mock_redirect_to.assert_not_called()
+
+    user.has_permission.assert_called_with('lan_tournament.request_view')
+
+
+@pytest.mark.parametrize(
+    'request_id',
+    ['not-a-uuid', '11111111-1111-1111-1111-111111111111'],
+    ids=['malformed-id', 'unknown-id'],
+)
+def test_reject_get_unknown_request_is_404(app, request_id):
+    with (
+        patch(f'{_V}.tournament_request_repository') as mock_repo,
+        patch(f'{_V}.redirect_to') as mock_redirect_to,
+        app.test_request_context('/'),
+    ):
+        mock_repo.find_request.return_value = None
+        g.user = _decider_and_viewer()
+
+        with pytest.raises(NotFound):
+            views.reject_request_redirect(request_id)
+
+        mock_redirect_to.assert_not_called()
+
+
+def test_reject_url_routes_get_to_redirect_and_post_to_reject():
+    """The GET and POST resolve to their own endpoints."""
+    routing_app = Flask(__name__)
+    routing_app.register_blueprint(
+        views.blueprint, url_prefix='/lan-tournaments'
+    )
+    path = (
+        '/lan-tournaments/requests/11111111-1111-1111-1111-111111111111/reject'
+    )
+    adapter = routing_app.url_map.bind('localhost')
+
+    get_endpoint, _ = adapter.match(path, method='GET')
+    post_endpoint, _ = adapter.match(path, method='POST')
+
+    assert get_endpoint == 'lan_tournament_admin.reject_request_redirect'
+    assert post_endpoint == 'lan_tournament_admin.reject_request'
+    with pytest.raises(MethodNotAllowed):
+        adapter.match(path, method='PUT')
 
 
 # --------------------------------------------------------------------- #
@@ -677,19 +983,7 @@ def test_admin_update_request_attributes_the_edit_to_admin(app):
 def test_admin_update_request_race_lost_between_load_and_submit_is_flashed(
     app,
 ):
-    """AC5 (defense in depth): the view's own `is_editable` pre-check
-    (below) already refuses editing a non-`submitted` request before
-    the service is even called (see
-    `test_admin_update_request_redirects_when_not_editable`); this
-    covers the narrower race window that pre-check cannot close --
-    the status changes between this view's own fresh load and the
-    service's row-locked re-read. The request here loads as
-    `submitted` (the pre-check passes), but the service's own
-    `expected_status` precondition (service-level:
-    `test_update_request_on_accepted_returns_err`) still catches it:
-    the error reaches `flash_error` via `gettext(...)`, and the form
-    is re-rendered rather than the request silently succeeding.
-    """
+    """A service `Err` after the guard is flashed and re-renders the form."""
     tournament_request = _make_tournament_request(
         status=TournamentRequestStatus.submitted
     )
@@ -728,30 +1022,59 @@ def test_admin_update_request_race_lost_between_load_and_submit_is_flashed(
     assert result == 'rendered-form'
 
 
-def test_admin_update_request_form_redirects_when_not_editable(app):
-    """m: GET refuses upfront (redirect), rather than rendering a form
-    that would always fail, once the request is no longer `submitted`."""
-    tournament_request = _make_tournament_request(
-        status=TournamentRequestStatus.accepted
+_ADMIN_EDITABLE_STATUSES = [
+    TournamentRequestStatus.submitted,
+    TournamentRequestStatus.accepted,
+]
+_ADMIN_LOCKED_STATUSES = [
+    TournamentRequestStatus.rejected,
+    TournamentRequestStatus.withdrawn,
+    TournamentRequestStatus.tournament_created,
+]
+
+
+def _make_real_tournament_request(status) -> TournamentRequest:
+    """Build a real dataclass, so `is_editable_by_admin` is the model's rule."""
+    now = datetime(2026, 1, 1, 10, 0, tzinfo=UTC)
+    return TournamentRequest(
+        id=TournamentRequestID('11111111-1111-1111-1111-111111111111'),
+        party_id=PartyID('p1'),
+        number=7,
+        proposer_id=UserID('u1'),
+        created_at=now,
+        status=status,
+        name='Some Tournament',
+        game='Some Game',
+        game_format=GameFormat.ONE_V_ONE,
+        elimination_mode=EliminationMode.SINGLE_ELIMINATION,
+        team_size=1,
+        participant_limit=16,
+        preferred_start_time=now,
+        preferred_end_time=now + timedelta(hours=8),
+        description='A description',
     )
+
+
+@pytest.mark.parametrize('status', _ADMIN_LOCKED_STATUSES)
+def test_admin_update_request_form_redirects_when_not_admin_editable(
+    app, status
+):
+    """The edit form is refused by redirect and flash for a decided request."""
+    tournament_request = _make_real_tournament_request(status)
 
     with (
         patch(f'{_V}.tournament_request_repository') as mock_repo,
         patch(f'{_V}.redirect_to') as mock_redirect_to,
         patch(f'{_V}.flash_error') as mock_flash_error,
         patch(f'{_V}.gettext', side_effect=lambda msg, **kw: msg),
+        patch(
+            'byceps.util.framework.templating.render_template'
+        ) as mock_render_template,
         app.test_request_context('/'),
     ):
         mock_repo.find_request.return_value = tournament_request
         mock_redirect_to.return_value = 'redirected'
-        g.user = _make_user(
-            permissions=frozenset(
-                {
-                    'lan_tournament.request_decide',
-                    'lan_tournament.request_view',
-                }
-            )
-        )
+        g.user = _decider_and_viewer()
 
         result = views.update_request_form(tournament_request.id)
 
@@ -761,40 +1084,34 @@ def test_admin_update_request_form_redirects_when_not_editable(app):
     mock_redirect_to.assert_called_once_with(
         '.view_request', request_id=tournament_request.id
     )
+    mock_render_template.assert_not_called()
     assert result == 'redirected'
 
 
-def test_admin_update_request_redirects_when_not_editable(app):
-    """m: POST refuses upfront (redirect) the same way, without ever
-    calling the service."""
-    tournament_request = _make_tournament_request(
-        status=TournamentRequestStatus.accepted
-    )
+@pytest.mark.parametrize('status', _ADMIN_LOCKED_STATUSES)
+def test_admin_update_request_post_is_refused_when_not_admin_editable(
+    app, status
+):
+    """A POST edit to a decided request never reaches the service."""
+    tournament_request = _make_real_tournament_request(status)
 
     with (
         patch(f'{_V}.tournament_request_repository') as mock_repo,
         patch(f'{_V}.tournament_request_service') as mock_request_svc,
         patch(f'{_V}.redirect_to') as mock_redirect_to,
         patch(f'{_V}.flash_error') as mock_flash_error,
+        patch(f'{_V}.flash_success') as mock_flash_success,
         patch(f'{_V}.gettext', side_effect=lambda msg, **kw: msg),
-        app.test_request_context(
-            '/', method='POST', data=_VALID_FORM_DATA
-        ),
+        app.test_request_context('/', method='POST', data=_VALID_FORM_DATA),
     ):
         mock_repo.find_request.return_value = tournament_request
         mock_redirect_to.return_value = 'redirected'
-        g.user = _make_user(
-            permissions=frozenset(
-                {
-                    'lan_tournament.request_decide',
-                    'lan_tournament.request_view',
-                }
-            )
-        )
+        g.user = _decider_and_viewer()
 
         result = views.update_request(tournament_request.id)
 
     mock_request_svc.update_request.assert_not_called()
+    mock_flash_success.assert_not_called()
     mock_flash_error.assert_called_once_with(
         'This request can no longer be edited.'
     )
@@ -802,6 +1119,140 @@ def test_admin_update_request_redirects_when_not_editable(app):
         '.view_request', request_id=tournament_request.id
     )
     assert result == 'redirected'
+
+
+@pytest.mark.parametrize('status', _ADMIN_EDITABLE_STATUSES)
+def test_admin_update_request_form_is_allowed_when_admin_editable(app, status):
+    """A submitted or an accepted request renders the edit form."""
+    tournament_request = _make_real_tournament_request(status)
+    party = SimpleNamespace(id='p1', max_ticket_quantity=240)
+
+    with (
+        patch(f'{_V}.tournament_request_repository') as mock_repo,
+        patch(f'{_V}.party_service') as mock_party_svc,
+        patch(f'{_V}.user_service') as mock_user_svc,
+        patch(f'{_V}.redirect_to') as mock_redirect_to,
+        patch(f'{_V}.flash_error') as mock_flash_error,
+        patch(
+            'byceps.util.framework.templating.render_template'
+        ) as mock_render_template,
+        app.test_request_context('/'),
+    ):
+        mock_repo.find_request.return_value = tournament_request
+        mock_party_svc.get_party.return_value = party
+        mock_user_svc.get_users_indexed_by_id.return_value = {}
+        mock_render_template.return_value = 'rendered'
+        g.user = _decider_and_viewer()
+
+        result = views.update_request_form(tournament_request.id)
+
+    mock_redirect_to.assert_not_called()
+    mock_flash_error.assert_not_called()
+    assert result == 'rendered'
+    context = mock_render_template.call_args.kwargs
+    assert context['tournament_request'] is tournament_request
+    assert context['party_capacity'] == 240
+
+
+@pytest.mark.parametrize('status', _ADMIN_EDITABLE_STATUSES)
+def test_admin_update_request_post_reaches_the_service_when_admin_editable(
+    app, status
+):
+    """A submitted or an accepted request is updated by the admin."""
+    tournament_request = _make_real_tournament_request(status)
+    party = SimpleNamespace(id='p1', max_ticket_quantity=100)
+
+    with (
+        patch(f'{_V}.tournament_request_repository') as mock_repo,
+        patch(f'{_V}.party_service') as mock_party_svc,
+        patch(f'{_V}.tournament_request_service') as mock_request_svc,
+        patch(f'{_V}.redirect_to') as mock_redirect_to,
+        patch(f'{_V}.flash_error') as mock_flash_error,
+        patch(f'{_V}.flash_success') as mock_flash_success,
+        patch(f'{_V}.gettext', side_effect=lambda msg, **kw: msg),
+        app.test_request_context('/', method='POST', data=_VALID_FORM_DATA),
+    ):
+        mock_repo.find_request.return_value = tournament_request
+        mock_party_svc.get_party.return_value = party
+        mock_request_svc.update_request.return_value = Ok(
+            (tournament_request, MagicMock())
+        )
+        g.user = _decider_and_viewer()
+
+        views.update_request(tournament_request.id)
+
+    mock_flash_error.assert_not_called()
+    mock_flash_success.assert_called_once()
+    mock_request_svc.update_request.assert_called_once()
+    assert mock_request_svc.update_request.call_args.kwargs['by'] == 'admin'
+    mock_redirect_to.assert_called_once_with(
+        '.view_request', request_id=tournament_request.id
+    )
+
+
+def test_admin_update_request_form_passes_the_proposer_name(app):
+    """The edit form names the proposer in its header and notice."""
+    tournament_request = _make_tournament_request(proposer_id='u1')
+    party = SimpleNamespace(id='p1', max_ticket_quantity=240)
+    proposer = SimpleNamespace(screen_name='Oma_Gerda')
+
+    with (
+        patch(f'{_V}.tournament_request_repository') as mock_repo,
+        patch(f'{_V}.party_service') as mock_party_svc,
+        patch(f'{_V}.user_service') as mock_user_svc,
+        patch(
+            'byceps.util.framework.templating.render_template'
+        ) as mock_render_template,
+        app.test_request_context('/'),
+    ):
+        mock_repo.find_request.return_value = tournament_request
+        mock_party_svc.get_party.return_value = party
+        mock_user_svc.get_users_indexed_by_id.return_value = {'u1': proposer}
+        mock_render_template.return_value = 'rendered'
+        g.user = _decider_and_viewer()
+
+        views.update_request_form(tournament_request.id)
+
+    mock_user_svc.get_users_indexed_by_id.assert_called_once_with({'u1'})
+    context = mock_render_template.call_args.kwargs
+    assert context['proposer_name'] == 'Oma_Gerda'
+    assert context['users_by_id'] == {'u1': proposer}
+
+
+@pytest.mark.parametrize(
+    ('users_by_id', 'expected'),
+    [
+        ({'u1': SimpleNamespace(screen_name=None)}, '[de] Deleted user'),
+        ({}, 'u1'),
+    ],
+)
+def test_admin_update_request_form_proposer_name_fallbacks(
+    app, users_by_id, expected
+):
+    """A deleted proposer reads as such; an unknown one shows the raw ID."""
+    tournament_request = _make_tournament_request(proposer_id='u1')
+    party = SimpleNamespace(id='p1', max_ticket_quantity=None)
+
+    with (
+        patch(f'{_V}.tournament_request_repository') as mock_repo,
+        patch(f'{_V}.party_service') as mock_party_svc,
+        patch(f'{_V}.user_service') as mock_user_svc,
+        patch(f'{_V}.gettext', side_effect=_translate),
+        patch(
+            'byceps.util.framework.templating.render_template'
+        ) as mock_render_template,
+        app.test_request_context('/'),
+    ):
+        mock_repo.find_request.return_value = tournament_request
+        mock_party_svc.get_party.return_value = party
+        mock_user_svc.get_users_indexed_by_id.return_value = users_by_id
+        mock_render_template.return_value = 'rendered'
+        g.user = _decider_and_viewer()
+
+        views.update_request_form(tournament_request.id)
+
+    context = mock_render_template.call_args.kwargs
+    assert context['proposer_name'] == expected
 
 
 def test_admin_update_request_form_requires_request_view_permission_too(app):
@@ -1272,6 +1723,194 @@ def test_admin_create_with_unresolvable_from_request_id_never_creates(app):
 
 
 # --------------------------------------------------------------------- #
+# Admin create -- blank contestant_type derives the effective type for
+# clearing irrelevant constraints (B3, workspace-pv3b.22)
+# --------------------------------------------------------------------- #
+
+
+def test_admin_create_blank_type_with_team_size_two_clears_solo_fields(app):
+    """B3: a blank `contestant_type` with team size 2 still derives to
+    TEAM at the service layer -- the "clear irrelevant constraints"
+    block must branch on that same derived type, or `max_players`/
+    `min_players` (SOLO-only fields) survive and wrongly cap joins on
+    what is actually a team tournament."""
+    party = SimpleNamespace(id='p1')
+    tournament = SimpleNamespace(
+        id='44444444-4444-4444-4444-444444444444', name='Blank Type Team'
+    )
+    event = MagicMock()
+
+    data = {
+        'name': 'Blank Type Team',
+        'max_players': '20',
+        'max_players_in_team': '2',
+    }
+
+    with (
+        patch(f'{_V}.party_service') as mock_party_svc,
+        patch(f'{_V}.tournament_service') as mock_tournament_svc,
+        patch(f'{_V}.redirect_to'),
+        patch(f'{_V}.flash_success'),
+        patch(f'{_V}.gettext', side_effect=lambda msg, **kw: msg),
+        app.test_request_context('/', method='POST', data=data),
+    ):
+        mock_party_svc.find_party.return_value = party
+        mock_tournament_svc.create_tournament.return_value = Ok(
+            (tournament, event)
+        )
+        g.user = _make_user(permissions=frozenset({'lan_tournament.create'}))
+
+        views.create(party.id)
+
+    mock_tournament_svc.create_tournament.assert_called_once()
+    kwargs = mock_tournament_svc.create_tournament.call_args.kwargs
+    # Left `None` for the service layer's own derivation -- never
+    # overwritten with the derived type here.
+    assert kwargs['contestant_type'] is None
+    assert kwargs['max_players'] is None
+    assert kwargs['min_players'] is None
+    assert kwargs['max_players_in_team'] == 2
+
+
+def test_admin_create_blank_type_with_team_size_one_clears_team_fields(app):
+    """B3 (the other branch): a blank `contestant_type` with team size
+    1 derives to SOLO -- the block must clear the TEAM-only fields,
+    not leave them stale on what is actually a solo tournament."""
+    party = SimpleNamespace(id='p1')
+    tournament = SimpleNamespace(
+        id='66666666-6666-6666-6666-666666666666', name='Blank Type Solo'
+    )
+    event = MagicMock()
+
+    data = {
+        'name': 'Blank Type Solo',
+        'max_players_in_team': '1',
+        'max_teams': '8',
+    }
+
+    with (
+        patch(f'{_V}.party_service') as mock_party_svc,
+        patch(f'{_V}.tournament_service') as mock_tournament_svc,
+        patch(f'{_V}.redirect_to'),
+        patch(f'{_V}.flash_success'),
+        patch(f'{_V}.gettext', side_effect=lambda msg, **kw: msg),
+        app.test_request_context('/', method='POST', data=data),
+    ):
+        mock_party_svc.find_party.return_value = party
+        mock_tournament_svc.create_tournament.return_value = Ok(
+            (tournament, event)
+        )
+        g.user = _make_user(permissions=frozenset({'lan_tournament.create'}))
+
+        views.create(party.id)
+
+    mock_tournament_svc.create_tournament.assert_called_once()
+    kwargs = mock_tournament_svc.create_tournament.call_args.kwargs
+    assert kwargs['contestant_type'] is None
+    assert kwargs['min_teams'] is None
+    assert kwargs['max_teams'] is None
+    assert kwargs['min_players_in_team'] is None
+    assert kwargs['max_players_in_team'] is None
+
+
+# --------------------------------------------------------------------- #
+# Admin update -- same blank-type derivation on the UPDATE path (C3,
+# workspace-pv3b.25)
+# --------------------------------------------------------------------- #
+
+
+def test_admin_update_blank_type_with_team_size_two_clears_solo_fields(app):
+    """C3: the UPDATE path's own "clear irrelevant constraints" block
+    must derive the effective type the same way the create path does
+    (B3, fix 2) -- a blank `contestant_type` with team size 2 still
+    derives to TEAM at the service layer, so `max_players`/
+    `min_players` (SOLO-only fields) must be cleared, not survive to
+    wrongly cap joins on what is actually a team tournament."""
+    tournament = SimpleNamespace(
+        id='44444444-4444-4444-4444-444444444444',
+        name='Blank Type Team Update',
+        tournament_status=TournamentStatus.DRAFT,
+    )
+    updated_tournament = SimpleNamespace(id=tournament.id, name=tournament.name)
+
+    data = {
+        'name': 'Blank Type Team Update',
+        'max_players': '20',
+        'max_players_in_team': '2',
+    }
+
+    with (
+        patch(f'{_V}._get_tournament_or_404', return_value=tournament),
+        patch(f'{_V}.tournament_service') as mock_tournament_svc,
+        patch(f'{_V}.redirect_to'),
+        patch(f'{_V}.flash_success'),
+        patch(f'{_V}.gettext', side_effect=lambda msg, **kw: msg),
+        app.test_request_context('/', method='POST', data=data),
+    ):
+        mock_tournament_svc.update_tournament.return_value = Ok(
+            updated_tournament
+        )
+        g.user = _make_user(
+            permissions=frozenset({'lan_tournament.update'})
+        )
+
+        views.update(tournament.id)
+
+    mock_tournament_svc.update_tournament.assert_called_once()
+    kwargs = mock_tournament_svc.update_tournament.call_args.kwargs
+    # Left `None` for the service layer's own derivation -- never
+    # overwritten with the derived type here.
+    assert kwargs['contestant_type'] is None
+    assert kwargs['max_players'] is None
+    assert kwargs['min_players'] is None
+    assert kwargs['max_players_in_team'] == 2
+
+
+def test_admin_update_blank_type_with_team_size_one_clears_team_fields(app):
+    """C3 (the other branch): a blank `contestant_type` with team size
+    1 derives to SOLO on the UPDATE path too -- the block must clear
+    the TEAM-only fields, not leave them stale on what is actually a
+    solo tournament."""
+    tournament = SimpleNamespace(
+        id='66666666-6666-6666-6666-666666666666',
+        name='Blank Type Solo Update',
+        tournament_status=TournamentStatus.DRAFT,
+    )
+    updated_tournament = SimpleNamespace(id=tournament.id, name=tournament.name)
+
+    data = {
+        'name': 'Blank Type Solo Update',
+        'max_players_in_team': '1',
+        'max_teams': '8',
+    }
+
+    with (
+        patch(f'{_V}._get_tournament_or_404', return_value=tournament),
+        patch(f'{_V}.tournament_service') as mock_tournament_svc,
+        patch(f'{_V}.redirect_to'),
+        patch(f'{_V}.flash_success'),
+        patch(f'{_V}.gettext', side_effect=lambda msg, **kw: msg),
+        app.test_request_context('/', method='POST', data=data),
+    ):
+        mock_tournament_svc.update_tournament.return_value = Ok(
+            updated_tournament
+        )
+        g.user = _make_user(
+            permissions=frozenset({'lan_tournament.update'})
+        )
+
+        views.update(tournament.id)
+
+    mock_tournament_svc.update_tournament.assert_called_once()
+    kwargs = mock_tournament_svc.update_tournament.call_args.kwargs
+    assert kwargs['contestant_type'] is None
+    assert kwargs['min_teams'] is None
+    assert kwargs['max_teams'] is None
+    assert kwargs['min_players_in_team'] is None
+    assert kwargs['max_players_in_team'] is None
+
+
+# --------------------------------------------------------------------- #
 # create_form GET prefill (L1, fix cycle workspace-cg0k.2)
 # --------------------------------------------------------------------- #
 
@@ -1286,6 +1925,7 @@ def test_create_form_prefills_when_request_is_accepted(app):
     with (
         patch(f'{_V}.tournament_request_repository') as mock_repo,
         patch(f'{_V}.party_service') as mock_party_svc,
+        patch(f'{_V}.user_service') as mock_user_svc,
         patch(f'{_V}.flash_error') as mock_flash_error,
         patch(
             'byceps.util.framework.templating.render_template'
@@ -1296,6 +1936,7 @@ def test_create_form_prefills_when_request_is_accepted(app):
     ):
         mock_repo.find_request.return_value = tournament_request
         mock_party_svc.find_party.return_value = party
+        mock_user_svc.find_screen_name.return_value = 'Proposer'
         mock_render.return_value = 'rendered'
         g.user = _make_user(permissions=frozenset({'lan_tournament.create', 'lan_tournament.request_view', 'lan_tournament.request_decide'}))
 
@@ -1371,6 +2012,265 @@ def test_create_form_flashes_when_from_request_is_unresolvable(app):
     )
     context = mock_render.call_args.kwargs
     assert not context['form'].from_request_id.data
+
+
+# --------------------------------------------------------------------- #
+# create_form prefill -- team size/limit/contestant type, provenance
+# banner context (workspace-pv3b.2, defect workspace-hm1a)
+# --------------------------------------------------------------------- #
+
+# `analyze_field_gap(request).supplied` fields (minus `party`/`origin`,
+# which have no create-form counterpart at all) mapped to the form
+# attribute the prefill puts them in. `team_size`/`participant_limit`
+# only resolve to a single, unambiguous attribute for a *team* request
+# (see the module docstring on `_prefill_form_from_request`); a solo
+# request folds both into `max_players` instead.
+_SUPPLIED_FIELD_TO_TEAM_FORM_ATTR = {
+    'name': 'name',
+    'game': 'game',
+    'game_format': 'game_format',
+    'elimination_mode': 'elimination_mode',
+    'contestant_type': 'contestant_type',
+    'team_size': 'min_players_in_team',
+    'participant_limit': 'max_teams',
+    'preferred_start_time': 'start_time',
+    'description': 'description',
+    'ruleset': 'ruleset',
+}
+
+
+def _create_form_via_get(app, tournament_request, party, *, screen_name='Proposer'):
+    """Drive `create_form`'s GET/`?from_request=` prefill path and
+    return the rendered context dict, with the request-lookup and
+    user-lookup collaborators mocked out."""
+    with (
+        patch(f'{_V}.tournament_request_repository') as mock_repo,
+        patch(f'{_V}.party_service') as mock_party_svc,
+        patch(f'{_V}.user_service') as mock_user_svc,
+        patch(f'{_V}.flash_error') as mock_flash_error,
+        patch(
+            'byceps.util.framework.templating.render_template'
+        ) as mock_render,
+        app.test_request_context(
+            f'/?from_request={tournament_request.id}'
+        ),
+    ):
+        mock_repo.find_request.return_value = tournament_request
+        mock_party_svc.find_party.return_value = party
+        mock_user_svc.find_screen_name.return_value = screen_name
+        mock_render.return_value = 'rendered'
+        g.user = _make_user(
+            permissions=frozenset(
+                {
+                    'lan_tournament.create',
+                    'lan_tournament.request_view',
+                    'lan_tournament.request_decide',
+                }
+            )
+        )
+
+        views.create_form(party.id)
+
+    mock_flash_error.assert_not_called()
+    return mock_render.call_args.kwargs
+
+
+def test_create_form_prefills_solo_limit_into_max_players(app):
+    """Team size 1 derives contestant type SOLO and maps the request's
+    limit into `max_players`."""
+    tournament_request = _make_tournament_request(
+        status=TournamentRequestStatus.accepted,
+        team_size=1,
+        participant_limit=16,
+    )
+    party = SimpleNamespace(id='p1')
+
+    context = _create_form_via_get(app, tournament_request, party)
+
+    form = context['form']
+    assert form.contestant_type.data == 'SOLO'
+    assert form.max_players.data == 16
+
+
+def test_create_form_prefills_team_size_and_limit_into_team_fields(app):
+    """Team size > 1 derives contestant type TEAM, maps the limit into
+    `max_teams`, and the team size into both team-size bounds."""
+    tournament_request = _make_tournament_request(
+        status=TournamentRequestStatus.accepted,
+        team_size=2,
+        participant_limit=12,
+    )
+    party = SimpleNamespace(id='p1')
+
+    context = _create_form_via_get(app, tournament_request, party)
+
+    form = context['form']
+    assert form.contestant_type.data == 'TEAM'
+    assert form.max_teams.data == 12
+    assert form.min_players_in_team.data == 2
+    assert form.max_players_in_team.data == 2
+
+
+def test_prefill_covers_every_supplied_field(app):
+    """Every field `analyze_field_gap` claims as "supplied" -- other
+    than `party`/`origin`, which name no create-form field at all --
+    must land in a real, non-`None` form attribute after a prefill."""
+    tournament_request = _make_tournament_request(
+        status=TournamentRequestStatus.accepted,
+        team_size=2,
+        participant_limit=12,
+        special_rules='No pocket picking.',
+    )
+    party = SimpleNamespace(id='p1')
+
+    context = _create_form_via_get(app, tournament_request, party)
+    form = context['form']
+
+    gap = analyze_field_gap(tournament_request)
+    for field_name in gap.supplied:
+        if field_name in ('party', 'origin'):
+            continue
+        form_attr = _SUPPLIED_FIELD_TO_TEAM_FORM_ATTR[field_name]
+        assert getattr(form, form_attr).data is not None, field_name
+
+
+def test_create_form_passes_source_request_for_banner(app):
+    """GET `?from_request=<accepted>` passes the request itself so the
+    template can render the provenance banner and back link."""
+    tournament_request = _make_tournament_request(
+        status=TournamentRequestStatus.accepted
+    )
+    party = SimpleNamespace(id='p1')
+
+    context = _create_form_via_get(app, tournament_request, party)
+
+    assert context['source_request'] is not None
+    assert context['source_request'].id == tournament_request.id
+
+
+def test_create_form_rerender_keeps_source_request(app):
+    """An erroneous-form re-render (`create`'s own `create_form(party.id,
+    form)` call after a validation error) must keep showing the
+    provenance banner -- it reads `from_request_id` off the posted
+    form, not the query string."""
+    tournament_request = _make_tournament_request(
+        status=TournamentRequestStatus.accepted
+    )
+    party = SimpleNamespace(id='p1')
+    erroneous_form = MagicMock()
+    erroneous_form.from_request_id.data = str(tournament_request.id)
+
+    with (
+        patch(f'{_V}.tournament_request_repository') as mock_repo,
+        patch(f'{_V}.party_service') as mock_party_svc,
+        patch(f'{_V}.user_service') as mock_user_svc,
+        patch(
+            'byceps.util.framework.templating.render_template'
+        ) as mock_render,
+        app.test_request_context('/'),
+    ):
+        mock_repo.find_request.return_value = tournament_request
+        mock_party_svc.find_party.return_value = party
+        mock_user_svc.find_screen_name.return_value = 'Proposer'
+        mock_render.return_value = 'rendered'
+        g.user = _make_user(
+            permissions=frozenset(
+                {
+                    'lan_tournament.create',
+                    'lan_tournament.request_view',
+                    'lan_tournament.request_decide',
+                }
+            )
+        )
+
+        views.create_form(party.id, erroneous_form)
+
+    context = mock_render.call_args.kwargs
+    assert context['form'] is erroneous_form
+    assert context['source_request'] is not None
+    assert context['source_request'].id == tournament_request.id
+
+
+def test_create_form_rerender_skips_lookup_without_request_view_and_decide(
+    app,
+):
+    """Regression: the same permission gate the GET prefill branch
+    applies must also cover the erroneous-form re-render lookup -- a
+    `create`-only admin must not learn about a request (via the
+    banner) just by forging `from_request_id` into a form submission
+    that happens to fail validation."""
+    tournament_request = _make_tournament_request(
+        status=TournamentRequestStatus.accepted
+    )
+    party = SimpleNamespace(id='p1')
+    erroneous_form = MagicMock()
+    erroneous_form.from_request_id.data = str(tournament_request.id)
+
+    with (
+        patch(f'{_V}.tournament_request_repository') as mock_repo,
+        patch(f'{_V}.party_service') as mock_party_svc,
+        patch(f'{_V}.user_service') as mock_user_svc,
+        patch(
+            'byceps.util.framework.templating.render_template'
+        ) as mock_render,
+        app.test_request_context('/'),
+    ):
+        mock_repo.find_request.return_value = tournament_request
+        mock_party_svc.find_party.return_value = party
+        mock_render.return_value = 'rendered'
+        g.user = _make_user(
+            permissions=frozenset({'lan_tournament.create'})
+        )
+
+        views.create_form(party.id, erroneous_form)
+
+    mock_repo.find_request.assert_not_called()
+    mock_user_svc.find_screen_name.assert_not_called()
+    context = mock_render.call_args.kwargs
+    assert context['source_request'] is None
+
+
+def test_create_form_rerender_drops_banner_for_unrecreatable_request(app):
+    """A1 (fix cycle 1, Issue 2): an erroneous-form re-render must
+    apply the same recreatability check (`_is_request_recreatable`)
+    as the GET prefill branch -- a request that moved on (decided by
+    another admin, withdrawn) since the form was first rendered must
+    not keep showing the provenance banner."""
+    tournament_request = _make_tournament_request(
+        status=TournamentRequestStatus.submitted
+    )
+    party = SimpleNamespace(id='p1')
+    erroneous_form = MagicMock()
+    erroneous_form.from_request_id.data = str(tournament_request.id)
+
+    with (
+        patch(f'{_V}.tournament_request_repository') as mock_repo,
+        patch(f'{_V}.party_service') as mock_party_svc,
+        patch(f'{_V}.user_service') as mock_user_svc,
+        patch(
+            'byceps.util.framework.templating.render_template'
+        ) as mock_render,
+        app.test_request_context('/'),
+    ):
+        mock_repo.find_request.return_value = tournament_request
+        mock_party_svc.find_party.return_value = party
+        mock_user_svc.find_screen_name.return_value = 'Proposer'
+        mock_render.return_value = 'rendered'
+        g.user = _make_user(
+            permissions=frozenset(
+                {
+                    'lan_tournament.create',
+                    'lan_tournament.request_view',
+                    'lan_tournament.request_decide',
+                }
+            )
+        )
+
+        views.create_form(party.id, erroneous_form)
+
+    context = mock_render.call_args.kwargs
+    assert context['form'] is erroneous_form
+    assert context['source_request'] is None
 
 
 # --------------------------------------------------------------------- #
@@ -1649,6 +2549,106 @@ def test_pending_request_count_for_nav_uses_one_count_query(app):
 
     assert count == 3
     mock_repo.count_requests_for_party_with_statuses.assert_called_once_with(
-        'p1', views._PENDING_REQUEST_STATUSES
+        'p1', views._OPEN_REQUEST_STATUSES
     )
     mock_repo.get_requests_for_party.assert_not_called()
+
+
+def test_nav_count_counts_submitted_only(app):
+    """The nav badge counts only `submitted` requests."""
+    assert views._OPEN_REQUEST_STATUSES == frozenset(
+        {TournamentRequestStatus.submitted}
+    )
+    assert (
+        TournamentRequestStatus.accepted not in views._OPEN_REQUEST_STATUSES
+    )
+    assert (
+        TournamentRequestStatus.accepted in views._PENDING_REQUEST_STATUSES
+    )
+
+    with (
+        patch(f'{_V}.tournament_request_repository') as mock_repo,
+        app.test_request_context('/'),
+    ):
+        mock_repo.count_requests_for_party_with_statuses.return_value = 1
+        g.user = _make_user(
+            permissions=frozenset({'lan_tournament.request_view'})
+        )
+
+        views._pending_request_count_for_nav('p1')
+
+    mock_repo.count_requests_for_party_with_statuses.assert_called_once_with(
+        'p1', frozenset({TournamentRequestStatus.submitted})
+    )
+
+
+def test_queue_orders_submitted_first_newest_first(app):
+    """Pending requests list `submitted` first, newest first."""
+    now = datetime.now(UTC)
+    old_submitted = _make_tournament_request(
+        id='r-old-submitted',
+        status=TournamentRequestStatus.submitted,
+        proposer_id='u1',
+        created_at=now - timedelta(days=2),
+    )
+    new_submitted = _make_tournament_request(
+        id='r-new-submitted',
+        status=TournamentRequestStatus.submitted,
+        proposer_id='u1',
+        created_at=now - timedelta(hours=1),
+    )
+    newest_accepted = _make_tournament_request(
+        id='r-newest-accepted',
+        status=TournamentRequestStatus.accepted,
+        proposer_id='u1',
+        created_at=now,
+    )
+    old_done = _make_tournament_request(
+        id='r-old-done',
+        status=TournamentRequestStatus.rejected,
+        proposer_id='u1',
+        created_at=now - timedelta(days=5),
+    )
+    new_done = _make_tournament_request(
+        id='r-new-done',
+        status=TournamentRequestStatus.withdrawn,
+        proposer_id='u1',
+        created_at=now - timedelta(days=1),
+    )
+    party = SimpleNamespace(id='p1')
+
+    with (
+        patch(f'{_V}.party_service') as mock_party_svc,
+        patch(f'{_V}.tournament_request_service') as mock_request_svc,
+        patch(f'{_V}.user_service') as mock_user_svc,
+        patch(
+            'byceps.util.framework.templating.render_template'
+        ) as mock_render_template,
+        app.test_request_context('/'),
+    ):
+        mock_party_svc.find_party.return_value = party
+        mock_request_svc.get_visible_requests_for_user.return_value = [
+            newest_accepted,
+            old_submitted,
+            new_done,
+            new_submitted,
+            old_done,
+        ]
+        mock_user_svc.get_users_indexed_by_id.return_value = {}
+        mock_render_template.return_value = 'rendered'
+        g.user = _make_user(
+            permissions=frozenset({'lan_tournament.request_view'})
+        )
+
+        views.requests_for_party(party.id)
+
+    context = mock_render_template.call_args.kwargs
+    assert [r.id for r in context['pending_requests']] == [
+        'r-new-submitted',
+        'r-old-submitted',
+        'r-newest-accepted',
+    ]
+    assert [r.id for r in context['done_requests']] == [
+        'r-new-done',
+        'r-old-done',
+    ]

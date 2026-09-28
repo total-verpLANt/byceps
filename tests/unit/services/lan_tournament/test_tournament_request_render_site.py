@@ -198,7 +198,7 @@ def _make_form(*, errors=None, elimination_mode_options=None):
         preferred_end_time=_field('preferred_end_time', 'Preferred end'),
         description=_field('description', 'Description', data='A description.'),
         special_rules=_field('special_rules', 'Special rules'),
-        notes=_field('notes', 'Notes'),
+        notes=_field('notes', 'Notes for the orga'),
         desired_template=_field('desired_template', 'Desired template'),
         elimination_mode_options=elimination_mode_options,
         errors=errors or {},
@@ -312,6 +312,38 @@ def test_propose_form_renders_create_mode(env):
     assert 'name="name"' in html
     assert 'request-danger-zone' not in html
     assert 'request-history' not in html
+
+
+def test_propose_form_shows_ticket_notice_when_ticketless(env):
+    form = _make_form()
+
+    html = _render_propose_form(
+        env,
+        mode='create',
+        form=form,
+        party_capacity=100,
+        has_ticket=False,
+    )
+
+    assert 'notification color-warning' in html
+    assert 'Ticket required' in html
+    assert 'You need a ticket for this party to propose a tournament.' in html
+    assert 'disabled' in html
+
+
+def test_propose_form_renders_without_has_ticket_key(env):
+    """StrictUndefined guard: `has_ticket` is only ever passed in
+    create mode; every other mode/context must still render (`is
+    defined` guards it) and show no ticket notice.
+    """
+    form = _make_form()
+
+    html = _render_propose_form(
+        env, mode='create', form=form, party_capacity=100
+    )
+
+    assert 'notification color-warning' not in html
+    assert 'Ticket required' not in html
 
 
 def test_propose_form_carries_server_max_limit_regardless_of_capacity(env):

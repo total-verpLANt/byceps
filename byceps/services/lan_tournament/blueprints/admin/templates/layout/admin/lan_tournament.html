@@ -1,9 +1,16 @@
 {% extends 'layout/admin/base.html' %}
 {% from 'macros/admin.html' import render_main_tabs %}
+{% from 'macros/misc.html' import render_tag %}
 {% set current_page = 'lan_tournament_admin' %}
 
 {% block before_body %}
   {%- with party = current_page_party %}
+  {%- set open_request_count = lan_tournament_pending_request_count(party.id) %}
+  {%- if open_request_count %}
+    {%- set requests_tab_label = _('Tournament requests') ~ ' ' ~ render_tag(open_request_count, class='color-warning') %}
+  {%- else %}
+    {%- set requests_tab_label = _('Tournament requests') %}
+  {%- endif %}
 {{
   render_main_tabs(
     Navigation()
@@ -19,7 +26,7 @@
         required_permission='lan_tournament.view')
       .add_item(
         url_for('lan_tournament_admin.requests_for_party', party_id=party.id),
-        _('Tournament requests (%(count)s)', count=lan_tournament_pending_request_count(party.id)),
+        requests_tab_label,
         id='requests',
         required_permission='lan_tournament.request_view')
     , current_tab

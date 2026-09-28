@@ -12,228 +12,584 @@
      rules at all -- every class below is defined from scratch here,
      the same way the sibling tournament-page style re-implements
      .tournament-card rather than depending on the module CSS.
-     .page-folio / .page-head come from the site's own base stylesheet
-     already (the masthead strip shared by every bote page); nothing
-     else is assumed to exist.
-
-     PAGE FURNITURE: .fs ("Formularabschnitt") is a numbered form
-     section -- stock rendered it as a bare .main-body-box with a
-     plain h2; .sh is the ruled section head inside it, wrapping that
-     same heading text unchanged (its own copy already numbers itself,
-     "I.", "II." and so on, so no extra numeral chip is needed here).
-
-     STATUS: .stamp is a rotated, double-bordered rubber stamp for the
-     page-header status on the single-request page (propose / edit /
-     frozen); .st is the flatter inline tag used wherever a status
-     needs to sit in a row instead (status counts, request cards, the
-     archive list). Neither uses the shared tag helper -- both are
-     hand-written markup here, unlike the generic base layer, which
-     keeps using that helper with color-* classes unchanged.
-
-     FORM CONTROLS: .seg (segmented control, game format) and
-     .opts / .opt (elimination-mode option list) dress up the same
-     underlying radio inputs the base layer posts, just with the
-     newspaper's own chrome; a disabled option carries .dis instead of
-     the base layer's is-disabled. The team-size / limit fields, the
-     .cap caption and the .over cap-exceeded state read the same
-     data- attributes the shared request-form script reads elsewhere
-     -- nothing here duplicates that script's arithmetic, and the
-     server-side domain rules are what actually enforce the cap.
-
-     REQUEST LIST: .req is a request card, .req.win the variant for a
-     request that already has a live tournament; .trk is its
-     three-step tracker.
 
      Every colour is a theme token, so Spaetausgabe (dark) is
      automatic. Everything below is scoped under .request-page, the
      marker class both templates add next to .bote-page .tournament-
      page, so nothing here can leak onto an unrelated page.
+
+     SECTIONS:
+       1. SHARED  -- slip, tokens, header furniture, status vocabulary,
+                     button reset, editorial desk aside.
+       2. FORM    -- the propose/edit/frozen form's own sections, fields,
+                     seg/opts, error summary, note-box/danger-zone/timeline.
+       3. DASHBOARD -- the requests dashboard's cards, tracker, counts, archive.
      ============================================================ */
 
-  .tournament-page.request-page { max-width: 52rem; margin-inline: auto; }
+  /* ---------------------------------------------------------- */
+  /* 1. SHARED                                                    */
+  /* ---------------------------------------------------------- */
 
-  /* ----- numbered form sections ----- */
-  .request-page .fs { margin: 0 0 clamp(20px, 3vw, 32px); }
-  .request-page .fs .sh {
-    border-bottom: 3px double var(--ink); margin-bottom: 14px; padding-bottom: 6px;
+  /* ----- reading slip on the desk (paper-ground layout) -----
+     Detached from masthead and footer sheets, with an offset carbon
+     copy so the exposed ground reads as desk, not as a gap. */
+  .tournament-page.request-page {
+    max-width: 52rem;
+    margin: clamp(14px, 2vw, 28px) auto;
+    padding: 36px 44px 40px;
+    box-shadow:
+      0 0 0 1px var(--paperDark),
+      0 18px 32px -16px rgba(26, 24, 18, 0.18),
+      10px 10px 0 -1px var(--paperDark),
+      10px 10px 0 0 var(--inkMute),
+      10px 28px 32px -16px rgba(26, 24, 18, 0.18);
   }
-  .request-page .fs .sh h2 {
-    font-family: var(--display); font-weight: 800; font-size: clamp(18px, 2vw, 22px);
-    letter-spacing: -.01em; color: var(--ink); margin: 0;
+  @media (max-width: 720px) {
+    .tournament-page.request-page {
+      max-width: none; margin: 0; padding: 18px 16px 32px; box-shadow: none;
+    }
   }
-  .request-page .fs.empty {
-    text-align: center; border: 1.5px solid var(--ink); background: var(--paperLite);
-    box-shadow: 6px 6px 0 var(--ink); padding: clamp(24px, 4vw, 40px) clamp(16px, 3vw, 28px);
+  @media (prefers-reduced-transparency: reduce), (forced-colors: active) {
+    .tournament-page.request-page { box-shadow: 10px 10px 0 0 var(--inkMute); }
   }
-  .request-page .fs.empty p { font-family: var(--body); font-size: 19px; margin: 0 0 16px; }
+
+  /* ochre and blue tokens */
+  .request-page {
+    --ochre: #7a5410;
+    --blue: #1f4470;
+  }
+  html[data-theme="dark"] .request-page {
+    --ochre: #d19a4c;
+    --blue: #8fa9d2;
+  }
+
+  /* ----- breadcrumbs / draft header ----- */
+  .request-page .crumbs {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--inkMute); margin-bottom: 0;
+  }
+  .request-page .crumbs a { color: var(--redDeep); text-decoration: none; }
+  .request-page .crumbs a:hover { color: var(--ink); text-decoration: underline; }
+
+  /* reset the theme's styling of the bare header element */
+  .request-page .head {
+    font-family: var(--body); font-size: 16px; font-weight: 600; letter-spacing: normal;
+    line-height: normal;
+    display: flex; justify-content: space-between; align-items: flex-end; gap: 24px;
+    padding: 30px 0 18px; border-bottom: 3px double var(--ink);
+  }
+  .request-page .head .kick {
+    font-family: var(--mono); font-size: 10.5px; font-weight: 700; letter-spacing: .22em;
+    text-transform: uppercase; color: var(--redDeep); margin-bottom: 8px;
+  }
+  .request-page .head h1 {
+    font: 900 56px/.98 var(--display); letter-spacing: -.02em; margin: 0;
+    text-wrap: balance; color: var(--ink);
+  }
+  .request-page .head .sub {
+    font-family: var(--body); font-style: italic; font-size: 21px; color: var(--inkSoft);
+    margin-top: 8px;
+  }
+  .request-page .head .tags { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .request-page .head + * { margin-top: 30px; }
+  @media (max-width: 47rem) {
+    .request-page .head {
+      flex-direction: column; align-items: flex-start; gap: 14px; padding: 22px 0 14px;
+    }
+    /* `.tags` must stretch, or the button's 100% is of its own content */
+    .request-page .head .tags { width: 100%; }
+    .request-page .head h1 { font-size: 36px; }
+    .request-page .head .sub { font-size: 19px; }
+    .request-page .head + * { margin-top: 22px; }
+  }
 
   /* ----- page-header stamp (rotated, double border) ----- */
-  .request-page .page-head .stamp {
-    display: inline-block; margin-top: 8px; transform: rotate(-4deg);
-    font-family: var(--mono); font-weight: 700; font-size: 12px; letter-spacing: .18em;
-    text-transform: uppercase; padding: 5px 12px; border: 2.5px double var(--ink);
-    color: var(--ink); background: transparent;
+  .request-page .head .stamp {
+    display: inline-block; font-family: var(--mono); font-weight: 700; font-size: 13px;
+    letter-spacing: .2em; text-transform: uppercase; padding: 7px 14px; border-radius: 3px;
+    border: 2.5px solid currentColor; box-shadow: inset 0 0 0 1.5px currentColor;
+    transform: rotate(-4deg); white-space: nowrap; background: transparent; color: var(--ink);
+    opacity: .9;
   }
-  .request-page .page-head .stamp.stamp-accepted,
-  .request-page .page-head .stamp.stamp-tournament_created { color: var(--green); border-color: var(--green); }
-  .request-page .page-head .stamp.stamp-rejected { color: var(--red); border-color: var(--red); }
-  .request-page .page-head .stamp.stamp-withdrawn {
-    color: var(--inkMute); border-color: var(--inkMute); border-style: dashed;
+  .request-page .head .stamp.st-withdrawn,
+  .request-page .head .stamp.st-draft,
+  .request-page .head .stamp.st-tournament_deleted {
+    box-shadow: none; border-style: dashed;
   }
-  .request-page .page-head .stamp.stamp-submitted { color: var(--redDeep); border-color: var(--redDeep); }
 
-  /* ----- inline list tag (status counts, request cards, archive) ----- */
+  /* ----- status vocabulary, shared between the header stamp and the
+     inline `.st` tag (status counts, request cards, archive) ----- */
   .request-page .st {
-    display: inline-block; font-family: var(--mono); font-weight: 700; font-size: 9.5px;
-    letter-spacing: .16em; text-transform: uppercase; padding: 3px 8px;
-    border: 1.5px solid var(--ink); color: var(--ink); background: var(--paper);
+    display: inline-block; font-family: var(--mono); font-weight: 700; font-size: 10.5px;
+    letter-spacing: .16em; text-transform: uppercase; padding: 4px 8px; white-space: nowrap;
+    border: 1.5px solid currentColor; color: var(--ink); background: transparent;
   }
-  .request-page .st.st-accepted,
-  .request-page .st.st-tournament_created { color: var(--green); border-color: var(--green); }
-  .request-page .st.st-rejected { color: var(--red); border-color: var(--red); }
-  .request-page .st.st-withdrawn { color: var(--inkMute); border-color: var(--inkMute); border-style: dashed; }
-  .request-page .st.st-submitted { color: var(--redDeep); border-color: var(--redDeep); }
-  .request-page .st.st-draft { color: var(--inkMute); border-color: var(--inkMute); border-style: dashed; }
+  .request-page :is(.st, .stamp).st-submitted { color: var(--ochre); }
+  .request-page :is(.st, .stamp).st-accepted { color: var(--blue); }
+  .request-page :is(.st, .stamp).st-tournament_created {
+    color: var(--paperLite); background: var(--green); border-color: var(--green);
+  }
+  html[data-theme="dark"] .request-page .st.st-tournament_created,
+  html[data-theme="dark"] .request-page .button.btn-ok,
+  html[data-theme="dark"] .request-page .win-h,
+  html[data-theme="dark"] .request-page .warn-h {
+    color: var(--paper);
+  }
+  .request-page :is(.st, .stamp).st-rejected { color: var(--red); }
+  .request-page :is(.st, .stamp).st-withdrawn,
+  .request-page :is(.st, .stamp).st-draft,
+  .request-page :is(.st, .stamp).st-tournament_deleted {
+    color: var(--inkMute); border-style: dashed;
+  }
 
-  /* ----- error summary ----- */
-  .request-page .errs {
-    border: 1.5px solid var(--red); background: var(--paperLite); box-shadow: 4px 4px 0 var(--ink);
-    padding: 14px 18px; margin-bottom: 20px;
+  /* ----- button reset -----
+     Hand-written draft buttons, plus a defensive reset for any macro
+     that still emits a core `.button.color-*` fill on this page. */
+  .request-page .btns { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 0; }
+  .request-page :is(.button) {
+    display: inline-flex; align-items: center; justify-content: center; gap: 9px;
+    font: 700 11.5px var(--mono); letter-spacing: .16em; text-transform: uppercase;
+    padding: 12px 18px; min-height: 44px; border: 1.5px solid var(--ink);
+    background: var(--paperLite); color: var(--ink); text-align: center; border-radius: 0;
   }
-  .request-page .errs p { font-weight: 700; margin: 0 0 6px; color: var(--redDeep); }
-  .request-page .errs ul { margin: 0; padding-left: 18px; }
-  .request-page .errs a { color: var(--redDeep); }
+  .request-page :is(.button):hover { background: var(--ink); color: var(--paper); }
+  .request-page :is(.button)[disabled],
+  .request-page :is(.button):disabled {
+    opacity: .45; cursor: not-allowed; background: transparent; color: var(--inkSoft);
+    border-style: dashed;
+  }
+  .request-page :is(.button).btn-pri { background: var(--ink); color: var(--paper); }
+  .request-page .lnk {
+    font: 700 11px var(--mono); letter-spacing: .16em; text-transform: uppercase;
+    color: var(--inkSoft); text-decoration: underline; text-underline-offset: 3px;
+    display: inline; background-image: none;
+  }
+  .request-page .lnk:hover { color: var(--ink); }
+  /* outrank the theme's `a:not(...)` underline chain without `!important` */
+  .request-page a:is(.button, .lnk):not(#x) {
+    background-image: none; background-position: 0% 0%;
+    background-repeat: repeat; background-size: auto;
+  }
+  .request-page a.lnk:not(#x) { text-decoration: underline; }
+  .request-page :is(.button).btn-sm { padding: 9px 14px; font-size: 10.5px; }
+  .request-page :is(.button).btn-full { width: 100%; }
+  /* filled green "go to the tournament" action (dashboard win card) */
+  .request-page :is(.button).btn-ok {
+    background: var(--green); color: var(--paperLite); border-color: var(--green);
+  }
+  .request-page :is(.button).btn-ok:hover { background: var(--ink); border-color: var(--ink); }
+  .request-page :is(.button).out-red {
+    color: var(--red); border-color: var(--red); background: transparent;
+  }
+  .request-page :is(.button).out-red:hover { background: var(--red); color: var(--paperLite); }
+  .request-page :is(.button):is(.color-primary, .color-info, .color-success, .color-danger, .color-warning) {
+    background: var(--paperLite); color: var(--ink); border-color: var(--ink);
+  }
+
+  .request-page .hint {
+    font-style: italic; font-size: 16px; line-height: 1.4; color: var(--inkSoft); margin: 0;
+  }
+
+  /* editorial desk aside */
+  .request-page .desk {
+    border: 1.5px solid var(--ink); background: var(--paperLite); box-shadow: 6px 6px 0 var(--ink);
+    padding: 0; margin: 34px 0 0;
+  }
+  .request-page .desk-h {
+    display: flex; justify-content: space-between; align-items: center; background: var(--ink);
+    color: var(--paper); padding: 9px 18px; font: 700 11px var(--mono); letter-spacing: .22em;
+    text-transform: uppercase;
+  }
+  .request-page .desk-b { padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+  @media (max-width: 47rem) {
+    .request-page .desk { box-shadow: 4px 4px 0 var(--ink); }
+  }
+
+  /* ---------------------------------------------------------- */
+  /* 2. FORM (propose / edit / frozen request form)               */
+  /* ---------------------------------------------------------- */
+
+  /* numbered form sections and dashboard section heads */
+  .request-page .fs { margin: 0 0 34px; }
+  .request-page .sh {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+    border-bottom: 1.5px solid var(--ink); margin: 0 0 14px; padding-bottom: 7px;
+  }
+  .request-page .sh h2 {
+    font: 900 26px var(--display); letter-spacing: normal; color: var(--ink); margin: 0;
+  }
+  .request-page .sh h2 em { color: var(--redDeep); font-style: normal; margin-right: 8px; }
+  .request-page .sh > span {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .18em; text-transform: uppercase;
+    color: var(--inkMute); white-space: nowrap;
+  }
+  @media (max-width: 47rem) {
+    .request-page .sh h2 { font-size: 22px; }
+  }
+  /* ----- field chrome ----- */
+  .request-page label.form-label {
+    display: flex; flex-wrap: wrap; gap: 4px 0; align-items: center; margin-bottom: 6px;
+    font: 400 10px var(--mono); letter-spacing: .18em; text-transform: uppercase;
+    color: var(--inkMute);
+  }
+  .request-page .lbl-row {
+    display: flex; flex-wrap: wrap; gap: 4px 0; align-items: center; margin-bottom: 6px;
+  }
+  .request-page .lbl-row label.form-label { margin-bottom: 0; }
+  .request-page .opt-chip {
+    font-style: normal; color: var(--inkSoft); background: var(--paperDark); border: 0;
+    padding: 1px 6px; margin-left: 6px; letter-spacing: .14em;
+  }
+  .request-page .chg-t { background: var(--ochre); color: var(--paperLite); }
+  /* raised to (0,4,0) -- beats the theme's
+     `input.form-control:not([type='checkbox']):not([type='radio'])`
+     (0,3,1) without `!important` or touching the theme file */
+  .request-page .form-control-block .form-control.form-control {
+    height: 48px; padding: 0 12px; border: 1.5px solid var(--ink); border-radius: 0;
+    background: var(--paperLite); font: 600 20px var(--body); color: var(--ink);
+  }
+  /* raised to (0,4,1) -- same theme-beating reason as the base
+     `.form-control` rule above; every textarea sits inside a
+     `.form-control-block`, so this also beats that rule's (0,4,0) */
+  .request-page .form-control-block textarea.form-control.form-control {
+    height: auto; min-height: 104px; padding: 10px 12px; font-weight: 400; font-size: 18px;
+    line-height: 1.4;
+  }
+  .request-page .form-control-block .form-control.form-control::placeholder {
+    color: var(--inkMute); font-style: italic; font-weight: 400;
+  }
+  .request-page .form-control-block .form-control.form-control:focus {
+    outline: 2px solid var(--redDeep); outline-offset: 2px; box-shadow: none;
+  }
+  /* raised to (0,4,0) to beat the theme */
+  .request-page .form-control-block.chg .form-control.form-control {
+    box-shadow: inset 4px 0 0 var(--ochre);
+  }
+  .request-page input[type="number"].form-control { text-align: start; }
+  /* datetime-local inputs keep a native width otherwise */
+  .request-page .form-control-block input[type="datetime-local"].form-control.form-control {
+    width: 100%;
+  }
+  .request-page :is(.form-caption, .hn) {
+    font-family: var(--body); font-style: italic; font-size: 15.5px; line-height: 1.35;
+    color: var(--inkSoft); margin: 5px 0 0;
+  }
+
+  .request-page .fgrid { display: grid; gap: 16px; }
+  .request-page .two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .request-page .fgrid .form-control-block,
+  .request-page .two .form-control-block { margin: 0; }
+  @media (max-width: 47rem) {
+    .request-page .two.st1 { grid-template-columns: 1fr; }
+  }
+
+  /* error summary, ticket-required notice */
+  .request-page .warn {
+    border: 1.5px solid var(--red); background: var(--paper); box-shadow: none;
+    padding: 0; margin-bottom: 26px;
+  }
+  .request-page .warn-h {
+    background: var(--red); color: var(--paperLite); padding: 8px 14px;
+    font: 700 11px var(--mono); letter-spacing: .2em; text-transform: uppercase; margin: 0;
+  }
+  .request-page .warn p { margin: 0; padding: 12px 14px 4px; font-size: 17px; line-height: 1.4; }
+  .request-page .warn ul { margin: 0; padding: 6px 14px 14px 34px; font-size: 17px; line-height: 1.5; }
+  .request-page .warn ul a { color: var(--red); text-decoration: underline; }
+  .request-page .warn a { color: var(--redDeep); }
+
+  .request-page .form-control-block.invalid {
+    background: transparent; border: 0; padding: 0; margin-inline: 0;
+  }
+  /* raised to (0,5,0) -- same theme-beating reason as the base
+     `.form-control` rule above */
+  .request-page .form-control-block.invalid .form-control.form-control {
+    border-color: var(--red); box-shadow: inset 0 0 0 1.5px var(--red);
+  }
+  .request-page .invalid .form-label { color: var(--red); }
+  .request-page .form-errors {
+    font: 700 11px var(--mono); letter-spacing: .06em; color: var(--red); margin: 6px 0 0;
+    padding: 0; list-style: none;
+  }
+  .request-page .form-errors strong { display: none; }
+  /* the message element carries its own 6px top margin */
+  .request-page .invalid .form-errors li { margin-top: 6px; }
+  .request-page .form-errors li::before { content: "\25b2 "; margin-top: 6px; }
 
   /* ----- segmented control (game format) ----- */
-  .request-page .seg { display: flex; flex-wrap: wrap; gap: 0; border: 1.5px solid var(--ink); margin-top: 4px; }
-  .request-page .seg-option {
-    flex: 1 1 0; text-align: center; padding: 9px 10px; cursor: pointer;
-    font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
-    color: var(--inkSoft); border-right: 1px solid var(--ink);
+  .request-page .seg {
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0;
+    border: 1.5px solid var(--ink); margin-top: 4px;
   }
-  .request-page .seg-option:last-child { border-right: 0; }
+  .request-page .seg-option {
+    min-height: 56px; display: flex; flex-direction: column; align-items: stretch; justify-content: center;
+    text-align: start; gap: 2px; padding: 10px 12px; cursor: pointer; position: relative;
+    color: var(--ink); border-right: 0; border-left: 1px solid var(--inkMute);
+  }
+  .request-page .seg-option:first-child { border-left: 0; }
+  .request-page .seg-option b { font-family: var(--display); font-size: 19px; }
+  .request-page .seg-option small {
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--inkMute);
+  }
   .request-page .seg-option input {
     position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none;
   }
   .request-page .seg-option.on,
   .request-page .seg-option:has(input:checked) { background: var(--ink); color: var(--paper); }
+  .request-page .seg-option.on small,
+  .request-page .seg-option:has(input:checked) small { color: var(--paperDark); }
   .request-page .seg-option:has(input:focus-visible) { outline: 2px solid var(--redDeep); outline-offset: 2px; }
+  @media (max-width: 47rem) {
+    .request-page .seg-option b { font-size: 16px; }
+  }
 
   /* ----- elimination-mode option list ----- */
-  .request-page .opts { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+  .request-page .opts {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin-top: 0;
+    border-top: 1.5px solid var(--ink);
+  }
   .request-page .opt {
-    display: flex; align-items: baseline; gap: 10px; border: 1px solid var(--ink);
-    padding: 8px 12px; cursor: pointer;
+    display: flex; align-items: flex-start; gap: 12px; border-bottom: 1px dotted var(--inkMute);
+    padding: 12px 4px; cursor: pointer; font-size: 18px; line-height: 1.3; color: var(--ink);
   }
-  .request-page .opt input { margin: 0; }
+  .request-page .opt input {
+    width: 20px; height: 20px; margin: 2px 0 0; accent-color: var(--redDeep); flex: 0 0 auto;
+  }
   .request-page .opt.on,
-  .request-page .opt:has(input:checked) {
-    border-color: var(--redDeep); background: color-mix(in srgb, var(--redDeep) 8%, var(--paperLite));
+  .request-page .opt:has(input:checked) { color: var(--ink); }
+  .request-page .opt.dis { cursor: not-allowed; opacity: 1; color: var(--inkMute); }
+  .request-page .opt.dis .opt-label b {
+    text-decoration: line-through; text-decoration-thickness: 1px;
   }
-  .request-page .opt.dis { cursor: not-allowed; opacity: .55; }
-  .request-page .opt-label.struck { text-decoration: line-through; }
+  .request-page .opt.dis small { color: var(--inkMute); }
+  .request-page .opt-label b { display: block; font: 700 18px/1.3 var(--body); }
+  .request-page .opt-label small {
+    display: block; font-family: var(--body); font-style: italic; font-size: 15.5px; color: var(--inkSoft);
+  }
   .request-page .opt-reason {
-    font-family: var(--body); font-style: italic; font-size: 14px; color: var(--inkMute);
+    margin-left: auto; font-family: var(--mono); font-size: 9.5px; letter-spacing: .12em;
+    text-transform: uppercase; font-style: normal; color: var(--inkMute); text-align: start;
+    white-space: nowrap; padding-top: 4px;
+  }
+  @media (max-width: 47rem) {
+    .request-page .opts { grid-template-columns: 1fr; }
   }
 
-  /* ----- JS-driven cap caption / over-limit state -----
-     the shared request-form script writes this text from data-caption-
-     template at load and on every input; the markup only supplies
-     the initial server-rendered sentence and the hook. */
-  .request-page .cap {
-    font-family: var(--body); font-style: italic; font-size: 15px; color: var(--inkMute); margin: 4px 0 0;
+  /* JS-driven limit caption and over-limit state */
+  .request-page [data-limit-caption][data-before]::before { content: attr(data-before); }
+  .request-page [data-limit-caption].over { color: var(--red); font-style: normal; font-weight: 700; }
+  /* raised to (0,4,1) -- every input sits inside a
+     `.form-control-block`, so this beats the base `.form-control`
+     rule's (0,4,0); same theme-beating reason as that rule */
+  .request-page .form-control-block input.form-control.over {
+    border-color: var(--red); color: var(--red);
   }
-  .request-page input.form-control.over { border-color: var(--red); color: var(--red); }
 
   /* ----- request summary (frozen mode) ----- */
-  .request-page .summary { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; }
-  .request-page .summary dt {
-    font-family: var(--mono); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase;
-    color: var(--inkMute);
+  .request-page .sup {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 28px; margin: 22px 0 0;
   }
-  .request-page .summary dd { margin: 0; font-family: var(--body); font-size: 17px; color: var(--ink); }
-
-  /* ----- editorial desk aside (history, danger zone) ----- */
-  .request-page .desk {
-    border: 1.5px solid var(--ink); background: var(--paperLite); box-shadow: 5px 5px 0 var(--ink);
-    padding: 16px clamp(16px, 2.4vw, 24px); margin-top: 20px;
+  .request-page .sup div {
+    display: flex; justify-content: space-between; gap: 12px; padding: 8px 0;
+    border-bottom: 1px dotted var(--inkMute); font-size: 17px;
   }
-  .request-page .desk .sh { border-bottom: 1px solid var(--ink); margin-bottom: 10px; padding-bottom: 4px; }
-  .request-page .desk .sh h2 {
-    font-family: var(--display); font-weight: 800; font-size: 16px; margin: 0; color: var(--ink);
+  .request-page .sup dt {
+    font: 400 10px var(--mono); letter-spacing: .12em; text-transform: uppercase;
+    color: var(--inkMute); padding-top: 3px; white-space: nowrap;
   }
-  .request-page .desk-list { list-style: none; margin: 0; padding: 0; }
-  .request-page .desk-list li { display: flex; gap: 10px; padding: 6px 0; border-top: 1px solid var(--ink); }
-  .request-page .desk-list li:first-child { border-top: 0; }
-  .request-page .desk-list time {
-    flex: 0 0 auto; font-family: var(--mono); font-size: 10.5px; color: var(--inkMute);
-  }
-  .request-page .desk.desk-danger { border-color: var(--red); }
-  .request-page .desk.desk-danger .sh { border-color: var(--red); }
-  .request-page .desk.desk-danger .sh h2 { color: var(--redDeep); }
-
-  /* ----- status counts strip ----- */
-  .request-page .counts {
-    display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin: 18px 0;
-  }
-  .request-page .count {
-    display: flex; flex-direction: column; align-items: center; gap: 2px;
-    border: 1px solid var(--ink); padding: 10px 4px; background: var(--paperLite);
-  }
-  .request-page .count-value { font-family: var(--display); font-weight: 800; font-size: 22px; color: var(--ink); }
-  .request-page .count-label {
-    font-family: var(--mono); font-size: 8.5px; letter-spacing: .12em; text-transform: uppercase;
-    color: var(--inkMute);
+  .request-page .sup dd { margin: 0; text-align: right; min-width: 0; }
+  @media (max-width: 47rem) {
+    .request-page .sup { grid-template-columns: 1fr; }
   }
 
-  /* ----- "in the program" card ----- */
-  .request-page .req.win {
-    display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
-    border: 1.5px solid var(--green); background: var(--paperLite); padding: 12px 16px; margin-top: 10px;
+  /* ----- edit note-box / frozen lock note ----- */
+  .request-page .note-box {
+    border: 1.5px solid var(--ochre); background: var(--paperLite); margin-bottom: 28px;
   }
-  .request-page .req.win .req-name { font-family: var(--display); font-weight: 800; font-size: 18px; color: var(--ink); }
-  .request-page .req.win .req-meta { font-family: var(--body); font-style: italic; color: var(--inkMute); }
+  .request-page .note-box.lock { border-color: var(--blue); }
+  .request-page .note-h {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 14px;
+    border-bottom: 1px dotted var(--inkMute); font-family: var(--mono); font-size: 10.5px;
+    font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--ink);
+  }
+  .request-page .note-box p {
+    margin: 0; padding: 12px 14px 14px; font-family: var(--body); font-size: 18px; line-height: 1.4;
+    color: var(--ink);
+  }
 
-  /* ----- request card grid ----- */
-  .request-page .req-grid {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 14px; margin-top: 10px;
+  /* ----- danger zone ----- */
+  .request-page .danger-zone {
+    display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;
+    margin-top: 34px; padding-top: 16px; border-top: 3px double var(--ink);
+  }
+  .request-page .danger-zone b { font-family: var(--display); font-size: 20px; color: var(--ink); }
+  /* the button's form is flex, like the draft's flex-item button */
+  .request-page .danger-zone form { display: flex; }
+
+  /* ----- history timeline ----- */
+  .request-page .tl { list-style: none; margin: 0; padding: 0; }
+  .request-page .tl li {
+    padding: 0 0 14px 20px; border-left: 1.5px solid var(--ink); position: relative;
+    font-family: var(--body); font-size: 18px; color: var(--ink);
+  }
+  .request-page .tl li::before {
+    content: ""; position: absolute; left: -6px; top: 3px; width: 9px; height: 9px; background: var(--ink);
+  }
+  .request-page .tl li.now::before { background: var(--ochre); outline: 2px solid var(--paperLite); }
+  .request-page .tl li:last-child { border-left-color: transparent; padding-bottom: 0; }
+  .request-page .tl .lbl {
+    display: block; margin-bottom: 2px; font-family: var(--mono); font-size: 10px;
+    letter-spacing: .18em; text-transform: uppercase; color: var(--inkMute);
+  }
+
+  /* ---------------------------------------------------------- */
+  /* 3. DASHBOARD (requests overview)                             */
+  /* ---------------------------------------------------------- */
+
+  /* status counts strip */
+  .request-page .facts.cnt {
+    display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));
+    border-bottom: 1px solid var(--ink); margin: 0; padding: 0;
+  }
+  .request-page .facts.cnt > div {
+    padding: 14px 18px 16px; border-left: 1px solid var(--inkMute);
+  }
+  .request-page .facts.cnt > div:first-child { border-left: 0; padding-left: 0; }
+  .request-page .facts.cnt dt {
+    display: block; font-family: var(--mono); font-size: 10px; letter-spacing: .18em;
+    text-transform: uppercase; color: var(--inkMute); margin-bottom: 6px;
+  }
+  .request-page .facts.cnt dd {
+    margin: 0; font: 900 40px/1.2 var(--display); color: var(--ink);
+  }
+  .request-page .facts.cnt dd.v-submitted { color: var(--ochre); }
+  .request-page .facts.cnt dd.v-accepted { color: var(--blue); }
+  .request-page .facts.cnt dd.v-tournament_created { color: var(--green); }
+  .request-page .facts.cnt dd.v-rejected { color: var(--red); }
+  .request-page .facts.cnt dd.v-withdrawn { color: var(--inkMute); }
+
+  /* section head right after the counts strip */
+  .request-page .sh.sh-top { margin-top: 30px; }
+
+  /* ----- request card grid ("in progress") ----- */
+  .request-page .cards.two-c {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; margin: 0 0 38px;
   }
   .request-page .req {
-    border: 1.5px solid var(--ink); background: var(--paperLite); box-shadow: 4px 4px 0 var(--ink);
-    padding: 14px 16px; display: flex; flex-direction: column; gap: 6px;
+    border: 1.5px solid var(--ink); background: var(--paperLite);
+    display: flex; flex-direction: column;
   }
-  .request-page .req-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  .request-page .req-no { font-family: var(--mono); font-size: 11px; color: var(--inkMute); }
-  .request-page .req-name { font-family: var(--display); font-weight: 800; font-size: 18px; color: var(--ink); }
-  .request-page .req-meta { font-family: var(--mono); font-size: 11px; letter-spacing: .06em; color: var(--inkSoft); }
+  .request-page .req.card-open { box-shadow: 5px 5px 0 var(--ochre); }
+  .request-page .req.card-accepted { box-shadow: 5px 5px 0 var(--blue); }
+  .request-page .card-t {
+    display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    padding: 10px 14px; border-bottom: 1px dotted var(--inkMute);
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--inkSoft);
+  }
+  .request-page .card-t b { color: var(--ink); }
+  .request-page .card-b { padding: 14px 14px 4px; flex: 1; }
+  .request-page .card-b .nm { font-family: var(--display); font-weight: 900; font-size: 24px; line-height: 1.1; color: var(--ink); }
+  .request-page .card-b .gm { font-style: italic; font-size: 18px; color: var(--inkSoft); margin: 0 0 12px; }
+  .request-page .card-b .hint { font-style: italic; font-size: 16px; color: var(--inkSoft); margin: 10px 0 0; }
+  .request-page .card-f { padding: 14px; }
+  .request-page .card-f .btns { margin-top: 0; }
 
-  /* ----- three-step tracker ----- */
-  .request-page .trk { display: flex; list-style: none; margin: 6px 0 0; padding: 0; gap: 4px; }
-  .request-page .trk-step {
-    flex: 1 1 0; text-align: center; font-family: var(--mono); font-size: 9px; letter-spacing: .08em;
-    text-transform: uppercase; color: var(--inkMute); border-top: 3px solid var(--ink); padding-top: 5px;
+  /* ----- three-step tracker -----
+     no filled "pending" bar: the future step carries no class and no
+     border at all, only the dotted connector shows it is still ahead. */
+  .request-page .trk {
+    list-style: none; margin: 14px 0 0; padding: 0; display: grid;
+    grid-template-columns: repeat(3, 1fr);
   }
-  .request-page .trk-step.done { color: var(--green); border-top-color: var(--green); }
-  .request-page .trk-step.now { color: var(--redDeep); border-top-color: var(--redDeep); }
+  .request-page .trk li {
+    position: relative; padding-top: 18px; font-family: var(--mono); font-size: 9.5px;
+    line-height: normal; letter-spacing: .1em; text-transform: uppercase; color: var(--inkMute);
+  }
+  .request-page .trk li::after {
+    content: ""; position: absolute; top: 5px; left: 0; right: 0;
+    border-top: 1.5px dotted var(--inkMute);
+  }
+  .request-page .trk li i {
+    position: absolute; top: 0; left: 0; width: 11px; height: 11px; z-index: 1;
+    border: 1.5px solid var(--inkMute); background: var(--paperLite);
+  }
+  .request-page .trk li.done { color: var(--ink); }
+  .request-page .trk li.done i { background: var(--ink); border-color: var(--ink); }
+  .request-page .trk li.done::after { border-top-color: var(--ink); border-top-style: solid; }
+  .request-page .trk li.next { color: var(--ochre); font-weight: 700; }
+  .request-page .trk li.next i { border-color: var(--ochre); }
+  .request-page .trk li:last-child::after { display: none; }
 
-  /* ----- archive list ----- */
-  .request-page .archive-list { list-style: none; margin: 10px 0 0; padding: 0; border-top: 3px double var(--ink); }
-  .request-page .archive-item {
-    display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; padding: 10px 2px;
-    border-bottom: 1px solid var(--ink);
+  /* "in the program" win card */
+  .request-page .req.win {
+    display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px 20px;
+    border: 1.5px solid var(--green); box-shadow: 6px 6px 0 var(--green);
+    padding: 0; margin: 14px 0;
   }
-  .request-page .archive-name { font-family: var(--body); font-size: 17px; color: var(--ink); }
-  .request-page .archive-reason { flex-basis: 100%; margin: 2px 0 0; }
+  /* dashboard instance: no top margin */
+  .request-page .sh + .req.win { margin-top: 0; }
+  .request-page .win-h {
+    background: var(--green); color: var(--paperLite); font-family: var(--mono);
+    font-size: 11px; font-weight: 700; letter-spacing: .2em; text-transform: uppercase;
+    padding: 8px 16px;
+  }
+  /* single column: a name block, stat list and button do not fit two */
+  .request-page .win-b {
+    padding: 16px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px 20px;
+    align-items: center;
+  }
+  .request-page .win-b .nm { font: 900 26px/1.1 var(--display); color: var(--ink); }
+  .request-page .win-b .gm { font-style: italic; font-size: 19px; color: var(--inkSoft); margin-top: 0; }
+  .request-page .win-b .req-name { font-family: var(--display); font-weight: 800; font-size: 18px; color: var(--ink); }
+  .request-page .mini {
+    display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; margin: 0; font-size: 17px;
+  }
+  .request-page .mini dt {
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: .16em; text-transform: uppercase;
+    color: var(--inkMute); padding-top: 4px;
+  }
+  .request-page .mini dd { margin: 0; color: var(--ink); }
+  @media (max-width: 47rem) {
+    .request-page .req.win { box-shadow: 4px 4px 0 var(--green); }
+    .request-page .win-b .nm { font-size: 22px; }
+  }
+
+  /* empty state */
+  .request-page .empty-box {
+    text-align: center; padding: 48px 20px 56px; border-bottom: 1px solid var(--inkMute);
+  }
+  .request-page .empty-box h3 { font: 900 30px var(--display); margin: 0 0 10px; color: var(--ink); }
+  .request-page .empty-box p {
+    font-size: 19px; font-style: italic; font-weight: 400; color: var(--inkSoft);
+    margin: 0 auto 22px; max-width: 30ch;
+  }
+
+  /* ----- archive list -----
+     a plain list, no pagination; the section head's own border-bottom
+     already separates it, so the list itself carries no top rule. */
+  .request-page .dl-list { list-style: none; margin: 0; padding: 0; }
+  .request-page .dl-list li {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px;
+    padding: 12px 0; border-bottom: 1px dotted var(--inkMute);
+  }
+  .request-page .dl-list b { font: 700 19px var(--body); color: var(--ink); }
+  .request-page .dl-list .mt {
+    grid-column: 1 / -1; font-family: var(--mono); font-size: 10px; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--inkMute);
+  }
+  .request-page .why-sm { grid-column: 1 / -1; font-style: italic; font-size: 17px; color: var(--inkSoft); }
 
   /* ----- responsive: 390px first ----- */
   @media (max-width: 47rem) {
-    .request-page .counts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  }
-  @media (max-width: 24.4rem) {
-    .request-page .summary { grid-template-columns: 1fr; }
-    .request-page .seg { flex-direction: column; }
-    .request-page .seg-option { border-right: 0; border-bottom: 1px solid var(--ink); }
-    .request-page .seg-option:last-child { border-bottom: 0; }
-    .request-page .req-head { flex-wrap: wrap; }
+    .request-page .head .tags .btn-pri { width: 100%; }
+    .request-page .facts.cnt > div {
+      padding: 10px 0 10px 8px; border-left: 1px dotted var(--inkMute); border-bottom: 0;
+    }
+    .request-page .facts.cnt > div:first-child { border-left: 0; padding-left: 0; }
+    .request-page .facts.cnt dt { font-size: 8px; letter-spacing: .04em; }
+    .request-page .facts.cnt dd { font-size: 28px; }
+    .request-page .cards.two-c { grid-template-columns: 1fr; gap: 18px; }
   }
 </style>

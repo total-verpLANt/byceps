@@ -1,68 +1,135 @@
 {% extends 'layout/admin/lan_tournament.html' %}
-{% from 'macros/admin.html' import render_backlink %}
-{% from 'macros/forms.html' import form_buttons, form_field %}
-{% from 'macros/misc.html' import render_notification_block %}
+{% from 'macros/forms.html' import form_field, form_field_errors %}
+{% from 'macros/misc.html' import render_tag %}
 {% set current_page_party = party %}
 {% set current_tab = 'requests' %}
 {% set page_title = _('Edit request') %}
 
-{% block before_body %}
-{{ render_backlink(url_for('.view_request', request_id=tournament_request.id), _('Tournament request')) }}
+{% block head %}{{ super() }}
+  <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_match_admin.css') }}">
 {%- endblock %}
 
 {% block body %}
 
-  <h1 class="title">{{ page_title }} <span class="dimmed">#{{ '%04d'|format(tournament_request.number) }}</span></h1>
+  {%- macro optional_field(field, caption=none) %}
+    <div class="form-control-block{% if field.errors %} invalid{% endif %}">
+      <label class="form-label" for="{{ field.id }}">{{ field.label.text }} <span class="dimmed">({{ _('optional') }})</span></label>
+      {{ field(class='form-control', **kwargs) }}
+      {%- if caption is not none %}
+      <div class="form-caption">{{ caption }}</div>
+      {%- endif %}
+      {{- form_field_errors(field) }}
+    </div>
+  {%- endmacro %}
 
-  {%- call render_notification_block(category='info') %}
-    {{ _('The proposer sees these changes immediately, and they are recorded in the request\'s history.') }}
-  {%- endcall %}
-
-  {%- set participant_limit_caption = (
-    _('Capped by this party\'s ticket capacity (%(capacity)s), divided by team size.', capacity=party_capacity)
-    if party_capacity is not none else none
-  ) %}
+  {%- set proposer = users_by_id.get(tournament_request.proposer_id) %}
   {%- set participant_limit_max = (
     form.participant_limit.validators
     | selectattr('max', 'defined') | map(attribute='max') | list | first
   ) %}
 
-  <form method="post" action="{{ url_for('.update_request', request_id=tournament_request.id) }}"{% if party_capacity is not none %} data-capacity="{{ party_capacity }}"{% endif %} data-max-limit="{{ participant_limit_max }}">
+  {#- Initial limit caption, as the request-form script writes it on load. #}
+  {%- set team_size = form.team_size.data if form.team_size.data and form.team_size.data > 0 else 1 %}
+  {%- if party_capacity is not none %}
+  {%- set caption_players = _('2 to {max} · {capacity} seats at the party')|replace('{capacity}', party_capacity) %}
+  {%- set caption_teams = _('2 to {max} teams · {capacity} seats ÷ {size}')|replace('{capacity}', party_capacity) %}
+  {%- set caption_over = _('Team size too large for {capacity} seats')|replace('{capacity}', party_capacity) %}
+  {%- set limit_max = [party_capacity // team_size, participant_limit_max]|min %}
+  {%- set limit_caption = (
+    caption_over if limit_max < 2
+    else caption_teams|replace('{size}', team_size)|replace('{max}', limit_max) if team_size > 1
+    else caption_players|replace('{max}', limit_max)
+  ) %}
+  {%- set limit_attrs = {
+    'data_caption_template': caption_players|forceescape,
+    'data_caption_template_teams': caption_teams|forceescape,
+    'data_caption_template_over': caption_over|forceescape,
+  } %}
+  {%- else %}
+  {%- set limit_caption = '' %}
+  {%- set limit_attrs = {} %}
+  {%- endif %}
 
-    <fieldset class="fs box">
-      <legend>{{ _('General') }}</legend>
-      {{ form_field(form.name, maxlength=80, autofocus='autofocus') }}
-      {{ form_field(form.game, maxlength=80) }}
-      {{ form_field(form.description) }}
-    </fieldset>
+<div class="lt-request-page">
+  <div class="lt-edit">
 
-    <fieldset class="fs box">
-      <legend>{{ _('Format') }}</legend>
-      {{ form_field(form.game_format) }}
-      {{ form_field(form.elimination_mode) }}
-      {{ form_field(form.team_size, data_team=true) }}
-      {{ form_field(form.participant_limit, caption=participant_limit_caption,
-           data_limit_inp=true,
-           data_label_players=_('Participant limit')|forceescape,
-           data_label_teams=_('Team limit')|forceescape,
-           **({'data_caption_template': (_('At most {max} with this team size (party capacity: %(capacity)s).', capacity=party_capacity))|forceescape} if party_capacity is not none else {})) }}
-    </fieldset>
+    <a class="lt-backlink" href="{{ url_for('.view_request', request_id=tournament_request.id) }}">‹ {{ tournament_request.name }}</a>
 
-    <fieldset class="fs box">
-      <legend>{{ _('Time frame') }}</legend>
-      {{ form_field(form.preferred_start_time) }}
-      {{ form_field(form.preferred_end_time) }}
-    </fieldset>
+    <div class="block">
+      <h1 class="title" style="margin-bottom: 0;">
+        {{- _('Edit request') }}
+        {%- if tournament_request.status.value == 'submitted' %}
+          {{ render_tag(_('Open'), class='color-warning') }}
+        {%- elif tournament_request.status.value == 'accepted' %}
+          {{ render_tag(_('Accepted'), class='color-info') }}
+        {%- endif %}
+      </h1>
+      <div class="dimmed" style="margin-top: 4px;">
+        {{- _('Request #%(number)s by', number='%04d'|format(tournament_request.number)) }}
+        {%- if proposer %}
+        <a href="{{ url_for('user_admin.view', user_id=tournament_request.proposer_id) }}">{{ proposer_name }}</a>
+        {%- else %}
+        {{ proposer_name }}
+        {%- endif %}
+      </div>
+    </div>
 
-    <fieldset class="fs box">
-      <legend>{{ _('Optional') }}</legend>
-      {{ form_field(form.special_rules) }}
-      {{ form_field(form.notes) }}
-      {{ form_field(form.desired_template) }}
-    </fieldset>
+    <div class="notification color-info block">{{ _('Changes are visible to %(name)s right away in the request. They are recorded in the history as an admin change.', name=proposer_name) }}</div>
 
-    {{ form_buttons(_('Save'), cancel_url=url_for('.view_request', request_id=tournament_request.id)) }}
-  </form>
+    <form method="post" action="{{ url_for('.update_request', request_id=tournament_request.id) }}"{% if party_capacity is not none %} data-capacity="{{ party_capacity }}"{% endif %} data-max-limit="{{ participant_limit_max }}">
+
+      <fieldset class="fs">
+        <legend>{{ _('General') }}</legend>
+        <div class="frow">
+          {{ form_field(form.name, maxlength=80, autofocus='autofocus') }}
+          {{ form_field(form.game, maxlength=80) }}
+        </div>
+        {{ form_field(form.description, style='height:5rem') }}
+      </fieldset>
+
+      <fieldset class="fs">
+        <legend>{{ _('Format') }}</legend>
+        <div class="frow">
+          {{ form_field(form.game_format) }}
+          {{ form_field(form.elimination_mode, caption=_('Only modes that fit the game format can be selected.')) }}
+        </div>
+        <div class="frow keep">
+          {{ form_field(form.team_size, caption=_('1 = solo'), data_team=true) }}
+          <div class="form-control-block{% if form.participant_limit.errors %} invalid{% endif %}">
+            <label class="form-label" for="{{ form.participant_limit.id }}">{{ form.participant_limit.label.text }}</label>
+            {{ form.participant_limit(class='form-control', data_limit_inp=true, data_label_players=_('Participant limit')|forceescape, data_label_teams=_('Team limit')|forceescape, **limit_attrs) }}
+            {%- if limit_caption %}
+            <div class="form-caption" data-limit-caption>{{ limit_caption }}</div>
+            {%- endif %}
+            {{- form_field_errors(form.participant_limit) }}
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset class="fs">
+        <legend>{{ _('Time frame') }}</legend>
+        <div class="frow">
+          {{ form_field(form.preferred_start_time) }}
+          {{ form_field(form.preferred_end_time) }}
+        </div>
+      </fieldset>
+
+      <fieldset class="fs">
+        <legend>{{ _('Optional') }}</legend>
+        {{ optional_field(form.special_rules, style='height:4rem') }}
+        {{ optional_field(form.notes, caption=_('Never publicly visible.'), style='height:3rem') }}
+        {{ optional_field(form.desired_template) }}
+      </fieldset>
+
+      <div class="button-row">
+        <button type="submit" class="button color-primary">{{ _('Save') }}</button>
+        <a class="button" href="{{ url_for('.view_request', request_id=tournament_request.id) }}">{{ _('Cancel') }}</a>
+      </div>
+
+    </form>
+
+  </div>
+</div>
 
 {%- endblock %}
 

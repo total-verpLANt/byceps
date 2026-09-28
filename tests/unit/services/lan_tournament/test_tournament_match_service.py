@@ -278,18 +278,50 @@ def test_generate_bracket_defwin_auto_confirms_with_initiator(mock_repo):
 @patch(
     'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
 )
-def test_generate_bracket_without_contestant_type(mock_repo):
-    """Bracket generation fails without contestant type set."""
+def test_generate_bracket_without_contestant_type_derives_solo(mock_repo):
+    """A NULL contestant type with no team size derives to SOLO."""
     tournament = _create_tournament(contestant_type=None)
+    participants = [
+        _create_mock_participant(TournamentParticipantID(generate_uuid()))
+        for _ in range(4)
+    ]
 
     mock_repo.get_tournament.return_value = tournament
+    mock_repo.get_participants_for_tournament.return_value = participants
+    mock_repo.get_contestants_for_match.return_value = []
 
     result = tournament_match_service.generate_single_elimination_bracket(
         TOURNAMENT_ID
     )
 
-    assert result.is_err()
-    assert 'contestant type' in result.unwrap_err().lower()
+    assert result.is_ok()
+    assert result.unwrap() == 4  # 4-1 = 3 bracket matches + 1 P3
+    # Derived as SOLO, so it fetched participants, never teams.
+    mock_repo.get_teams_for_tournament.assert_not_called()
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_generate_bracket_without_contestant_type_derives_team(mock_repo):
+    """A NULL contestant type with team size > 1 derives to TEAM."""
+    tournament = _create_tournament(contestant_type=None, max_players_in_team=4)
+    teams = [
+        _create_mock_team(TournamentTeamID(generate_uuid())) for _ in range(8)
+    ]
+
+    mock_repo.get_tournament.return_value = tournament
+    mock_repo.get_teams_for_tournament.return_value = teams
+    mock_repo.get_contestants_for_match.return_value = []
+
+    result = tournament_match_service.generate_single_elimination_bracket(
+        TOURNAMENT_ID
+    )
+
+    assert result.is_ok()
+    assert result.unwrap() == 8  # 8-1 = 7 bracket matches + 1 P3
+    # Derived as TEAM, so it fetched teams, never plain participants.
+    mock_repo.get_participants_for_tournament.assert_not_called()
 
 
 @patch(
@@ -1287,20 +1319,50 @@ def test_generate_round_robin_less_than_2_contestants(
 @patch(
     'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
 )
-def test_generate_round_robin_no_contestant_type(
+def test_generate_round_robin_no_contestant_type_derives_solo(
     mock_repo,
 ):
-    """No contestant_type set returns Err."""
+    """A NULL contestant type with no team size derives to SOLO."""
     tournament = _create_tournament(contestant_type=None)
+    participants = [
+        _create_mock_participant(TournamentParticipantID(generate_uuid()))
+        for _ in range(4)
+    ]
 
     mock_repo.get_tournament.return_value = tournament
+    mock_repo.get_participants_for_tournament.return_value = participants
 
     result = tournament_match_service.generate_round_robin_bracket(
         TOURNAMENT_ID
     )
 
-    assert result.is_err()
-    assert 'contestant type' in result.unwrap_err().lower()
+    assert result.is_ok()
+    assert result.unwrap() == 6  # 4*3/2 = 6
+    mock_repo.get_teams_for_tournament.assert_not_called()
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_generate_round_robin_no_contestant_type_derives_team(
+    mock_repo,
+):
+    """A NULL contestant type with team size > 1 derives to TEAM."""
+    tournament = _create_tournament(contestant_type=None, max_players_in_team=4)
+    teams = [
+        _create_mock_team(TournamentTeamID(generate_uuid())) for _ in range(8)
+    ]
+
+    mock_repo.get_tournament.return_value = tournament
+    mock_repo.get_teams_for_tournament.return_value = teams
+
+    result = tournament_match_service.generate_round_robin_bracket(
+        TOURNAMENT_ID
+    )
+
+    assert result.is_ok()
+    assert result.unwrap() == 28  # 8*7/2 = 28
+    mock_repo.get_participants_for_tournament.assert_not_called()
 
 
 # -------------------------------------------------------------------- #

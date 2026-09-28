@@ -916,12 +916,12 @@ def test_field_gap_supplied_count_is_twelve():
     assert len(gap.supplied) == 12
 
 
-def test_field_gap_admin_fills_count_is_seven():
+def test_field_gap_admin_fills_count_is_six():
     request = _make_request()
 
     gap = analyze_field_gap(request)
 
-    assert len(gap.admin_fills) == 7
+    assert len(gap.admin_fills) == 6
 
 
 def test_field_gap_has_no_blockers_for_highscore():
@@ -941,7 +941,6 @@ def test_field_gap_admin_fills_matches_create_tournament_gap():
     gap = analyze_field_gap(request)
 
     assert set(gap.admin_fills) == {
-        'contestant_type',
         'score_ordering',
         'min_players',
         'min_teams',
@@ -949,6 +948,23 @@ def test_field_gap_admin_fills_matches_create_tournament_gap():
         'advancement_count',
         'points_carry_to_losers',
     }
+
+
+def test_admin_fill_order_matches_draft():
+    """The admin preview lists the fills in the design's order."""
+    request = _make_request()
+
+    gap = analyze_field_gap(request)
+
+    assert gap.admin_fills == [
+        'score_ordering',
+        'min_players',
+        'min_teams',
+        'advancement_count',
+        'points_carry_to_losers',
+        'image_url',
+    ]
+    assert gap.admin_fills[-1] == 'image_url'
 
 
 def test_field_gap_supplied_matches_request_fields():
@@ -961,15 +977,31 @@ def test_field_gap_supplied_matches_request_fields():
         'game',
         'game_format',
         'elimination_mode',
+        'contestant_type',
         'team_size',
         'participant_limit',
         'preferred_start_time',
-        'preferred_end_time',
         'description',
         'ruleset',
         'party',
         'origin',
     }
+
+
+def test_field_gap_info_only_lists_preferred_end_time():
+    request = _make_request()
+
+    gap = analyze_field_gap(request)
+
+    assert gap.info_only == ['preferred_end_time']
+
+
+def test_field_gap_preferred_end_time_not_supplied():
+    request = _make_request()
+
+    gap = analyze_field_gap(request)
+
+    assert 'preferred_end_time' not in gap.supplied
 
 
 # -------------------------------------------------------------------- #

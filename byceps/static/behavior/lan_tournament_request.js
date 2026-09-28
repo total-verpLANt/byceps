@@ -27,9 +27,14 @@
  *   - the team-size input carries `data-team`;
  *   - the limit input carries `data-limit-inp`, plus
  *     `data-label-players` / `data-label-teams` (the two label
- *     strings) and, only when a party capacity is known,
- *     `data-caption-template` (a caption string with a literal
- *     `{max}` token this script substitutes);
+ *     strings) and, only when a party capacity is known, up to three
+ *     caption templates with literal `{max}` / `{capacity}` / `{size}`
+ *     tokens this script substitutes: `data-caption-template` (the
+ *     per-player wording), `data-caption-template-teams` (used once
+ *     the team size is above 1) and `data-caption-template-over`
+ *     (used once the computed max drops below 2). Either variant may
+ *     be absent on older markup, in which case the players template
+ *     is used instead;
  *   - the form itself carries `data-capacity` only when a party
  *     capacity is known; its absence means no cap applies.
  *   - the form also carries `data-max-limit`, the server-side hard
@@ -37,7 +42,9 @@
  *     clamped to it either way.
  *   - a hand-written caption element may carry `data-limit-caption`;
  *     otherwise the nearest `.form-caption` in the limit input's
- *     `.form-control-block` is used, if either is present.
+ *     `.form-control-block` is used, if either is present. It gets an
+ *     `over` class once the max drops below 2 or the current value
+ *     exceeds the max.
  *   - each elimination-mode `<input type="radio">` (site base, bote
  *     override) or `<option>` (admin `<select>`) carries
  *     `data-reasons`, a JSON object mapping every game-format value
@@ -47,6 +54,12 @@
  *     `data-mode-reason`; an admin `<option>`'s own text is rewritten
  *     instead, from its `data-label-base` attribute (the plain label,
  *     no reason suffix) plus the reason.
+ *   - an optional `[data-mode-hint]` element (site only; admin
+ *     `<select>`s render none) carries `data-hint-template` (with a
+ *     literal `{format}` token) and `data-hint-default`; its text is
+ *     rewritten from the checked `game_format` radio's
+ *     `data-format-label`, or restored to the default when none is
+ *     checked.
  */
 (function () {
   'use strict';
@@ -116,13 +129,35 @@
       !isNaN(currentValue) && currentValue > max
     );
 
-    var captionTemplate = limitInput.getAttribute('data-caption-template');
-    if (captionTemplate !== null) {
+    var size = teamSize;
+    var playersTemplate = limitInput.getAttribute('data-caption-template');
+    var teamsTemplate = limitInput.getAttribute(
+      'data-caption-template-teams'
+    );
+    var overTemplate = limitInput.getAttribute('data-caption-template-over');
+
+    var template;
+    if (max < 2) {
+      template = overTemplate !== null ? overTemplate : playersTemplate;
+    } else if (size > 1) {
+      template = teamsTemplate !== null ? teamsTemplate : playersTemplate;
+    } else {
+      template = playersTemplate;
+    }
+
+    if (template !== null) {
       var caption = findCaption(limitInput);
       if (caption) {
-        caption.textContent = captionTemplate.replace(
-          '{max}',
-          String(max)
+        caption.textContent = template
+          .split('{max}')
+          .join(String(max))
+          .split('{capacity}')
+          .join(String(capacity))
+          .split('{size}')
+          .join(String(size));
+        caption.classList.toggle(
+          'over',
+          max < 2 || (!isNaN(currentValue) && currentValue > max)
         );
       }
     }
@@ -254,6 +289,25 @@
     }
   }
 
+  // Mode hint; a no-op without a `[data-mode-hint]` element.
+
+  function updateModeHint(form) {
+    var hint = form.querySelector('[data-mode-hint]');
+    if (!hint) {
+      return;
+    }
+
+    var checkedRadio = form.querySelector('[name="game_format"]:checked');
+    var label = checkedRadio
+      ? checkedRadio.getAttribute('data-format-label')
+      : null;
+
+    hint.textContent =
+      label !== null
+        ? hint.dataset.hintTemplate.split('{format}').join(label)
+        : hint.dataset.hintDefault;
+  }
+
   // Keep the is-selected/on class in sync with :checked on every user
   // click, scoped to the radio's own form, so a manual click never
   // leaves the class pointing at the option the server rendered
@@ -284,6 +338,7 @@
     if (target.name === 'game_format') {
       syncSelectedCard(target.form, 'game_format', '.seg-option');
       updateEliminationModeOptions(target.form);
+      updateModeHint(target.form);
     } else {
       syncSelectedCard(target.form, 'elimination_mode', '.opt');
     }
@@ -296,6 +351,16 @@
     if (ownForm && seenForms.indexOf(ownForm) === -1) {
       seenForms.push(ownForm);
       updateEliminationModeOptions(ownForm);
+    }
+  }
+
+  var hintForms = [];
+  var hintEls = document.querySelectorAll('[data-mode-hint]');
+  for (var h = 0; h < hintEls.length; h++) {
+    var hintForm = hintEls[h].closest('form');
+    if (hintForm && hintForms.indexOf(hintForm) === -1) {
+      hintForms.push(hintForm);
+      updateModeHint(hintForm);
     }
   }
 })();

@@ -1,8 +1,11 @@
+from datetime import datetime, UTC
+import re
 import uuid
 from flask import abort, g, request
 from flask_babel import gettext, to_user_timezone, to_utc
 
 from byceps.services.lan_tournament import (
+    tournament_domain_service,
     tournament_match_service,
     tournament_orga_service,
     tournament_participant_service,
@@ -12,7 +15,10 @@ from byceps.services.lan_tournament import (
     tournament_service,
     tournament_team_service,
 )
-from byceps.services.lan_tournament.models.tournament import Tournament
+from byceps.services.lan_tournament.models.tournament import (
+    Tournament,
+    TournamentID,
+)
 from byceps.services.lan_tournament.models.tournament_match import (
     TournamentMatchID,
 )
@@ -73,6 +79,8 @@ from .forms import (
     SiteTeamUpdateForm,
     TournamentProposeForm,
     elimination_mode_label,
+    game_format_label,
+    request_mode_label,
 )
 
 
@@ -576,11 +584,18 @@ def leave_team(team_id):
 
 
 def _require_team_tournament(tournament) -> None:
-    """Abort with 404 if the tournament does not use teams."""
-    if (
-        tournament.contestant_type is None
-        or tournament.contestant_type != ContestantType.TEAM
-    ):
+    """Abort with 404 if the tournament does not use teams.
+
+    A missing `contestant_type` derives from team size rather than
+    being treated as non-team outright, so a legacy tournament whose
+    type was never set still gets the right gate.
+    """
+    contestant_type = tournament_domain_service.derive_contestant_type(
+        tournament.contestant_type,
+        tournament.max_players_in_team,
+        tournament.min_players_in_team,
+    )
+    if contestant_type != ContestantType.TEAM:
         abort(404)
 
 
@@ -1805,6 +1820,9 @@ def propose_form(erroneous_form=None):
         'party_capacity': party.max_ticket_quantity,
         'tournament_request': None,
         'history': None,
+        'has_ticket': ticket_service.uses_any_ticket_for_party(
+            g.user.id, party.id
+        ),
     }
 
 
@@ -1814,6 +1832,9 @@ def propose():
     """Submit a new tournament request."""
     party = _get_current_party_or_404()
 
+    form = TournamentProposeForm(request.form)
+    form.set_format_choices()
+
     has_ticket = ticket_service.uses_any_ticket_for_party(g.user.id, party.id)
     if not has_ticket:
         flash_error(
@@ -1822,10 +1843,7 @@ def propose():
                 'a tournament.'
             )
         )
-        return redirect_to('.propose_form')
-
-    form = TournamentProposeForm(request.form)
-    form.set_format_choices()
+        return propose_form(form)
 
     if not form.validate():
         return propose_form(form)
@@ -1881,6 +1899,60 @@ def propose():
             return propose_form(form)
 
 
+def _signup_counts(
+    tournaments,
+    participant_counts: dict[TournamentID, int],
+    team_counts: dict[TournamentID, int],
+) -> dict[TournamentID, tuple[int, int | None]]:
+    """Map each tournament to its signup count and limit."""
+    signup_counts = {}
+    for tournament in tournaments:
+        if tournament.contestant_type == ContestantType.TEAM:
+            count = team_counts.get(tournament.id, 0)
+            limit = tournament.max_teams
+        else:
+            count = participant_counts.get(tournament.id, 0)
+            limit = tournament.max_players
+        signup_counts[tournament.id] = (count, limit)
+    return signup_counts
+
+
+_REASON_LEAD_ABBREVIATIONS = (
+    'z.',
+    'u.',
+    'z. B.',
+    'z.B.',
+    'u. a.',
+    'u.a.',
+    'd. h.',
+    'ca.',
+    'max.',
+    'min.',
+    'inkl.',
+    'bzw.',
+    'usw.',
+    'Nr.',
+    'evtl.',
+    'ggf.',
+)
+
+# A sentence ends at `.!?` and whitespace before a capital, unless an ordinal
+# or an abbreviation precedes it.
+_REASON_LEAD_SPLIT = re.compile(
+    r'(?<!\d\.)'
+    + ''.join(
+        rf'(?<!(?i:\b{re.escape(a)}))' for a in _REASON_LEAD_ABBREVIATIONS
+    )
+    + r'(?<=[.!?])\s+(?=["„»(]?[A-ZÄÖÜ])'
+)
+
+
+def _split_reason_lead(reason: str) -> tuple[str, bool]:
+    """Return the first sentence of `reason` and whether more follows."""
+    lead, *rest = _REASON_LEAD_SPLIT.split(reason.strip(), maxsplit=1)
+    return lead, bool(rest)
+
+
 @blueprint.get('/requests')
 @login_required
 @templated
@@ -1896,15 +1968,18 @@ def my_requests():
     for tournament_request in requests:
         status_counts[tournament_request.status.value] += 1
 
-    open_requests = [
-        r
-        for r in requests
-        if r.status
-        in (
-            TournamentRequestStatus.submitted,
-            TournamentRequestStatus.accepted,
-        )
-    ]
+    open_requests = sorted(
+        (
+            r
+            for r in requests
+            if r.status
+            in (
+                TournamentRequestStatus.submitted,
+                TournamentRequestStatus.accepted,
+            )
+        ),
+        key=lambda r: (r.status != TournamentRequestStatus.submitted, r.number),
+    )
     archived_requests = [
         r
         for r in requests
@@ -1937,6 +2012,23 @@ def my_requests():
             tournament_ids
         )
     )
+    team_counts = tournament_team_service.get_team_counts_for_tournaments(
+        [
+            tournament.id
+            for tournament in tournaments_by_request_id.values()
+            if tournament.contestant_type == ContestantType.TEAM
+        ]
+    )
+
+    reason_leads_by_request_id = {
+        tournament_request.id: _split_reason_lead(
+            tournament_request.rejection_reason
+        )
+        for tournament_request in archived_requests
+        if tournament_request.status == TournamentRequestStatus.rejected
+        and tournament_request.rejection_reason
+        and tournament_request.rejection_reason.strip()
+    }
 
     # Site `view` 404s DRAFT tournaments for everyone, proposer included;
     # my_requests must not link to one it would only 404 on.
@@ -1944,6 +2036,37 @@ def my_requests():
         tournament.id
         for tournament in tournaments_by_request_id.values()
         if tournament.tournament_status == TournamentStatus.DRAFT
+    }
+
+    orga_tournament_ids = {
+        tournament.id
+        for tournament in tournaments_by_request_id.values()
+        if tournament_orga_service.is_orga_for_tournament(
+            g.user.id, tournament.id
+        )
+    }
+
+    # The "waiting for the orga" hint needs an elapsed *calendar* day
+    # count in the display timezone, not "under 24h" -- a request
+    # submitted yesterday at 23:00 local and viewed today at 01:00
+    # local is 1 day, not "today", even though under two hours have
+    # passed. There is no such filter available to the plain-Jinja
+    # template, so it is computed here instead.
+    today_local = to_user_timezone(datetime.now(UTC)).date()
+    waiting_days_by_request_id = {
+        tournament_request.id: max(
+            (
+                today_local
+                - to_user_timezone(
+                    tournament_request_domain_service.normalize_datetime_to_utc(
+                        tournament_request.created_at
+                    )
+                ).date()
+            ).days,
+            0,
+        )
+        for tournament_request in open_requests
+        if tournament_request.status == TournamentRequestStatus.submitted
     }
 
     return {
@@ -1954,7 +2077,15 @@ def my_requests():
         'live_requests': live_requests,
         'tournaments_by_request_id': tournaments_by_request_id,
         'participant_counts': participant_counts,
+        'signup_counts': _signup_counts(
+            tournaments_by_request_id.values(),
+            participant_counts,
+            team_counts,
+        ),
+        'reason_leads_by_request_id': reason_leads_by_request_id,
         'draft_tournament_ids': draft_tournament_ids,
+        'orga_tournament_ids': orga_tournament_ids,
+        'waiting_days_by_request_id': waiting_days_by_request_id,
     }
 
 
@@ -1975,10 +2106,21 @@ def update_request_form(request_id, erroneous_form=None):
     )
 
     if not tournament_request.is_editable:
+        created_tournament = None
+        if tournament_request.created_tournament_id is not None:
+            created_tournament = tournament_service.find_tournament(
+                tournament_request.created_tournament_id
+            )
+
         return {
             'mode': 'frozen',
             'tournament_request': tournament_request,
+            'created_tournament': created_tournament,
             'elimination_mode_label': elimination_mode_label(
+                tournament_request.elimination_mode
+            ),
+            'format_label': game_format_label(tournament_request.game_format),
+            'request_mode_label': request_mode_label(
                 tournament_request.elimination_mode
             ),
             'party': party,
@@ -2023,7 +2165,51 @@ def update_request_form(request_id, erroneous_form=None):
         'party': party,
         'party_capacity': party.max_ticket_quantity,
         'history': history,
+        'latest_changes': _latest_request_changes(history),
     }
+
+
+_REQUEST_DATETIME_FIELDS = frozenset(
+    {'preferred_start_time', 'preferred_end_time'}
+)
+
+
+def _latest_request_changes(history) -> dict[str, str]:
+    """Map each field of the newest edit to its previous display value."""
+    for entry in reversed(history):
+        if entry.event_type != 'tournament-request-edited':
+            continue
+
+        previous_values = (entry.data or {}).get('previous_values')
+        if not isinstance(previous_values, dict):
+            return {}
+
+        return {
+            field: _previous_value_label(field, value)
+            for field, value in previous_values.items()
+        }
+
+    return {}
+
+
+def _previous_value_label(field: str, value: object) -> str:
+    """Return a logged previous value the way the edit form shows it."""
+    if value is None:
+        return '\N{EM DASH}'
+
+    if isinstance(value, str):
+        try:
+            if field in _REQUEST_DATETIME_FIELDS:
+                moment = to_user_timezone(datetime.fromisoformat(value))
+                return moment.strftime('%d.%m. %H:%M')
+            if field == 'game_format':
+                return game_format_label(GameFormat[value])
+            if field == 'elimination_mode':
+                return request_mode_label(EliminationMode[value])
+        except (KeyError, ValueError):
+            pass
+
+    return str(value)
 
 
 @blueprint.post('/requests/<request_id>/update')
