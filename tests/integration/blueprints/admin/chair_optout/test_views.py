@@ -255,10 +255,15 @@ def test_overview_and_csv_include_all_states_and_multiple_areas(
     assert 'Second area' in seating_text
     assert 'left: 11px; top: 12px;' in seating_text
     assert 'rotate(45deg)' in seating_text
-    assert (
-        seating_text.count('<div class="seat seat--occupied seat--own-chair"')
-        == 2
-    )
+    seat_markups = {
+        seat.id: seating_text.split(f'id="seat-{seat.id}"', 1)[1].split(
+            '</div>', 1
+        )[0]
+        for seat in (first_seat, second_seat, third_seat)
+    }
+    assert 'seat--own-chair' in seat_markups[first_seat.id]
+    assert 'seat--own-chair' not in seat_markups[second_seat.id]
+    assert 'seat--own-chair' not in seat_markups[third_seat.id]
     assert f'data-seat-id="{first_seat.id}"' in seating_text
     assert 'data-occupier-name=' in seating_text
     for chair_information in [
