@@ -10682,6 +10682,9 @@ msgstr "Besiegt"
 msgid "Delete LAN tournaments"
 msgstr "LAN-Turniere löschen"
 
+msgid "Maintain LAN tournaments"
+msgstr "LAN-Turniere warten"
+
 msgid "Delete all scores"
 msgstr "Alle Ergebnisse löschen"
 
@@ -13022,3 +13025,1025 @@ msgstr "1 = Solo"
 
 msgid "Never publicly visible."
 msgstr "Nie öffentlich sichtbar."
+
+# lan_tournament: F-18 creation wizard
+msgid "Please enter a name."
+msgstr "Bitte gib einen Namen ein."
+
+msgid "At most %(max)d characters – currently %(length)d."
+msgstr "Höchstens %(max)d Zeichen – aktuell %(length)d."
+
+msgid "Whole numbers from 1 only."
+msgstr "Nur ganze Zahlen ab 1."
+
+msgid "At most %(max)s."
+msgstr "Höchstens %(max)s."
+
+msgid "At least 2."
+msgstr "Mindestens 2."
+
+msgid "Must be at least \"%(other)s\" (%(n)s)."
+msgstr "Muss mindestens so groß sein wie „%(other)s“ (%(n)s)."
+
+msgid "Tournament image"
+msgstr "Turnierbild"
+
+msgid "Image description"
+msgstr "Bildbeschreibung"
+
+msgid ""
+"Only complete http or https addresses, e.g. https://example.org/image.png"
+msgstr ""
+"Nur vollständige http- oder https-Adressen, z. B. "
+"https://example.org/bild.png"
+
+msgid "(optional)"
+msgstr "(optional)"
+
+msgid "%(n)s entry needs attention"
+msgid_plural "%(n)s entries need attention"
+msgstr[0] "%(n)s Angabe braucht noch Aufmerksamkeit"
+msgstr[1] "%(n)s Angaben brauchen noch Aufmerksamkeit"
+
+msgid "Basics"
+msgstr "Grunddaten"
+
+msgid "In your timezone: %(timezone)s."
+msgstr "In deiner Zeitzone: %(timezone)s."
+
+msgid "Party: %(dates)s."
+msgstr "Party: %(dates)s."
+
+msgid "Shown on the tournament page."
+msgstr "Erscheint auf der Turnierseite."
+
+msgid "JPEG, PNG or WebP · max. 5 MB · recommended 1920 × 1080 (16:9), at least 960 × 540. No cropping, the centre stays visible."
+msgstr "JPEG, PNG oder WebP · höchstens 5 MB · empfohlen 1920 × 1080 (16:9), mindestens 960 × 540. Kein Zuschnitt, die Mitte bleibt sichtbar."
+
+msgid "Choose existing image …"
+msgstr "Vorhandenes Bild wählen …"
+
+msgid "Use an image URL instead"
+msgstr "Stattdessen eine Bild-URL verwenden"
+
+msgid "For older tournaments and externally hosted images. An uploaded image takes precedence."
+msgstr "Für ältere Turniere und extern gehostete Bilder. Ein hochgeladenes Bild hat Vorrang."
+
+msgid "Only needed if the image carries information such as text or a logo. Leave empty if purely decorative."
+msgstr "Nur nötig, wenn das Bild Informationen enthält, etwa Text oder ein Logo. Leer lassen, wenn es rein dekorativ ist."
+
+msgid "Competition"
+msgstr "Wettbewerb"
+
+msgid "Each person registers individually."
+msgstr "Jede Person meldet sich einzeln an."
+
+msgid "Teams register. A captain manages the members."
+msgstr "Teams melden sich an. Ein Captain verwaltet die Mitglieder."
+
+msgid "Two compete, one side wins the match."
+msgstr "Zwei treten gegeneinander an, eine Seite gewinnt das Match."
+
+msgid "Several play at once in a group. Placement earns points."
+msgstr "Mehrere spielen gleichzeitig in einer Gruppe. Die Platzierung bringt Punkte."
+
+msgid "Everyone plays on their own and submits a result. The leaderboard decides."
+msgstr "Alle spielen für sich und reichen ein Ergebnis ein. Die Bestenliste entscheidet."
+
+msgid "Defines how a single match works."
+msgstr "Legt fest, wie ein einzelnes Match abläuft."
+
+msgid "Losers are eliminated."
+msgstr "Wer verliert, scheidet aus."
+
+msgid "The first loss leads to the losers bracket, the second eliminates."
+msgstr "Die erste Niederlage führt in die Verliererrunde, die zweite scheidet aus."
+
+msgid "Everyone plays everyone once. The table decides."
+msgstr "Alle spielen einmal gegeneinander. Die Tabelle entscheidet."
+
+msgid "Only for Highscore, set automatically."
+msgstr "Nur bei Highscore, dort automatisch."
+
+msgid "Defines who is eliminated when."
+msgstr "Legt fest, wer wann ausscheidet."
+
+msgid "All limits are optional. Without them, registration is only limited by the party's seats."
+msgstr "Alle Grenzen sind optional. Ohne Angabe ist die Anmeldung nur durch die Plätze der Party begrenzt."
+
+msgid "Team size %(team_size)s → min./max. players per team = %(team_size)s · Limit %(limit)s → max. teams = %(limit)s"
+msgstr "Teamgröße %(team_size)s → Min. und Max. Spieler pro Team = %(team_size)s · Teilnehmerlimit %(limit)s → Max. Teams = %(limit)s"
+
+msgid "Limit %(limit)s → max. players = %(limit)s"
+msgstr "Teilnehmerlimit %(limit)s → Max. Spieler = %(limit)s"
+
+msgid "These values are already filled in below. You can still adjust them."
+msgstr "Diese Werte sind unten bereits eingetragen. Du kannst sie noch anpassen."
+
+msgid "Only for Solo"
+msgstr "Nur bei Solo"
+
+msgid "Leave empty for no limit. Then registration is full."
+msgstr "Leer lassen für kein Limit. Danach ist die Anmeldung voll."
+
+msgid "Only for teams"
+msgstr "Nur bei Teams"
+
+msgid "Leave empty for no limit. Then no more teams can be created."
+msgstr "Leer lassen für kein Limit. Danach können keine Teams mehr angelegt werden."
+
+msgid "Smaller teams are reported as incomplete."
+msgstr "Kleinere Teams werden als unvollständig gemeldet."
+
+msgid "Leave empty for no limit."
+msgstr "Leer lassen für kein Limit."
+
+msgid "The party has %(seats)s seats."
+msgstr "Die Party hat %(seats)s Plätze."
+
+msgid "Scoring and groups"
+msgstr "Wertung & Gruppen"
+
+msgid "Only for 1v1"
+msgstr "Nur bei 1v1"
+
+msgid "Nothing to set here. Every match has a winner, and the result is entered per match."
+msgstr "Hier ist nichts einzustellen. Jedes Match hat einen Sieger, das Ergebnis wird pro Match eingetragen."
+
+msgid "Only for Highscore"
+msgstr "Nur bei Highscore"
+
+msgid "Defines the order of the leaderboard."
+msgstr "Bestimmt die Reihenfolge der Bestenliste."
+
+msgid "Only for Free-for-All"
+msgstr "Nur bei Free-for-All"
+
+msgid "Points for place %(n)s"
+msgstr "Punkte für Platz %(n)s"
+
+msgid "Remove place %(n)s"
+msgstr "Platz %(n)s entfernen"
+
+msgid "Template:"
+msgstr "Vorlage:"
+
+msgid "+ Add place"
+msgstr "+ Platz hinzufügen"
+
+msgid "Place 1 first. Places without an entry get 0 points."
+msgstr "Platz 1 zuerst. Plätze ohne Eintrag bekommen 0 Punkte."
+
+msgid "Groups · size in %(unit)s"
+msgstr "Gruppen · Größe in %(unit)s"
+
+msgid "teams or players"
+msgstr "Teams oder Spieler"
+
+msgid "Smaller groups are not formed."
+msgstr "Kleinere Gruppen werden nicht gebildet."
+
+msgid "At most this many %(unit)s play at once."
+msgstr "So viele %(unit)s spielen höchstens gleichzeitig."
+
+msgid "The best of each group advance."
+msgstr "Die Besten jeder Gruppe kommen weiter."
+
+msgid "The preview appears once a max. group size is set."
+msgstr "Die Vorschau erscheint, sobald eine max. Gruppengröße gesetzt ist."
+
+msgid "Only for Double Elimination"
+msgstr "Nur bei Doppeltem K.-o."
+
+msgid "On: all points from winners and losers bracket count for final seeding. Off: only points scored in the losers bracket count there; winners-bracket survivors are seeded first."
+msgstr "An: Für die Setzung ins Finale zählen alle Punkte aus Gewinner- und Verliererrunde zusammen. Aus: In der Verliererrunde zählen nur dort erzielte Punkte. Wer aus der Gewinnerrunde kommt, wird zuerst gesetzt."
+
+msgid "Review and create"
+msgstr "Prüfen & erstellen"
+
+msgid "The tournament is created as a draft. Registration stays closed until you open it on the tournament page."
+msgstr "Das Turnier wird als Entwurf angelegt. Die Anmeldung bleibt geschlossen, bis du sie auf der Turnierseite öffnest."
+
+msgid "Create draft tournament"
+msgstr "Turnierentwurf erstellen"
+
+msgid "Your timezone"
+msgstr "Deine Zeitzone"
+
+msgid "Will be created as"
+msgstr "Wird angelegt als"
+
+msgid "Draft · registration closed"
+msgstr "Entwurf · Anmeldung geschlossen"
+
+msgid "Nothing is saved until the last step."
+msgstr "Erst im letzten Schritt wird etwas gespeichert."
+
+msgid "No file selected."
+msgstr "Keine Datei ausgewählt."
+
+msgid "more than 5 MB"
+msgstr "mehr als 5 MB"
+
+msgid "Invalid image scope."
+msgstr "Ungültiger Bildbereich."
+
+msgid "Invalid page number."
+msgstr "Ungültige Seitenzahl."
+
+msgid "This tournament has already been created."
+msgstr "Dieses Turnier wurde bereits erstellt."
+
+msgid "Request #%(number)s is no longer accepted. No tournament was created; your entries are kept."
+msgstr "Anfrage #%(number)s ist nicht mehr angenommen. Es wurde kein Turnier erstellt, deine Eingaben sind erhalten."
+
+msgid "%(file)s was not accepted"
+msgstr "%(file)s wurde nicht übernommen"
+
+msgid "Add points for at least place 1."
+msgstr "Lege mindestens für Platz 1 Punkte fest."
+
+msgid "All set. The server checked your entries at %(time)s."
+msgstr "Alles bereit. Der Server hat die Angaben um %(time)s geprüft."
+
+msgid "All steps"
+msgstr "Alle Schritte"
+
+msgid "Apply"
+msgstr "Übernehmen"
+
+msgid "At most %(max)s places."
+msgstr "Höchstens %(max)s Plätze."
+
+msgid "Back"
+msgstr "Zurück"
+
+msgid "Cancel upload"
+msgstr "Upload abbrechen"
+
+msgid "Change decision"
+msgstr "Entscheidung ändern"
+
+msgid "Choose a game format first. Then only matching modes are shown."
+msgstr "Wähle zuerst ein Spielformat. Danach siehst du nur die passenden Modi."
+
+msgid "Choose another file …"
+msgstr "Andere Datei wählen …"
+
+msgid "Choose existing image"
+msgstr "Vorhandenes Bild wählen"
+
+msgid "Choose file …"
+msgstr "Datei auswählen …"
+
+msgid "Continue without image"
+msgstr "Ohne Bild fortfahren"
+
+msgid "Continue: %(step)s"
+msgstr "Weiter: %(step)s"
+
+msgid "Create without link to the request"
+msgstr "Ohne Verknüpfung zur Anfrage erstellen"
+
+msgid "Creating …"
+msgstr "Wird erstellt …"
+
+msgid "Don't apply"
+msgstr "Nicht übernehmen"
+
+msgid "Drag image here"
+msgstr "Bild hierher ziehen"
+
+msgid "Elimination mode reset. \"%(mode)s\" is not available for %(format)s. Please choose again."
+msgstr "Turniermodus zurückgesetzt. „%(mode)s“ gibt es bei %(format)s nicht. Bitte wähle neu."
+
+msgid "Entries restored from this session."
+msgstr "Eingaben aus dieser Sitzung wiederhergestellt."
+
+msgid "Example with 8: 3 rounds, 7 matches"
+msgstr "Beispiel mit 8: 3 Runden, 7 Matches"
+
+msgid "Fewer than %(n)s must advance from the smallest group (%(n)s players)."
+msgstr "Aus der kleinsten Gruppe (%(n)s Spieler) müssen weniger als %(n)s weiterkommen."
+
+msgid "Fewer than %(n)s must advance from the smallest group (%(n)s teams)."
+msgstr "Aus der kleinsten Gruppe (%(n)s Teams) müssen weniger als %(n)s weiterkommen."
+
+msgid "Free-for-All settings no longer apply. Points, group sizes and advancement are not saved for %(format)s."
+msgstr "Free-for-All-Einstellungen gelten nicht mehr. Punkte nach Platzierung, Gruppengrößen und Aufsteiger werden für %(format)s nicht gespeichert."
+
+msgid "From request #%(id)s by %(user)s"
+msgstr "Aus Anfrage #%(id)s von %(user)s"
+
+msgid "From the request, not yet mapped"
+msgstr "Aus der Anfrage, noch nicht zugeordnet"
+
+msgid "Must not be larger than the max. group size (%(n)s)."
+msgstr "Darf nicht größer sein als die max. Gruppengröße (%(n)s)."
+
+msgid "No elimination. Highscore has no matches and nobody is eliminated. The leaderboard at the end decides."
+msgstr "Ohne K.-o. Bei Highscore gibt es keine Matches und niemand scheidet aus. Die Bestenliste bis zum Turnierende entscheidet."
+
+msgid "No image matches the search."
+msgstr "Kein Bild passt zur Suche."
+
+msgid "No limit: up to %(seats)s party seats."
+msgstr "Kein Limit: bis zu %(seats)s Plätze der Party."
+
+msgid "No tournament images have been uploaded for this party yet."
+msgstr "Für diese Party wurden noch keine Turnierbilder hochgeladen."
+
+msgid "Not assigned to any tournament yet"
+msgstr "Noch keinem Turnier zugeordnet"
+
+msgid "Not available: %(reason)s"
+msgstr "Nicht verfügbar: %(reason)s"
+
+msgid "Not needed for 1v1"
+msgstr "Nicht nötig bei 1v1"
+
+msgid "Not set"
+msgstr "Nicht gesetzt"
+
+msgid "Only the uploader can delete this image."
+msgstr "Nur die hochladende Person kann dieses Bild löschen."
+
+msgid "Please choose a game format."
+msgstr "Bitte wähle ein Spielformat."
+
+msgid "Please choose an elimination mode."
+msgstr "Bitte wähle einen Turniermodus."
+
+msgid "Please choose whether individuals or teams compete."
+msgstr "Bitte wähle, ob Einzelpersonen oder Teams antreten."
+
+msgid "Please choose which results are better."
+msgstr "Bitte wähle, welche Ergebnisse besser sind."
+
+msgid "Please decide whether to apply the participant values from the request."
+msgstr "Bitte entscheide, ob du die Teilnehmerwerte aus der Anfrage übernimmst."
+
+msgid "Pre-check unavailable right now. You can still create: the server checks everything again."
+msgstr "Vorabprüfung gerade nicht erreichbar. Du kannst trotzdem erstellen: Der Server prüft beim Erstellen alles erneut."
+
+msgid "Release to upload"
+msgstr "Loslassen, um hochzuladen"
+
+msgid "Replace …"
+msgstr "Ersetzen …"
+
+msgid "Request #%(id)s is no longer accepted. No tournament was created; your entries are kept."
+msgstr "Anfrage #%(id)s ist nicht mehr angenommen. Es wurde kein Turnier erstellt, deine Eingaben sind erhalten."
+
+msgid "Required for Free-for-All."
+msgstr "Pflicht bei Free-for-All."
+
+msgid "Sample group with %(n)s %(unit)s, %(k)s advance"
+msgstr "Beispielgruppe mit %(n)s %(unit)s, %(k)s kommen weiter"
+
+msgid "Score ordering no longer applies. It is only saved for Highscore."
+msgstr "Punkte-Sortierung gilt nicht mehr. Sie wird nur bei Highscore gespeichert."
+
+msgid "Search by file name …"
+msgstr "Nach Dateiname suchen …"
+
+msgid "Show all parties"
+msgstr "Alle Partys anzeigen"
+
+msgid "Step %(n)s of %(total)s"
+msgstr "Schritt %(n)s von %(total)s"
+
+msgid "The file is %(size)s. The maximum is 5 MB."
+msgstr "Die Datei ist %(size)s groß. Erlaubt sind höchstens 5 MB."
+
+msgid "The file is damaged or not a readable image."
+msgstr "Die Datei ist beschädigt oder kein lesbares Bild."
+
+msgid "The file is not a supported image. Allowed are JPEG, PNG and WebP."
+msgstr "Die Datei ist kein unterstütztes Bild. Erlaubt sind JPEG, PNG und WebP."
+
+msgid "The image is %(w)s × %(h)s pixels. At least 960 × 540 is required."
+msgstr "Das Bild ist %(w)s × %(h)s Pixel klein. Nötig sind mindestens 960 × 540."
+
+msgid "The image is %(w)s × %(h)s pixels. At most 8000 × 8000 is allowed."
+msgstr "Das Bild ist %(w)s × %(h)s Pixel groß. Erlaubt sind höchstens 8000 × 8000."
+
+msgid "The image is not copied. Removing or replacing it here does not change other tournaments."
+msgstr "Das Bild wird nicht kopiert. Löschen oder Ersetzen hier ändert andere Turniere nicht."
+
+msgid "The server is checking your entries …"
+msgstr "Der Server prüft die Angaben …"
+
+msgid "The server rejected the creation. We took you to the affected field."
+msgstr "Der Server hat die Erstellung abgelehnt. Wir haben dich zum betroffenen Feld gebracht."
+
+msgid "These values depend on Solo or Teams, so they are not applied automatically."
+msgstr "Diese Werte hängen davon ab, ob Solo oder Teams antreten, deshalb werden sie nicht automatisch übernommen."
+
+msgid "This combination of game format and elimination mode is not supported."
+msgstr "Diese Kombination aus Spielformat und Turniermodus wird nicht unterstützt."
+
+msgid "This image is no longer available. Please choose another."
+msgstr "Dieses Bild ist nicht mehr verfügbar. Bitte wähle ein anderes."
+
+msgid "This image is used by a tournament and cannot be deleted."
+msgstr "Dieses Bild wird von einem Turnier verwendet und kann nicht gelöscht werden."
+
+msgid "This party"
+msgstr "Diese Party"
+
+msgid "Undo"
+msgstr "Rückgängig"
+
+msgid "Up to %(n)s of %(seats)s party seats."
+msgstr "Bis zu %(n)s von %(seats)s Plätzen der Party."
+
+msgid "Up to %(t)s teams × %(p)s players = %(n)s of %(seats)s party seats."
+msgstr "Bis zu %(t)s Teams × %(p)s Spieler = %(n)s von %(seats)s Plätzen der Party."
+
+msgid "Upload failed. Please try again. Your other entries are kept."
+msgstr "Upload fehlgeschlagen. Bitte versuche es erneut. Deine übrigen Eingaben bleiben erhalten."
+
+msgid "Upload new …"
+msgstr "Neues hochladen …"
+
+msgid "Uploaded and checked. The preview shows the 16:9 crop from the tournament list."
+msgstr "Hochgeladen und geprüft. Die Vorschau zeigt den 16:9-Ausschnitt aus der Turnierliste."
+
+msgid "Uploading … %(pct)s · You can continue meanwhile."
+msgstr "Wird hochgeladen … %(pct)s · Du kannst schon weitermachen."
+
+msgid "Use this image"
+msgstr "Dieses Bild verwenden"
+
+msgid "Used by: %(names)s"
+msgstr "Genutzt von: %(names)s"
+
+msgid "Who competes?"
+msgstr "Wer tritt an?"
+
+msgid "With at most %(n)s players no group of at least %(min)s can form. Lower the minimum or raise \"Max. players\" in step 3."
+msgstr "Mit höchstens %(n)s Spielern kommt keine Gruppe mit mindestens %(min)s zustande. Senke die Mindestgröße oder erhöhe „Max. Spieler“ in Schritt 3."
+
+msgid "With at most %(n)s teams no group of at least %(min)s teams can form. Lower the minimum to %(n)s or raise \"Max. teams\" in step 3."
+msgstr "Mit höchstens %(n)s Teams kommt keine Gruppe mit mindestens %(min)s Teams zustande. Senke die Mindestgröße auf %(n)s oder erhöhe „Max. Teams“ in Schritt 3."
+
+msgid "Without max. teams and max. players per team there is no limit (party: %(seats)s seats)."
+msgstr "Ohne Max. Teams und Max. Spieler pro Team gibt es kein Limit (Party: %(seats)s Plätze)."
+
+msgid "You switched to %(type)s. %(fields)s only apply to %(other)s and are not saved."
+msgstr "Du hast auf %(type)s umgestellt. %(fields)s gelten nur für %(other)s und werden nicht gespeichert."
+
+msgid "advances"
+msgstr "kommt weiter"
+
+msgid "automatic"
+msgstr "automatisch"
+
+msgid "current step"
+msgstr "aktueller Schritt"
+
+msgid "done"
+msgstr "erledigt"
+
+msgid "from request"
+msgstr "aus Anfrage"
+
+msgid "has errors"
+msgstr "enthält Fehler"
+
+msgid "no limit"
+msgstr "kein Limit"
+
+msgid "not needed"
+msgstr "nicht nötig"
+
+msgid "players"
+msgstr "Spieler"
+
+msgid "teams"
+msgstr "Teams"
+
+msgid "1v1"
+msgstr "1v1"
+
+msgid "Applied"
+msgstr "Übernommen"
+
+msgid "Not applied"
+msgstr "Nicht übernommen"
+
+msgid "Change undone."
+msgstr "Änderung rückgängig gemacht."
+
+msgid "Load more"
+msgstr "Mehr laden"
+
+msgid "The images could not be loaded. Please try again."
+msgstr "Die Bilder konnten nicht geladen werden. Bitte versuche es erneut."
+
+msgid "More than the party has seats (%(seats)s)."
+msgstr "Mehr, als die Party Plätze hat (%(seats)s)."
+
+msgid "%(t)s teams × %(p)s players = %(n)s, more than the party has seats (%(seats)s)."
+msgstr "%(t)s Teams × %(p)s Spieler = %(n)s, mehr, als die Party Plätze hat (%(seats)s)."
+
+msgid "Place %(n)s gets 0 points."
+msgstr "Platz %(n)s bekommt 0 Punkte."
+
+msgid "Places %(from)s–%(to)s get 0 points."
+msgstr "Platz %(from)s–%(to)s bekommt 0 Punkte."
+
+msgid "The image has %(mp)s megapixels. At most 25 are allowed."
+msgstr "Das Bild hat %(mp)s Megapixel. Erlaubt sind höchstens 25."
+
+msgid "still open"
+msgstr "noch offen"
+
+msgid "Points, groups"
+msgstr "Punkte, Gruppen"
+
+msgid "Score sorting"
+msgstr "Punkte-Sortierung"
+
+msgid "Depends on the format"
+msgstr "Hängt vom Format ab"
+
+msgid "%(n)s error"
+msgid_plural "%(n)s errors"
+msgstr[0] "%(n)s Fehler"
+msgstr[1] "%(n)s Fehler"
+
+msgid "%(min)s to %(max)s players"
+msgstr "%(min)s bis %(max)s Spieler"
+
+msgid "%(min)s to %(max)s teams"
+msgstr "%(min)s bis %(max)s Teams"
+
+msgid "%(min)s to %(max)s per team"
+msgstr "%(min)s bis %(max)s pro Team"
+
+msgid "Party seats"
+msgstr "Plätze"
+
+msgid "%(seats)s seats"
+msgstr "%(seats)s Plätze"
+
+msgid "or"
+msgstr "oder"
+
+msgid "On phones, the photo library opens."
+msgstr "Auf dem Handy öffnet sich die Fotoauswahl."
+
+msgid "The file is not a supported image (SVG). Allowed are JPEG, PNG and WebP."
+msgstr "Die Datei ist kein unterstütztes Bild (SVG). Erlaubt sind JPEG, PNG und WebP."
+
+msgid "Your other entries are kept."
+msgstr "Deine übrigen Eingaben bleiben erhalten."
+
+msgid "Search by file name"
+msgstr "Nach Dateiname suchen"
+
+msgid "Image removed."
+msgstr "Bild entfernt."
+
+msgid "From existing images."
+msgstr "Aus vorhandenen Bildern."
+
+msgid "From existing images, also used by %(names)s."
+msgstr "Aus vorhandenen Bildern, auch genutzt von %(names)s."
+
+msgid "The preview shows the 16:9 crop from the tournament list."
+msgstr "Die Vorschau zeigt den 16:9-Ausschnitt aus der Turnierliste."
+
+msgid "Note:"
+msgstr "Hinweis:"
+
+msgid "e.g. Mario Kart 8 Deluxe"
+msgstr "z. B. Mario Kart 8 Deluxe"
+
+msgid "e.g. Logo \"Blitz chess by the fireplace\" with a chessboard"
+msgstr "z. B. Logo „Blitzschach am Kamin“ mit Schachbrett"
+
+msgid "In your timezone: %(tz)s (%(offset)s)."
+msgstr "In deiner Zeitzone: %(tz)s (%(offset)s)."
+
+msgid "From %(request)s by %(user)s"
+msgstr "Aus %(request)s von %(user)s"
+
+msgid "%(request)s by %(user)s"
+msgstr "%(request)s von %(user)s"
+
+msgid "Prefill source"
+msgstr "Quelle"
+
+msgid "Fields marked %(tag)s come unchanged from the request. You can change them."
+msgstr "Felder mit %(tag)s stammen unverändert aus der Anfrage. Du kannst sie ändern."
+
+msgid "Points may be at most %(max)s."
+msgstr "Höchstens %(max)s Punkte pro Platz."
+
+msgid "Points may be at least %(min)s."
+msgstr "Mindestens %(min)s Punkte pro Platz."
+
+msgid "selected"
+msgstr "ausgewählt"
+
+msgid "%(a)s against %(b)s → winner advances"
+msgstr "%(a)s gegen %(b)s → Sieger kommt weiter"
+
+msgid "%(chips)s → places 1–4 → points"
+msgstr "%(chips)s → Platz 1–4 → Punkte"
+
+msgid "Example with 8: 14 or 15 matches"
+msgstr "Beispiel mit 8: 14 oder 15 Matches"
+
+msgid "Example with 8: 7 rounds, 28 matches"
+msgstr "Beispiel mit 8: 7 Runden, 28 Matches"
+
+msgid "The best of each group advance to the next round."
+msgstr "Die Besten jeder Gruppe kommen in die nächste Runde."
+
+msgid "Whoever does not advance in the winners bracket keeps playing in the losers bracket."
+msgstr "Wer in der Gewinnerrunde nicht weiterkommt, spielt in der Verliererrunde weiter."
+
+msgid "Solo · players"
+msgstr "Solo · Spieler"
+
+msgid "Displayed on the tournament page."
+msgstr "Wird auf der Turnierseite angezeigt."
+
+msgid "Minimum"
+msgstr "Minimum"
+
+msgid "Maximum"
+msgstr "Maximum"
+
+msgid "Team size %(team_size)s · participant limit %(limit)s"
+msgstr "Teamgröße %(team_size)s · Teilnehmerlimit %(limit)s"
+
+msgid "Participant limit %(limit)s"
+msgstr "Teilnehmerlimit %(limit)s"
+
+msgid "Suggestion for %(type)s: %(mapping)s."
+msgstr "Vorschlag für %(type)s: %(mapping)s."
+
+msgid "Team size %(team_size)s → min. and max. players per team = %(team_size)s · participant limit %(limit)s → max. teams = %(limit)s"
+msgstr "Teamgröße %(team_size)s → Min. und Max. Spieler pro Team = %(team_size)s · Teilnehmerlimit %(limit)s → Max. Teams = %(limit)s"
+
+msgid "Participant limit %(limit)s → max. players = %(limit)s"
+msgstr "Teilnehmerlimit %(limit)s → Max. Spieler = %(limit)s"
+
+msgid "✓ Applied. You can still adjust the fields below."
+msgstr "✓ Übernommen. Du kannst die Felder unten weiter anpassen."
+
+msgid "Not applied. You set the limits yourself."
+msgstr "Nicht übernommen. Die Grenzen legst du selbst fest."
+
+msgid "The request asks for team size 1, so rather Solo. Check your choice in step 2."
+msgstr "Die Anfrage wünscht Teamgröße 1, also eher Solo. Prüfe die Wahl in Schritt 2."
+
+msgid "Step %(n)s"
+msgstr "Schritt %(n)s"
+
+msgid "e.g. points, kills, distance"
+msgstr "z. B. Punkte, Kills, Distanz"
+
+msgid "e.g. lap time, failed attempts"
+msgstr "z. B. Rundenzeit, Fehlversuche"
+
+msgid "Advancing per group"
+msgstr "Aufsteiger je Gruppe"
+
+msgid "Carry points into the losers bracket"
+msgstr "Punkte in die Verliererrunde mitnehmen"
+
+msgid "On:"
+msgstr "An:"
+
+msgid "Off:"
+msgstr "Aus:"
+
+msgid "All points from the winners and losers brackets count for seeding into the final."
+msgstr "Für die Setzung ins Finale zählen alle Punkte aus Gewinner- und Verliererrunde zusammen."
+
+msgid "In the losers bracket only points scored there count. Whoever comes from the winners bracket is seeded first."
+msgstr "In der Verliererrunde zählen nur dort erzielte Punkte. Wer aus der Gewinnerrunde kommt, wird zuerst gesetzt."
+
+msgid "No points yet. Choose a template or add places."
+msgstr "Noch keine Punkte. Wähle eine Vorlage oder füge Plätze hinzu."
+
+msgid "Result"
+msgstr "Ergebnis"
+
+msgid "eliminated"
+msgstr "scheidet aus"
+
+msgid "eliminated or losers bracket"
+msgstr "scheidet aus bzw. Verliererrunde"
+
+msgid "Sample group with %(n)s %(unit)s"
+msgstr "Beispielgruppe mit %(n)s %(unit)s"
+
+msgid "Sample group with %(n)s %(unit)s, 1 advances"
+msgstr "Beispielgruppe mit %(n)s %(unit)s, 1 kommt weiter"
+
+msgid "Team %(letter)s"
+msgstr "Team %(letter)s"
+
+msgid "Player %(n)s"
+msgstr "Spieler %(n)s"
+
+msgid "nothing to set"
+msgstr "nichts einzustellen"
+
+msgid "Every match has a winner, the result is entered per match."
+msgstr "Jedes Match hat einen Sieger, das Ergebnis wird pro Match eingetragen."
+
+msgid "The table results from wins and losses."
+msgstr "Die Tabelle ergibt sich aus Siegen und Niederlagen."
+
+msgid "The bracket is generated before the start."
+msgstr "Der Turnierbaum wird vor dem Start erzeugt."
+
+msgid "This step is skipped for 1v1. You only see it when you open it directly."
+msgstr "Dieser Schritt wird bei 1v1 übersprungen. Du siehst ihn nur, wenn du ihn direkt aufrufst."
+
+msgid "Request #%(id)s is no longer accepted."
+msgstr "Anfrage #%(id)s ist nicht mehr angenommen."
+
+msgid "%(name)s withdrew it at %(time)s."
+msgstr "%(name)s hat sie um %(time)s zurückgezogen."
+
+msgid "%(name)s rejected it at %(time)s."
+msgstr "%(name)s hat sie um %(time)s abgelehnt."
+
+msgid "No tournament was created; your entries are kept."
+msgstr "Es wurde kein Turnier erstellt, deine Eingaben sind erhalten."
+
+msgid "View request"
+msgstr "Anfrage ansehen"
+
+msgid "Link to the request removed."
+msgstr "Verknüpfung zur Anfrage entfernt."
+
+msgid "All set."
+msgstr "Alles bereit."
+
+msgid "The server checked your entries at %(time)s."
+msgstr "Der Server hat die Angaben um %(time)s geprüft."
+
+msgid "Pre-check unavailable right now."
+msgstr "Vorabprüfung gerade nicht erreichbar."
+
+msgid "You can still create: the server checks everything again. Your entries are kept."
+msgstr "Du kannst trotzdem erstellen: Der Server prüft beim Erstellen alles erneut. Deine Eingaben bleiben erhalten."
+
+msgid "The tournament is created as %(draft)s. Registration stays closed until you open it on the tournament page."
+msgstr "Das Turnier wird als %(draft)s angelegt. Die Anmeldung bleibt geschlossen, bis du sie auf der Turnierseite öffnest."
+
+msgid "a draft"
+msgstr "Entwurf"
+
+msgid "Scoring"
+msgstr "Wertung"
+
+msgid "%(n)s characters"
+msgstr "%(n)s Zeichen"
+
+msgid "no minimum"
+msgstr "kein Minimum"
+
+msgid "Values from the request"
+msgstr "Werte aus Anfrage"
+
+msgid "applied"
+msgstr "übernommen"
+
+msgid "not applied"
+msgstr "nicht übernommen"
+
+msgid "Yes, carried over"
+msgstr "Ja, werden mitgenommen"
+
+msgid "No, the losers bracket counts separately"
+msgstr "Nein, Verliererrunde zählt separat"
+
+msgid "Points in the losers bracket"
+msgstr "Punkte in Verliererrunde"
+
+msgid "Winner per match, no scoring settings needed"
+msgstr "Sieger pro Match, keine Punkte-Einstellungen nötig"
+
+msgid "Origin request"
+msgstr "Anfrage"
+
+msgid "#%(id)s by %(user)s · will be linked after creation"
+msgstr "#%(id)s von %(user)s · wird nach dem Erstellen verknüpft"
+
+msgid "#%(id)s by %(user)s · will not be linked"
+msgstr "#%(id)s von %(user)s · wird nicht verknüpft"
+
+msgid "Description: \"%(alt)s\""
+msgstr "Beschreibung: „%(alt)s“"
+
+msgid "decorative, no description"
+msgstr "dekorativ, ohne Beschreibung"
+
+msgid "URL: %(url)s"
+msgstr "URL: %(url)s"
+
+msgid "%(min)s to %(max)s"
+msgstr "%(min)s bis %(max)s"
+
+msgid "%(min)s to %(max)s %(unit)s"
+msgstr "%(min)s bis %(max)s %(unit)s"
+
+msgid "Minimum not set, technically 2"
+msgstr "Minimum nicht gesetzt, technisch 2"
+
+msgid "%(date)s, %(time)s"
+msgstr "%(date)s, %(time)s Uhr"
+
+msgid "The server rejected the creation."
+msgstr "Der Server hat die Erstellung abgelehnt."
+
+msgid "We took you to the affected field. All other entries are kept."
+msgstr "Wir haben dich zum betroffenen Feld gebracht. Alle anderen Angaben sind erhalten."
+
+msgid "Tournament \"%(name)s\" has been created as a draft."
+msgstr "Das Turnier „%(name)s“ wurde als Entwurf erstellt."
+
+msgid "Starts at"
+msgstr "Start"
+
+msgid "Without JavaScript you see all settings on one page. Sections marked \"Only for …\" are ignored if they do not match your choice."
+msgstr "Ohne JavaScript siehst du alle Einstellungen auf einer Seite. Abschnitte mit „Nur bei …“ werden ignoriert, wenn sie nicht zu deiner Auswahl passen."
+
+msgid "3 · Participants – only for Solo"
+msgstr "3 · Teilnehmer – nur bei Solo"
+
+msgid "3 · Participants – only for Teams"
+msgstr "3 · Teilnehmer – nur bei Teams"
+
+msgid "4 · Only for Highscore"
+msgstr "4 · Nur bei Highscore"
+
+msgid "4 · Only for Free-for-All"
+msgstr "4 · Nur bei Free-for-All"
+
+msgid "Comma-separated, place 1 first."
+msgstr "Kommagetrennt, Platz 1 zuerst."
+
+msgid "only 1v1"
+msgstr "nur 1v1"
+
+msgid "only for Highscore, automatic there"
+msgstr "nur bei Highscore, dort automatisch"
+
+msgid "The tournament is created as a draft. Registration stays closed."
+msgstr "Das Turnier wird als Entwurf angelegt. Die Anmeldung bleibt geschlossen."
+
+# lan_tournament maintenance
+msgid "Cleans up what no tournament needs any more. Each action shows you exactly what it deletes first."
+msgstr "Räumt auf, was kein Turnier mehr braucht. Jede Aktion zeigt dir vorher genau, was sie löscht."
+
+msgid "Unused tournament images"
+msgstr "Unbenutzte Turnierbilder"
+
+msgid "Uploaded images that no tournament uses, for example from abandoned tournament wizards."
+msgstr "Hochgeladene Bilder, die kein Turnier verwendet, zum Beispiel aus abgebrochenen Turnier-Assistenten."
+
+msgid "Orphaned image files"
+msgstr "Verwaiste Bilddateien"
+
+msgid "Files in the party's image folder without an entry. They no longer show up anywhere."
+msgstr "Dateien im Bildordner der Party, zu denen es keinen Eintrag mehr gibt. Sie tauchen nirgends mehr auf."
+
+msgid "<strong>%(count)s image</strong>, %(size)s."
+msgid_plural "<strong>%(count)s images</strong>, together %(size)s."
+msgstr[0] "<strong>%(count)s Bild</strong>, %(size)s."
+msgstr[1] "<strong>%(count)s Bilder</strong>, zusammen %(size)s."
+
+msgid "<strong>%(count)s file</strong>, %(size)s."
+msgid_plural "<strong>%(count)s files</strong>, together %(size)s."
+msgstr[0] "<strong>%(count)s Datei</strong>, %(size)s."
+msgstr[1] "<strong>%(count)s Dateien</strong>, zusammen %(size)s."
+
+msgid "%(count)s more is younger than 24 hours and stays."
+msgid_plural "%(count)s more are younger than 24 hours and stay."
+msgstr[0] "%(count)s weiteres ist jünger als 24 Stunden und bleibt."
+msgstr[1] "%(count)s weitere sind jünger als 24 Stunden und bleiben."
+
+msgid "Nothing to clean up."
+msgstr "Nichts aufzuräumen."
+
+msgid "An unused image appears here 24 hours after its upload."
+msgstr "Ein unbenutztes Bild erscheint hier 24 Stunden nach dem Hochladen."
+
+msgid "Show preview"
+msgstr "Vorschau anzeigen"
+
+msgid "‹ Maintenance"
+msgstr "‹ Wartung"
+
+msgid "Select all"
+msgstr "Alle auswählen"
+
+msgid "After deleting, the next ones show up here."
+msgstr "Nach dem Löschen findest du hier die nächsten."
+
+msgid "Stay"
+msgstr "Bleiben"
+
+msgid "Younger than 24 hours. One of them may be in an open tournament wizard right now."
+msgstr "Jünger als 24 Stunden. Vielleicht steckt eins davon gerade in einem offenen Turnier-Assistenten."
+
+msgid "Nothing selected"
+msgstr "Nichts ausgewählt"
+
+msgid "These images were uploaded for \"%(party)s\", and no tournament uses them. Untick everything that should stay."
+msgstr "Diese Bilder wurden für „%(party)s“ hochgeladen, und kein Turnier verwendet sie. Nimm den Haken bei allem heraus, was bleiben soll."
+
+msgid "Deleted images cannot be restored."
+msgstr "Gelöschte Bilder lassen sich nicht wiederherstellen."
+
+msgid "Delete selected images"
+msgstr "Ausgewählte Bilder löschen"
+
+msgid "Delete %(count)s image (%(size)s)"
+msgstr "%(count)s Bild löschen (%(size)s)"
+
+msgid "Delete %(count)s images (%(size)s)"
+msgstr "%(count)s Bilder löschen (%(size)s)"
+
+msgid "These files are in the image folder of \"%(party)s\", but none of them has an entry yet. No tournament and no image picker shows them."
+msgstr "Diese Dateien liegen im Bildordner von „%(party)s“, aber zu keiner gibt es noch einen Eintrag. Kein Turnier und keine Bildauswahl zeigt sie."
+
+msgid "Deleted files cannot be restored."
+msgstr "Gelöschte Dateien lassen sich nicht wiederherstellen."
+
+msgid "Delete selected files"
+msgstr "Ausgewählte Dateien löschen"
+
+msgid "Delete %(count)s file (%(size)s)"
+msgstr "%(count)s Datei löschen (%(size)s)"
+
+msgid "Delete %(count)s files (%(size)s)"
+msgstr "%(count)s Dateien löschen (%(size)s)"
+
+msgid "File"
+msgstr "Datei"
+
+msgid "Size"
+msgstr "Größe"
+
+msgid "Uploaded by"
+msgstr "Hochgeladen von"
+
+msgid "Uploaded"
+msgstr "Hochgeladen"
+
+msgid "Last modified"
+msgstr "Zuletzt geändert"
+
+msgid "Nothing selected."
+msgstr "Nichts ausgewählt."
+
+msgid "%(count)s image deleted, %(size)s freed."
+msgid_plural "%(count)s images deleted, %(size)s freed."
+msgstr[0] "%(count)s Bild gelöscht, %(size)s frei."
+msgstr[1] "%(count)s Bilder gelöscht, %(size)s frei."
+
+msgid "%(count)s file deleted, %(size)s freed."
+msgid_plural "%(count)s files deleted, %(size)s freed."
+msgstr[0] "%(count)s Datei gelöscht, %(size)s frei."
+msgstr[1] "%(count)s Dateien gelöscht, %(size)s frei."
+
+msgid "%(count)s image was skipped because a tournament uses it now."
+msgid_plural "%(count)s images were skipped because a tournament uses them now."
+msgstr[0] "%(count)s Bild wurde übersprungen, weil es inzwischen ein Turnier verwendet."
+msgstr[1] "%(count)s Bilder wurden übersprungen, weil sie inzwischen ein Turnier verwendet."
+
+msgid "Nothing was deleted."
+msgstr "Es wurde nichts gelöscht."
+
+msgid "%(count)s image was skipped because it no longer qualifies."
+msgid_plural "%(count)s images were skipped because they no longer qualify."
+msgstr[0] "%(count)s Bild wurde übersprungen, weil es nicht mehr in Frage kommt."
+msgstr[1] "%(count)s Bilder wurden übersprungen, weil sie nicht mehr in Frage kommen."
+
+msgid "%(count)s file was skipped because it no longer qualifies."
+msgid_plural "%(count)s files were skipped because they no longer qualify."
+msgstr[0] "%(count)s Datei wurde übersprungen, weil sie nicht mehr in Frage kommt."
+msgstr[1] "%(count)s Dateien wurden übersprungen, weil sie nicht mehr in Frage kommen."
+
+msgid "%(count)s file could not be deleted from disk. It now appears under \"Orphaned image files\"."
+msgid_plural "%(count)s files could not be deleted from disk. They now appear under \"Orphaned image files\"."
+msgstr[0] "%(count)s Datei konnte nicht vom Datenträger gelöscht werden. Sie steht jetzt unter „Verwaiste Bilddateien“."
+msgstr[1] "%(count)s Dateien konnten nicht vom Datenträger gelöscht werden. Sie stehen jetzt unter „Verwaiste Bilddateien“."
+
+msgid "%(count)s file could not be deleted from disk."
+msgid_plural "%(count)s files could not be deleted from disk."
+msgstr[0] "%(count)s Datei konnte nicht vom Datenträger gelöscht werden."
+msgstr[1] "%(count)s Dateien konnten nicht vom Datenträger gelöscht werden."

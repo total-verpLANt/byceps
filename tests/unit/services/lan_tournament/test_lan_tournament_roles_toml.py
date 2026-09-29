@@ -34,3 +34,15 @@ def test_lan_tournament_viewer_does_not_list_request_permissions():
 
     assert 'lan_tournament.request_view' not in permissions
     assert 'lan_tournament.request_decide' not in permissions
+
+
+def test_lan_tournament_admin_lists_maintain_permission():
+    role = _load_role('lan_tournament_admin')
+
+    assert 'lan_tournament.maintain' in role['assigned_permissions']
+
+
+def test_lan_tournament_viewer_does_not_list_maintain_permission():
+    role = _load_role('lan_tournament_viewer')
+
+    assert 'lan_tournament.maintain' not in role['assigned_permissions']

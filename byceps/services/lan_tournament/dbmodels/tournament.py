@@ -30,6 +30,13 @@ class DbTournament(db.Model):
             unique=True,
             postgresql_where=text('created_from_request_id IS NOT NULL'),
         ),
+        db.Index('ix_lan_tournaments_image_id', 'image_id'),
+        db.Index(
+            'uq_lan_tournaments_creation_token',
+            'creation_token',
+            unique=True,
+            postgresql_where=text('creation_token IS NOT NULL'),
+        ),
     )
 
     id: Mapped[TournamentID] = mapped_column(
@@ -89,6 +96,14 @@ class DbTournament(db.Model):
         )
     )
     created_from_request_id: Mapped[UUID | None] = mapped_column(db.Uuid)
+    image_id: Mapped[UUID | None] = mapped_column(
+        db.Uuid,
+        db.ForeignKey(
+            'lan_tournament_images.id', name='fk_lan_tournaments_image_id'
+        ),
+    )
+    image_alt_text: Mapped[str | None] = mapped_column(db.UnicodeText)
+    creation_token: Mapped[UUID | None] = mapped_column(db.Uuid)
 
     def __init__(
         self,
@@ -121,6 +136,9 @@ class DbTournament(db.Model):
         winner_team_id: TournamentTeamID | None = None,
         winner_participant_id: TournamentParticipantID | None = None,
         created_from_request_id: UUID | None = None,
+        image_id: UUID | None = None,
+        image_alt_text: str | None = None,
+        creation_token: UUID | None = None,
     ) -> None:
         self.id = tournament_id
         self.party_id = party_id
@@ -151,6 +169,9 @@ class DbTournament(db.Model):
         self.winner_team_id = winner_team_id
         self.winner_participant_id = winner_participant_id
         self.created_from_request_id = created_from_request_id
+        self.image_id = image_id
+        self.image_alt_text = image_alt_text
+        self.creation_token = creation_token
 
     def __repr__(self) -> str:
         return (

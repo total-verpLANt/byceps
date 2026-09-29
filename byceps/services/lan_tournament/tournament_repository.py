@@ -2,6 +2,7 @@ import json
 import logging
 from datetime import datetime
 from typing import TYPE_CHECKING, TypeVar, cast
+from uuid import UUID
 
 from sqlalchemy import delete, func, select, update
 
@@ -21,6 +22,7 @@ from .dbmodels.tournament_log_entry import DbTournamentLogEntry
 from .models.bracket import Bracket
 from .models.contestant_type import ContestantType
 from .models.tournament import Tournament, TournamentID
+from .models.tournament_image import TournamentImageID
 from .models.tournament_match import TournamentMatch, TournamentMatchID
 from .models.tournament_match_comment import (
     TournamentMatchComment,
@@ -132,6 +134,9 @@ def create_tournament(tournament: Tournament, *, commit: bool = True) -> None:
         group_size_max=tournament.group_size_max,
         points_carry_to_losers=tournament.points_carry_to_losers,
         created_from_request_id=tournament.created_from_request_id,
+        image_id=tournament.image_id,
+        image_alt_text=tournament.image_alt_text,
+        creation_token=tournament.creation_token,
     )
 
     db_tournament.position = tournament.position
@@ -153,6 +158,8 @@ def update_tournament(tournament: Tournament) -> None:
     db_tournament.game = tournament.game
     db_tournament.description = tournament.description
     db_tournament.image_url = tournament.image_url
+    db_tournament.image_id = tournament.image_id
+    db_tournament.image_alt_text = tournament.image_alt_text
     db_tournament.ruleset = tournament.ruleset
     db_tournament.start_time = tournament.start_time
     db_tournament.min_players = tournament.min_players
@@ -299,6 +306,21 @@ def get_tournament_for_update(
     return _db_tournament_to_tournament(db_tournament)
 
 
+def find_tournament_by_creation_token(
+    creation_token: UUID,
+) -> Tournament | None:
+    """Return the tournament created with the token, if any."""
+    db_tournament = db.session.execute(
+        select(DbTournament).where(
+            DbTournament.creation_token == creation_token
+        )
+    ).scalar_one_or_none()
+    if db_tournament is None:
+        return None
+
+    return _db_tournament_to_tournament(db_tournament)
+
+
 def get_tournaments_for_party(
     party_id: PartyID,
 ) -> list[Tournament]:
@@ -433,6 +455,13 @@ def _db_tournament_to_tournament(
         created_from_request_id=cast(
             'TournamentRequestID | None', db_tournament.created_from_request_id
         ),
+        image_id=(
+            TournamentImageID(db_tournament.image_id)
+            if db_tournament.image_id is not None
+            else None
+        ),
+        image_alt_text=db_tournament.image_alt_text,
+        creation_token=db_tournament.creation_token,
     )
 
 

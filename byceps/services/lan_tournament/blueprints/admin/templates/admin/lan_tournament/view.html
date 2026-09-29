@@ -1,5 +1,4 @@
 {% extends 'layout/admin/lan_tournament.html' %}
-{% from 'macros/admin.html' import render_backlink %}
 {% from 'macros/icons.html' import render_icon %}
 {% from 'macros/misc.html' import render_notification_block, render_tag %}
 {% set current_page_party = party %}
@@ -12,6 +11,13 @@
   .subnav .button--current {
     border-color: #1199ff;
     opacity: 1;
+  }
+
+  .lt-admin-tournament-image {
+    display: block;
+    max-width: 640px;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
   }
 
   /* Confirmation modal (shared by cancel + complete) */
@@ -51,25 +57,198 @@
     justify-content: flex-end;
     gap: 0.5rem;
   }
+
+  /* Overview header and box. */
+  .lt-tv-backlink {
+    display: inline-block;
+    font-size: 13px;
+    margin-bottom: 12px;
+  }
+  main:has([data-wiz-overview]) > .notification {
+    padding: 12px 16px;
+  }
+  main:has([data-wiz-overview]) > .notification:not(:last-child) {
+    margin-bottom: 20px;
+  }
+  main:has([data-wiz-overview]) > .notification.color-success {
+    background-color: #ecf9e3;
+    border-color: #55cc00;
+  }
+  main:has([data-wiz-overview]) > .notification.color-info {
+    background-color: #e2f2ff;
+    border-color: #1199ff;
+  }
+  main:has([data-wiz-overview]) > .notification.color-warning {
+    background-color: #fff6c8;
+    border-color: #ffcc11;
+  }
+  main:has([data-wiz-overview]) > .notification.color-danger {
+    background-color: #ffe8e8;
+    border-color: #ff2222;
+  }
+  .lt-tv-head h1.title {
+    font-size: 28px;
+    line-height: 1.2;
+    margin: 0;
+  }
+  .lt-tv-head h1 .tag {
+    font-size: 12px;
+    margin-left: 8px;
+    padding: 0.4rem 0.6rem;
+    vertical-align: 0.3rem;
+    white-space: nowrap;
+  }
+  .lt-tv-head h1 .tag.color-disabled {
+    background-color: #8a8a8a;
+  }
+  .lt-tv-head form {
+    display: contents;
+  }
+  .lt-tv-head .button {
+    gap: 0.375rem;
+  }
+  .lt-tv-head .button.color-primary {
+    border: 1px solid #555555;
+    text-shadow: none;
+  }
+  main > .box[data-wiz-overview]:not(:last-child) {
+    margin-bottom: 20px;
+  }
+  [data-wiz-overview] .lt-tv-thumb {
+    aspect-ratio: 16 / 9;
+    max-width: 640px;
+    overflow: hidden;
+    width: 100%;
+  }
+  [data-wiz-overview] .lt-tv-thumb > img {
+    height: 100%;
+    max-width: none;
+    object-fit: cover;
+    width: 100%;
+  }
+  [data-wiz-overview] .grid {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  @media (max-width: 900px) {
+    [data-wiz-overview] .grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  @media (max-width: 480px) {
+    [data-wiz-overview] .grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+  [data-wiz-overview] .grid > .box {
+    margin: 0;
+    padding: 12px 14px;
+  }
 </style>
 {%- endblock %}
 
 {% block before_body %}
-{{ render_backlink(url_for('.index', party_id=party.id), _('Tournaments')) }}
+<a class="lt-tv-backlink" href="{{ url_for('.index', party_id=party.id) }}">‹ {{ _('Tournaments') }}</a>
 {%- endblock %}
+
+{% macro status_tag(name) -%}
+  {%- if name == 'DRAFT' %}
+    {{ render_tag(_('Draft'), class='color-disabled') }}
+  {%- elif name == 'REGISTRATION_OPEN' %}
+    {{ render_tag(_('Registration open'), class='color-info') }}
+  {%- elif name == 'REGISTRATION_CLOSED' %}
+    {{ render_tag(_('Registration closed'), class='color-warning') }}
+  {%- elif name == 'ONGOING' %}
+    {{ render_tag(_('Ongoing'), class='color-success') }}
+  {%- elif name == 'PAUSED' %}
+    {{ render_tag(_('Paused'), class='color-warning') }}
+  {%- elif name == 'COMPLETED' %}
+    {{ render_tag(_('Completed'), class='color-success') }}
+  {%- elif name == 'CANCELLED' %}
+    {{ render_tag(_('Cancelled'), class='color-danger') }}
+  {%- endif %}
+{%- endmacro %}
 
 {% block body %}
 
-  <div class="row row--space-between block">
+  {%- set status_name = tournament.tournament_status.name if tournament.tournament_status else none %}
+
+  <div class="row row--space-between row--wrap block lt-tv-head">
     <div>
-      <h1 class="title">{{ tournament.name }}</h1>
+      <h1 class="title">{{ tournament.name }}
+        {%- if status_name %} {{ status_tag(status_name) }}{% endif %}</h1>
     </div>
     <div>
-      {%- if g.user.has_permission('lan_tournament.update') %}
       <div class="button-row is-right-aligned">
-        <a class="button" href="{{ url_for('.update_form', tournament_id=tournament.id) }}">{{ render_icon('edit') }} <span>{{ _('Edit') }}</span></a>
+        {%- if g.user.has_permission('lan_tournament.update') %}
+        <a class="button" href="{{ url_for('.update_form', tournament_id=tournament.id) }}">{{ _('Edit') }}</a>
+        {%- endif %}
+        {%- if status_name == 'DRAFT' and g.user.has_permission('lan_tournament.administrate') %}
+        <form action="{{ url_for('.open_registration', tournament_id=tournament.id) }}" method="post" data-overview-open-registration>
+          <button type="submit" class="button color-primary">{{ _('Open registration') }}</button>
+        </form>
+        {%- endif %}
       </div>
-      {%- endif %}
+    </div>
+  </div>
+
+  {#- Game, format, participants and start at a glance, with the image. -#}
+  {%- set contestant_names = {'SOLO': _('Solo'), 'TEAM': _('Teams')} %}
+  {%- set elimination_names = {
+    'SINGLE_ELIMINATION': _('Single knockout'),
+    'DOUBLE_ELIMINATION': _('Double knockout'),
+    'ROUND_ROBIN': _('Everyone plays everyone'),
+    'NONE': _('No knockout'),
+  } %}
+  {%- set format_parts = [] %}
+  {%- if tournament.contestant_type %}{% set unused = format_parts.append(contestant_names.get(tournament.contestant_type.name, tournament.contestant_type.name)) %}{% endif %}
+  {%- if tournament.game_format %}{% set unused = format_parts.append(tournament.game_format.label) %}{% endif %}
+  {%- if tournament.elimination_mode %}{% set unused = format_parts.append(elimination_names.get(tournament.elimination_mode.name, tournament.elimination_mode.name)) %}{% endif %}
+  {%- set unbounded = '∞' %}
+  <div class="box block" data-wiz-overview>
+    {%- if tournament.image_url %}
+    <div class="lt-tv-thumb block">
+      <img class="lt-admin-tournament-image" src="{{ tournament.image_url }}" alt="{{ tournament.image_alt_text or '' }}">
+    </div>
+    {%- endif %}
+    <div class="grid">
+      <div class="box">
+        <div class="data-label">{{ _('Game') }}</div>
+        <div class="data-value">{{ tournament.game or '–' }}</div>
+      </div>
+      <div class="box">
+        <div class="data-label">{{ _('Format') }}</div>
+        <div class="data-value">{{ format_parts|join(' · ') }}</div>
+      </div>
+      <div class="box">
+        <div class="data-label">{{ _('Participants') }}</div>
+        <div class="data-value">
+          {%- set participant_parts = [] %}
+          {%- if tournament.contestant_type and tournament.contestant_type.name == 'SOLO' and (tournament.min_players is not none or tournament.max_players is not none) %}
+            {%- set unused = participant_parts.append(_('%(min)s to %(max)s players', min=tournament.min_players if tournament.min_players is not none else '–', max=tournament.max_players if tournament.max_players is not none else unbounded)) %}
+          {%- elif tournament.contestant_type and tournament.contestant_type.name == 'TEAM' %}
+            {%- if tournament.min_teams is not none or tournament.max_teams is not none %}
+              {%- set unused = participant_parts.append(_('%(min)s to %(max)s teams', min=tournament.min_teams if tournament.min_teams is not none else '–', max=tournament.max_teams if tournament.max_teams is not none else unbounded)) %}
+            {%- endif %}
+            {%- if tournament.min_players_in_team is not none or tournament.max_players_in_team is not none %}
+              {%- set unused = participant_parts.append(_('%(min)s to %(max)s per team', min=tournament.min_players_in_team if tournament.min_players_in_team is not none else '–', max=tournament.max_players_in_team if tournament.max_players_in_team is not none else unbounded)) %}
+            {%- endif %}
+          {%- endif %}
+          {{ participant_parts|join(' · ') or _('no limit') }}
+        </div>
+      </div>
+      <div class="box">
+        <div class="data-label">{{ _('Starts at') }}</div>
+        <div class="data-value">
+          {%- if tournament.start_time %}
+            {{ _('%(date)s, %(time)s', date=tournament.start_time|dateformat, time=tournament.start_time|timeformat('short')) }}
+            {%- if start_time_zone %} <span class="dimmed">({{ start_time_zone }})</span>{% endif %}
+          {%- else %}
+            –
+          {%- endif %}
+        </div>
+      </div>
     </div>
   </div>
 
@@ -131,7 +310,7 @@
         <div class="data-label">{{ _('Tournament mode') }}</div>
         <div class="data-value">
           {%- if tournament.game_format and tournament.elimination_mode %}
-            {{ tournament.game_format.label }} / {{ tournament.elimination_mode.name|replace('_', ' ')|title }}
+            {{ tournament.game_format.label }} / {{ elimination_names.get(tournament.elimination_mode.name, tournament.elimination_mode.name) }}
           {%- elif tournament.game_format %}
             {{ tournament.game_format.label }}
           {%- else %}
@@ -157,21 +336,7 @@
         <div class="data-label">{{ _('Status') }}</div>
         <div class="data-value">
           {%- if tournament.tournament_status %}
-            {%- if tournament.tournament_status.name == 'DRAFT' %}
-              {{ render_tag(_('Draft'), class='color-disabled') }}
-            {%- elif tournament.tournament_status.name == 'REGISTRATION_OPEN' %}
-              {{ render_tag(_('Registration open'), class='color-info') }}
-            {%- elif tournament.tournament_status.name == 'REGISTRATION_CLOSED' %}
-              {{ render_tag(_('Registration closed'), class='color-warning') }}
-            {%- elif tournament.tournament_status.name == 'ONGOING' %}
-              {{ render_tag(_('Ongoing'), class='color-success') }}
-            {%- elif tournament.tournament_status.name == 'PAUSED' %}
-              {{ render_tag(_('Paused'), class='color-warning') }}
-            {%- elif tournament.tournament_status.name == 'COMPLETED' %}
-              {{ render_tag(_('Completed'), class='color-success') }}
-            {%- elif tournament.tournament_status.name == 'CANCELLED' %}
-              {{ render_tag(_('Cancelled'), class='color-danger') }}
-            {%- endif %}
+            {{ status_tag(tournament.tournament_status.name) }}
           {%- else %}
             {{ _('not set') }}
           {%- endif %}

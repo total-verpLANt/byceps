@@ -1,140 +1,478 @@
 {% extends 'layout/admin/lan_tournament.html' %}
-{% from 'macros/admin.html' import render_backlink %}
-{% from 'macros/forms.html' import form_buttons, form_field %}
+{% from 'macros/forms.html' import form_field_errors %}
 {% set current_page_party = party %}
 {% set current_tab = 'tournaments' %}
 {% set page_title = _('Create tournament') %}
 
 {% block head %}{{ super() }}
   <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_ffa_admin.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_create_wizard.css') }}">
 {%- endblock %}
 
 {% block before_body %}
 {% if source_request %}
-{{ render_backlink(url_for('.view_request', request_id=source_request.id), _('Tournament request #%(number)s', number='%04d'|format(source_request.number))) }}
+<a class="lt-wiz-backlink" href="{{ url_for('.view_request', request_id=source_request.id) }}">← {{ _('Tournament request #%(number)s', number='%04d'|format(source_request.number)) }}</a>
 {% else %}
-{{ render_backlink(url_for('.index', party_id=party.id), _('Tournaments')) }}
+<a class="lt-wiz-backlink" href="{{ url_for('.index', party_id=party.id) }}">‹ {{ _('Tournaments') }}</a>
 {% endif %}
 {%- endblock %}
 
 {% block body %}
 
-  <h1 class="title">{{ page_title }}</h1>
+  {%- set source_values = wizard.get('source_values') %}
 
-  {# Provenance banner: what was copied from the request, what has no #}
-  {# create-form counterpart, and what still blocks its creation. #}
-  {% if source_request %}
-  <div class="notification color-info block">
-    <p>{{ _('Prefilled from request #%(number)s by %(name)s.', number='%04d'|format(source_request.number), name=source_proposer_name or _('Unknown')) }} {{ _('Team size: %(team_size)s, limit: %(limit)s.', team_size=source_request.team_size, limit=source_request.participant_limit) }}</p>
-    <p>{{ _('Preferred end (not a field here):') }} {{ source_request.preferred_end_time|dateformat }}, {{ source_request.preferred_end_time|timeformat('short') }}</p>
-    {% if source_request_blocking_field_labels %}
-    <p>{{ _('Still missing before this request can become a tournament: %(fields)s.', fields=source_request_blocking_field_labels|join(', ')) }}</p>
-    {% endif %}
+  {#- One field: label, control, counter, caption, server errors. -#}
+  {%- macro wiz_field(field, caption=None, optional=False, required=False, counter=None, label=None) %}
+    {%- set attrs = {'class': 'form-control'} %}
+    {%- set source_value = source_values.get(field.name) if source_values else none %}
+    {%- set current_value = field.data.strftime('%Y-%m-%dT%H:%M') if field.data.strftime is defined else field._value() %}
+    {%- if caption or counter %}{% set unused = attrs.update({'aria-describedby': field.id ~ '-cap'}) %}{% endif %}
+    {%- if field.data.strftime is defined %}{% set unused = attrs.update({'value': current_value}) %}{% endif %}
+    {%- set unused = attrs.update(kwargs) %}
+    <div class="form-control-block{% if field.errors %} invalid{% endif %}" data-wiz-field="{{ field.name }}"{% if label %} data-wiz-label="{{ field.label.text }}"{% endif %}>
+      <label class="form-label" for="{{ field.id }}">{{ label or field.label.text }}
+        {%- if required %} <span class="req-mark" aria-hidden="true">*</span>
+        {%- elif optional %} <span class="dimmed">{{ _('(optional)') }}</span>{% endif %}
+        {%- if source_value %} <span class="tag outl src-tag" data-wiz-src-tag data-wiz-src-field="{{ field.name }}"{% if current_value != source_value %} hidden{% endif %}>{{ _('from request') }}</span>{% endif %}</label>
+      {{ field(**attrs) }}
+      {%- if counter %}
+      <div class="form-caption lt-wiz-caprow" id="{{ field.id }}-cap">
+        <span>{{ caption or '' }}</span>
+        <span class="lt-wiz-count" data-wiz-count-for="{{ field.name }}">{{ (field.data or '')|length|numberformat }} / {{ counter|numberformat }}</span>
+      </div>
+      {%- elif caption %}
+      <div class="form-caption" id="{{ field.id }}-cap">{{ caption }}</div>
+      {%- endif %}
+      <div data-wiz-err-for="{{ field.name }}" id="{{ field.id }}-err">{{ form_field_errors(field) }}</div>
+    </div>
+  {%- endmacro %}
+
+  {#- Choice field as native radio cards. An option is a dict: value, label,
+      description and optionally example (markup), examples (per game format),
+      why (reason it can be unavailable). `mode_area` adds the empty hint and the
+      fixed Highscore row that the script swaps in for the grid. -#}
+  {%- macro wiz_cards(field, options, required=False, intro=None, cols=2, legend=None, mode_area=False) %}
+    <fieldset class="lt-wiz-cards lt-wiz-cards--cols-{{ cols }}{% if field.errors %} invalid{% endif %}" id="{{ field.id }}" tabindex="-1" data-wiz-choice="{{ field.name }}" data-wiz-field="{{ field.name }}">
+      <legend class="form-label">{{ legend or field.label.text }}
+        {%- if required %} <span class="req-mark" aria-hidden="true">*</span>{% endif %}</legend>
+      {%- if intro %}
+      <div class="form-caption" data-wiz-intro>{{ intro }}</div>
+      {%- endif %}
+      {%- if mode_area %}
+      <div class="empty-hint" data-wiz-hint hidden>{{ _('Choose a game format first. Then only matching modes are shown.') }}</div>
+      {%- set fixed_text = _('No elimination. Highscore has no matches and nobody is eliminated. The leaderboard at the end decides.').split('. ', 1) %}
+      <div class="lt-wiz-fixed" data-wiz-fixed hidden>
+        <span class="tag outl">{{ _('automatic') }}</span>
+        <span><strong>{{ fixed_text[0] }}.</strong>{% if fixed_text|length > 1 %} {{ fixed_text[1] }}{% endif %}</span>
+      </div>
+      {%- endif %}
+      <div class="lt-wiz-cards__grid">
+        {%- for option in options %}
+        <label class="lt-wiz-card"{% if option.get('hidden_with_script') %} data-wiz-card-nojs{% endif %}>
+          <input type="radio" name="{{ field.name }}" value="{{ option.value }}"{% if field.data == option.value %} checked{% endif %}>
+          <span class="lt-wiz-card__title">{{ option.label }}<span class="lt-wiz-sr" data-wiz-selected-sr{% if field.data != option.value %} hidden{% endif %}> ({{ _('selected') }})</span>
+            {%- if option.get('nojs_hint') %}<span class="lt-wiz-card__nojs dimmed"> ({{ option.nojs_hint }})</span>{% endif %}</span>
+          {%- if option.get('description') %}
+          <span class="lt-wiz-card__desc">{{ option.description }}</span>
+          {%- endif %}
+          {%- if option.get('example') %}
+          <span class="lt-wiz-card__ex">{{ option.example }}</span>
+          {%- endif %}
+          {%- for game_format, text in option.get('examples', {}).items() %}
+          <span class="lt-wiz-card__ex" data-wiz-ex="{{ game_format }}" hidden><span class="dimmed">{{ text }}</span></span>
+          {%- endfor %}
+          {%- if option.get('why') %}
+          <span class="lt-wiz-card__why" data-wiz-why hidden>{{ _('Not available: %(reason)s', reason=option.why) }}</span>
+          {%- endif %}
+        </label>
+        {%- endfor %}
+      </div>
+      <div data-wiz-err-for="{{ field.name }}">{{ form_field_errors(field) }}</div>
+    </fieldset>
+  {%- endmacro %}
+
+  {%- set wiz_config = wizard.config %}
+  {%- set staged_image = wizard.get('staged_image') %}
+  {%- set capacity = wizard.get('capacity') %}
+  {%- set first_error_step = wizard.get('first_error_step') %}
+  {%- set hidden_field_names = ['from_request_id', 'image_id', 'submission_token'] %}
+  {%- set derived_team = source_request and source_request.team_size != 1 %}
+
+  <div class="block lt-wiz-head">
+    <h1 class="title">{{ page_title }}</h1>
+    {%- if source_request %}
+    <div class="dimmed lt-wiz-source-line" data-wiz-source-line>
+      {%- set request_link -%}
+        <a href="{{ url_for('.view_request', request_id=source_request.id) }}">{{ _('Request #%(number)s', number='%04d'|format(source_request.number)) }}</a>
+      {%- endset -%}
+      {%- set proposer_link -%}
+        {%- if g.user.has_permission('user.view') -%}
+        <a href="{{ url_for('user_admin.view', user_id=source_request.proposer_id) }}">{{ source_proposer_name or _('Unknown') }}</a>
+        {%- else -%}
+        {{ source_proposer_name or _('Unknown') }}
+        {%- endif -%}
+      {%- endset -%}
+      {{ _('From %(request)s by %(user)s', request=request_link, user=proposer_link) }}
+    </div>
+    {%- endif %}
+    <div class="lt-wiz-subline">{{ ([party.title] + ([_('%(seats)s seats', seats=capacity)] if capacity is not none else []) + [wizard.timezone_name])|join(' · ') }}</div>
   </div>
-  {% endif %}
 
-  <form action="{{ url_for('.create', party_id=party.id) }}" method="post">
-    {{ form.from_request_id() }}
-    <div class="box">
-      {{ form_field(form.name, maxlength=80, autofocus='autofocus') }}
-      {{ form_field(form.game) }}
-      {{ form_field(form.description) }}
-      {{ form_field(form.image_url) }}
-      {{ form_field(form.contestant_type) }}
-      {{ form_field(form.game_format) }}
-      {{ form_field(form.elimination_mode) }}
-      <div id="highscore-constraints" style="display: none;">
-        {{ form_field(form.score_ordering) }}
+  <div class="notification color-info block" data-wiz-nojs-intro>{{ _('Without JavaScript you see all settings on one page. Sections marked "Only for …" are ignored if they do not match your choice.') }}</div>
+
+  <div class="lt-wiz-layout"{% if first_error_step is not none %} data-first-error-step="{{ first_error_step }}"{% endif %}>
+    <div class="lt-wiz-main">
+      <div class="lt-wiz-sr" role="status" aria-live="polite" data-wiz-announce></div>
+
+      {%- if wizard.get('server_banner') %}
+      <div class="notification color-danger block" role="alert" data-wiz-server-banner hidden>
+        <strong>{{ _('The server rejected the creation.') }}</strong> {{ _('We took you to the affected field. All other entries are kept.') }}
       </div>
-      <div id="ffa-constraints" style="display: none;">
-        {# -- FFA Point Table: visual editor with hidden-input sync -- #}
-        <div class="ffa-point-editor" data-ffa-editor
-             data-field-id="{{ form.point_table.id }}"
-             data-field-name="{{ form.point_table.name }}"
-             data-field-value="{{ form.point_table.data or '' }}">
-          <label class="form-label">{{ form.point_table.label.text }}</label>
-          <div class="ffa-point-editor__toolbar">
-            <button type="button" data-ffa-preset="10,8,6,4,2,1">F1 (10-8-6-4-2-1)</button>
-            <button type="button" data-ffa-preset="25,18,15,12,10,8,6,4,2,1">Top 10</button>
-            <button type="button" data-ffa-add>+ Add place</button>
+      {%- endif %}
+
+      <div data-wiz-notices></div>
+
+      {#- The review box shows the errors of these fields. -#}
+      {%- set review_error_names = ['from_request_id', 'submission_token'] %}
+      {%- set summary_entries = [] %}
+      {%- for name, errors in form.errors.items() %}
+      {%- if name and name not in review_error_names %}
+      {%- set unused = summary_entries.append((name, errors|first)) %}
+      {%- endif %}
+      {%- endfor %}
+      {% if summary_entries %}
+      {%- set field_labels = {
+        'contestant_type': _('Who competes?'),
+        'elimination_mode': _('Tournament mode'),
+        'score_ordering': _('Score sorting'),
+        'advancement_count': _('Advancing per group'),
+      } %}
+      <div class="notification color-danger block" role="alert" tabindex="-1" data-wiz-errsum>
+        <strong>{{ ngettext('%(n)s entry needs attention', '%(n)s entries need attention', summary_entries|length, n=summary_entries|length) }}</strong>
+        <ul>
+          {%- for name, error in summary_entries %}
+          {%- if name not in hidden_field_names %}
+          <li><a href="#{{ form[name].id }}">{{ field_labels.get(name, form[name].label.text) }}</a>: {{ error }}</li>
+          {%- else %}
+          <li>{{ error }}</li>
+          {%- endif %}
+          {%- endfor %}
+        </ul>
+      </div>
+      {% endif %}
+
+      <form action="{{ url_for('.create', party_id=party.id) }}" method="post" enctype="multipart/form-data" data-lt-wizard>
+        {{ form.from_request_id() }}
+        {{ form.submission_token() }}
+        {{ form.image_id() }}
+
+        <fieldset class="lt-wiz-step box" data-wiz-step="0">
+          <legend><h2 tabindex="-1" data-wiz-step-heading>1 · {{ _('Basics') }}</h2></legend>
+          <div class="lt-wiz-row">
+            {{ wiz_field(form.name, required=True, counter=80, autofocus='autofocus', maxlength=False) }}
+            {{ wiz_field(form.game, optional=True, counter=80, placeholder=_('e.g. Mario Kart 8 Deluxe'), maxlength=False) }}
           </div>
-          <div class="ffa-point-cards" data-ffa-cards-container></div>
-          <noscript>
-            {{ form_field(form.point_table) }}
-          </noscript>
+          <div class="lt-wiz-row">
+            {%- if wizard.timezone_detail %}
+            {%- set timezone_caption = _('In your timezone: %(tz)s (%(offset)s).', tz=wizard.timezone_name, offset=wizard.timezone_detail) %}
+            {%- else %}
+            {%- set timezone_caption = _('In your timezone: %(timezone)s.', timezone=wizard.timezone_name) %}
+            {%- endif %}
+            {{ wiz_field(form.start_time, optional=True, caption=timezone_caption ~ ' ' ~ _('Party: %(dates)s.', dates=wizard.party_dates)) }}
+            <div></div>
+          </div>
+          {{ wiz_field(form.description, optional=True, counter=10000, caption=_('Shown on the tournament page.'), rows=4, maxlength=False) }}
+          {{ wiz_field(form.ruleset, optional=True, counter=10000, rows=4, maxlength=False) }}
+
+          <div class="form-control-block lt-wiz-image" data-wiz-image>
+            <div class="form-label" id="wiz-image-label">{{ form.image.label.text }} <span class="dimmed">{{ _('(optional)') }}</span></div>
+            <div class="form-caption" id="wiz-image-req">{{ _('JPEG, PNG or WebP · max. 5 MB · recommended 1920 × 1080 (16:9), at least 960 × 540. No cropping, the centre stays visible.') }}</div>
+            {%- if staged_image %}
+            <div class="lt-wiz-image-staged" data-wiz-image-staged>
+              <img src="{{ staged_image.url }}" alt="" width="{{ staged_image.width }}" height="{{ staged_image.height }}">
+              <div class="lt-wiz-image-staged__meta">
+                <strong>{{ staged_image.filename }}</strong>
+                <div class="dimmed">{{ staged_image.width }} × {{ staged_image.height }}</div>
+              </div>
+            </div>
+            {%- endif %}
+            <div class="lt-wiz-drop" data-wiz-drop>
+              {{ form.image(accept='image/jpeg,image/png,image/webp', **{'data-wiz-file': True, 'aria-labelledby': 'wiz-image-label', 'aria-describedby': 'wiz-image-req'}) }}
+              <button type="button" class="button is-compact" data-wiz-lib-open hidden>{{ _('Choose existing image …') }}</button>
+            </div>
+            <div data-wiz-err-for="image">{{ form_field_errors(form.image) }}</div>
+            <div data-wiz-err-for="image_id">{{ form_field_errors(form.image_id) }}</div>
+
+            <details class="lt-wiz-urlalt"{% if form.image_url.data or form.image_url.errors %} open{% endif %}>
+              <summary>{{ _('Use an image URL instead') }}</summary>
+              {{ wiz_field(form.image_url, caption=_('For older tournaments and externally hosted images. An uploaded image takes precedence.'), placeholder='https://') }}
+            </details>
+
+            {{ wiz_field(form.image_alt_text, optional=True, caption=_('Only needed if the image carries information such as text or a logo. Leave empty if purely decorative.'), placeholder=_('e.g. Logo "Blitz chess by the fireplace" with a chessboard')) }}
+          </div>
+        </fieldset>
+
+        <fieldset class="lt-wiz-step box" data-wiz-step="1">
+          <legend><h2 tabindex="-1" data-wiz-step-heading>2 · {{ _('Competition') }}</h2></legend>
+          {{ wiz_cards(form.contestant_type, [
+            {'value': 'SOLO', 'label': _('Solo'), 'description': _('Each person registers individually.')},
+            {'value': 'TEAM', 'label': _('Teams'), 'description': _('Teams register. A captain manages the members.')},
+          ], required=True, cols=2, legend=_('Who competes?')) }}
+          {%- set chip_a %}<span class="lt-wiz-chip">A</span>{% endset %}
+          {%- set chip_b %}<span class="lt-wiz-chip">B</span>{% endset %}
+          {%- set chips %}<span class="lt-wiz-chip">A</span><span class="lt-wiz-chip">B</span><span class="lt-wiz-chip">C</span><span class="lt-wiz-chip">D</span>{% endset %}
+          {{ wiz_cards(form.game_format, [
+            {'value': 'ONE_V_ONE', 'label': '1v1', 'description': _('Two compete, one side wins the match.'),
+             'example': _('%(a)s against %(b)s → winner advances', a=chip_a, b=chip_b)},
+            {'value': 'FREE_FOR_ALL', 'label': 'Free-for-All', 'description': _('Several play at once in a group. Placement earns points.'),
+             'example': _('%(chips)s → places 1–4 → points', chips=chips)},
+            {'value': 'HIGHSCORE', 'label': 'Highscore', 'description': _('Everyone plays on their own and submits a result. The leaderboard decides.'),
+             'example': ('<span class="lt-wiz-chip">A ' ~ 12400|numberformat ~ '</span><span class="lt-wiz-chip">B ' ~ 11950|numberformat ~ '</span><span class="lt-wiz-chip">C ' ~ 9800|numberformat ~ '</span>')|safe},
+          ], required=True, cols=3, intro=_('Defines how a single match works.')) }}
+          {{ wiz_cards(form.elimination_mode, [
+            {'value': 'SINGLE_ELIMINATION', 'label': _('Single knockout'), 'description': _('Losers are eliminated.'),
+             'examples': {'ONE_V_ONE': _('Example with 8: 3 rounds, 7 matches'), 'FREE_FOR_ALL': _('The best of each group advance to the next round.')}},
+            {'value': 'DOUBLE_ELIMINATION', 'label': _('Double knockout'), 'description': _('The first loss leads to the losers bracket, the second eliminates.'),
+             'examples': {'ONE_V_ONE': _('Example with 8: 14 or 15 matches'), 'FREE_FOR_ALL': _('Whoever does not advance in the winners bracket keeps playing in the losers bracket.')}},
+            {'value': 'ROUND_ROBIN', 'label': _('Everyone plays everyone'), 'description': _('Everyone plays everyone once. The table decides.'),
+             'examples': {'ONE_V_ONE': _('Example with 8: 7 rounds, 28 matches')}, 'why': _('Only for 1v1'),
+             'nojs_hint': _('only 1v1')},
+            {'value': 'NONE', 'label': _('No knockout'), 'description': _('Only for Highscore, set automatically.'), 'hidden_with_script': True,
+             'nojs_hint': _('only for Highscore, automatic there')},
+          ], required=True, cols=3, intro=_('Defines who is eliminated when.'), legend=_('Tournament mode'), mode_area=True) }}
+        </fieldset>
+
+        <fieldset class="lt-wiz-step box" data-wiz-step="2">
+          <legend><h2 tabindex="-1" data-wiz-step-heading>3 · {{ _('Participants') }}</h2></legend>
+          <p class="lt-wiz-intro">{{ _('All limits are optional. Without them, registration is only limited by the party\'s seats.') }}</p>
+
+          {% if source_request %}
+          <div class="lt-wiz-reqmap" tabindex="-1" data-wiz-reqmap>
+            <div data-wiz-reqmap-static>
+              <div class="data-label">{{ _('From the request') }}</div>
+              <div class="data-value">{{ _('Team size: %(team_size)s, limit: %(limit)s.', team_size=source_request.team_size, limit=source_request.participant_limit) }}</div>
+              <div class="form-caption">
+                {%- if form.contestant_type.data == 'TEAM' or (not form.contestant_type.data and derived_team) -%}
+                {{ _('Team size %(team_size)s → min./max. players per team = %(team_size)s · Limit %(limit)s → max. teams = %(limit)s', team_size=source_request.team_size, limit=source_request.participant_limit) }}
+                {%- else -%}
+                {{ _('Limit %(limit)s → max. players = %(limit)s', limit=source_request.participant_limit) }}
+                {%- endif -%}
+              </div>
+              <div class="form-caption">{{ _('These values are already filled in below. You can still adjust them.') }}</div>
+            </div>
+            <div data-wiz-err-for="req_map"></div>
+          </div>
+          {% endif %}
+
+          {%- set numeric = {'type': 'text', 'inputmode': 'numeric', 'autocomplete': 'off'} %}
+          <fieldset class="lt-wiz-scope" data-wiz-scope="solo">
+            <legend><span class="lt-wiz-legend-js">{{ _('Solo · players') }}</span><span class="lt-wiz-legend-nojs">{{ _('3 · Participants – only for Solo') }}</span></legend>
+            <div class="lt-wiz-row lt-wiz-row--keep">
+              {{ wiz_field(form.min_players, optional=True, caption=_('Displayed on the tournament page.'), placeholder='–', **numeric) }}
+              {{ wiz_field(form.max_players, optional=True, caption=_('Leave empty for no limit. Then registration is full.'), placeholder=_('no limit'), **numeric) }}
+            </div>
+            <div class="form-caption lt-wiz-capline" data-wiz-capacity>
+              {%- if capacity is not none %}{{ _('No limit: up to %(seats)s party seats.', seats=capacity) }}{% endif -%}
+            </div>
+          </fieldset>
+
+          <fieldset class="lt-wiz-scope" data-wiz-scope="team">
+            <legend><span class="lt-wiz-legend-js">{{ _('Teams') }}</span><span class="lt-wiz-legend-nojs">{{ _('3 · Participants – only for Teams') }}</span></legend>
+            <div class="lt-wiz-row lt-wiz-row--keep">
+              {{ wiz_field(form.min_teams, optional=True, caption=_('Displayed on the tournament page.'), placeholder='–', **numeric) }}
+              {{ wiz_field(form.max_teams, optional=True, caption=_('Leave empty for no limit. Then no more teams can be created.'), placeholder=_('no limit'), **numeric) }}
+            </div>
+          </fieldset>
+
+          <fieldset class="lt-wiz-scope" data-wiz-scope="team-players">
+            <legend>{{ _('Players per team') }}</legend>
+            <div class="lt-wiz-row lt-wiz-row--keep">
+              {{ wiz_field(form.min_players_in_team, optional=True, label=_('Minimum'), caption=_('Smaller teams are reported as incomplete.'), placeholder='–', **numeric) }}
+              {{ wiz_field(form.max_players_in_team, optional=True, label=_('Maximum'), caption=_('Leave empty for no limit.'), placeholder=_('no limit'), **numeric) }}
+            </div>
+            <div class="form-caption lt-wiz-capline" data-wiz-capacity>
+              {%- if capacity is not none %}{{ _('Without max. teams and max. players per team there is no limit (party: %(seats)s seats).', seats=capacity) }}{% endif -%}
+            </div>
+          </fieldset>
+        </fieldset>
+
+        <fieldset class="lt-wiz-step box" data-wiz-step="3">
+          <legend><h2 tabindex="-1" data-wiz-step-heading>4 · {{ _('Scoring and groups') }}</h2></legend>
+
+          <div data-wiz-scope="one-v-one" hidden>
+            <div class="lt-wiz-fixed" data-wiz-fixed>
+              <span class="tag outl">{{ _('nothing to set') }}</span>
+              <span><strong>1v1 · <span data-wiz-1v1-mode>–</span></strong>. {{ _('Every match has a winner, the result is entered per match.') }} <span data-wiz-1v1-tail>{{ _('The bracket is generated before the start.') }}</span></span>
+            </div>
+            <p class="form-caption lt-wiz-note" data-wiz-note>{{ _('This step is skipped for 1v1. You only see it when you open it directly.') }}</p>
+          </div>
+
+          <div data-wiz-scope="highscore">
+            <div class="lt-wiz-nojs-legend">{{ _('4 · Only for Highscore') }}</div>
+            {{ wiz_cards(form.score_ordering, [
+              {'value': 'HIGHER_IS_BETTER', 'label': _('Higher is better'), 'description': _('e.g. points, kills, distance')},
+              {'value': 'LOWER_IS_BETTER', 'label': _('Lower is better'), 'description': _('e.g. lap time, failed attempts')},
+            ], required=True, cols=2, intro=_('Defines the order of the leaderboard.'), legend=_('Score sorting')) }}
+          </div>
+
+          <div data-wiz-scope="ffa">
+            <div class="lt-wiz-nojs-legend">{{ _('4 · Only for Free-for-All') }}</div>
+            <div class="form-control-block{% if form.point_table.errors %} invalid{% endif %}" data-wiz-field="point_table">
+              <div data-wiz-js-only hidden>
+                <div class="ffa-point-editor" data-ffa-editor data-no-drag role="group" aria-labelledby="point_table-label"
+                     data-field-id="{{ form.point_table.id }}"
+                     data-field-name="{{ form.point_table.name }}"
+                     data-field-value="{{ form.point_table.data or '' }}"
+                     data-label-points="{{ _('Points for place %(n)s', n='%(n)s') }}"
+                     data-label-remove="{{ _('Remove place %(n)s', n='%(n)s') }}">
+                  <div class="form-label" id="point_table-label">{{ _('Points by placement') }} <span class="req-mark" aria-hidden="true">*</span></div>
+                  <div class="ffa-point-editor__toolbar">
+                    <span class="dimmed lt-wiz-toolbar-label">{{ _('Template:') }}</span>
+                    <button type="button" data-ffa-preset="10,8,6,4,2,1">F1 (10-8-6-4-2-1)</button>
+                    <button type="button" data-ffa-preset="25,18,15,12,10,8,6,4,2,1">Top 10</button>
+                    <button type="button" data-ffa-add>{{ _('+ Add place') }}</button>
+                  </div>
+                  <div class="ffa-point-cards" data-ffa-cards-container data-wiz-empty="{{ _('No points yet. Choose a template or add places.') }}"></div>
+                </div>
+                <div class="form-caption">{{ _('Place 1 first. Places without an entry get 0 points.') }}</div>
+              </div>
+              <noscript>
+                <label class="form-label" for="{{ form.point_table.id }}">{{ form.point_table.label.text }} <span class="req-mark" aria-hidden="true">*</span></label>
+                {{ form.point_table(class='form-control') }}
+                <div class="form-caption">{{ _('Comma-separated, place 1 first.') }}</div>
+              </noscript>
+              <div data-wiz-err-for="point_table">{{ form_field_errors(form.point_table) }}</div>
+            </div>
+
+            <fieldset class="lt-wiz-scope lt-wiz-groups">
+              <legend>{{ _('Groups · size in %(unit)s', unit=_('teams or players')) }}</legend>
+              <div class="lt-wiz-row lt-wiz-row--three lt-wiz-row--keep">
+                {{ wiz_field(form.group_size_min, optional=True, caption=_('Smaller groups are not formed.'), placeholder='2', **numeric) }}
+                {{ wiz_field(form.group_size_max, required=True, caption=_('At most this many %(unit)s play at once.', unit=_('teams or players')), **numeric) }}
+                {{ wiz_field(form.advancement_count, optional=True, label=_('Advancing per group'), caption=_('The best of each group advance.'), placeholder='–', **numeric) }}
+              </div>
+            </fieldset>
+          </div>
+
+          <fieldset class="lt-wiz-scope" data-wiz-scope="ffa-de">
+            <legend>{{ _('Only for Double Elimination') }}</legend>
+            <div class="form-control-block{% if form.points_carry_to_losers.errors %} invalid{% endif %}" data-wiz-field="points_carry_to_losers">
+              <label class="form-check-label">{{ form.points_carry_to_losers(**{'aria-describedby': form.points_carry_to_losers.id ~ '-cap'}) }} <span><strong>{{ _('Carry points into the losers bracket') }}</strong></span></label>
+              <div class="form-caption lt-wiz-check-cap" id="{{ form.points_carry_to_losers.id }}-cap"><strong>{{ _('On:') }}</strong> {{ _('All points from the winners and losers brackets count for seeding into the final.') }}<br><strong>{{ _('Off:') }}</strong> {{ _('In the losers bracket only points scored there count. Whoever comes from the winners bracket is seeded first.') }}</div>
+              <div data-wiz-err-for="points_carry_to_losers">{{ form_field_errors(form.points_carry_to_losers) }}</div>
+            </div>
+          </fieldset>
+
+          <div class="lt-wiz-preview" data-wiz-preview data-wiz-scope="ffa-preview">
+            <div class="data-label">{{ _('Preview') }}</div>
+            <div class="empty-hint">{{ _('The preview appears once a max. group size is set.') }}</div>
+          </div>
+        </fieldset>
+
+        <section class="lt-wiz-step box" data-wiz-step="4">
+          <h2 tabindex="-1" data-wiz-step-heading>5 · {{ _('Review and create') }}</h2>
+          {%- set refusal = wizard.get('refusal') %}
+          {%- if refusal %}
+          <div class="notification color-danger block" role="alert" tabindex="-1" data-wiz-err-for="review" data-wiz-refusal>
+            <strong>{{ refusal.lead }}</strong> {% if refusal.detail %}{{ refusal.detail }} {% endif %}{{ refusal.closing }}
+            <div class="button-row">
+              <button type="button" class="button is-compact" data-wiz-unlink data-wiz-js-only hidden>{{ _('Create without link to the request') }}</button>
+              <a class="button is-compact" href="{{ refusal.viewUrl }}" target="_blank" rel="noopener noreferrer">{{ _('View request') }}</a>
+            </div>
+          </div>
+          {%- endif %}
+          {%- set review_errors = form.form_errors|list + (form.from_request_id.errors|list if not refusal else []) + form.submission_token.errors|list %}
+          {%- if review_errors %}
+          <div class="notification color-danger block" data-wiz-err-for="{{ 'review-other' if refusal else 'review' }}">
+            <ul>
+              {%- for error in review_errors %}
+              <li>{{ error }}</li>
+              {%- endfor %}
+            </ul>
+          </div>
+          {%- endif %}
+          <div data-wiz-review>
+            <div class="notification color-info">{{ _('The tournament is created as a draft. Registration stays closed.') }}</div>
+          </div>
+        </section>
+
+        <div class="button-row lt-wiz-nav" data-wiz-nav>
+          <button type="submit" class="button color-primary" data-wiz-submit>{{ _('Create draft tournament') }}</button>
+          <a class="button" href="{{ wiz_config.urls.get('cancel') or url_for('.index', party_id=party.id) }}" data-wiz-cancel>{{ _('Cancel') }}</a>
         </div>
-        {{ form_field(form.group_size_min, min=2, style='width: 5rem;') }}
-        {{ form_field(form.group_size_max, min=2, style='width: 5rem;') }}
-        {{ form_field(form.advancement_count, min=1, style='width: 5rem;') }}
-      </div>
-      <div id="ffa-de-constraints" style="display: none;">
-        {{ form_field(form.points_carry_to_losers) }}
-      </div>
-      {{ form_field(form.start_time) }}
-      {{ form_field(form.ruleset) }}
+      </form>
     </div>
 
-    <div class="box">
-      <h3>{{ _('Player/team constraints') }}</h3>
-      <div id="solo-constraints" style="display: none;">
-        {{ form_field(form.min_players, min=0, style='width: 5rem;') }}
-        {{ form_field(form.max_players, min=0, style='width: 5rem;') }}
+    <aside class="lt-wiz-aside">
+      {# Provenance banner: prefilled values, info-only fields and blockers of the request. #}
+      {% if source_request %}
+      <div class="notification color-info block">
+        <p>{{ _('Prefilled from request #%(number)s by %(name)s.', number='%04d'|format(source_request.number), name=source_proposer_name or _('Unknown')) }} {{ _('Team size: %(team_size)s, limit: %(limit)s.', team_size=source_request.team_size, limit=source_request.participant_limit) }}</p>
+        <p>{{ _('Preferred end (not a field here):') }} {{ source_request.preferred_end_time|dateformat }}, {{ source_request.preferred_end_time|timeformat('short') }}</p>
+        {% if source_request_blocking_field_labels %}
+        <p>{{ _('Still missing before this request can become a tournament: %(fields)s.', fields=source_request_blocking_field_labels|join(', ')) }}</p>
+        {% endif %}
       </div>
-      <div id="team-constraints" style="display: none;">
-        {{ form_field(form.min_teams, min=0, style='width: 5rem;') }}
-        {{ form_field(form.max_teams, min=0, style='width: 5rem;') }}
-        {{ form_field(form.min_players_in_team, min=0, style='width: 5rem;') }}
-        {{ form_field(form.max_players_in_team, min=0, style='width: 5rem;') }}
-      </div>
-    </div>
+      {% endif %}
+      {# /Provenance banner #}
 
-    {{ form_buttons(_('Create')) }}
-  </form>
+      <div class="box">
+        <div class="data-label">{{ _('Party') }}</div>
+        <div class="data-value">{{ party.title }}</div>
+        <div class="data-label">{{ _('Period') }}</div>
+        <div class="data-value">{{ wizard.party_dates }}</div>
+        {%- if capacity is not none %}
+        <div class="data-label">{{ _('Party seats') }}</div>
+        <div class="data-value">{{ capacity }}</div>
+        {%- endif %}
+        <div class="data-label">{{ _('Your timezone') }}</div>
+        <div class="data-value">{{ wizard.timezone_name }}
+          {%- if wizard.timezone_detail %} <span class="dimmed">({{ wizard.timezone_detail }})</span>{% endif %}</div>
+      </div>
+
+      {%- set refused_request = refused_request if refused_request is defined else none %}
+      {%- set refused_proposer_name = refused_proposer_name if refused_proposer_name is defined else none %}
+      {%- set origin_request = source_request or refused_request %}
+      {% if origin_request %}
+      <div class="box" data-wiz-aside-source>
+        <div class="data-label">{{ _('Prefill source') }}</div>
+        <div class="data-value">
+          {%- set request_link -%}
+            <a href="{{ url_for('.view_request', request_id=origin_request.id) }}">{{ _('Request #%(number)s', number='%04d'|format(origin_request.number)) }}</a>
+          {%- endset -%}
+          {%- set proposer_name = (source_proposer_name if source_request else refused_proposer_name) or _('Unknown') %}
+          {%- set proposer_link -%}
+            {%- if g.user.has_permission('user.view') -%}
+            <a href="{{ url_for('user_admin.view', user_id=origin_request.proposer_id) }}">{{ proposer_name }}</a>
+            {%- else -%}
+            {{ proposer_name }}
+            {%- endif -%}
+          {%- endset -%}
+          {{ _('%(request)s by %(user)s', request=request_link, user=proposer_link) }} <span class="tag {{ 'color-disabled' if refused_request else 'color-info' }}">{{ wizard.refusal.statusLabel if refused_request else _('Accepted') }}</span></div>
+        <div class="form-caption">
+          {%- set source_tag -%}
+            <span class="tag outl src-tag">{{ _('from request') }}</span>
+          {%- endset -%}
+          {{ _('Fields marked %(tag)s come unchanged from the request. You can change them.', tag=source_tag) }}
+        </div>
+      </div>
+      {% endif %}
+
+      <div class="box">
+        <div class="data-label">{{ _('Will be created as') }}</div>
+        <div class="data-value"><span class="tag color-disabled">{{ _('Draft') }}</span> {{ _('Registration closed') }}</div>
+        <div class="form-caption">{{ _('Nothing is saved until the last step.') }}</div>
+      </div>
+    </aside>
+  </div>
+
+  <script type="application/json" id="lt-create-wizard-config">{{ wiz_config|tojson }}</script>
 
 {%- endblock %}
 
 {% block scripts %}
-{% include 'admin/lan_tournament/_constraint_toggle.html' %}
 <script src="{{ url_for('static', filename='behavior/lan_tournament_ffa.js') }}"></script>
-<script>
-  /* Toggle FFA fields based on game_format and elimination_mode. */
-  (function() {
-    const gameFormatSelect = document.getElementById('game_format');
-    const eliminationModeSelect = document.getElementById('elimination_mode');
-    const ffaConstraints = document.getElementById('ffa-constraints');
-    const ffaDeConstraints = document.getElementById('ffa-de-constraints');
-    const highscoreConstraints = document.getElementById('highscore-constraints');
-
-    function updateFormatVisibility() {
-      if (!gameFormatSelect) return;
-      const gf = gameFormatSelect.value;
-      const em = eliminationModeSelect ? eliminationModeSelect.value : '';
-
-      /* FFA fields: visible when game_format = FREE_FOR_ALL */
-      if (ffaConstraints) {
-        ffaConstraints.style.display = (gf === 'FREE_FOR_ALL') ? '' : 'none';
-      }
-
-      /* Points carry: visible when FFA + DOUBLE_ELIMINATION */
-      if (ffaDeConstraints) {
-        ffaDeConstraints.style.display = (
-          gf === 'FREE_FOR_ALL' && em === 'DOUBLE_ELIMINATION'
-        ) ? '' : 'none';
-      }
-
-      /* Highscore constraints: visible when game_format = HIGHSCORE */
-      if (highscoreConstraints) {
-        highscoreConstraints.style.display = (gf === 'HIGHSCORE') ? '' : 'none';
-      }
-    }
-
-    if (gameFormatSelect) {
-      gameFormatSelect.addEventListener('change', updateFormatVisibility);
-    }
-    if (eliminationModeSelect) {
-      eliminationModeSelect.addEventListener('change', updateFormatVisibility);
-    }
-    updateFormatVisibility();
-  })();
-</script>
+<script src="{{ url_for('static', filename='behavior/lan_tournament_create_wizard_rules.js') }}"></script>
+<script src="{{ url_for('static', filename='behavior/lan_tournament_create_wizard_image.js') }}"></script>
+<script src="{{ url_for('static', filename='behavior/lan_tournament_create_wizard.js') }}"></script>
 {%- endblock %}

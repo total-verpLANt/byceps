@@ -1,0 +1,690 @@
+[
+  {
+    "name": "chess_valid_baseline",
+    "values": {
+      "contestant_type": "SOLO",
+      "game_format": "ONE_V_ONE",
+      "elimination_mode": "SINGLE_ELIMINATION",
+      "min_players": "4",
+      "max_players": "16"
+    },
+    "require_structure": true,
+    "expected": {}
+  },
+  {
+    "name": "fall_valid_baseline",
+    "values": {
+      "contestant_type": "TEAM",
+      "game_format": "FREE_FOR_ALL",
+      "elimination_mode": "DOUBLE_ELIMINATION",
+      "min_teams": "8",
+      "max_teams": "24",
+      "min_players_in_team": "2",
+      "max_players_in_team": "3",
+      "point_table": [
+        "10",
+        "8",
+        "6",
+        "4",
+        "2",
+        "1"
+      ],
+      "group_size_min": "4",
+      "group_size_max": "6",
+      "advancement_count": "2"
+    },
+    "require_structure": true,
+    "expected": {}
+  },
+  {
+    "name": "tetris_valid_baseline",
+    "values": {
+      "contestant_type": "SOLO",
+      "game_format": "HIGHSCORE",
+      "elimination_mode": "NONE",
+      "score_ordering": "HIGHER_IS_BETTER",
+      "max_players": "64"
+    },
+    "require_structure": true,
+    "expected": {}
+  },
+  {
+    "name": "empty_with_structure_requires_choices",
+    "values": {},
+    "require_structure": true,
+    "expected": {
+      "contestant_type": "Please choose whether individuals or teams compete.",
+      "game_format": "Please choose a game format.",
+      "elimination_mode": "Please choose an elimination mode."
+    }
+  },
+  {
+    "name": "empty_without_structure_is_valid",
+    "values": {},
+    "require_structure": false,
+    "expected": {}
+  },
+  {
+    "name": "format_set_mode_missing",
+    "values": {
+      "contestant_type": "SOLO",
+      "game_format": "ONE_V_ONE"
+    },
+    "require_structure": true,
+    "expected": {
+      "elimination_mode": "Please choose an elimination mode."
+    }
+  },
+  {
+    "name": "highscore_mode_missing_is_not_an_error",
+    "values": {
+      "contestant_type": "SOLO",
+      "game_format": "HIGHSCORE",
+      "score_ordering": "LOWER_IS_BETTER"
+    },
+    "require_structure": true,
+    "expected": {}
+  },
+  {
+    "name": "highscore_without_score_ordering",
+    "values": {
+      "contestant_type": "SOLO",
+      "game_format": "HIGHSCORE",
+      "elimination_mode": "NONE"
+    },
+    "require_structure": true,
+    "expected": {
+      "score_ordering": "Please choose which results are better."
+    }
+  },
+  {
+    "name": "highscore_with_bracket_mode_is_invalid_combination",
+    "values": {
+      "contestant_type": "SOLO",
+      "game_format": "HIGHSCORE",
+      "elimination_mode": "SINGLE_ELIMINATION",
+      "score_ordering": "HIGHER_IS_BETTER"
+    },
+    "require_structure": true,
+    "expected": {
+      "elimination_mode": "This combination of game format and elimination mode is not supported."
+    }
+  },
+  {
+    "name": "ffa_round_robin_is_invalid_combination",
+    "values": {
+      "contestant_type": "SOLO",
+      "game_format": "FREE_FOR_ALL",
+      "elimination_mode": "ROUND_ROBIN",
+      "point_table": [
+        "10",
+        "8",
+        "6"
+      ],
+      "group_size_max": "4"
+    },
+    "require_structure": true,
+    "expected": {
+      "elimination_mode": "This combination of game format and elimination mode is not supported."
+    }
+  },
+  {
+    "name": "one_v_one_none_is_invalid_combination",
+    "values": {
+      "contestant_type": "SOLO",
+      "game_format": "ONE_V_ONE",
+      "elimination_mode": "NONE"
+    },
+    "require_structure": true,
+    "expected": {
+      "elimination_mode": "This combination of game format and elimination mode is not supported."
+    }
+  },
+  {
+    "name": "combination_checked_without_structure",
+    "values": {
+      "game_format": "ONE_V_ONE",
+      "elimination_mode": "NONE"
+    },
+    "require_structure": false,
+    "expected": {
+      "elimination_mode": "This combination of game format and elimination mode is not supported."
+    }
+  },
+  {
+    "name": "solo_min_players_above_max",
+    "values": {
+      "contestant_type": "SOLO",
+      "game_format": "ONE_V_ONE",
+      "elimination_mode": "SINGLE_ELIMINATION",
+      "min_players": "16",
+      "max_players": "8"
+    },
+    "require_structure": true,
+    "expected": {
+      "max_players": "Must be at least \"%(other)s\" (%(n)s)."
+    }
+  },
+  {
+    "name": "team_min_teams_above_max",
+    "values": {
+      "contestant_type": "TEAM",
+      "game_format": "ONE_V_ONE",
+      "elimination_mode": "DOUBLE_ELIMINATION",
+      "min_teams": "16",
+      "max_teams": "8"
+    },
+    "require_structure": true,
+    "expected": {
+      "max_teams": "Must be at least \"%(other)s\" (%(n)s)."
+    }
+  },
+  {
+    "name": "team_min_players_in_team_above_max",
+    "values": {
+      "contestant_type": "TEAM",
+      "game_format": "ONE_V_ONE",
+      "elimination_mode": "DOUBLE_ELIMINATION",
+      "min_players_in_team": "5",
+      "max_players_in_team": "2"
+    },
+    "require_structure": true,
+    "expected": {
+      "max_players_in_team": "Must be at least \"%(other)s\" (%(n)s)."
+    }
+  },
+  {
+    "name": "team_ignores_solo_pair",
+    "values": {
+      "contestant_type": "TEAM",
+      "game_format": "ONE_V_ONE",
+      "elimination_mode": "DOUBLE_ELIMINATION",
+      "min_players": "32",
+      "max_players": "4"
+    },
+    "require_structure": true,
+    "expected": {}
+  },
+  {
+    "name": "solo_ignores_team_pairs",
+    "values": {
+      "contestant_type": "SOLO",
+      "game_format": "ONE_V_ONE",
+      "elimination_mode": "SINGLE_ELIMINATION",
+      "min_teams": "9",
+      "max_teams": "2",
+      "min_players_in_team": "5",
+      "max_players_in_team": "1"
+    },
+    "require_structure": true,
+    "expected": {}
+  },
+  {
+    "name": "ffa_without_point_table_and_group_max",
+    "values": {
+      "contestant_type": "SOLO",
+      "game_format": "FREE_FOR_ALL",
+      "elimination_mode": "SINGLE_ELIMINATION"
+    },
+    "require_structure": true,
+    "expected": {
+      "point_table": "Add points for at least place 1.",
+      "group_size_max": "Required for Free-for-All."
+    }
+  },
+  {
+    "name": "ffa_point_table_65_places",
+    "values": {
+      "contestant_type": "SOLO",
+      "game_format": "FREE_FOR_ALL",
+      "elimination_mode": "SINGLE_ELIMINATION",
+      "point_table": [
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1"
+      ],
+      "group_size_max": "4"
+    },
+    "require_structure": true,
+    "expected": {
+      "point_table": "At most %(max)s places."
+    }
+  },
+  {
+    "name": "ffa_point_table_64_places_valid",
+    "values": {
+      "contestant_type": "SOLO",
+      "game_format": "FREE_FOR_ALL",
+      "elimination_mode": "SINGLE_ELIMINATION",
+      "point_table": [
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1"
+      ],
+      "group_size_max": "4"
+    },
+    "require_structure": true,
+    "expected": {}
+  },
+  {
+    "name": "ffa_point_above_ceiling",
+    "values": {
+      "contestant_type": "SOLO",
+      "game_format": "FREE_FOR_ALL",
+      "elimination_mode": "SINGLE_ELIMINATION",
+      "group_size_max": "4",
+      "point_table": [
+        "10",
+        "1000000000",
+        "1"
+      ]
+    },
+    "require_structure": true,
+    "expected": {
+      "point_table": "Points may be at most %(max)s."
+    }
+  },
+  {
+    "name": "ffa_point_far_above_ceiling",
+    "values": {
+      "contestant_type": "SOLO",
+      "game_format": "FREE_FOR_ALL",
+      "elimination_mode": "SINGLE_ELIMINATION",
+      "group_size_max": "4",
+      "point_table": [
+        "1000000000000"
+      ]
+    },
+    "require_structure": true,
+    "expected": {
+      "point_table": "Points may be at most %(max)s."
+    }
+  },
+  {
+    "name": "ffa_point_negative_beyond_ceiling",
+    "values": {
+      "contestant_type": "SOLO",
+      "game_format": "FREE_FOR_ALL",
+      "elimination_mode": "SINGLE_ELIMINATION",
+      "group_size_max": "4",
+      "point_table": [
+        "10",
+        "-1000000000"
+      ]
+    },
+    "require_structure": true,
+    "expected": {
+      "point_table": "Points may be at least %(min)s."
+    }
+  },
+  {
+    "name": "ffa_point_at_ceiling_valid",
+    "values": {
+      "contestant_type": "SOLO",
+      "game_format": "FREE_FOR_ALL",
+      "elimination_mode": "SINGLE_ELIMINATION",
+      "group_size_max": "4",
+      "point_table": [
+        "999999999",
+        "0",
+        "-999999999"
+      ]
+    },
+    "require_structure": true,
+    "expected": {}
+  },
+  {
+    "name": "ffa_group_min_above_max",
+    "values": {
+      "contestant_type": "TEAM",
+      "game_format": "FREE_FOR_ALL",
+      "elimination_mode": "DOUBLE_ELIMINATION",
+      "point_table": [
+        "10",
+        "8",
+        "6"
+      ],
+      "group_size_min": "6",
+      "group_size_max": "4"
+    },
+    "require_structure": true,
+    "expected": {
+      "group_size_min": "Must not be larger than the max. group size (%(n)s)."
+    }
+  },
+  {
+    "name": "ffa_team_max_teams_below_min_group",
+    "values": {
+      "contestant_type": "TEAM",
+      "game_format": "FREE_FOR_ALL",
+      "elimination_mode": "DOUBLE_ELIMINATION",
+      "max_teams": "3",
+      "point_table": [
+        "10",
+        "8",
+        "6"
+      ],
+      "group_size_min": "4",
+      "group_size_max": "6",
+      "advancement_count": "4"
+    },
+    "require_structure": true,
+    "expected": {
+      "group_size_min": "With at most %(n)s teams no group of at least %(min)s teams can form. Lower the minimum to %(n)s or raise \"Max. teams\" in step 3.",
+      "advancement_count": "Fewer than %(n)s must advance from the smallest group (%(n)s teams)."
+    }
+  },
+  {
+    "name": "ffa_team_max_teams_below_default_min_group",
+    "values": {
+      "contestant_type": "TEAM",
+      "game_format": "FREE_FOR_ALL",
+      "elimination_mode": "DOUBLE_ELIMINATION",
+      "max_teams": "1",
+      "point_table": [
+        "10",
+        "8",
+        "6"
+      ],
+      "group_size_max": "6"
+    },
+    "require_structure": true,
+    "expected": {
+      "group_size_min": "With at most %(n)s teams no group of at least %(min)s teams can form. Lower the minimum to %(n)s or raise \"Max. teams\" in step 3."
+    }
+  },
+  {
+    "name": "ffa_solo_max_players_below_min_group",
+    "values": {
+      "contestant_type": "SOLO",
+      "game_format": "FREE_FOR_ALL",
+      "elimination_mode": "SINGLE_ELIMINATION",
+      "max_players": "5",
+      "point_table": [
+        "10",
+        "8",
+        "6"
+      ],
+      "group_size_min": "8",
+      "group_size_max": "8"
+    },
+    "require_structure": true,
+    "expected": {
+      "group_size_min": "With at most %(n)s players no group of at least %(min)s can form. Lower the minimum or raise \"Max. players\" in step 3."
+    }
+  },
+  {
+    "name": "ffa_solo_max_teams_is_ignored",
+    "values": {
+      "contestant_type": "SOLO",
+      "game_format": "FREE_FOR_ALL",
+      "elimination_mode": "SINGLE_ELIMINATION",
+      "max_teams": "1",
+      "point_table": [
+        "10",
+        "8",
+        "6"
+      ],
+      "group_size_max": "6"
+    },
+    "require_structure": true,
+    "expected": {}
+  },
+  {
+    "name": "ffa_team_max_players_is_ignored",
+    "values": {
+      "contestant_type": "TEAM",
+      "game_format": "FREE_FOR_ALL",
+      "elimination_mode": "DOUBLE_ELIMINATION",
+      "max_players": "1",
+      "point_table": [
+        "10",
+        "8",
+        "6"
+      ],
+      "group_size_max": "6"
+    },
+    "require_structure": true,
+    "expected": {}
+  },
+  {
+    "name": "ffa_advancement_at_smallest_group_teams",
+    "values": {
+      "contestant_type": "TEAM",
+      "game_format": "FREE_FOR_ALL",
+      "elimination_mode": "DOUBLE_ELIMINATION",
+      "point_table": [
+        "10",
+        "8",
+        "6"
+      ],
+      "group_size_min": "4",
+      "group_size_max": "6",
+      "advancement_count": "4"
+    },
+    "require_structure": true,
+    "expected": {
+      "advancement_count": "Fewer than %(n)s must advance from the smallest group (%(n)s teams)."
+    }
+  },
+  {
+    "name": "ffa_advancement_at_smallest_group_players",
+    "values": {
+      "contestant_type": "SOLO",
+      "game_format": "FREE_FOR_ALL",
+      "elimination_mode": "SINGLE_ELIMINATION",
+      "point_table": [
+        "10",
+        "8",
+        "6"
+      ],
+      "group_size_max": "8",
+      "advancement_count": "8"
+    },
+    "require_structure": true,
+    "expected": {
+      "advancement_count": "Fewer than %(n)s must advance from the smallest group (%(n)s players)."
+    }
+  },
+  {
+    "name": "ffa_advancement_below_smallest_group_valid",
+    "values": {
+      "contestant_type": "SOLO",
+      "game_format": "FREE_FOR_ALL",
+      "elimination_mode": "SINGLE_ELIMINATION",
+      "point_table": [
+        "10",
+        "8",
+        "6"
+      ],
+      "group_size_max": "8",
+      "advancement_count": "7"
+    },
+    "require_structure": true,
+    "expected": {}
+  },
+  {
+    "name": "ffa_group_min_above_max_advancement_uses_max",
+    "values": {
+      "contestant_type": "TEAM",
+      "game_format": "FREE_FOR_ALL",
+      "elimination_mode": "DOUBLE_ELIMINATION",
+      "point_table": [
+        "10",
+        "8",
+        "6"
+      ],
+      "group_size_min": "6",
+      "group_size_max": "4",
+      "advancement_count": "3"
+    },
+    "require_structure": true,
+    "expected": {
+      "group_size_min": "Must not be larger than the max. group size (%(n)s)."
+    }
+  },
+  {
+    "name": "ffa_rules_apply_without_structure",
+    "values": {
+      "game_format": "FREE_FOR_ALL"
+    },
+    "require_structure": false,
+    "expected": {
+      "point_table": "Add points for at least place 1.",
+      "group_size_max": "Required for Free-for-All."
+    }
+  },
+  {
+    "name": "non_ffa_ignores_ffa_fields",
+    "values": {
+      "contestant_type": "SOLO",
+      "game_format": "ONE_V_ONE",
+      "elimination_mode": "SINGLE_ELIMINATION",
+      "group_size_min": "9",
+      "group_size_max": "3",
+      "advancement_count": "50"
+    },
+    "require_structure": true,
+    "expected": {}
+  },
+  {
+    "name": "ffa_point_309_digits",
+    "values": {
+      "contestant_type": "SOLO",
+      "game_format": "FREE_FOR_ALL",
+      "elimination_mode": "SINGLE_ELIMINATION",
+      "group_size_max": "4",
+      "point_table": [
+        "10",
+        "999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999"
+      ]
+    },
+    "require_structure": true,
+    "expected": {
+      "point_table": "Points may be at most %(max)s."
+    }
+  }
+]

@@ -1022,12 +1022,16 @@ def nav_tab_label_env():
 
 
 def _render_nav_tab_label(
-    env, app, *, request_count, current_tab='tournaments'
+    env, app, *, request_count, current_tab='tournaments', permissions=None
 ):
     tmpl = env.get_template('nav')
     with app.test_request_context('/'):
         # `Navigation` reads the real Flask `g`: a request context is needed.
-        flask_g.user = SimpleNamespace(has_permission=lambda perm: True)
+        flask_g.user = SimpleNamespace(
+            has_permission=lambda perm: (
+                permissions is None or perm in permissions
+            )
+        )
         return tmpl.render(
             _=lambda s, **kw: (s % kw) if kw else s,
             url_for=lambda endpoint, **kw: endpoint,
@@ -1057,6 +1061,38 @@ def test_nav_tab_label_carries_count_tag_exactly_once(
     assert out.count('<span class="tag color-warning">3</span>') == 1
     assert '&lt;span' not in out
     assert 'Tournament requests <span class="tag color-warning">3</span>' in out
+
+
+def test_nav_shows_maintenance_tab_with_permission(
+    nav_tab_label_env, minimal_app
+):
+    out = _render_nav_tab_label(
+        nav_tab_label_env,
+        minimal_app,
+        request_count=0,
+        permissions={'lan_tournament.maintain'},
+    )
+
+    assert 'Maintenance' in out
+    assert 'lan_tournament_admin.maintenance' in out
+
+
+@pytest.mark.parametrize(
+    'permissions',
+    [{'lan_tournament.view'}, {'lan_tournament.administrate'}],
+)
+def test_nav_hides_maintenance_tab_without_permission(
+    nav_tab_label_env, minimal_app, permissions
+):
+    out = _render_nav_tab_label(
+        nav_tab_label_env,
+        minimal_app,
+        request_count=0,
+        permissions=permissions,
+    )
+
+    assert 'Maintenance' not in out
+    assert 'lan_tournament_admin.maintenance' not in out
 
 
 # --------------------------------------------------------------------- #
@@ -1769,7 +1805,7 @@ def create_form_banner_env():
     )
 
     banner_start = src.index('{# Provenance banner')
-    banner_end = src.index('<form action=', banner_start)
+    banner_end = src.index('{# /Provenance banner #}', banner_start)
     banner_fragment = src[banner_start:banner_end]
 
     env = _make_env(

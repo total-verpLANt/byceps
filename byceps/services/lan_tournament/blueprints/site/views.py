@@ -212,6 +212,11 @@ def view(tournament_id):
         'bronze_name': bronze_name,
         'may_administrate': may_administrate,
         'orgas': orgas,
+        'elimination_mode_label': (
+            request_mode_label(tournament.elimination_mode)
+            if tournament.elimination_mode
+            else None
+        ),
         'active_tab': 'overview',
     }
 

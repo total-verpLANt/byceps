@@ -1,0 +1,1899 @@
+/* ================================================================
+   Tournament creation wizard (admin)
+   ================================================================
+   Styles the five-step create form. The markup is one server-
+   rendered form that is complete without JavaScript; the wizard
+   script adds `.lt-wiz.is-enhanced` to `.lt-wiz-layout` and turns
+   the sections into steps.
+
+   Every selector starts with `lt-wiz` so nothing leaks into other
+   admin pages. Colours reuse the tokens of common.css; the few
+   wizard-specific tokens live on the wizard root.
+
+   1. Tokens and base
+   2. Layout, aside and navigation
+   3. Stepper (built by the script)
+   4. Steps, scopes and fields
+   5. Choice cards
+   6. Request box
+   7. Image: drop zone, staged image, upload state
+   8. Image picker
+   9. Point-table editor, groups and preview
+  10. Review
+  11. Notices and messages
+  12. Narrow screens
+   ================================================================ */
+
+
+/* ────────────────────────────────────────────────────────────────
+   1. Tokens and base
+   ──────────────────────────────────────────────────────────────── */
+
+.lt-wiz,
+.lt-wiz-layout,
+.lt-wiz-stepper,
+.lt-wiz-source-line,
+.lt-wiz-subline {
+  --dimmed-color: #767676;
+  --lt-wiz-ink: #333333;
+  --lt-wiz-ink-strong: #222222;
+  --lt-wiz-ink-soft: #555555;
+  --lt-wiz-error: #b00000;
+  --lt-wiz-error-edge: #dd0000;
+  --lt-wiz-error-wash: #fffafa;
+  --lt-wiz-warn: #6b5600;
+  --lt-wiz-accent: #333333;
+  --lt-wiz-hairline: #dddddd;
+  --lt-wiz-well: #f8f8f8;
+  --lt-wiz-selected: #f7f7f7;
+  --lt-wiz-focus: 2px solid var(--color-info);
+  --lt-wiz-aside-width: 17.5rem;
+}
+
+.lt-wiz [hidden],
+.lt-wiz-layout [hidden] {
+  display: none !important;
+}
+
+.lt-wiz-sr {
+  border: 0;
+  clip: rect(0, 0, 0, 0);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+.lt-wiz-layout :is(h2, h3) {
+  font-weight: normal;
+}
+
+.lt-wiz-layout h2 {
+  font-size: 1.25rem; /* 20px / 16px */
+  margin: 0 0 1rem 0;
+}
+
+.lt-wiz-layout h3 {
+  font-size: 0.9375rem; /* 15px / 16px */
+  margin: 0;
+}
+
+.lt-wiz-layout h2:focus {
+  outline: none;
+}
+
+.lt-wiz-layout h2:focus-visible {
+  outline: var(--lt-wiz-focus);
+  outline-offset: 4px;
+}
+
+.lt-wiz-layout .form-label {
+  display: block;
+}
+
+.lt-wiz-layout .req-mark {
+  color: #cc0000;
+}
+
+.lt-wiz-backlink {
+  display: inline-block;
+  font-size: 0.8125rem;
+  margin-bottom: 0.75rem;
+}
+
+.lt-wiz-backlink:hover {
+  color: #004a90;
+  text-decoration: underline;
+}
+
+.lt-wiz-head.block:not(:last-child) {
+  margin-bottom: 1.25rem;
+}
+
+.lt-wiz-head > .title:not(:last-child) {
+  margin-bottom: 0;
+}
+
+.lt-wiz-source-line {
+  margin-top: 0.25rem;
+}
+
+.lt-wiz-subline {
+  color: var(--dimmed-color);
+  display: none;
+  font-size: 0.8125rem;
+  margin-top: 0.25rem;
+}
+
+
+/* ────────────────────────────────────────────────────────────────
+   2. Layout, aside and navigation
+   ──────────────────────────────────────────────────────────────── */
+
+.lt-wiz-layout {
+  align-items: start;
+  display: grid;
+  gap: 1.5rem;
+  grid-template-columns: minmax(0, 1fr) var(--lt-wiz-aside-width);
+}
+
+.lt-wiz-main {
+  min-width: 0;
+}
+
+.lt-wiz-aside {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.lt-wiz-aside > :is(.box, .notification) {
+  margin: 0;
+  padding: 0.875rem 1rem;
+}
+
+.lt-wiz-aside > :is(.box, .notification):not(:last-child) {
+  margin-bottom: 0;
+}
+
+.lt-wiz-layout .data-label {
+  margin-bottom: 0.125rem;
+}
+
+.lt-wiz-layout .data-value + .data-label {
+  margin-top: 0.75rem;
+}
+
+.lt-wiz-aside .form-caption {
+  margin-top: 0.5rem;
+}
+
+.lt-wiz-layout .tag {
+  white-space: nowrap;
+}
+
+.lt-wiz-layout .tag.color-info {
+  background-color: #0a78d4;
+}
+
+.lt-wiz-layout .tag.outl {
+  background-color: #ffffff;
+  border: 1px solid var(--border-color);
+  color: #555555;
+  font-weight: normal;
+  text-shadow: none;
+}
+
+.lt-wiz-layout .src-tag {
+  border-style: dashed;
+  font-size: 10px;
+  margin-left: 0.375rem;
+}
+
+.lt-wiz-aside .tag.color-disabled {
+  background-color: #8a8a8a;
+}
+
+.lt-wiz-aside > .notification p {
+  margin: 0;
+}
+
+.lt-wiz-aside > .notification p + p {
+  margin-top: 0.5rem;
+}
+
+.lt-wiz-intro {
+  color: var(--lt-wiz-ink-soft);
+  margin: -0.375rem 0 1rem 0;
+}
+
+.lt-wiz-nav {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.625rem;
+  margin-top: 1rem;
+}
+
+.lt-wiz.is-enhanced .lt-wiz-nav {
+  flex-wrap: nowrap;
+  justify-content: space-between;
+}
+
+.lt-wiz.is-enhanced .lt-wiz-nav :is([data-wiz-next], [data-wiz-submit]) {
+  margin-left: auto;
+}
+
+.lt-wiz-nav .button[aria-disabled='true'] {
+  cursor: progress;
+  opacity: 0.6;
+}
+
+.lt-wiz-layout .button:focus-visible {
+  outline: var(--lt-wiz-focus);
+  outline-offset: 2px;
+}
+
+:is(.lt-wiz-layout, .lt-wiz-stepper) .button {
+  gap: 0.375rem;
+  text-decoration: none !important;
+}
+
+:is(.lt-wiz-layout, .lt-wiz-stepper) .button.is-compact {
+  font-size: 0.875rem;
+  padding: 0.2rem 0.5rem;
+}
+
+:is(.lt-wiz-layout, .lt-wiz-stepper) .button.color-primary {
+  border-color: #555555;
+  border-width: 1px;
+  text-shadow: none;
+}
+
+
+/* ────────────────────────────────────────────────────────────────
+   3. Stepper (built by the script)
+   ──────────────────────────────────────────────────────────────── */
+
+.lt-wiz-stepper {
+  margin-bottom: 1.25rem;
+}
+
+.lt-wiz-stepper__list {
+  display: grid;
+  gap: 0.25rem;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.lt-wiz-stepper__compact {
+  display: none;
+}
+
+.lt-wiz-stepper__btn {
+  align-items: flex-start;
+  background-color: #ffffff;
+  border: 0;
+  border-top: 3px solid var(--lt-wiz-hairline);
+  color: var(--lt-wiz-ink);
+  display: flex;
+  font: inherit;
+  gap: 0.625rem;
+  min-height: 3.875rem;
+  padding: 0.625rem 0.75rem;
+  text-align: left;
+  width: 100%;
+}
+
+.lt-wiz-stepper__btn:is(button) {
+  cursor: pointer;
+}
+
+.lt-wiz-stepper__btn:is(button):hover {
+  background-color: #fafafa;
+}
+
+.lt-wiz-stepper__btn:is(button):focus-visible {
+  outline: var(--lt-wiz-focus);
+  outline-offset: -2px;
+}
+
+.lt-wiz-stepper__n {
+  align-items: center;
+  background-color: #ffffff;
+  border: 1.5px solid #999999;
+  border-radius: 50%;
+  color: #666666;
+  display: flex;
+  flex: none;
+  font-size: 0.75rem;
+  font-weight: 600;
+  height: 1.5rem;
+  justify-content: center;
+  width: 1.5rem;
+}
+
+.lt-wiz-stepper__t {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.8125rem; /* 13px / 16px */
+  font-weight: 600;
+  min-width: 0;
+}
+
+.lt-wiz-stepper__s {
+  color: var(--dimmed-color);
+  font-size: 0.75rem;
+  font-weight: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lt-wiz-stepper__item.is-cur > .lt-wiz-stepper__btn {
+  border-top-color: var(--lt-wiz-accent);
+}
+
+.lt-wiz-stepper__item.is-cur .lt-wiz-stepper__n {
+  background-color: var(--lt-wiz-accent);
+  border-color: var(--lt-wiz-accent);
+  color: #ffffff;
+}
+
+.lt-wiz-stepper__item.is-done > .lt-wiz-stepper__btn {
+  border-top-color: #888888;
+}
+
+.lt-wiz-stepper__item.is-done .lt-wiz-stepper__n {
+  border-color: var(--lt-wiz-ink-soft);
+  color: var(--lt-wiz-ink);
+}
+
+.lt-wiz-stepper__item.is-err > .lt-wiz-stepper__btn {
+  border-top-color: var(--color-danger);
+}
+
+.lt-wiz-stepper__item.is-err .lt-wiz-stepper__n {
+  background-color: #cc0000;
+  border-color: #cc0000;
+  color: #ffffff;
+}
+
+.lt-wiz-stepper__item.is-err .lt-wiz-stepper__s {
+  color: #bb0000;
+}
+
+.lt-wiz-stepper__item.is-skip .lt-wiz-stepper__n {
+  border-style: dashed;
+}
+
+.lt-wiz-stepper__item.is-skip .lt-wiz-stepper__t,
+.lt-wiz-stepper__item.is-todo .lt-wiz-stepper__t {
+  color: #777777;
+}
+
+.lt-wiz-stepper__item.is-todo .lt-wiz-stepper__t {
+  font-weight: normal;
+}
+
+/* Compact form: "Step n of 5", a segment bar and a step list. */
+
+.lt-wiz-stepper__head {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.lt-wiz-stepper__count {
+  display: block;
+}
+
+.lt-wiz-stepper__all {
+  position: relative;
+}
+
+.lt-wiz-stepper__all > summary {
+  list-style: none;
+  width: max-content;
+}
+
+.lt-wiz-stepper__all > summary::-webkit-details-marker {
+  display: none;
+}
+
+.lt-wiz-stepper__list--v {
+  background-color: #ffffff;
+  border: 1px solid var(--lt-wiz-hairline);
+  border-radius: var(--border-radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  box-sizing: border-box;
+  gap: 0.125rem;
+  grid-template-columns: minmax(0, 1fr);
+  max-width: calc(100vw - 2rem);
+  padding: 0.25rem;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.375rem);
+  width: 16.25rem;
+  z-index: 5;
+}
+
+.lt-wiz-stepper__list--v .lt-wiz-stepper__btn {
+  border-left: 3px solid var(--lt-wiz-hairline);
+  border-top: 0;
+  min-height: 0;
+  padding: 0.5rem 0.625rem;
+}
+
+.lt-wiz-stepper__list--v .is-cur > .lt-wiz-stepper__btn {
+  border-left-color: var(--lt-wiz-accent);
+}
+
+.lt-wiz-stepper__list--v .is-err > .lt-wiz-stepper__btn {
+  border-left-color: var(--color-danger);
+}
+
+.lt-wiz-stepper__bars {
+  display: grid;
+  gap: 3px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin-top: 0.5rem;
+}
+
+.lt-wiz-stepper__bars > i {
+  background-color: var(--lt-wiz-hairline);
+  border-radius: 2px;
+  height: 5px;
+}
+
+.lt-wiz-stepper__bars > i.is-cur {
+  background-color: var(--lt-wiz-accent);
+}
+
+.lt-wiz-stepper__bars > i:is(.is-done, .is-skip) {
+  background-color: #888888;
+}
+
+.lt-wiz-stepper__bars > i.is-err {
+  background-color: #cc0000;
+}
+
+
+/* ────────────────────────────────────────────────────────────────
+   4. Steps, scopes and fields
+   ──────────────────────────────────────────────────────────────── */
+
+.lt-wiz-step {
+  margin: 0;
+  min-width: 0;
+}
+
+.lt-wiz-layout .lt-wiz-step:not(:last-child) {
+  margin-bottom: 1.25rem;
+}
+
+.lt-wiz.is-enhanced .lt-wiz-step:not(.is-current) {
+  display: none;
+}
+
+/* Lift the step title off the fieldset border. */
+.lt-wiz-step > legend {
+  float: left;
+  padding: 0;
+  width: 100%;
+}
+
+.lt-wiz-step > legend ~ * {
+  clear: both;
+}
+
+.lt-wiz-step > legend h2 {
+  margin-bottom: 1rem;
+}
+
+.lt-wiz-row {
+  display: grid;
+  gap: 0 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.lt-wiz-row--three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.lt-wiz-row > * {
+  min-width: 0;
+}
+
+.lt-wiz-row input[inputmode='numeric'] {
+  max-width: 9rem;
+  text-align: right;
+}
+
+.lt-wiz-layout .form-control-block {
+  margin-bottom: 1rem;
+  min-width: 0;
+}
+
+.lt-wiz-layout :is(input, select, textarea).form-control:not([type='checkbox']):not([type='radio']) {
+  background-color: #ffffff;
+  border: 1px solid #999999;
+  border-radius: var(--border-radius);
+  font-size: 0.875rem;
+  padding: 0.4rem;
+}
+
+.lt-wiz-layout .form-control-block :is(input, textarea).form-control {
+  width: 100%;
+}
+
+.lt-wiz-layout input.form-control:not([type='checkbox']):not([type='radio']) {
+  height: 2.125rem;
+}
+
+.lt-wiz-layout .form-control-block textarea.form-control {
+  height: 4rem;
+  resize: vertical;
+}
+
+.lt-wiz-layout :is(input, select, textarea).form-control:not([type='checkbox']):not([type='radio']):focus {
+  border-color: var(--color-info);
+  outline: var(--lt-wiz-focus);
+  outline-offset: 0;
+}
+
+/* The core `.invalid` block paints a pink box; show a field-level cue. */
+.lt-wiz-layout .form-control-block.invalid {
+  background-color: transparent;
+  border: 0;
+  margin-inline: 0;
+  margin-top: 0;
+  padding: 0;
+}
+
+.lt-wiz-layout .form-control-block.invalid :is(input, textarea).form-control:not([type='checkbox']):not([type='radio']),
+.lt-wiz-layout :is(input, textarea).form-control:not([type='checkbox']):not([type='radio'])[aria-invalid='true'],
+.lt-wiz-layout .ffa-point-card__value[aria-invalid='true'] {
+  background-color: var(--lt-wiz-error-wash);
+  border-color: var(--lt-wiz-error-edge);
+  box-shadow: inset 0 0 0 1px var(--lt-wiz-error-edge);
+}
+
+.lt-wiz-layout form ol.form-errors {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.lt-wiz-layout form ol.form-errors li {
+  color: var(--lt-wiz-error);
+  display: flex;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  gap: 0.375rem;
+  line-height: 1.4;
+  margin-top: 0.3125rem;
+}
+
+.lt-wiz-layout form ol.form-errors li::before {
+  content: '⚠';
+  content: '⚠' / '';
+}
+
+.lt-wiz-layout form ol.form-errors li > strong:first-child {
+  border: 0;
+  clip: rect(0, 0, 0, 0);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+.lt-wiz-layout .form-errors a {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.lt-wiz-caprow {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.lt-wiz-count {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.lt-wiz-count.over {
+  color: #cc0000;
+  font-weight: bold;
+}
+
+.lt-wiz-scope {
+  background-color: #ffffff;
+  border: 1px solid var(--lt-wiz-hairline);
+  border-radius: var(--border-radius);
+  margin: 0 0 1.125rem 0;
+  min-width: 0;
+  padding: 0.875rem 1.125rem 0.125rem;
+}
+
+.lt-wiz-scope > legend {
+  color: var(--lt-wiz-ink-soft);
+  font-size: 0.8125rem;
+  margin-left: -0.375rem;
+  padding: 0 0.375rem;
+}
+
+.lt-wiz-scope > p {
+  margin-top: 0;
+}
+
+.lt-wiz-capline {
+  margin: -0.375rem 0 0.875rem 0;
+}
+
+.lt-wiz-fixed {
+  align-items: flex-start;
+  background-color: var(--lt-wiz-well);
+  border: 1px solid var(--lt-wiz-hairline);
+  border-radius: var(--border-radius);
+  display: flex;
+  gap: 0.625rem;
+  padding: 0.75rem 0.875rem;
+}
+
+.lt-wiz-fixed > .tag {
+  margin-top: 0.125rem;
+}
+
+.lt-wiz-note {
+  margin-top: 0.75rem;
+}
+
+.lt-wiz-layout .empty-hint {
+  background-color: var(--lt-wiz-well);
+  border: 1px dashed var(--border-color);
+  border-radius: var(--border-radius);
+  color: var(--lt-wiz-ink-soft);
+  font-size: 0.8125rem;
+  padding: 0.75rem 0.875rem;
+}
+
+.lt-wiz-layout .form-check-label {
+  cursor: pointer;
+  gap: 0.5rem;
+}
+
+.lt-wiz-layout .form-check-label input {
+  accent-color: var(--lt-wiz-accent);
+  height: 1rem;
+  margin: 0.1875rem 0 0 0;
+  width: 1rem;
+}
+
+
+/* ────────────────────────────────────────────────────────────────
+   5. Choice cards
+   ──────────────────────────────────────────────────────────────── */
+
+.lt-wiz-cards {
+  margin: 0 0 1.25rem 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.lt-wiz-cards > legend {
+  padding: 0;
+}
+
+.lt-wiz-cards:focus {
+  outline: none;
+}
+
+.lt-wiz-cards:focus-visible {
+  outline: var(--lt-wiz-focus);
+  outline-offset: 4px;
+}
+
+.lt-wiz-cards.invalid {
+  background-color: transparent;
+  border: 0;
+  margin-block: 0 1.25rem;
+  margin-inline: 0;
+  padding: 0;
+}
+
+.lt-wiz-cards > .form-caption {
+  margin: -2px 0 8px 0;
+}
+
+.lt-wiz-cards__grid {
+  display: grid;
+  gap: 0.625rem;
+}
+
+.lt-wiz.is-enhanced [data-wiz-card-nojs] {
+  display: none;
+}
+
+.lt-wiz-cards--cols-2 > .lt-wiz-cards__grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.lt-wiz-cards--cols-3 > .lt-wiz-cards__grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.lt-wiz-cards--cols-4 > .lt-wiz-cards__grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.lt-wiz-card {
+  align-content: start;
+  align-items: start;
+  background-color: #ffffff;
+  border: 1px solid #aaaaaa;
+  border-radius: var(--border-radius);
+  column-gap: 0.625rem;
+  cursor: pointer;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  padding: 0.75rem 0.875rem;
+}
+
+.lt-wiz-card:hover {
+  border-color: var(--lt-wiz-ink-soft);
+}
+
+.lt-wiz-card > input {
+  accent-color: var(--lt-wiz-accent);
+  grid-row: 1 / span 2;
+  height: 1rem;
+  margin: 0.125rem 0 0 0;
+  width: 1rem;
+}
+
+.lt-wiz-card__title {
+  font-weight: 600;
+  grid-column: 2;
+}
+
+.lt-wiz-card__desc {
+  color: var(--lt-wiz-ink-soft);
+  font-size: 0.8125rem;
+  grid-column: 2;
+  margin-top: 0.125rem;
+}
+
+.lt-wiz-card__ex {
+  align-items: center;
+  color: var(--lt-wiz-ink-soft);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.75rem;
+  gap: 0.25rem;
+  grid-column: 2;
+  margin-top: 0.375rem;
+}
+
+.lt-wiz-card__why {
+  color: var(--lt-wiz-ink-soft);
+  font-size: 0.75rem;
+  grid-column: 2;
+  margin-top: 0.25rem;
+}
+
+.lt-wiz-chip {
+  background-color: #f4f4f4;
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 0.6875rem;
+  padding: 0 5px;
+}
+
+.lt-wiz-card.is-on {
+  background-color: var(--lt-wiz-selected);
+  border-color: var(--lt-wiz-accent);
+  box-shadow: inset 0 0 0 1px var(--lt-wiz-accent);
+}
+
+.lt-wiz-card:has(input:checked) {
+  background-color: var(--lt-wiz-selected);
+  border-color: var(--lt-wiz-accent);
+  box-shadow: inset 0 0 0 1px var(--lt-wiz-accent);
+}
+
+.lt-wiz-card:has(input:disabled) {
+  background-color: #f3f3f3;
+  border-color: #bbbbbb;
+  border-style: dashed;
+  color: #777777;
+  cursor: not-allowed;
+}
+
+.lt-wiz-card:has(input:disabled) .lt-wiz-card__desc {
+  color: #777777;
+}
+
+.lt-wiz-card:focus-within {
+  outline: var(--lt-wiz-focus);
+  outline-offset: 2px;
+}
+
+.lt-wiz-cards.invalid .lt-wiz-card {
+  border-color: var(--lt-wiz-error-edge);
+}
+
+
+/* ────────────────────────────────────────────────────────────────
+   6. Request box
+   ──────────────────────────────────────────────────────────────── */
+
+.lt-wiz-reqmap {
+  background-color: #fcfcfc;
+  border: 1px dashed #999999;
+  border-radius: var(--border-radius);
+  margin-bottom: 1.125rem;
+  padding: 0.75rem 0.875rem;
+}
+
+.lt-wiz-reqmap:focus {
+  outline: var(--lt-wiz-focus);
+}
+
+.lt-wiz-reqmap.is-invalid {
+  background-color: #fff8f8;
+  border: 1px solid var(--lt-wiz-error-edge);
+}
+
+.lt-wiz-linkbtn {
+  background: none;
+  border: 0;
+  color: var(--link-color);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8125rem;
+  padding: 0;
+}
+
+.lt-wiz-linkbtn:hover {
+  text-decoration: underline;
+}
+
+.lt-wiz-reqmap .button-row {
+  margin-top: 0.625rem;
+}
+
+
+/* ────────────────────────────────────────────────────────────────
+   7. Image: drop zone, staged image, upload state
+   ──────────────────────────────────────────────────────────────── */
+
+.lt-wiz-image {
+  margin-bottom: 1rem;
+}
+
+#wiz-image-req {
+  margin: 0 0 0.5rem 0;
+}
+
+.lt-wiz-drop {
+  background-color: #fafafa;
+  border: 2px dashed #aaaaaa;
+  border-radius: var(--border-radius);
+  padding: 1.375rem;
+  text-align: center;
+}
+
+.lt-wiz-drop.is-over {
+  background-color: #e2f2ff;
+  border-color: var(--color-info);
+}
+
+.lt-wiz-drop input[type='file'] {
+  max-width: 100%;
+}
+
+.lt-wiz-drop__hint {
+  color: inherit;
+  font-size: 0.875rem;
+}
+
+.lt-wiz-drop__actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+  margin: 0.5rem 0 0.25rem 0;
+}
+
+.lt-wiz-drop__note {
+  display: none;
+  margin: 0;
+}
+
+.lt-wiz-image label.button:has(+ input:focus-visible) {
+  outline: var(--lt-wiz-focus);
+  outline-offset: 2px;
+}
+
+.lt-wiz-image-staged,
+.lt-wiz-img {
+  align-items: flex-start;
+  background-color: #ffffff;
+  border: 1px solid var(--lt-wiz-hairline);
+  border-radius: var(--border-radius);
+  display: flex;
+  gap: 1rem;
+  padding: 0.75rem;
+}
+
+.lt-wiz-image-staged + .lt-wiz-drop {
+  margin-top: 0.5rem;
+}
+
+.lt-wiz-image-staged > img,
+.lt-wiz-img__thumb {
+  aspect-ratio: 16 / 9;
+  border-radius: 3px;
+  flex: none;
+  overflow: hidden;
+  width: 15rem;
+}
+
+.lt-wiz-image-staged > img {
+  display: block;
+  height: auto;
+  object-fit: cover;
+}
+
+.lt-wiz-img__thumb {
+  align-items: center;
+  background: repeating-linear-gradient(
+    135deg,
+    #e4e4e4 0 6px,
+    #f0f0f0 6px 12px
+  );
+  color: #666666;
+  display: flex;
+  font: 11px ui-monospace, Menlo, monospace;
+  justify-content: center;
+}
+
+.lt-wiz-img__thumb--err {
+  background: #ffe8e8;
+  color: #cc0000;
+  font-size: 28px;
+  width: 7.5rem;
+}
+
+.lt-wiz-img__thumb > img {
+  display: block;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+.lt-wiz-image-staged__meta,
+.lt-wiz-img__meta {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.lt-wiz-img.is-error {
+  background-color: #fff6f6;
+  border-color: var(--color-danger);
+}
+
+.lt-wiz-layout .lt-wiz-img__error ol.form-errors li {
+  margin-top: 0.25rem;
+}
+
+.lt-wiz-img__pbar {
+  background-color: #e6e6e6;
+  border-radius: 3px;
+  height: 6px;
+  margin-top: 0.5rem;
+  overflow: hidden;
+}
+
+.lt-wiz-img__pbar > i {
+  background-color: var(--color-info);
+  display: block;
+  height: 100%;
+  transition: width 0.25s;
+}
+
+.lt-wiz-img__actions {
+  margin-top: 0.5rem;
+}
+
+.lt-wiz-layout .lt-wiz-img__actions:not(:last-child) {
+  margin-bottom: 0;
+}
+
+.lt-wiz-layout .lt-wiz-img .form-control-block {
+  margin: 0.875rem 0 0 0;
+}
+
+.lt-wiz-img:focus {
+  outline: var(--lt-wiz-focus);
+  outline-offset: 2px;
+}
+
+.lt-wiz-urlalt {
+  font-size: 0.8125rem;
+  margin: 0.625rem 0 0 0;
+}
+
+.lt-wiz-urlalt::details-content {
+  box-sizing: border-box;
+}
+
+.lt-wiz-urlalt + .form-control-block {
+  margin-top: 1rem;
+}
+
+.lt-wiz-urlalt > summary {
+  color: var(--link-color);
+  cursor: pointer;
+  max-width: 100%;
+  width: max-content;
+}
+
+.lt-wiz-layout .lt-wiz-urlalt > .form-control-block {
+  margin-top: 0.625rem;
+}
+
+.lt-wiz-urlalt .form-label {
+  font-size: 0.875rem;
+}
+
+
+/* ────────────────────────────────────────────────────────────────
+   8. Image picker
+   ──────────────────────────────────────────────────────────────── */
+
+.lt-wiz-lib {
+  background-color: #ffffff;
+  border: 1px solid #bbbbbb;
+  border-radius: var(--border-radius);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+  margin-top: 0.625rem;
+  padding: 0.875rem;
+}
+
+.lt-wiz-lib__head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  justify-content: space-between;
+  margin-bottom: 0.625rem;
+}
+
+.lt-wiz-lib__scopes {
+  display: flex;
+  gap: 0;
+}
+
+.lt-wiz-layout .lt-wiz-lib__scopes .button {
+  border-radius: 0;
+  font-size: 0.8125rem;
+}
+
+.lt-wiz-lib__scopes .button:first-child {
+  border-radius: var(--border-radius) 0 0 var(--border-radius);
+}
+
+.lt-wiz-lib__scopes .button:last-child {
+  border-radius: 0 var(--border-radius) var(--border-radius) 0;
+  margin-left: -1px;
+}
+
+.lt-wiz-lib__scopes .button.is-on {
+  background-color: var(--lt-wiz-ink-soft);
+  border-color: var(--lt-wiz-ink-soft);
+  color: #ffffff;
+}
+
+.lt-wiz-lib__search {
+  margin: 0.625rem 0;
+  width: 100%;
+}
+
+.lt-wiz-lib__grid {
+  border: 0;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.lt-wiz-lib__list {
+  display: grid;
+  gap: 0.625rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  max-height: 420px;
+  overflow: auto;
+  padding: 2px;
+}
+
+.lt-wiz-lib__item {
+  background-color: #ffffff;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  font-size: 0.75rem;
+  gap: 0.375rem;
+  padding: 0.375rem;
+  position: relative;
+}
+
+.lt-wiz-lib__item > input {
+  accent-color: var(--lt-wiz-accent);
+  height: 1rem;
+  left: 0.625rem;
+  position: absolute;
+  top: 0.625rem;
+  width: 1rem;
+  z-index: 1;
+}
+
+.lt-wiz-lib__item:hover {
+  border-color: var(--lt-wiz-ink-soft);
+}
+
+.lt-wiz-lib__item:has(> input:focus-visible) {
+  outline: var(--lt-wiz-focus);
+  outline-offset: 1px;
+}
+
+.lt-wiz-lib__item.is-on {
+  background-color: var(--lt-wiz-selected);
+  border-color: var(--lt-wiz-accent);
+  box-shadow: inset 0 0 0 1px var(--lt-wiz-accent);
+}
+
+.lt-wiz-lib__thumb {
+  aspect-ratio: 16 / 9;
+  background: repeating-linear-gradient(
+    135deg,
+    #e4e4e4 0 6px,
+    #f0f0f0 6px 12px
+  );
+  border-radius: 3px;
+  display: block;
+  overflow: hidden;
+  width: 100%;
+}
+
+.lt-wiz-lib__thumb > img {
+  display: block;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+.lt-wiz-lib__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.lt-wiz-lib__name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.lt-wiz-lib__empty {
+  grid-column: 1 / -1;
+}
+
+.lt-wiz-lib__actions {
+  margin-top: 0.75rem;
+}
+
+
+/* ────────────────────────────────────────────────────────────────
+   9. Point-table editor, groups and preview
+   ──────────────────────────────────────────────────────────────── */
+
+.lt-wiz-toolbar-label {
+  align-self: center;
+  font-size: 0.75rem;
+}
+
+/* The point editor looks as drafted; the shared editor styles stay as they are. */
+
+.lt-wiz-layout .ffa-point-editor {
+  margin-bottom: 0.25rem;
+  margin-top: 0;
+}
+
+.lt-wiz-layout .ffa-point-editor > .form-label {
+  color: inherit;
+  font-size: 0.875rem;
+  font-weight: normal;
+  margin-bottom: 0.25rem;
+}
+
+.lt-wiz-layout .ffa-point-editor__toolbar button {
+  border: 1px solid #d0d0d0;
+  border-radius: 0.5rem;
+  color: var(--lt-wiz-ink-soft);
+  font: inherit;
+  font-size: 0.8125rem;
+  padding: 0.3rem 0.7rem;
+}
+
+.lt-wiz-layout .ffa-point-editor__toolbar button:hover {
+  border-color: #0088ee;
+}
+
+.lt-wiz-layout .ffa-point-cards {
+  box-shadow: none;
+}
+
+.lt-wiz-layout .ffa-point-cards:empty::before {
+  color: #888888;
+  content: attr(data-wiz-empty);
+  font-size: 0.8125rem;
+  font-style: italic;
+  padding: 0;
+}
+
+.lt-wiz-layout .ffa-point-card {
+  cursor: default;
+  padding: 0.3rem 0.45rem;
+}
+
+.lt-wiz-layout .ffa-point-card:hover {
+  border-color: #e2e2e2;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  transform: none;
+}
+
+.lt-wiz-layout .ffa-point-card__place {
+  color: var(--lt-wiz-ink-soft);
+  padding: 0.1rem 0.35rem;
+}
+
+.lt-wiz-layout .ffa-point-card__value {
+  border-color: #cccccc;
+  font: inherit;
+  font-size: 0.875rem;
+  padding: 0.2rem 0.3rem;
+  text-align: center;
+  width: 3.25rem;
+}
+
+.lt-wiz-layout .ffa-point-card__remove {
+  color: #888888;
+  font-size: 0.95rem;
+}
+
+.lt-wiz-layout .ffa-point-card__remove:hover {
+  color: #ffffff;
+}
+
+.lt-wiz-layout .form-check-label {
+  align-items: flex-start;
+}
+
+.lt-wiz-check-cap {
+  margin: 4px 0 16px 26px;
+}
+
+.lt-wiz-preview {
+  border-top: 1px solid #eeeeee;
+  padding-top: 0.875rem;
+}
+
+.lt-wiz-layout .lt-wiz-preview table.index {
+  border-collapse: collapse;
+  margin: 0;
+  width: 100%;
+}
+
+.lt-wiz-layout .lt-wiz-preview table.index > caption {
+  color: var(--lt-wiz-ink-soft);
+  font-size: 0.8125rem;
+  padding-bottom: 0.375rem;
+  text-align: left;
+}
+
+.lt-wiz-layout .lt-wiz-preview table.index :is(th, td) {
+  padding: 0.375rem 0.75rem 0.375rem 0;
+  text-align: left;
+}
+
+.lt-wiz-layout .lt-wiz-preview table.index > thead th {
+  border-bottom: 1px solid var(--lt-wiz-hairline);
+  border-top: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.lt-wiz-layout .lt-wiz-preview table.index > tbody > tr > td {
+  border-top: 1px solid #eeeeee;
+  font-size: 0.8125rem;
+}
+
+.lt-wiz-layout .lt-wiz-preview table.index .number {
+  text-align: right;
+}
+
+.lt-wiz-layout .lt-wiz-preview table.index > tbody > tr.adv > td {
+  background-color: #f1f8ff;
+}
+
+.lt-wiz-layout .lt-wiz-preview table.index > tbody > tr.adv > td:first-child {
+  box-shadow: inset 3px 0 0 #0a78d4;
+  padding-left: 0.5rem;
+}
+
+
+/* ────────────────────────────────────────────────────────────────
+   10. Review
+   ──────────────────────────────────────────────────────────────── */
+
+.lt-wiz-review__sec {
+  border-top: 1px solid var(--lt-wiz-hairline);
+  padding: 0.875rem 0;
+}
+
+.lt-wiz-review__head {
+  align-items: center;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.lt-wiz-review__sec > h3,
+.lt-wiz-review__head > h3 {
+  font-size: 0.9375rem;
+  font-weight: bold;
+  margin: 0 0 0.5rem;
+}
+
+.lt-wiz-review__sec .lt-wiz-linkbtn {
+  line-height: 1.5;
+}
+
+.lt-wiz-review__dl {
+  display: grid;
+  gap: 0.375rem 1rem;
+  grid-template-columns: 12.5rem minmax(0, 1fr);
+  margin: 0;
+}
+
+.lt-wiz-review__dl > dt {
+  color: var(--dimmed-color);
+}
+
+.lt-wiz-review__dl > dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.lt-wiz-review__dl > dd.is-invalid {
+  color: #b00000;
+}
+
+.lt-wiz-review__err {
+  display: flex;
+  font-size: 0.8125rem;
+  gap: 0.375rem;
+  line-height: 1.4;
+  margin-top: 0.3125rem;
+}
+
+.lt-wiz-review__meta {
+  font-size: 0.75rem;
+}
+
+.lt-wiz-review .ptl,
+.lt-wiz-review__dl .ptl {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+}
+
+[data-wiz-review] > .notification.color-info:last-child {
+  margin-top: 0.5rem;
+}
+
+[data-wiz-refusal] .button-row,
+[data-wiz-review] > .notification .button-row {
+  margin-top: 0.625rem;
+}
+
+.lt-wiz-review__image {
+  align-items: center;
+  display: flex;
+  gap: 0.75rem;
+}
+
+.lt-wiz-review__image > img {
+  aspect-ratio: 16 / 9;
+  border-radius: 3px;
+  display: block;
+  flex: none;
+  object-fit: cover;
+  width: 7.5rem;
+}
+
+
+/* ────────────────────────────────────────────────────────────────
+   11. Notices and messages
+   ──────────────────────────────────────────────────────────────── */
+
+/* Also reaches the page flashes above the wizard. */
+
+main:has(.lt-wiz-layout) .notification {
+  padding: 0.75rem 1rem;
+}
+
+main:has(.lt-wiz-layout) .notification:not(:last-child) {
+  margin-bottom: 1.25rem;
+}
+
+main:has(.lt-wiz-layout) .notification.color-danger {
+  background-color: #ffe8e8;
+  border-color: var(--color-danger);
+}
+
+main:has(.lt-wiz-layout) .notification.color-warning {
+  background-color: #fff6c8;
+  border-color: #ffcc11;
+}
+
+main:has(.lt-wiz-layout) .notification.color-info {
+  background-color: #e2f2ff;
+  border-color: #1199ff;
+}
+
+main:has(.lt-wiz-layout) .notification.color-success {
+  background-color: #ecf9e3;
+  border-color: #55cc00;
+}
+
+main:has(.lt-wiz-layout) .notification ul {
+  margin: 0.375rem 0 0 0;
+  padding-left: 1.125rem;
+}
+
+main:has(.lt-wiz-layout) .notification a {
+  color: currentColor;
+  text-decoration: underline;
+}
+
+main:has(.lt-wiz-layout) .notification:focus {
+  outline: 2px solid var(--lt-wiz-ink);
+  outline-offset: 2px;
+}
+
+.lt-wiz-main > [data-wiz-notices] > .notification {
+  margin-bottom: 1.25rem;
+}
+
+.lt-wiz-notice {
+  align-items: flex-start;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.lt-wiz-fwarn {
+  color: var(--lt-wiz-warn);
+  display: flex;
+  font-size: 0.8125rem;
+  gap: 0.375rem;
+  line-height: 1.4;
+  margin-top: 0.3125rem;
+}
+
+.lt-wiz-fwarn::before {
+  content: 'ⓘ';
+  content: 'ⓘ' / '';
+}
+
+.lt-wiz-spin {
+  animation: lt-wiz-spin 1s linear infinite;
+  border: 2px solid #aaaaaa;
+  border-radius: 50%;
+  border-top-color: var(--lt-wiz-ink);
+  display: inline-block;
+  height: 0.75rem;
+  margin-right: 0.375rem;
+  vertical-align: -1px;
+  width: 0.75rem;
+}
+
+@keyframes lt-wiz-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lt-wiz-spin {
+    animation-duration: 4s;
+  }
+
+  .lt-wiz-img__pbar > i {
+    transition: none;
+  }
+}
+
+
+/* ────────────────────────────────────────────────────────────────
+   12. Narrow screens
+   ──────────────────────────────────────────────────────────────── */
+
+@media (max-width: 900px) {
+  .lt-wiz-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lt-wiz-cards--cols-4 > .lt-wiz-cards__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .lt-wiz-head > .title {
+    font-size: 1.5rem;
+  }
+
+  .lt-wiz-subline {
+    display: block;
+  }
+
+  .lt-wiz-aside > .box {
+    display: none;
+  }
+
+  .lt-wiz-stepper__list:not(.lt-wiz-stepper__list--v) {
+    display: none;
+  }
+
+  .lt-wiz-stepper__compact {
+    display: block;
+  }
+
+  .lt-wiz-step.box {
+    padding: 1rem;
+  }
+
+  .lt-wiz-row,
+  .lt-wiz-row--three {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lt-wiz-row--keep:not(.lt-wiz-row--three) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .lt-wiz-layout .form-control-block textarea.form-control {
+    height: 5rem;
+  }
+
+  .lt-wiz-cards--cols-2 > .lt-wiz-cards__grid,
+  .lt-wiz-cards--cols-3 > .lt-wiz-cards__grid,
+  .lt-wiz-cards--cols-4 > .lt-wiz-cards__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lt-wiz-image-staged,
+  .lt-wiz-img {
+    flex-direction: column;
+  }
+
+  .lt-wiz-image-staged > img,
+  .lt-wiz-img__thumb {
+    width: 100%;
+  }
+
+  .lt-wiz-img__thumb--err {
+    height: auto;
+  }
+
+  .lt-wiz-drop__note {
+    display: block;
+  }
+
+  .lt-wiz-lib__list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .lt-wiz-review__dl {
+    gap: 0;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lt-wiz-review__dl > dd {
+    margin-bottom: 0.5rem;
+  }
+
+  .lt-wiz-review__image {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .lt-wiz.is-enhanced .lt-wiz-nav {
+    display: grid;
+    grid-template-columns: auto 1fr;
+  }
+
+  .lt-wiz.is-enhanced .lt-wiz-nav :is([data-wiz-next], [data-wiz-submit]) {
+    margin-left: 0;
+  }
+
+  .lt-wiz-nav .color-primary {
+    justify-content: center;
+    text-align: center;
+    white-space: normal;
+  }
+}
+
+
+/* ────────────────────────────────────────────────────────────────
+   12. Without JavaScript: one compact page
+   ──────────────────────────────────────────────────────────────── */
+
+.lt-wiz.is-enhanced .lt-wiz-legend-nojs,
+.lt-wiz.is-enhanced .lt-wiz-nojs-legend,
+.lt-wiz.is-enhanced .lt-wiz-card__nojs,
+.lt-wiz-layout:not(.is-enhanced) .lt-wiz-legend-js {
+  display: none;
+}
+
+main:has(.lt-wiz-layout:not(.is-enhanced)) .lt-wiz-head.block:not(:last-child) {
+  margin-bottom: 0;
+}
+
+main:has(.lt-wiz-layout:not(.is-enhanced)) .lt-wiz-head > .title:not(:last-child) {
+  margin-bottom: 1.25rem;
+}
+
+.lt-wiz-layout:not(.is-enhanced) {
+  display: block;
+  max-width: 760px;
+}
+
+/* The provenance banner stays; the boxes need the script's data. */
+.lt-wiz-layout:not(.is-enhanced) .lt-wiz-aside > .box,
+.lt-wiz-layout:not(.is-enhanced) .lt-wiz-preview,
+.lt-wiz-layout:not(.is-enhanced) .lt-wiz-count {
+  display: none;
+}
+
+.lt-wiz-layout:not(.is-enhanced) .lt-wiz-aside {
+  display: block;
+  margin-top: 1.25rem;
+}
+
+.lt-wiz-layout:not(.is-enhanced) .lt-wiz-aside:empty {
+  display: none;
+}
+
+/* Steps 1 and 2 are drafted fieldsets with a small legend. */
+.lt-wiz-layout:not(.is-enhanced) .lt-wiz-step:is(
+    [data-wiz-step='0'], [data-wiz-step='1']
+  ) {
+  background-color: #ffffff;
+  border: 1px solid var(--lt-wiz-hairline);
+  border-radius: var(--border-radius);
+  box-shadow: none;
+  padding: 0.875rem 1.125rem 0.125rem;
+}
+
+.lt-wiz-layout:not(.is-enhanced) .lt-wiz-step > legend {
+  color: var(--lt-wiz-ink-soft);
+  float: none;
+  font-size: 0.8125rem;
+  margin-left: -0.375rem;
+  padding: 0 0.375rem;
+  width: auto;
+}
+
+.lt-wiz-layout:not(.is-enhanced) .lt-wiz-step > legend h2 {
+  color: inherit;
+  font-size: inherit;
+  font-weight: normal;
+  line-height: inherit;
+  margin: 0;
+}
+
+.lt-wiz-layout:not(.is-enhanced) .lt-wiz-step > legend ~ * {
+  clear: none;
+}
+
+.lt-wiz-layout:not(.is-enhanced) .lt-wiz-step:is(
+    [data-wiz-step='2'], [data-wiz-step='3'], [data-wiz-step='4']
+  ) {
+  background: none;
+  border: 0;
+  box-shadow: none;
+  padding: 0;
+}
+
+.lt-wiz-layout:not(.is-enhanced) .lt-wiz-step:is(
+    [data-wiz-step='2'], [data-wiz-step='3'], [data-wiz-step='4']
+  ):not(:last-child) {
+  margin-bottom: 0;
+}
+
+/* Their titles stay for screen readers; the scopes carry the numbering. */
+.lt-wiz-layout:not(.is-enhanced) .lt-wiz-step:is(
+    [data-wiz-step='2'], [data-wiz-step='3']
+  ) > legend,
+.lt-wiz-layout:not(.is-enhanced) .lt-wiz-step[data-wiz-step='4'] > h2 {
+  border: 0;
+  clip: rect(0, 0, 0, 0);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+.lt-wiz-layout:not(.is-enhanced) .lt-wiz-intro,
+.lt-wiz-layout:not(.is-enhanced) :is(
+    [data-wiz-scope='solo'], [data-wiz-scope='team'],
+    [data-wiz-scope='team-players'], .lt-wiz-groups
+  ) .form-caption,
+.lt-wiz-layout:not(.is-enhanced) [data-wiz-intro] {
+  display: none;
+}
+
+/* Teams and players per team read as one box. */
+.lt-wiz-layout:not(.is-enhanced) [data-wiz-scope='team'] {
+  border-bottom: 0;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.lt-wiz-layout:not(.is-enhanced) [data-wiz-scope='team-players'] {
+  border-top: 0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  padding-top: 0;
+}
+
+/* Floated, the legend no longer starts the white box at its midline. */
+.lt-wiz-layout:not(.is-enhanced) [data-wiz-scope='team-players'] > legend {
+  color: inherit;
+  float: left;
+  font-size: inherit;
+  margin: 0 0 0.25rem;
+  padding: 0;
+  width: 100%;
+}
+
+.lt-wiz-layout:not(.is-enhanced) [data-wiz-scope='team-players'] > legend + * {
+  clear: left;
+}
+
+/* The wrappers of step 4 are divs; their legend sits on the border. */
+.lt-wiz-layout:not(.is-enhanced) :is(
+    [data-wiz-scope='highscore'], [data-wiz-scope='ffa']
+  ) {
+  background-color: #ffffff;
+  border: 1px solid var(--lt-wiz-hairline);
+  border-radius: var(--border-radius);
+  margin: 0 0 1.125rem;
+  padding: 0.875rem 1.125rem 0.125rem;
+  position: relative;
+}
+
+.lt-wiz-layout:not(.is-enhanced) .lt-wiz-nojs-legend {
+  background-color: #ffffff;
+  color: var(--lt-wiz-ink-soft);
+  font-size: 0.8125rem;
+  left: 0.75rem;
+  line-height: 1.2;
+  padding: 0 0.375rem;
+  position: absolute;
+  top: -0.6rem;
+}
+
+/* Plain radios instead of cards. */
+.lt-wiz-layout:not(.is-enhanced) .lt-wiz-step[data-wiz-step='1'] {
+  column-gap: 1rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.lt-wiz-layout:not(.is-enhanced) .lt-wiz-step[data-wiz-step='1'] > legend {
+  grid-column: 1 / -1;
+}
+
+.lt-wiz-layout:not(.is-enhanced) [data-wiz-choice='elimination_mode'] {
+  grid-column: 1 / -1;
+}
+
+.lt-wiz-layout:not(.is-enhanced) .lt-wiz-cards__grid {
+  display: block;
+}
+
+.lt-wiz-layout:not(.is-enhanced) .lt-wiz-card,
+.lt-wiz-layout:not(.is-enhanced) .lt-wiz-card:has(input:checked),
+.lt-wiz-layout:not(.is-enhanced) .lt-wiz-card:has(input:disabled) {
+  align-items: flex-start;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  color: inherit;
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+  padding: 0;
+}
+
+.lt-wiz-layout:not(.is-enhanced) .lt-wiz-card > input {
+  height: 1rem;
+  margin: 0.1875rem 0 0;
+  width: 1rem;
+}
+
+.lt-wiz-layout:not(.is-enhanced) .lt-wiz-card__title {
+  font-weight: normal;
+}
+
+.lt-wiz-layout:not(.is-enhanced) :is(
+    .lt-wiz-card__desc, .lt-wiz-card__ex, .lt-wiz-card__why
+  ) {
+  display: none;
+}
+
+/* The upload is a plain file field. */
+.lt-wiz-layout:not(.is-enhanced) .lt-wiz-drop {
+  background: none;
+  border: 0;
+  padding: 0;
+  text-align: left;
+}
+
+.lt-wiz-layout:not(.is-enhanced) .lt-wiz-nav {
+  justify-content: flex-start;
+  margin-top: 0;
+}
+
+.lt-wiz-layout:not(.is-enhanced) [data-wiz-review] > .notification {
+  margin-bottom: 1.25rem;
+}
+
+@media (max-width: 600px) {
+  main:has(.lt-wiz-layout:not(.is-enhanced)) .lt-wiz-head > .title:not(:last-child) {
+    margin-bottom: 0;
+  }
+
+  main:has(.lt-wiz-layout:not(.is-enhanced)) .lt-wiz-head.block:not(:last-child) {
+    margin-bottom: 1.25rem;
+  }
+}

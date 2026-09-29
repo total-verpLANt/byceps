@@ -14,6 +14,9 @@ from werkzeug.exceptions import Forbidden, MethodNotAllowed, NotFound
 
 from byceps.services.lan_tournament import tournament_request_service
 from byceps.services.lan_tournament.blueprints.admin import views
+from byceps.services.lan_tournament.models.contestant_type import (
+    ContestantType,
+)
 from byceps.services.lan_tournament.models.elimination_mode import (
     EliminationMode,
 )
@@ -54,6 +57,20 @@ def app():
     a.config['BABEL_DEFAULT_TIMEZONE'] = 'UTC'
     Babel(a)
     return a
+
+
+@pytest.fixture(autouse=True)
+def _stub_create_wizard_context():
+    """Keep `create_form` off `url_for` and the real party model.
+
+    The wizard context is covered by `test_create_wizard_views_admin.py`
+    and the render tests; these tests only care about the F-17 keys.
+    """
+    with (
+        patch(f'{_V}._create_wizard_urls', return_value={}),
+        patch(f'{_V}.build_create_wizard_context', return_value={}),
+    ):
+        yield
 
 
 def _make_user(*, permissions=frozenset()) -> MagicMock:
@@ -1294,6 +1311,9 @@ def test_admin_update_request_requires_request_view_permission_too(app):
 _CREATE_FORM_DATA = {
     'name': 'New Tournament',
     'from_request_id': '11111111-1111-1111-1111-111111111111',
+    'contestant_type': 'SOLO',
+    'game_format': 'ONE_V_ONE',
+    'elimination_mode': 'SINGLE_ELIMINATION',
 }
 
 
@@ -1344,11 +1364,14 @@ def test_admin_create_from_non_accepted_request_never_calls_create_tournament(
 
     mock_tournament_svc.create_tournament.assert_not_called()
     mock_request_svc.appoint_proposer_orga.assert_not_called()
-    mock_flash_error.assert_called_once_with(
-        'Request is no longer in the expected state.'
-    )
+    mock_flash_error.assert_not_called()
     mock_create_form.assert_called_once()
     assert result == 'rendered-form'
+    assert (
+        'Request #%(number)s is no longer accepted. '
+        'No tournament was created; your entries are kept.'
+        in mock_create_form.call_args.args[1].from_request_id.errors
+    )
 
     # x: the hidden field must not keep pointing at a request that can
     # never be linked -- otherwise every resubmit fails the same way.
@@ -1527,11 +1550,12 @@ def test_admin_create_clears_request_link_on_dead_link_create_tournament_err(
         result = views.create(party.id)
 
     mock_request_svc.appoint_proposer_orga.assert_not_called()
-    mock_flash_error.assert_called_once_with(dead_link_err_message)
+    mock_flash_error.assert_not_called()
     mock_flash_notice.assert_called_once()
     mock_create_form.assert_called_once()
     rerendered_form = mock_create_form.call_args.args[1]
     assert rerendered_form.from_request_id.data == ''
+    assert dead_link_err_message in rerendered_form.from_request_id.errors
     assert result == 'rendered-form'
 
 
@@ -1570,11 +1594,13 @@ def test_admin_create_keeps_request_link_for_unrelated_create_tournament_err(
         result = views.create(party.id)
 
     mock_request_svc.appoint_proposer_orga.assert_not_called()
-    mock_flash_error.assert_called_once_with(err_message)
+    mock_flash_error.assert_not_called()
     mock_flash_notice.assert_not_called()
     mock_create_form.assert_called_once()
     rerendered_form = mock_create_form.call_args.args[1]
     assert rerendered_form.from_request_id.data == str(tournament_request.id)
+    assert err_message in rerendered_form.form_errors
+    assert not rerendered_form.from_request_id.errors
     assert result == 'rendered-form'
 
 
@@ -1613,11 +1639,14 @@ def test_admin_create_refuses_live_linked_tournament_created_request(app):
 
     mock_tournament_svc.create_tournament.assert_not_called()
     mock_request_svc.appoint_proposer_orga.assert_not_called()
-    mock_flash_error.assert_called_once_with(
-        'Request is no longer in the expected state.'
-    )
+    mock_flash_error.assert_not_called()
     mock_create_form.assert_called_once()
     assert result == 'rendered-form'
+    assert (
+        'Request #%(number)s is no longer accepted. '
+        'No tournament was created; your entries are kept.'
+        in mock_create_form.call_args.args[1].from_request_id.errors
+    )
 
     # x: a live-linked request can never become recreatable either --
     # clear the hidden field the same way.
@@ -1709,11 +1738,13 @@ def test_admin_create_with_unresolvable_from_request_id_never_creates(app):
 
     mock_tournament_svc.create_tournament.assert_not_called()
     mock_request_svc.appoint_proposer_orga.assert_not_called()
-    mock_flash_error.assert_called_once_with(
-        'Request is no longer in the expected state.'
-    )
+    mock_flash_error.assert_not_called()
     mock_create_form.assert_called_once()
     assert result == 'rendered-form'
+    assert (
+        'Request is no longer in the expected state.'
+        in mock_create_form.call_args.args[1].from_request_id.errors
+    )
 
     # x: an unresolvable from_request_id must not keep re-appearing on
     # every resubmit either.
@@ -1723,17 +1754,17 @@ def test_admin_create_with_unresolvable_from_request_id_never_creates(app):
 
 
 # --------------------------------------------------------------------- #
-# Admin create -- blank contestant_type derives the effective type for
-# clearing irrelevant constraints (B3, workspace-pv3b.22)
+# Admin create -- the effective contestant type clears irrelevant
+# constraints (B3, workspace-pv3b.22)
 # --------------------------------------------------------------------- #
 
 
-def test_admin_create_blank_type_with_team_size_two_clears_solo_fields(app):
-    """B3: a blank `contestant_type` with team size 2 still derives to
-    TEAM at the service layer -- the "clear irrelevant constraints"
-    block must branch on that same derived type, or `max_players`/
-    `min_players` (SOLO-only fields) survive and wrongly cap joins on
-    what is actually a team tournament."""
+def test_admin_create_team_type_clears_solo_fields(app):
+    """B3: the "clear irrelevant constraints" block must branch on the
+    effective contestant type, or `max_players`/`min_players`
+    (SOLO-only fields) survive and wrongly cap joins on what is
+    actually a team tournament. A blank type is no longer accepted by
+    `create` (structure is required), so the type is explicit here."""
     party = SimpleNamespace(id='p1')
     tournament = SimpleNamespace(
         id='44444444-4444-4444-4444-444444444444', name='Blank Type Team'
@@ -1742,6 +1773,9 @@ def test_admin_create_blank_type_with_team_size_two_clears_solo_fields(app):
 
     data = {
         'name': 'Blank Type Team',
+        'contestant_type': 'TEAM',
+        'game_format': 'ONE_V_ONE',
+        'elimination_mode': 'SINGLE_ELIMINATION',
         'max_players': '20',
         'max_players_in_team': '2',
     }
@@ -1764,18 +1798,15 @@ def test_admin_create_blank_type_with_team_size_two_clears_solo_fields(app):
 
     mock_tournament_svc.create_tournament.assert_called_once()
     kwargs = mock_tournament_svc.create_tournament.call_args.kwargs
-    # Left `None` for the service layer's own derivation -- never
-    # overwritten with the derived type here.
-    assert kwargs['contestant_type'] is None
+    assert kwargs['contestant_type'] is ContestantType.TEAM
     assert kwargs['max_players'] is None
     assert kwargs['min_players'] is None
     assert kwargs['max_players_in_team'] == 2
 
 
-def test_admin_create_blank_type_with_team_size_one_clears_team_fields(app):
-    """B3 (the other branch): a blank `contestant_type` with team size
-    1 derives to SOLO -- the block must clear the TEAM-only fields,
-    not leave them stale on what is actually a solo tournament."""
+def test_admin_create_solo_type_clears_team_fields(app):
+    """B3 (the other branch): a SOLO tournament must have the TEAM-only
+    fields cleared, not left stale."""
     party = SimpleNamespace(id='p1')
     tournament = SimpleNamespace(
         id='66666666-6666-6666-6666-666666666666', name='Blank Type Solo'
@@ -1784,6 +1815,9 @@ def test_admin_create_blank_type_with_team_size_one_clears_team_fields(app):
 
     data = {
         'name': 'Blank Type Solo',
+        'contestant_type': 'SOLO',
+        'game_format': 'ONE_V_ONE',
+        'elimination_mode': 'SINGLE_ELIMINATION',
         'max_players_in_team': '1',
         'max_teams': '8',
     }
@@ -1806,7 +1840,7 @@ def test_admin_create_blank_type_with_team_size_one_clears_team_fields(app):
 
     mock_tournament_svc.create_tournament.assert_called_once()
     kwargs = mock_tournament_svc.create_tournament.call_args.kwargs
-    assert kwargs['contestant_type'] is None
+    assert kwargs['contestant_type'] is ContestantType.SOLO
     assert kwargs['min_teams'] is None
     assert kwargs['max_teams'] is None
     assert kwargs['min_players_in_team'] is None
@@ -1830,6 +1864,17 @@ def test_admin_update_blank_type_with_team_size_two_clears_solo_fields(app):
         id='44444444-4444-4444-4444-444444444444',
         name='Blank Type Team Update',
         tournament_status=TournamentStatus.DRAFT,
+        min_players=None,
+        max_players=None,
+        min_teams=None,
+        max_teams=None,
+        min_players_in_team=None,
+        max_players_in_team=None,
+        group_size_min=None,
+        group_size_max=None,
+        advancement_count=None,
+        point_table=None,
+        start_time=None,
     )
     updated_tournament = SimpleNamespace(id=tournament.id, name=tournament.name)
 
@@ -1875,6 +1920,17 @@ def test_admin_update_blank_type_with_team_size_one_clears_team_fields(app):
         id='66666666-6666-6666-6666-666666666666',
         name='Blank Type Solo Update',
         tournament_status=TournamentStatus.DRAFT,
+        min_players=None,
+        max_players=None,
+        min_teams=None,
+        max_teams=None,
+        min_players_in_team=None,
+        max_players_in_team=None,
+        group_size_min=None,
+        group_size_max=None,
+        advancement_count=None,
+        point_table=None,
+        start_time=None,
     )
     updated_tournament = SimpleNamespace(id=tournament.id, name=tournament.name)
 
@@ -2414,12 +2470,14 @@ def test_admin_create_refuses_from_request_without_request_decide(app):
     mock_tournament_svc.create_tournament.assert_not_called()
     mock_request_svc.appoint_proposer_orga.assert_not_called()
     mock_flash_notice.assert_called_once()
-    mock_flash_error.assert_called_once_with(
-        'You are not allowed to create a tournament from a request.'
-    )
+    mock_flash_error.assert_not_called()
     mock_create_form.assert_called_once()
     rerendered_form = mock_create_form.call_args.args[1]
     assert rerendered_form.from_request_id.data == ''
+    assert (
+        'You are not allowed to create a tournament from a request.'
+        in rerendered_form.from_request_id.errors
+    )
     assert result == 'rendered-form'
 
 
@@ -2459,12 +2517,14 @@ def test_admin_create_refuses_from_request_with_only_request_decide(app):
     mock_tournament_svc.create_tournament.assert_not_called()
     mock_request_svc.appoint_proposer_orga.assert_not_called()
     mock_flash_notice.assert_called_once()
-    mock_flash_error.assert_called_once_with(
-        'You are not allowed to create a tournament from a request.'
-    )
+    mock_flash_error.assert_not_called()
     mock_create_form.assert_called_once()
     rerendered_form = mock_create_form.call_args.args[1]
     assert rerendered_form.from_request_id.data == ''
+    assert (
+        'You are not allowed to create a tournament from a request.'
+        in rerendered_form.from_request_id.errors
+    )
     assert result == 'rendered-form'
 
 
@@ -2501,12 +2561,14 @@ def test_admin_create_refuses_from_request_with_only_request_view(app):
     mock_tournament_svc.create_tournament.assert_not_called()
     mock_request_svc.appoint_proposer_orga.assert_not_called()
     mock_flash_notice.assert_called_once()
-    mock_flash_error.assert_called_once_with(
-        'You are not allowed to create a tournament from a request.'
-    )
+    mock_flash_error.assert_not_called()
     mock_create_form.assert_called_once()
     rerendered_form = mock_create_form.call_args.args[1]
     assert rerendered_form.from_request_id.data == ''
+    assert (
+        'You are not allowed to create a tournament from a request.'
+        in rerendered_form.from_request_id.errors
+    )
     assert result == 'rendered-form'
 
 
