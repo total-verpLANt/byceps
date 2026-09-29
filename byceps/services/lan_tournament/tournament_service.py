@@ -2,9 +2,11 @@ import dataclasses
 from datetime import datetime, UTC
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
+from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
 
+from byceps.services.party import party_service
 from byceps.services.party.models import PartyID
 from byceps.services.user.models import UserID
 from byceps.util.result import Err, Ok, Result
@@ -13,6 +15,7 @@ from . import (
     signals,
     tournament_domain_service,
     tournament_match_service,
+    tournament_image_service,
     tournament_orga_repository,
     tournament_participant_service,
     tournament_repository,
@@ -31,6 +34,7 @@ from .events import (
 )
 from .models.contestant_type import ContestantType
 from .models.tournament import Tournament, TournamentID
+from .models.tournament_image import TournamentImageID
 from .models.score_ordering import ScoreOrdering
 from .models.game_format import GameFormat, is_valid_combination
 from .models.elimination_mode import EliminationMode
@@ -40,6 +44,11 @@ from .tournament_log_service import create_log_entry
 if TYPE_CHECKING:
     from .models.tournament_request import TournamentRequestID
 
+
+DUPLICATE_SUBMISSION_ERROR = 'This tournament has already been created.'
+IMAGE_UNAVAILABLE_ERROR = tournament_image_service.IMAGE_UNAVAILABLE_ERROR
+# Same msgid as the domain's place count rule, which has a German entry.
+TOO_MANY_PLACES_MSGID = 'At most %(max)s places.'
 
 # Statuses where only cosmetic fields may be edited.
 EDIT_LOCKED_STATUSES: frozenset[TournamentStatus] = frozenset({
@@ -55,17 +64,32 @@ def _validate_ffa_config(
     contestant_type: ContestantType | None,
     max_teams: int | None,
     group_size_min: int | None,
+    *,
+    check_table_limits: bool = True,
 ) -> Result[None, str]:
     """Validate FFA-specific configuration fields.
 
     Returns ``Ok(None)`` when the format is not FFA or when all
     required FFA fields are present and consistent.
+
+    An update passes ``check_table_limits=False`` for an unchanged
+    stored table, so a legacy table above the place and points
+    ceilings stays editable.
     """
     if game_format != GameFormat.FREE_FOR_ALL:
         return Ok(None)
 
     if point_table is None:
         return Err('FFA tournaments require a point_table.')
+    if check_table_limits:
+        max_places = tournament_domain_service.MAX_POINT_TABLE_PLACES
+        if len(point_table) > max_places:
+            return Err(TOO_MANY_PLACES_MSGID % {'max': max_places})
+        out_of_range = tournament_domain_service.check_point_values(
+            point_table
+        )
+        if out_of_range is not None:
+            return Err(out_of_range.msgid % dict(out_of_range.params))
     if group_size_max is None:
         return Err('FFA tournaments require group_size_max.')
     if group_size_min is not None and group_size_min > group_size_max:
@@ -133,6 +157,9 @@ def create_tournament(
     position: int | None = None,
     created_from_request_id: 'TournamentRequestID | None' = None,
     initiator_id: UserID | None = None,
+    image_id: TournamentImageID | None = None,
+    image_alt_text: str | None = None,
+    creation_token: UUID | None = None,
 ) -> Result[tuple[Tournament, TournamentCreatedEvent], str]:
     """Create a tournament.
 
@@ -165,10 +192,20 @@ def create_tournament(
     if len(name.strip()) > 80:
         return Err('Tournament name must not exceed 80 characters.')
 
-    # Validate image URL
-    validation_result = _validate_image_url(image_url)
-    if validation_result.is_err():
-        return Err(validation_result.unwrap_err())
+    if image_id is not None:
+        # The stored image overrides any posted URL.
+        party = party_service.get_party(party_id)
+        image = tournament_image_service.find_attachable_image(
+            image_id, party
+        )
+        if image is None:
+            return Err(IMAGE_UNAVAILABLE_ERROR)
+        image_url = tournament_image_service.get_image_url_path(image)
+    else:
+        # Validate image URL
+        validation_result = _validate_image_url(image_url)
+        if validation_result.is_err():
+            return Err(validation_result.unwrap_err())
 
     # Validate game_format + elimination_mode combination
     if game_format is not None and elimination_mode is not None:
@@ -212,6 +249,9 @@ def create_tournament(
         points_carry_to_losers=points_carry_to_losers,
         position=position,
         created_from_request_id=created_from_request_id,
+        image_id=image_id,
+        image_alt_text=image_alt_text,
+        creation_token=creation_token,
     )
 
     try:
@@ -220,13 +260,15 @@ def create_tournament(
         )
     except IntegrityError as e:
         tournament_repository.rollback_session()
-        if (
-            extract_constraint_name(e)
-            == 'uq_lan_tournaments_created_from_request_id'
-        ):
+        constraint_name = extract_constraint_name(e)
+        if constraint_name == 'uq_lan_tournaments_created_from_request_id':
             return Err(
                 'A tournament has already been created from this request.'
             )
+        if constraint_name == 'uq_lan_tournaments_creation_token':
+            return Err(DUPLICATE_SUBMISSION_ERROR)
+        if constraint_name == 'fk_lan_tournaments_image_id':
+            return Err(IMAGE_UNAVAILABLE_ERROR)
         raise
     except Exception:
         # A DataError/OperationalError from the flush must not leave
@@ -320,10 +362,15 @@ def update_tournament(
     if len(name.strip()) > 80:
         return Err('Tournament name must not exceed 80 characters.')
 
-    # Validate image URL
-    validation_result = _validate_image_url(image_url)
-    if validation_result.is_err():
-        return Err(validation_result.unwrap_err())
+    tournament = tournament_repository.get_tournament(tournament_id)
+
+    # An unchanged URL (e.g. an uploaded image's relative served path)
+    # stays valid without re-validation.
+    image_url_changed = (image_url or None) != (tournament.image_url or None)
+    if image_url_changed:
+        validation_result = _validate_image_url(image_url)
+        if validation_result.is_err():
+            return Err(validation_result.unwrap_err())
 
     # Validate game_format + elimination_mode combination
     if game_format is not None and elimination_mode is not None:
@@ -337,11 +384,10 @@ def update_tournament(
     ffa_result = _validate_ffa_config(
         game_format, point_table, group_size_max,
         contestant_type, max_teams, group_size_min,
+        check_table_limits=point_table != tournament.point_table,
     )
     if ffa_result.is_err():
         return Err(ffa_result.unwrap_err())
-
-    tournament = tournament_repository.get_tournament(tournament_id)
 
     # Reject structural changes while the tournament is in play.
     if tournament.tournament_status in EDIT_LOCKED_STATUSES:
@@ -406,6 +452,12 @@ def update_tournament(
         game=game,
         description=description,
         image_url=image_url,
+        image_id=None if image_url_changed else tournament.image_id,
+        image_alt_text=(
+            None
+            if image_url_changed and tournament.image_id is not None
+            else tournament.image_alt_text
+        ),
         ruleset=ruleset,
         start_time=start_time,
         updated_at=datetime.now(UTC),
@@ -436,6 +488,15 @@ def update_tournament(
     signals.tournament_updated.send(None, event=event)
 
     return Ok(updated)
+
+
+def find_tournament_by_creation_token(
+    creation_token: UUID,
+) -> Tournament | None:
+    """Return the tournament created with the token, if any."""
+    return tournament_repository.find_tournament_by_creation_token(
+        creation_token
+    )
 
 
 def delete_tournament(

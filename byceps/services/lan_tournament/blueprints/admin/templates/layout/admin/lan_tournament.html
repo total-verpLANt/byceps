@@ -29,6 +29,11 @@
         requests_tab_label,
         id='requests',
         required_permission='lan_tournament.request_view')
+      .add_item(
+        url_for('lan_tournament_admin.maintenance', party_id=party.id),
+        _('Maintenance'),
+        id='maintenance',
+        required_permission='lan_tournament.maintain')
     , current_tab
   )
 }}

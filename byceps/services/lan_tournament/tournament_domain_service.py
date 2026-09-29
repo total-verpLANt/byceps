@@ -1,6 +1,9 @@
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime, UTC
 from math import ceil
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 from byceps.services.party.models import PartyID
 from byceps.util.result import Err, Ok, Result
@@ -13,15 +16,17 @@ from .events import (
 from .models.contestant_type import ContestantType
 from .models.tournament import Tournament, TournamentID
 from .models.score_ordering import ScoreOrdering
-from .models.game_format import GameFormat
+from .models.game_format import GameFormat, is_valid_combination
 from .models.elimination_mode import EliminationMode
 from .models.round_robin_standing import RoundRobinStanding
 from .models.tournament_match_to_contestant import (
     TournamentMatchToContestant,
 )
 from .models.tournament_status import TournamentStatus
+from .models.validation_message import ValidationMessage
 
 if TYPE_CHECKING:
+    from .models.tournament_image import TournamentImageID
     from .models.tournament_request import TournamentRequestID
 
 
@@ -93,6 +98,9 @@ def create_tournament(
     points_carry_to_losers: bool | None = None,
     position: int = 0,
     created_from_request_id: 'TournamentRequestID | None' = None,
+    image_id: 'TournamentImageID | None' = None,
+    image_alt_text: str | None = None,
+    creation_token: UUID | None = None,
 ) -> tuple[Tournament, TournamentCreatedEvent]:
     """Create a new tournament."""
     tournament_id = TournamentID(generate_uuid7())
@@ -126,6 +134,9 @@ def create_tournament(
         points_carry_to_losers=points_carry_to_losers,
         position=position,
         created_from_request_id=created_from_request_id,
+        image_id=image_id,
+        image_alt_text=image_alt_text,
+        creation_token=creation_token,
     )
 
     event = TournamentCreatedEvent(
@@ -161,6 +172,210 @@ def derive_contestant_type(
         return ContestantType.TEAM
 
     return ContestantType.SOLO
+
+
+@dataclass(frozen=True, kw_only=True)
+class TournamentSettings:
+    contestant_type: ContestantType | None
+    game_format: GameFormat | None
+    elimination_mode: EliminationMode | None
+    score_ordering: ScoreOrdering | None
+    min_players: int | None
+    max_players: int | None
+    min_teams: int | None
+    max_teams: int | None
+    min_players_in_team: int | None
+    max_players_in_team: int | None
+    point_table: list[int] | None
+    group_size_min: int | None
+    group_size_max: int | None
+    advancement_count: int | None
+
+
+MAX_POINT_TABLE_PLACES = 64
+
+# Equals `tournament_match_service.MAX_MATCH_SCORE`. A placement's
+# points are stored in a 32-bit column when a group is confirmed.
+MAX_POINTS_PER_PLACE = 999_999_999
+
+
+POINTS_TOO_HIGH_MSGID = 'Points may be at most %(max)s.'
+
+POINTS_TOO_LOW_MSGID = 'Points may be at least %(min)s.'
+
+TOO_MANY_PLACES_MSGID = 'At most %(max)s places.'
+
+
+def check_point_count(point_table: list[int]) -> ValidationMessage | None:
+    """Return a message if the table has more places than allowed."""
+    if len(point_table) > MAX_POINT_TABLE_PLACES:
+        return ValidationMessage(
+            TOO_MANY_PLACES_MSGID, (('max', MAX_POINT_TABLE_PLACES),)
+        )
+    return None
+
+
+def check_point_values(point_table: list[int]) -> ValidationMessage | None:
+    """Return a message if a place is worth more or less than allowed."""
+    if any(points > MAX_POINTS_PER_PLACE for points in point_table):
+        return ValidationMessage(
+            POINTS_TOO_HIGH_MSGID, (('max', MAX_POINTS_PER_PLACE),)
+        )
+    if any(points < -MAX_POINTS_PER_PLACE for points in point_table):
+        return ValidationMessage(
+            POINTS_TOO_LOW_MSGID, (('min', -MAX_POINTS_PER_PLACE),)
+        )
+    return None
+
+
+def validate_tournament_settings(
+    settings: TournamentSettings, *, require_structure: bool
+) -> Result[None, dict[str, ValidationMessage]]:
+    """Check structural and cross-field tournament rules."""
+    errors: dict[str, ValidationMessage] = {}
+
+    def add(field: str, msgid: str, **params: str | int) -> None:
+        errors.setdefault(
+            field, ValidationMessage(msgid, tuple(params.items()))
+        )
+
+    def check_pair(min_field: str, max_field: str, min_label: str) -> None:
+        min_value = getattr(settings, min_field)
+        max_value = getattr(settings, max_field)
+        if (
+            min_value is not None
+            and max_value is not None
+            and min_value > max_value
+        ):
+            add(
+                max_field,
+                'Must be at least "%(other)s" (%(n)s).',
+                other=min_label,
+                n=min_value,
+            )
+
+    contestant_type = settings.contestant_type
+    game_format = settings.game_format
+    elimination_mode = settings.elimination_mode
+
+    if require_structure:
+        if contestant_type is None:
+            add(
+                'contestant_type',
+                'Please choose whether individuals or teams compete.',
+            )
+        if game_format is None:
+            add('game_format', 'Please choose a game format.')
+        if elimination_mode is None and game_format != GameFormat.HIGHSCORE:
+            add('elimination_mode', 'Please choose an elimination mode.')
+
+    if (
+        game_format is not None
+        and elimination_mode is not None
+        and not is_valid_combination(game_format, elimination_mode)
+    ):
+        add(
+            'elimination_mode',
+            'This combination of game format and elimination mode is not '
+            'supported.',
+        )
+
+    if contestant_type == ContestantType.SOLO:
+        check_pair('min_players', 'max_players', 'Min. players')
+    elif contestant_type == ContestantType.TEAM:
+        check_pair('min_teams', 'max_teams', 'Min. teams')
+        check_pair(
+            'min_players_in_team',
+            'max_players_in_team',
+            'Min. players per team',
+        )
+
+    if game_format == GameFormat.HIGHSCORE and settings.score_ordering is None:
+        add('score_ordering', 'Please choose which results are better.')
+
+    if game_format == GameFormat.FREE_FOR_ALL:
+        _check_free_for_all(settings, add)
+
+    if errors:
+        return Err(errors)
+    return Ok(None)
+
+
+def _check_free_for_all(
+    settings: TournamentSettings, add: Callable[..., None]
+) -> None:
+    """Add the Free-for-All rules of `validate_tournament_settings`."""
+    is_team = settings.contestant_type == ContestantType.TEAM
+    point_table = settings.point_table
+    group_min = settings.group_size_min
+    group_max = settings.group_size_max
+    advancement = settings.advancement_count
+
+    if not point_table:
+        add('point_table', 'Add points for at least place 1.')
+    elif (too_many := check_point_count(point_table)) is not None:
+        add('point_table', too_many.msgid, **dict(too_many.params))
+    elif (out_of_range := check_point_values(point_table)) is not None:
+        add('point_table', out_of_range.msgid, **dict(out_of_range.params))
+
+    group_min_too_large = False
+    if group_max is None:
+        add('group_size_max', 'Required for Free-for-All.')
+    elif group_min is not None and group_min > group_max:
+        group_min_too_large = True
+        add(
+            'group_size_min',
+            'Must not be larger than the max. group size (%(n)s).',
+            n=group_max,
+        )
+
+    max_contestants = settings.max_teams if is_team else settings.max_players
+    need = group_min if group_min is not None else 2
+    if (
+        not group_min_too_large
+        and max_contestants is not None
+        and max_contestants < need
+    ):
+        if is_team:
+            add(
+                'group_size_min',
+                'With at most %(n)s teams no group of at least %(min)s teams '
+                'can form. Lower the minimum to %(n)s or raise '
+                '"Max. teams" in step 3.',
+                n=max_contestants,
+                min=need,
+            )
+        else:
+            add(
+                'group_size_min',
+                'With at most %(n)s players no group of at least %(min)s '
+                'can form. Lower the minimum or raise "Max. players" in '
+                'step 3.',
+                n=max_contestants,
+                min=need,
+            )
+
+    if advancement is not None:
+        smallest = (
+            group_min
+            if group_min is not None and not group_min_too_large
+            else group_max
+        )
+        if smallest is not None and advancement >= smallest:
+            if is_team:
+                add(
+                    'advancement_count',
+                    'Fewer than %(n)s must advance from the smallest group '
+                    '(%(n)s teams).',
+                    n=smallest,
+                )
+            else:
+                add(
+                    'advancement_count',
+                    'Fewer than %(n)s must advance from the smallest group '
+                    '(%(n)s players).',
+                    n=smallest,
+                )
 
 
 def validate_status_transition(

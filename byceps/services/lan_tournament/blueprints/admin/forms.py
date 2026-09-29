@@ -1,9 +1,11 @@
 import json
+from urllib.parse import urlparse
 
 from flask_babel import lazy_gettext
 from wtforms import (
     BooleanField,
     DateTimeLocalField,
+    FileField,
     HiddenField,
     IntegerField,
     SelectField,
@@ -11,9 +13,11 @@ from wtforms import (
     TextAreaField,
 )
 from wtforms.validators import (
+    DataRequired,
     InputRequired,
     Length,
     Optional,
+    StopValidation,
     ValidationError,
 )
 
@@ -30,6 +34,61 @@ from byceps.services.lan_tournament.models.elimination_mode import (
 )
 from byceps.services.lan_tournament.models.game_format import GameFormat
 from byceps.services.lan_tournament.models.score_ordering import ScoreOrdering
+
+
+MAX_COUNT = tournament_request_domain_service.MAX_PARTICIPANT_LIMIT
+
+_LENGTH_MESSAGE = lazy_gettext(
+    'At most %(max)d characters – currently %(length)d.'
+)
+
+
+def _strip(value):
+    return value.strip() if isinstance(value, str) else value
+
+
+def _normalize_newlines(value):
+    if not isinstance(value, str):
+        return value
+    return value.replace('\r\n', '\n').replace('\r', '\n')
+
+
+class _CountField(IntegerField):
+    """Integer field whose parse error reads like the wizard's."""
+
+    def process_formdata(self, valuelist):
+        try:
+            super().process_formdata(valuelist)
+        except ValueError as e:
+            raise ValueError(lazy_gettext('Whole numbers from 1 only.')) from e
+
+
+def _stop_on_parse_error(form, field):
+    """Keep the parse error alone; range checks need a parsed value."""
+    if field.data is None and field.errors:
+        raise StopValidation
+
+
+def min_above_max_error(form, field, min_field_name):
+    """Return the message if the min field's value exceeds the max's."""
+    min_field = getattr(form, min_field_name)
+    if (
+        field.data is not None
+        and min_field.data is not None
+        and min_field.data > field.data
+    ):
+        return lazy_gettext(
+            'Must be at least "%(other)s" (%(n)s).',
+            other=str(min_field.label.text),
+            n=min_field.data,
+        )
+    return None
+
+
+def _validate_min_not_above_max(form, field, min_field_name):
+    message = min_above_max_error(form, field, min_field_name)
+    if message is not None:
+        raise ValidationError(message)
 
 
 def _get_contestant_type_choices() -> list[tuple[str, str]]:
@@ -74,16 +133,30 @@ def _get_score_ordering_choices() -> list[tuple[str, str]]:
 
 
 class _BaseForm(LocalizedForm):
-    name = StringField(lazy_gettext('Name'), [InputRequired(), Length(max=80)])
-    game = StringField(lazy_gettext('Game'), [Optional(), Length(max=80)])
+    name = StringField(
+        lazy_gettext('Name'),
+        filters=[_strip],
+        validators=[
+            DataRequired(message=lazy_gettext('Please enter a name.')),
+            Length(max=80, message=_LENGTH_MESSAGE),
+        ],
+    )
+    game = StringField(
+        lazy_gettext('Game'),
+        [Optional(), Length(max=80, message=_LENGTH_MESSAGE)],
+    )
     description = TextAreaField(
-        lazy_gettext('Description'), [Optional(), Length(max=10000)]
+        lazy_gettext('Description'),
+        [Optional(), Length(max=10000, message=_LENGTH_MESSAGE)],
+        filters=[_normalize_newlines],
     )
     image_url = StringField(
         lazy_gettext('Image URL'), [Optional(), Length(max=256)]
     )
     ruleset = TextAreaField(
-        lazy_gettext('Ruleset'), [Optional(), Length(max=10000)]
+        lazy_gettext('Ruleset'),
+        [Optional(), Length(max=10000, message=_LENGTH_MESSAGE)],
+        filters=[_normalize_newlines],
     )
     start_time = DateTimeLocalField(
         lazy_gettext('Start time'),
@@ -104,15 +177,83 @@ class _BaseForm(LocalizedForm):
     score_ordering = SelectField(
         lazy_gettext('Score ordering'), validators=[Optional()]
     )
-    min_players = IntegerField(lazy_gettext('Min. players'), [Optional()])
-    max_players = IntegerField(lazy_gettext('Max. players'), [Optional()])
-    min_teams = IntegerField(lazy_gettext('Min. teams'), [Optional()])
-    max_teams = IntegerField(lazy_gettext('Max. teams'), [Optional()])
-    min_players_in_team = IntegerField(
-        lazy_gettext('Min. players per team'), [Optional()]
+    min_players = _CountField(
+        lazy_gettext('Min. players'),
+        [
+            Optional(),
+            _stop_on_parse_error,
+            SafeNumberRange(
+                min=1, message=lazy_gettext('Whole numbers from 1 only.')
+            ),
+            SafeNumberRange(
+                max=MAX_COUNT, message=lazy_gettext('At most %(max)s.')
+            ),
+        ],
     )
-    max_players_in_team = IntegerField(
-        lazy_gettext('Max. players per team'), [Optional()]
+    max_players = _CountField(
+        lazy_gettext('Max. players'),
+        [
+            Optional(),
+            _stop_on_parse_error,
+            SafeNumberRange(
+                min=1, message=lazy_gettext('Whole numbers from 1 only.')
+            ),
+            SafeNumberRange(
+                max=MAX_COUNT, message=lazy_gettext('At most %(max)s.')
+            ),
+        ],
+    )
+    min_teams = _CountField(
+        lazy_gettext('Min. teams'),
+        [
+            Optional(),
+            _stop_on_parse_error,
+            SafeNumberRange(
+                min=1, message=lazy_gettext('Whole numbers from 1 only.')
+            ),
+            SafeNumberRange(
+                max=MAX_COUNT, message=lazy_gettext('At most %(max)s.')
+            ),
+        ],
+    )
+    max_teams = _CountField(
+        lazy_gettext('Max. teams'),
+        [
+            Optional(),
+            _stop_on_parse_error,
+            SafeNumberRange(
+                min=1, message=lazy_gettext('Whole numbers from 1 only.')
+            ),
+            SafeNumberRange(
+                max=MAX_COUNT, message=lazy_gettext('At most %(max)s.')
+            ),
+        ],
+    )
+    min_players_in_team = _CountField(
+        lazy_gettext('Min. players per team'),
+        [
+            Optional(),
+            _stop_on_parse_error,
+            SafeNumberRange(
+                min=1, message=lazy_gettext('Whole numbers from 1 only.')
+            ),
+            SafeNumberRange(
+                max=MAX_COUNT, message=lazy_gettext('At most %(max)s.')
+            ),
+        ],
+    )
+    max_players_in_team = _CountField(
+        lazy_gettext('Max. players per team'),
+        [
+            Optional(),
+            _stop_on_parse_error,
+            SafeNumberRange(
+                min=1, message=lazy_gettext('Whole numbers from 1 only.')
+            ),
+            SafeNumberRange(
+                max=MAX_COUNT, message=lazy_gettext('At most %(max)s.')
+            ),
+        ],
     )
     point_table = StringField(
         lazy_gettext('Points by placement'),
@@ -120,19 +261,52 @@ class _BaseForm(LocalizedForm):
     )
     group_size_min = IntegerField(
         lazy_gettext('Min. group size'),
-        [Optional(), SafeNumberRange(min=2)],
+        [
+            Optional(),
+            _stop_on_parse_error,
+            SafeNumberRange(min=2, message=lazy_gettext('At least 2.')),
+            SafeNumberRange(
+                max=MAX_COUNT, message=lazy_gettext('At most %(max)s.')
+            ),
+        ],
     )
     group_size_max = IntegerField(
         lazy_gettext('Max. group size'),
-        [Optional(), SafeNumberRange(min=2)],
+        [
+            Optional(),
+            _stop_on_parse_error,
+            SafeNumberRange(min=2, message=lazy_gettext('At least 2.')),
+            SafeNumberRange(
+                max=MAX_COUNT, message=lazy_gettext('At most %(max)s.')
+            ),
+        ],
     )
     advancement_count = IntegerField(
         lazy_gettext('Advance per group'),
-        [Optional(), SafeNumberRange(min=1)],
+        [
+            Optional(),
+            _stop_on_parse_error,
+            SafeNumberRange(min=1),
+            SafeNumberRange(
+                max=MAX_COUNT, message=lazy_gettext('At most %(max)s.')
+            ),
+        ],
     )
     points_carry_to_losers = BooleanField(
         lazy_gettext('Points carry to losers pool'),
     )
+
+    @staticmethod
+    def validate_max_players(form, field):
+        _validate_min_not_above_max(form, field, 'min_players')
+
+    @staticmethod
+    def validate_max_teams(form, field):
+        _validate_min_not_above_max(form, field, 'min_teams')
+
+    @staticmethod
+    def validate_max_players_in_team(form, field):
+        _validate_min_not_above_max(form, field, 'min_players_in_team')
 
     def set_contestant_type_choices(self):
         self.contestant_type.choices = _get_contestant_type_choices()
@@ -153,6 +327,34 @@ class TournamentCreateForm(_BaseForm):
     # passes it to `tournament_service.create_tournament` to link the
     # tournament to that request in the same transaction.
     from_request_id = HiddenField()
+    submission_token = HiddenField()
+    image_id = HiddenField()
+    image = FileField(lazy_gettext('Tournament image'))
+    image_alt_text = StringField(
+        lazy_gettext('Image description'),
+        filters=[_strip],
+        validators=[Optional(), Length(max=200)],
+    )
+
+    @staticmethod
+    def validate_image_url(form, field):
+        # Mirrors `tournament_service._validate_image_url`.
+        if not field.data:
+            return
+
+        try:
+            parsed = urlparse(field.data)
+            valid = parsed.scheme in ('http', 'https') and bool(parsed.netloc)
+        except ValueError:
+            valid = False
+
+        if not valid:
+            raise ValidationError(
+                lazy_gettext(
+                    'Only complete http or https addresses, '
+                    'e.g. https://example.org/image.png'
+                )
+            )
 
 
 class TournamentUpdateForm(_BaseForm):

@@ -277,6 +277,68 @@ from one granted by hand beforehand, so record the current grants
 first if any were deliberate. Every other grant, including
 `lan_tournament.administrate` itself, is untouched.
 
+### 018_add_tournament_images.sql
+
+Creates the `lan_tournament_images` table, the uploaded cover images of the
+admin create wizard, and adds `lan_tournaments.image_id`, `image_alt_text` and
+`creation_token`:
+
+1. **`id UUID`** primary key -- application-generated uuid7
+2. **`party_id TEXT NOT NULL`** -- FK to `parties.id`; leads the composite
+   index `ix_lan_tournament_images_party_id_created_at` (`party_id,
+   created_at`), which backs the per-party picker and the lookup of old
+   unreferenced images
+3. **`creator_id UUID NOT NULL`** -- FK to `users.id`, the uploader
+4. **`created_at TIMESTAMPTZ NOT NULL`**
+5. **`filename TEXT NOT NULL`** -- display data only;
+   `ck_lan_tournament_images_filename_length` requires 1 to 200 characters
+6. **`image_type TEXT NOT NULL`** -- `ImageType` member name in lower case;
+   `ck_lan_tournament_images_image_type` allows `jpeg`, `png` and `webp`
+7. **`width` / `height INTEGER NOT NULL`** --
+   `ck_lan_tournament_images_dimensions` requires both positive
+8. **`byte_size INTEGER NOT NULL`** -- `ck_lan_tournament_images_byte_size`
+   requires it positive
+
+On `lan_tournaments`:
+
+- **`image_id UUID NULL`** -- FK `fk_lan_tournaments_image_id` to
+  `lan_tournament_images.id`, indexed via `ix_lan_tournaments_image_id`
+  (backs the reference check on image deletion)
+- **`image_alt_text TEXT NULL`** -- per-tournament alt text; empty or NULL
+  means decorative
+- **`creation_token UUID NULL`** -- idempotency token of a create, guarded by
+  the partial unique index `uq_lan_tournaments_creation_token` (`WHERE
+  creation_token IS NOT NULL`), so a double submit cannot produce a second
+  tournament
+
+The foreign key is added inside a `DO $$` block that checks `pg_constraint`
+by name: PostgreSQL has no `ADD CONSTRAINT IF NOT EXISTS`, and this is the
+first idempotent `ADD CONSTRAINT` in this module. Zero CASCADE behaviors
+(BYCEPS convention).
+
+Note: the branch `prd/f07-waitlist` also uses 018
+(`018_add_waitlist.sql`). This collision is a deliberate, accepted decision --
+whichever of the two branches is merged second must renumber its migration,
+its rollback and its README entry before merging.
+
+Note: the purge-on-upload of abandoned images (decision D2, mentioned in the
+header comment of `018_add_tournament_images.sql`) was replaced by the manual
+Wartung tab on 2026-09-30. Uploading no longer deletes anything.
+
+The same file also grants `lan_tournament.maintain` (Wartung tab) to every
+role that holds `lan_tournament.administrate`: data-driven, no permission
+table, `ON CONFLICT DO NOTHING`, so it is idempotent and takes effect on the
+next request. `import-roles` is create-only and would not apply it to existing
+roles. Staging/prod already on 018: re-run the updated 018; do not run
+rollback_018 (it drops the image table and the image columns).
+
+**Rollback:** `rollback_018.sql` (revokes every `lan_tournament.maintain`
+grant -- not a precise undo, it also revokes hand-made grants -- then drops
+the token index, the image index, the
+FK, the three `lan_tournaments` columns, the images index, then the table --
+irreversible: all image rows and every tournament's image link, alt text and
+creation token are lost; the files under `data/` stay on disk)
+
 ## Pre-Application Checklist
 
 Before applying any migration, complete these steps:

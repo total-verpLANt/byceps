@@ -21,7 +21,7 @@
       <div class="tournament-icon">
         {%- if tournament.image_url %}
           <div class="tournament-media">
-            <img src="{{ tournament.image_url }}" alt="">
+            <img src="{{ tournament.image_url }}" alt="{{ tournament.image_alt_text or '' }}">
           </div>
         {%- else %}
           {{ render_icon('trophy') }}

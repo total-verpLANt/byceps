@@ -52,6 +52,41 @@ This guide documents all available URLs for the LAN Tournament module, covering 
   - `min_teams`, `max_teams`: Team limits (for team tournaments)
   - `min_players_in_team`, `max_players_in_team`: Team size limits
 
+#### Create Wizard: Upload Image
+- **URL**: `/lan-tournaments/for_party/<party_id>/create/image`
+- **Endpoint**: `lan_tournament_admin.upload_create_image`
+- **Method**: POST (`multipart/form-data`, file field `image`)
+- **Permission**: `lan_tournament.create`
+- **Description**: Validates, re-encodes and stores a tournament image for the party. The request body is capped at `MAX_REQUEST_BYTES` (5 MiB + 256 KiB), the file at 5 MiB.
+- **Success**: `201` with `{image_id, url, filename, width, height, byte_size}`; `url` is the relative served path.
+- **Errors** (JSON `{error: <translated message>}`): `400` no file or unreadable/too small/too large image, `413` body or file above the limit, `415` not JPEG/PNG/WebP. An unknown party is a plain `404`.
+
+#### Create Wizard: Delete Staged Image
+- **URL**: `/lan-tournaments/for_party/<party_id>/create/image/<image_id>`
+- **Endpoint**: `lan_tournament_admin.delete_create_image`
+- **Method**: DELETE
+- **Permission**: `lan_tournament.create`
+- **Description**: Deletes an unreferenced image, only for its uploader and only within the party it was uploaded for.
+- **Success**: `204`, empty body.
+- **Errors** (JSON `{error}`): `404` unknown image, malformed UUID or image of another party, `403` not the uploader, `409` referenced by a tournament.
+- **Client URL**: build with `url_for('lan_tournament_admin.delete_create_image', party_id=..., image_id='__ID__')`; the client replaces `__ID__` with the image id.
+
+#### Create Wizard: List Images
+- **URL**: `/lan-tournaments/for_party/<party_id>/images`
+- **Endpoint**: `lan_tournament_admin.list_create_images`
+- **Method**: GET
+- **Permission**: `lan_tournament.create`
+- **Query**: `scope=party|brand` (default `party`), `q` (file name filter, cut to 100 characters), `page` (1 to 10000, default 1). Anything else is `400`.
+- **Success**: `200` with `{items: [{image_id, url, filename, width, height, byte_size, party_title, used_by: [tournament names], created_at (ISO 8601)}], page, has_next}`. Brand scope covers the parties of the party's brand only.
+
+#### Create Wizard: Pre-Check
+- **URL**: `/lan-tournaments/for_party/<party_id>/create/validate`
+- **Endpoint**: `lan_tournament_admin.validate_create`
+- **Method**: POST (same form body as the create submit, without the image file)
+- **Permission**: `lan_tournament.create`
+- **Description**: Runs the create validation without writing anything: no tournament, no flash, no request unlink.
+- **Success**: `200` with `{ok, errors: {<field>: [messages]}, first_error_step, checked_at}`. Form-level errors are under the key `""`.
+
 #### Update Tournament Form
 - **URL**: `/lan-tournaments/tournaments/<tournament_id>/update`
 - **Method**: GET
@@ -267,6 +302,18 @@ This guide documents all available URLs for the LAN Tournament module, covering 
 - **Description**: Displays tournament bracket visualization for administrators
 - **Example**: `/lan-tournaments/tournaments/01234567-89ab-cdef-0123-456789abcdef/bracket`
 
+#### Party Maintenance (Admin)
+- **URLs**:
+  - `/lan-tournaments/for_party/<party_id>/maintenance` (GET): the actions with counts
+  - `/lan-tournaments/for_party/<party_id>/maintenance/<action_id>` (GET): preview of what the action would delete
+  - `/lan-tournaments/for_party/<party_id>/maintenance/<action_id>` (POST): execute the action
+- **Permission**: `lan_tournament.maintain`
+- **Actions**: `unused-images`, `orphaned-files`; an unknown action is 404
+- **Form field** (POST): repeatable `key`, one per selected item; no keys flashes "Nothing selected." and redirects to the preview
+- **Rules**: only this party; items younger than 24 h are kept; the server rechecks every posted key; at most 100 keys count per POST; one log record per run (party, actor, action, count, bytes, keys)
+- **Result**: flash with the numbers (deleted, skipped, failed file deletes); a run that deletes nothing flashes "Nothing was deleted." instead of the success line; image skips are split into "a tournament uses it now" and "no longer qualifies"; redirect to the maintenance tab
+- **Example**: `/lan-tournaments/for_party/lan-2026/maintenance/unused-images`
+
 ---
 
 ## Site URLs (User-Facing)
@@ -397,6 +444,7 @@ Currently, there are no dedicated REST API endpoints. All interactions happen th
 - `lan_tournament.update` - Update tournaments, teams, and match scores
 - `lan_tournament.delete` - Delete tournaments and teams
 - `lan_tournament.administrate` - Full control including status changes, bracket generation, match confirmation
+- `lan_tournament.maintain` - Party maintenance: delete unused images and orphaned image files
 
 ### User Authentication
 - Most site URLs are publicly viewable (no authentication)

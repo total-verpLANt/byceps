@@ -1,10 +1,22 @@
 from collections import Counter
 import dataclasses
 from datetime import datetime, UTC
-from uuid import UUID
+from uuid import UUID, uuid4, uuid5
 
-from flask import abort, g, request, url_for
-from flask_babel import gettext, to_user_timezone, to_utc
+from flask import abort, current_app, g, jsonify, request, url_for
+from flask_babel import (
+    format_date,
+    format_decimal,
+    format_time,
+    format_timedelta,
+    get_locale,
+    gettext,
+    ngettext,
+    to_user_timezone,
+    to_utc,
+)
+from markupsafe import Markup
+from werkzeug.exceptions import RequestEntityTooLarge
 
 from byceps.services.brand import brand_service
 from byceps.services.party import party_service
@@ -23,6 +35,8 @@ from byceps.util.views import permission_required, redirect_to, respond_no_conte
 
 from byceps.services.lan_tournament import (
     tournament_domain_service,
+    tournament_image_service,
+    tournament_maintenance_service,
     tournament_match_service,
     tournament_notification_service,
     tournament_orga_service,
@@ -38,6 +52,13 @@ from byceps.services.lan_tournament import (
 from byceps.services.lan_tournament.models.tournament import (
     Tournament,
     TournamentID,
+)
+from byceps.services.lan_tournament.models.tournament_image import (
+    TournamentImage,
+    TournamentImageID,
+)
+from byceps.services.lan_tournament.models.validation_message import (
+    ValidationMessage,
 )
 from byceps.services.lan_tournament.models.tournament_request import (
     TournamentRequest,
@@ -84,13 +105,18 @@ from byceps.services.lan_tournament.tournament_service import (
 )
 from byceps.services.lan_tournament.lan_tournament_view_helpers import (
     build_contestant_name_lookups,
+    build_create_wizard_context,
     build_downstream_impact,
     build_hover_lookups,
     build_match_label,
+    build_request_refusal,
     build_round_robin_standings,
     build_seat_lookup,
     build_team_members_lookup,
     compute_feed_counts,
+    first_error_step,
+    format_file_size,
+    get_timezone_detail_at,
     is_ffa_tournament,
     is_walkover_match,
     parse_match_ids,
@@ -115,6 +141,7 @@ from .forms import (
     TournamentRequestUpdateForm,
     TournamentUpdateForm,
     _REQUEST_ELIMINATION_MODE_LABELS,
+    min_above_max_error,
 )
 
 
@@ -190,6 +217,7 @@ def index(party_id):
         'tournaments': tournaments,
         'participant_counts': participant_counts,
         'team_counts': team_counts,
+        'elimination_mode_labels': _build_elimination_mode_labels(),
     }
 
 
@@ -300,6 +328,12 @@ def view(tournament_id):
         'bronze_name': bronze_name,
         'ffa_de_pool_status': ffa_de_pool_status,
         'ffa_gf_eligible': ffa_gf_eligible,
+        'start_time_zone': (
+            f'{current_app.config["TIMEZONE"]}, '
+            f'{get_timezone_detail_at(tournament.start_time)}'
+            if tournament.start_time
+            else None
+        ),
         'active_tab': 'overview',
     }
 
@@ -307,7 +341,9 @@ def view(tournament_id):
 @blueprint.get('/for_party/<party_id>/create')
 @permission_required('lan_tournament.create')
 @templated
-def create_form(party_id, erroneous_form=None):
+def create_form(
+    party_id, erroneous_form=None, image_error=None, refused_request=None
+):
     """Show form to create a tournament."""
     party = _get_party_or_404(party_id)
 
@@ -395,6 +431,9 @@ def create_form(party_id, erroneous_form=None):
                         )
                     )
 
+    if image_error:
+        _add_field_error(form.image, image_error)
+
     form.set_contestant_type_choices()
     form.set_game_format_choices()
     form.set_elimination_mode_choices()
@@ -414,33 +453,342 @@ def create_form(party_id, erroneous_form=None):
             for field_name in gap.blocking
         ]
 
+    refusal = None
+    refused_proposer_name = None
+    if refused_request is not None and source_request is None:
+        refusal = _build_refusal(refused_request)
+        refused_proposer_name = refusal['proposerName']
+
+    if not form.submission_token.data:
+        form.submission_token.data = str(uuid4())
+
+    staged_image = _find_staged_image(form.image_id.data, party)
+
     return {
         'party': party,
         'form': form,
         'source_request': source_request,
         'source_proposer_name': source_proposer_name,
+        'refused_request': refused_request if refusal else None,
+        'refused_proposer_name': refused_proposer_name,
         'source_request_blocking_field_labels': (
             source_request_blocking_field_labels
         ),
+        'wizard': build_create_wizard_context(
+            party,
+            form,
+            source_request=source_request,
+            source_proposer_name=source_proposer_name,
+            staged_image=staged_image,
+            urls=_create_wizard_urls(party),
+            refusal=refusal,
+        ),
     }
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class _CreateSubmission:
+    name: str
+    game: str | None
+    description: str | None
+    image_url: str | None
+    ruleset: str | None
+    start_time: datetime | None
+    settings: tournament_domain_service.TournamentSettings
+    points_carry_to_losers: bool | None
+    source_request: TournamentRequest | None
+    image_id: TournamentImageID | None
+    image_alt_text: str | None
+    creation_token: UUID | None
 
 
 @blueprint.post('/for_party/<party_id>')
 @permission_required('lan_tournament.create')
 def create(party_id):
     """Create a tournament."""
+    request.max_content_length = tournament_image_service.MAX_REQUEST_BYTES
+
     party = _get_party_or_404(party_id)
 
-    form = TournamentCreateForm(request.form)
-    form.set_contestant_type_choices()
-    form.set_game_format_choices()
-    form.set_elimination_mode_choices()
-    form.set_score_ordering_choices()
+    try:
+        formdata = _get_create_formdata()
+    except RequestEntityTooLarge:
+        # The entries are in the unparsed body and cannot be restored.
+        body = create_form(party.id, image_error=_translate_image_too_large())
+        return body, 413
+
+    form = _build_create_form(formdata)
+
+    creation_token = _parse_uuid(form.submission_token.data)
+    if creation_token is not None:
+        existing = tournament_service.find_tournament_by_creation_token(
+            creation_token
+        )
+        if existing is not None and existing.party_id != party.id:
+            # A token of another party's tournament is replaced by one
+            # derived from it, so a repost stays idempotent in this party.
+            creation_token = uuid5(creation_token, str(party.id))
+            form.submission_token.data = str(creation_token)
+            existing = tournament_service.find_tournament_by_creation_token(
+                creation_token
+            )
+        if existing is not None and existing.party_id == party.id:
+            flash_notice(gettext('This tournament has already been created.'))
+            return redirect_to('.view', tournament_id=existing.id)
 
     if not form.validate():
         return create_form(party.id, form)
 
-    name = form.name.data.strip()
+    sub = _parse_create_submission(form, party)
+    if sub is None:
+        refused_request = None
+        if form.from_request_id.errors:
+            refused_request = _find_refused_request(
+                form.from_request_id.data, party
+            )
+            # A resubmit becomes an unlinked create, not an endless refusal.
+            _clear_stale_request_link(form)
+        if form.image_id.errors:
+            form.image_id.data = ''
+        return create_form(party.id, form, refused_request=refused_request)
+
+    image_id = sub.image_id
+    upload = form.image.data
+    if upload is not None and getattr(upload, 'filename', None):
+        match tournament_image_service.store_uploaded_image(
+            party.id, g.user.id, upload.stream, upload.filename
+        ):
+            case Ok(image):
+                image_id = image.id
+                # A file input cannot be refilled: keep the staged image.
+                form.image_id.data = str(image.id)
+            case Err(message):
+                _add_field_error(
+                    form.image, _translate_image_message(message)
+                )
+                return create_form(party.id, form)
+
+    settings = sub.settings
+    result = tournament_service.create_tournament(
+        party.id,
+        sub.name,
+        game=sub.game,
+        description=sub.description,
+        image_url=sub.image_url,
+        ruleset=sub.ruleset,
+        start_time=sub.start_time,
+        min_players=settings.min_players,
+        max_players=settings.max_players,
+        min_teams=settings.min_teams,
+        max_teams=settings.max_teams,
+        min_players_in_team=settings.min_players_in_team,
+        max_players_in_team=settings.max_players_in_team,
+        contestant_type=settings.contestant_type,
+        tournament_status=TournamentStatus.DRAFT,
+        game_format=settings.game_format,
+        elimination_mode=settings.elimination_mode,
+        score_ordering=settings.score_ordering,
+        point_table=settings.point_table,
+        advancement_count=settings.advancement_count,
+        group_size_min=settings.group_size_min,
+        group_size_max=settings.group_size_max,
+        points_carry_to_losers=sub.points_carry_to_losers,
+        created_from_request_id=(
+            sub.source_request.id if sub.source_request else None
+        ),
+        initiator_id=g.user.id,
+        image_id=image_id,
+        image_alt_text=sub.image_alt_text,
+        creation_token=sub.creation_token,
+    )
+    if result.is_err():
+        error_message = result.unwrap_err()
+
+        # A concurrent duplicate may trip another unique index first.
+        existing = (
+            tournament_service.find_tournament_by_creation_token(
+                sub.creation_token
+            )
+            if sub.creation_token is not None
+            else None
+        )
+        if existing is not None and existing.party_id == party.id:
+            flash_notice(gettext('This tournament has already been created.'))
+            return redirect_to('.view', tournament_id=existing.id)
+
+        if error_message == tournament_service.DUPLICATE_SUBMISSION_ERROR:
+            form.form_errors.append(gettext(error_message))
+        elif error_message == tournament_service.IMAGE_UNAVAILABLE_ERROR:
+            _add_field_error(form.image_id, gettext(error_message))
+            form.image_id.data = ''
+        elif sub.source_request is not None and error_message in (
+            'Request is no longer in the expected state.',
+            'A tournament has already been created from this request.',
+        ):
+            # The row-locked re-check inside create_tournament caught
+            # what the fast path in the parser missed.
+            _add_field_error(form.from_request_id, gettext(error_message))
+            refused_request = _find_refused_request(
+                form.from_request_id.data, party
+            )
+            _clear_stale_request_link(form)
+            return create_form(party.id, form, refused_request=refused_request)
+        else:
+            form.form_errors.append(gettext(error_message))
+        return create_form(party.id, form)
+
+    tournament, _event = result.unwrap()
+
+    if sub.source_request is not None:
+        # The request is already linked at this point -- create_tournament
+        # committed both in one transaction. This is best-effort only:
+        # a failure never rolls back the tournament that already exists.
+        orga_result = tournament_request_service.appoint_proposer_orga(
+            tournament.id, sub.source_request.proposer_id, g.user.id
+        )
+        if orga_result.is_err():
+            flash_notice(gettext(orga_result.unwrap_err()))
+
+    flash_success(
+        gettext(
+            'Tournament "%(name)s" has been created as a draft.',
+            name=tournament.name,
+        )
+    )
+
+    return redirect_to('.view', tournament_id=tournament.id)
+
+
+@blueprint.post('/for_party/<party_id>/create/validate')
+@permission_required('lan_tournament.create')
+def validate_create(party_id):
+    """Run create validation without writing; return JSON."""
+    request.max_content_length = tournament_image_service.MAX_REQUEST_BYTES
+
+    party = _get_party_or_404(party_id)
+
+    try:
+        formdata = request.form
+    except RequestEntityTooLarge:
+        return _json_error(_translate_image_too_large(), 413)
+
+    form = _build_create_form(formdata)
+    form.validate()
+    _parse_create_submission(form, party)
+
+    refusal = None
+    if form.from_request_id.errors:
+        refused_request = _find_refused_request(
+            form.from_request_id.data, party
+        )
+        if refused_request is not None:
+            refusal = _build_refusal(refused_request)
+
+    errors = form.errors
+    return jsonify(
+        ok=not errors,
+        errors={
+            key: [str(message) for message in messages]
+            for key, messages in errors.items()
+        },
+        first_error_step=first_error_step(form),
+        checked_at=format_time(datetime.now(UTC), 'HH:mm'),
+        refusal=refusal,
+    )
+
+
+def _get_create_formdata():
+    """Return the request form merged with its uploaded files."""
+    formdata = request.form.copy()
+    formdata.update(request.files)
+    return formdata
+
+
+def _build_create_form(formdata) -> TournamentCreateForm:
+    form = TournamentCreateForm(formdata)
+    form.set_contestant_type_choices()
+    form.set_game_format_choices()
+    form.set_elimination_mode_choices()
+    form.set_score_ordering_choices()
+    return form
+
+
+def _create_wizard_urls(party: Party) -> dict[str, str]:
+    return {
+        'create': url_for('.create', party_id=party.id),
+        'upload': url_for('.upload_create_image', party_id=party.id),
+        'delete_template': url_for(
+            '.delete_create_image', party_id=party.id, image_id='__ID__'
+        ),
+        'images': url_for('.list_create_images', party_id=party.id),
+        'validate': url_for('.validate_create', party_id=party.id),
+        'cancel': url_for('.index', party_id=party.id),
+    }
+
+
+def _parse_uuid(value) -> UUID | None:
+    if not value:
+        return None
+    try:
+        return UUID(str(value))
+    except ValueError:
+        return None
+
+
+def _find_staged_image(raw_image_id, party: Party) -> TournamentImage | None:
+    image_id = _parse_uuid(raw_image_id)
+    if image_id is None:
+        return None
+    return tournament_image_service.find_attachable_image(
+        TournamentImageID(image_id), party
+    )
+
+
+def _add_field_error(field, message: str) -> None:
+    # `errors` is a tuple until the form has been validated.
+    field.errors = [*field.errors, message]
+
+
+def _translate_validation_message(message: ValidationMessage) -> str:
+    params = dict(message.params)
+    if 'other' in params:
+        # A field label, itself a msgid.
+        params['other'] = gettext(params['other'])
+    if message.msgid == tournament_domain_service.POINTS_TOO_HIGH_MSGID:
+        params['max'] = format_decimal(params['max'])
+    elif message.msgid == tournament_domain_service.POINTS_TOO_LOW_MSGID:
+        params['min'] = format_decimal(params['min'])
+    return gettext(message.msgid, **params)
+
+
+def _apply_settings_errors(
+    form, errors: dict[str, ValidationMessage]
+) -> None:
+    """Put settings errors on their fields; skip fields that have one."""
+    for field_name, message in errors.items():
+        translated = _translate_validation_message(message)
+        field = getattr(form, field_name, None)
+        if field is None:
+            form.form_errors.append(translated)
+        elif not field.errors:
+            _add_field_error(field, translated)
+
+
+def _parse_create_submission(
+    form: TournamentCreateForm, party: Party
+) -> _CreateSubmission | None:
+    """Parse and check a create POST; put errors on the form fields."""
+
+    def parse_enum(field, enum_class, invalid_message):
+        if not field.data:
+            return None
+        try:
+            return enum_class[field.data]
+        except KeyError:
+            _add_field_error(field, invalid_message)
+            return None
+
+    name = (form.name.data or '').strip()
     game = form.game.data.strip() if form.game.data else None
     description = (
         form.description.data.strip() if form.description.data else None
@@ -449,55 +797,31 @@ def create(party_id):
     ruleset = form.ruleset.data.strip() if form.ruleset.data else None
     start_time_local = form.start_time.data
     start_time = to_utc(start_time_local) if start_time_local else None
-    try:
-        contestant_type = (
-            ContestantType[form.contestant_type.data]
-            if form.contestant_type.data
-            else None
-        )
-    except KeyError:
-        flash_error(gettext('Invalid contestant type selected.'))
-        return create_form(party.id, form)
 
-    try:
-        game_format = (
-            GameFormat[form.game_format.data]
-            if form.game_format.data
-            else None
-        )
-    except KeyError:
-        flash_error(gettext('Invalid game format selected.'))
-        return create_form(party.id, form)
+    contestant_type = parse_enum(
+        form.contestant_type,
+        ContestantType,
+        gettext('Invalid contestant type selected.'),
+    )
+    game_format = parse_enum(
+        form.game_format,
+        GameFormat,
+        gettext('Invalid game format selected.'),
+    )
+    elimination_mode = parse_enum(
+        form.elimination_mode,
+        EliminationMode,
+        gettext('Invalid elimination mode selected.'),
+    )
+    score_ordering = parse_enum(
+        form.score_ordering,
+        ScoreOrdering,
+        gettext('Invalid score ordering selected.'),
+    )
 
-    try:
-        elimination_mode = (
-            EliminationMode[form.elimination_mode.data]
-            if form.elimination_mode.data
-            else None
-        )
-    except KeyError:
-        flash_error(gettext('Invalid elimination mode selected.'))
-        return create_form(party.id, form)
+    if game_format == GameFormat.HIGHSCORE:
+        elimination_mode = EliminationMode.NONE
 
-    # Validate game_format + elimination_mode combination.
-    if game_format and elimination_mode:
-        if not is_valid_combination(game_format, elimination_mode):
-            flash_error(
-                gettext(
-                    'Invalid combination of game format and elimination mode.'
-                )
-            )
-            return create_form(party.id, form)
-
-    try:
-        score_ordering = (
-            ScoreOrdering[form.score_ordering.data]
-            if form.score_ordering.data
-            else None
-        )
-    except KeyError:
-        flash_error(gettext('Invalid score ordering selected.'))
-        return create_form(party.id, form)
     min_players = form.min_players.data
     max_players = form.max_players.data
     min_teams = form.min_teams.data
@@ -544,138 +868,286 @@ def create(party_id):
                     if v.strip()
                 ]
             except ValueError:
-                flash_error(
-                    gettext(
-                        'Point table must be comma-separated integers.'
-                    )
+                _add_field_error(
+                    form.point_table,
+                    gettext('Point table must be comma-separated integers.'),
                 )
-                return create_form(party.id, form)
         advancement_count = form.advancement_count.data
         group_size_min = form.group_size_min.data
         group_size_max = form.group_size_max.data
-        if (
-            elimination_mode == EliminationMode.DOUBLE_ELIMINATION
-        ):
+        if elimination_mode == EliminationMode.DOUBLE_ELIMINATION:
             points_carry_to_losers = form.points_carry_to_losers.data
 
-    # `from_request_id` arrives from a hidden form field -- client
-    # supplied, so re-load and re-verify party ownership rather than
-    # trusting it outright.
-    source_request = None
-    created_from_request_id = None
-    if form.from_request_id.data:
-        if not (
-            g.user.has_permission('lan_tournament.request_decide')
-            and g.user.has_permission('lan_tournament.request_view')
-        ):
-            # Consuming a request here moves it to `tournament_created`
-            # and appoints its proposer as orga -- that is a decision,
-            # not a view, so `create`-only permission must not reach
-            # it even with a forged hidden field. `request_view` is
-            # required too, in lockstep with `create_form`'s own
-            # prefill gate above: without it, a `request_decide`-only
-            # admin could convert a request blind here and then hit a
-            # 403 on `view_request`'s own gate when the redirect (or
-            # the appoint-orga flash) tried to point back at it.
-            flash_error(
-                gettext(
-                    'You are not allowed to create a tournament from a request.'
-                )
-            )
-            _clear_stale_request_link(form)
-            return create_form(party.id, form)
-
-        source_request = _find_request_for_party(
-            form.from_request_id.data, party.id
-        )
-        if source_request is None:
-            # Malformed, unknown, or belongs to another party -- never
-            # silently fall through to an unlinked create; the admin
-            # asked to create *from* a request.
-            flash_error(
-                gettext('Request is no longer in the expected state.')
-            )
-            _clear_stale_request_link(form)
-            return create_form(party.id, form)
-
-        if not _is_request_recreatable(source_request):
-            # The request's status can have moved on (decided by
-            # another admin, withdrawn) between opening this form and
-            # submitting it, or it is `tournament_created` with a
-            # still-live link -- that link must never be overwritten.
-            # This is a UX fast path only: `create_tournament` re-runs
-            # the same check under a row lock before it ever commits,
-            # which is what actually prevents an orphan tournament for
-            # a request that can never reach `tournament_created`.
-            flash_error(
-                gettext('Request is no longer in the expected state.')
-            )
-            _clear_stale_request_link(form)
-            return create_form(party.id, form)
-        created_from_request_id = source_request.id
-
-    result = tournament_service.create_tournament(
-        party.id,
-        name,
-        game=game,
-        description=description,
-        image_url=image_url,
-        ruleset=ruleset,
-        start_time=start_time,
+    settings = tournament_domain_service.TournamentSettings(
+        contestant_type=contestant_type,
+        game_format=game_format,
+        elimination_mode=elimination_mode,
+        score_ordering=score_ordering,
         min_players=min_players,
         max_players=max_players,
         min_teams=min_teams,
         max_teams=max_teams,
         min_players_in_team=min_players_in_team,
         max_players_in_team=max_players_in_team,
-        contestant_type=contestant_type,
-        tournament_status=TournamentStatus.DRAFT,
-        game_format=game_format,
-        elimination_mode=elimination_mode,
-        score_ordering=score_ordering,
         point_table=point_table,
-        advancement_count=advancement_count,
         group_size_min=group_size_min,
         group_size_max=group_size_max,
-        points_carry_to_losers=points_carry_to_losers,
-        created_from_request_id=created_from_request_id,
-        initiator_id=g.user.id,
+        advancement_count=advancement_count,
     )
-    if result.is_err():
-        error_message = result.unwrap_err()
-        flash_error(gettext(error_message))
-        if created_from_request_id is not None and error_message in (
-            'Request is no longer in the expected state.',
-            'A tournament has already been created from this request.',
+    match tournament_domain_service.validate_tournament_settings(
+        settings, require_structure=True
+    ):
+        case Err(settings_errors):
+            _apply_settings_errors(form, settings_errors)
+
+    # `from_request_id` arrives from a hidden form field -- client
+    # supplied, so re-load and re-verify party ownership rather than
+    # trusting it outright.
+    source_request = None
+    if form.from_request_id.data:
+        if not (
+            g.user.has_permission('lan_tournament.request_decide')
+            and g.user.has_permission('lan_tournament.request_view')
         ):
-            # The row-locked re-check inside create_tournament caught
-            # what the UX fast path above missed (a race, or the
-            # unique constraint on created_from_request_id) -- the
-            # link is just as dead as if _is_request_recreatable had
-            # caught it, so clear it the same way.
-            _clear_stale_request_link(form)
-        return create_form(party.id, form)
+            # Consuming a request moves it to `tournament_created` and
+            # appoints its proposer as orga -- a decision, not a view.
+            # `request_view` is required too, in lockstep with
+            # `create_form`'s prefill gate. Refuse before any lookup, so
+            # nothing about the request leaks.
+            _add_field_error(
+                form.from_request_id,
+                gettext(
+                    'You are not allowed to create a tournament from a request.'
+                ),
+            )
+        else:
+            source_request = _find_request_for_party(
+                form.from_request_id.data, party.id
+            )
+            if source_request is None:
+                # Malformed, unknown, or belongs to another party -- never
+                # silently fall through to an unlinked create.
+                _add_field_error(
+                    form.from_request_id,
+                    gettext('Request is no longer in the expected state.'),
+                )
+            elif not _is_request_recreatable(source_request):
+                # Decided by another admin, withdrawn, or still linked.
+                # A UX fast path only: `create_tournament` re-runs the
+                # check under a row lock.
+                _add_field_error(
+                    form.from_request_id,
+                    gettext(
+                        'Request #%(number)s is no longer accepted. '
+                        'No tournament was created; your entries are kept.',
+                        number=f'{source_request.number:04d}',
+                    ),
+                )
 
-    tournament, _event = result.unwrap()
-
-    if source_request is not None:
-        # The request is already linked at this point -- create_tournament
-        # committed both in one transaction. This is best-effort only:
-        # a failure never rolls back the tournament that already exists.
-        orga_result = tournament_request_service.appoint_proposer_orga(
-            tournament.id, source_request.proposer_id, g.user.id
+    image_id = None
+    has_upload = getattr(form.image.data, 'filename', None)
+    if form.image_id.data and not has_upload:
+        parsed_image_id = _parse_uuid(form.image_id.data)
+        image = (
+            tournament_image_service.find_attachable_image(
+                TournamentImageID(parsed_image_id), party
+            )
+            if parsed_image_id is not None
+            else None
         )
-        if orga_result.is_err():
-            flash_notice(gettext(orga_result.unwrap_err()))
+        if image is None:
+            _add_field_error(
+                form.image_id,
+                gettext(tournament_image_service.IMAGE_UNAVAILABLE_ERROR),
+            )
+        else:
+            image_id = image.id
+    image_alt_text = form.image_alt_text.data or None
 
-    flash_success(
-        gettext(
-            'Tournament "%(name)s" has been created.',
-            name=tournament.name,
+    if any(field.errors for field in form) or form.form_errors:
+        return None
+
+    return _CreateSubmission(
+        name=name,
+        game=game,
+        description=description,
+        image_url=image_url,
+        ruleset=ruleset,
+        start_time=start_time,
+        settings=settings,
+        points_carry_to_losers=points_carry_to_losers,
+        source_request=source_request,
+        image_id=image_id,
+        image_alt_text=image_alt_text,
+        creation_token=_parse_uuid(form.submission_token.data),
+    )
+
+
+# --- Create wizard: image endpoints (JSON) ---
+
+_IMAGE_LIST_MAX_PAGE = 10_000
+_IMAGE_LIST_MAX_QUERY_LENGTH = 100
+_IMAGE_DELETE_STATUS_BY_MSGID = {
+    tournament_image_service.IMAGE_UNAVAILABLE_ERROR: 404,
+    tournament_image_service.IMAGE_NOT_CREATOR_ERROR: 403,
+    tournament_image_service.IMAGE_IN_USE_ERROR: 409,
+}
+
+
+@blueprint.post('/for_party/<party_id>/create/image')
+@permission_required('lan_tournament.create')
+def upload_create_image(party_id):
+    """Store an uploaded tournament image; return its data as JSON."""
+    request.max_content_length = tournament_image_service.MAX_REQUEST_BYTES
+
+    party = _get_party_or_404(party_id)
+
+    try:
+        upload = request.files.get('image')
+    except RequestEntityTooLarge:
+        return _json_error(_translate_image_too_large(), 413)
+
+    if upload is None or not upload.filename:
+        return _json_error(gettext('No file selected.'), 400)
+
+    match tournament_image_service.store_uploaded_image(
+        party.id, g.user.id, upload.stream, upload.filename
+    ):
+        case Ok(image):
+            return (
+                jsonify(
+                    image_id=str(image.id),
+                    url=tournament_image_service.get_image_url_path(image),
+                    filename=image.filename,
+                    width=image.width,
+                    height=image.height,
+                    byte_size=image.byte_size,
+                ),
+                201,
+            )
+        case Err(message):
+            if message.msgid == tournament_image_service.IMAGE_TYPE_ERROR:
+                status = 415
+            elif message.msgid == tournament_image_service.IMAGE_SIZE_ERROR:
+                status = 413
+            else:
+                status = 400
+            return _json_error(_translate_image_message(message), status)
+
+
+@blueprint.delete('/for_party/<party_id>/create/image/<image_id>')
+@permission_required('lan_tournament.create')
+def delete_create_image(party_id, image_id):
+    """Delete a staged image of the current user."""
+    party = _get_party_or_404(party_id)
+
+    try:
+        parsed_image_id = TournamentImageID(UUID(image_id))
+    except ValueError:
+        return _json_error(
+            gettext(tournament_image_service.IMAGE_UNAVAILABLE_ERROR), 404
+        )
+
+    match tournament_image_service.delete_staged_image(
+        parsed_image_id, party_id=party.id, requester_id=g.user.id
+    ):
+        case Ok():
+            return '', 204
+        case Err(message):
+            return _json_error(
+                _translate_image_message(message),
+                _IMAGE_DELETE_STATUS_BY_MSGID.get(message.msgid, 400),
+            )
+
+
+@blueprint.get('/for_party/<party_id>/images')
+@permission_required('lan_tournament.create')
+def list_create_images(party_id):
+    """List the images the party may pick from, as JSON."""
+    party = _get_party_or_404(party_id)
+
+    scope = request.args.get('scope', 'party')
+    if scope not in ('party', 'brand'):
+        return _json_error(gettext('Invalid image scope.'), 400)
+
+    try:
+        page = int(request.args.get('page', '1'))
+    except ValueError:
+        page = 0
+    if not 1 <= page <= _IMAGE_LIST_MAX_PAGE:
+        return _json_error(gettext('Invalid page number.'), 400)
+
+    filename_query = (
+        request.args.get('q', '').strip()[:_IMAGE_LIST_MAX_QUERY_LENGTH] or None
+    )
+
+    picker_page = tournament_image_service.list_picker_images(
+        party, scope=scope, filename_query=filename_query, page=page
+    )
+
+    return jsonify(
+        items=[
+            {
+                'image_id': str(item.image.id),
+                'url': tournament_image_service.get_image_url_path(item.image),
+                'filename': item.image.filename,
+                'width': item.image.width,
+                'height': item.image.height,
+                'byte_size': item.image.byte_size,
+                'party_title': picker_page.party_titles.get(
+                    item.image.party_id
+                ),
+                'used_by': list(item.used_by),
+                'created_at': item.image.created_at.isoformat(),
+            }
+            for item in picker_page.items
+        ],
+        page=picker_page.page,
+        has_next=picker_page.has_next,
+    )
+
+
+def _json_error(message: str, status: int):
+    return jsonify(error=message), status
+
+
+def _translate_image_too_large() -> str:
+    return _translate_image_message(
+        ValidationMessage(
+            tournament_image_service.IMAGE_SIZE_ERROR,
+            (('size', tournament_image_service.MAX_UPLOAD_BYTES + 1),),
         )
     )
 
-    return redirect_to('.view', tournament_id=tournament.id)
+
+def _translate_image_message(message: ValidationMessage) -> str:
+    """Translate the message, formatting size and megapixel parameters."""
+    params = dict(message.params)
+
+    size = params.get('size')
+    if isinstance(size, int):
+        if size > tournament_image_service.MAX_UPLOAD_BYTES:
+            # The service stops reading at the limit, so `size` is not the
+            # real size; the request length is the closest known value.
+            length = request.content_length
+            size = (
+                _format_megabytes(length)
+                if length is not None and length >= size
+                else gettext('more than 5 MB')
+            )
+        else:
+            size = _format_megabytes(size)
+        params['size'] = size
+
+    mp = params.get('mp')
+    if isinstance(mp, str):
+        params['mp'] = format_decimal(float(mp), format='#,##0.0')
+
+    return gettext(message.msgid, **params)
+
+
+def _format_megabytes(size: int) -> str:
+    return format_decimal(size / 1048576, format='#,##0.0') + ' MB'
 
 
 # --- Tournament requests (party-wide admin queue + detail) ---
@@ -969,6 +1441,36 @@ def _clear_stale_request_link(form) -> None:
     )
 
 
+def _find_refused_request(raw_request_id, party) -> TournamentRequest | None:
+    """Return the request behind a refused link, if the user may see it."""
+    if not (
+        g.user.has_permission('lan_tournament.request_view')
+        and g.user.has_permission('lan_tournament.request_decide')
+    ):
+        return None
+
+    found_request = _find_request_for_party(raw_request_id, party.id)
+    if found_request is None or _is_request_recreatable(found_request):
+        return None
+
+    return found_request
+
+
+def _build_refusal(refused_request: TournamentRequest) -> dict:
+    proposer_name = user_service.find_screen_name(refused_request.proposer_id)
+    decider_name = (
+        user_service.find_screen_name(refused_request.decided_by_id)
+        if refused_request.decided_by_id
+        else None
+    )
+    return build_request_refusal(
+        refused_request,
+        proposer_name=proposer_name,
+        decider_name=decider_name,
+        view_url=url_for('.view_request', request_id=refused_request.id),
+    )
+
+
 def _find_request_for_party(raw_request_id, party_id):
     """Look up a tournament request and verify it belongs to that party.
 
@@ -1259,6 +1761,93 @@ def update_form(tournament_id, erroneous_form=None):
     }
 
 
+_UNCHANGED_COUNT_FIELDS = (
+    'min_players',
+    'max_players',
+    'min_teams',
+    'max_teams',
+    'min_players_in_team',
+    'max_players_in_team',
+    'group_size_min',
+    'group_size_max',
+    'advancement_count',
+)
+
+# (min field, max field); the max field carries the pair's error.
+_MIN_MAX_PAIRS = (
+    ('min_players', 'max_players'),
+    ('min_teams', 'max_teams'),
+    ('min_players_in_team', 'max_players_in_team'),
+)
+
+
+def _parse_point_table(raw: str | None) -> list[int] | None:
+    """Parse a comma-separated table; `None` if empty, `ValueError` if bad."""
+    values = [int(v.strip()) for v in (raw or '').split(',') if v.strip()]
+    return values or None
+
+
+def _is_blank(field) -> bool:
+    return not any((raw or '').strip() for raw in field.raw_data or [])
+
+
+def _is_unchanged(form, name: str, tournament) -> bool:
+    """Tell if the posted value of a field equals the stored one."""
+    field = form[name]
+    if name == 'point_table':
+        try:
+            return _parse_point_table(field.data) == tournament.point_table
+        except ValueError:
+            return False
+    if name == 'start_time':
+        stored = tournament.start_time
+        if field.data is None:
+            return stored is None and _is_blank(field)
+        if stored is None:
+            return False
+        stored_local = to_user_timezone(stored).replace(
+            tzinfo=None, second=0, microsecond=0
+        )
+        return field.data.replace(second=0, microsecond=0) == stored_local
+    stored = getattr(tournament, name)
+    if field.data is None:
+        # A value that failed to parse is `None` as well.
+        return stored is None and _is_blank(field)
+    return field.data == stored
+
+
+def discard_errors_on_unchanged_fields(form, tournament) -> None:
+    """Drop errors on fields still holding their stored value.
+
+    Rules added after a tournament was created must not lock out an
+    edit that leaves the offending value alone. A min/max pair error
+    stays while either field of the pair changed.
+    """
+    names = (*_UNCHANGED_COUNT_FIELDS, 'point_table', 'start_time')
+    unchanged = {
+        name for name in names if _is_unchanged(form, name, tournament)
+    }
+
+    max_to_min = {max_name: min_name for min_name, max_name in _MIN_MAX_PAIRS}
+    for name in unchanged:
+        field = form[name]
+        if not field.errors:
+            continue
+        min_name = max_to_min.get(name)
+        if min_name is not None and min_name not in unchanged:
+            cross = min_above_max_error(form, field, min_name)
+            field.errors = [cross] if cross is not None else []
+        else:
+            field.errors = []
+
+
+def _update_form_is_valid(form, tournament) -> bool:
+    """Validate the edit form, ignoring unchanged stored values."""
+    form.validate()
+    discard_errors_on_unchanged_fields(form, tournament)
+    return not form.errors
+
+
 @blueprint.post('/tournaments/<tournament_id>')
 @permission_required('lan_tournament.update')
 def update(tournament_id):
@@ -1362,7 +1951,7 @@ def update(tournament_id):
     form.set_elimination_mode_choices()
     form.set_score_ordering_choices()
 
-    if not form.validate():
+    if not _update_form_is_valid(form, tournament):
         return update_form(tournament.id, form)
 
     name = form.name.data.strip()
@@ -1474,6 +2063,14 @@ def update(tournament_id):
                         'Point table must be comma-separated integers.'
                     )
                 )
+                return update_form(tournament.id, form)
+            table_problem = None
+            if point_table != tournament.point_table:
+                table_problem = tournament_domain_service.check_point_count(
+                    point_table
+                ) or tournament_domain_service.check_point_values(point_table)
+            if table_problem is not None:
+                flash_error(_translate_validation_message(table_problem))
                 return update_form(tournament.id, form)
         advancement_count = form.advancement_count.data
         group_size_min = form.group_size_min.data
@@ -2381,6 +2978,322 @@ def _build_transfer_captain_choices(team, members, users_by_id):
         for m in non_captain_members
         if (u := users_by_id.get(m.user_id)) and u.screen_name
     ]
+
+
+@blueprint.get('/for_party/<party_id>/maintenance')
+@permission_required('lan_tournament.maintain')
+@templated
+def maintenance(party_id):
+    """Show the maintenance actions of the party."""
+    party = _get_party_or_404(party_id)
+
+    now = datetime.now(UTC)
+    rows = []
+    for action in tournament_maintenance_service.get_actions():
+        if not g.user.has_permission(action.permission):
+            continue
+
+        summary = action.summarize(party.id, now)
+        finding, kept_finding = _maintenance_finding(
+            action.id, summary, format_file_size(summary.byte_size)
+        )
+        rows.append(
+            {
+                'action': action,
+                'texts': _maintenance_texts(action.id),
+                'summary': summary,
+                'finding': finding,
+                'kept_finding': kept_finding,
+            }
+        )
+
+    return {'party': party, 'rows': rows}
+
+
+@blueprint.get('/for_party/<party_id>/maintenance/<action_id>')
+@permission_required('lan_tournament.maintain')
+@templated
+def maintenance_preview(party_id, action_id):
+    """Show what a maintenance action would delete."""
+    party = _get_party_or_404(party_id)
+    action = _get_maintenance_action_or_404(action_id)
+
+    now = datetime.now(UTC)
+    preview = action.preview(party.id, now)
+
+    creator_ids = {
+        item.creator_id
+        for item in [*preview.items, *preview.kept]
+        if item.creator_id
+    }
+    users_by_id = user_service.get_users_indexed_by_id(creator_ids)
+
+    def to_row(item):
+        creator = users_by_id.get(item.creator_id) if item.creator_id else None
+        return {
+            'item': item,
+            'size': format_file_size(item.byte_size),
+            'age': format_timedelta(item.created_at - now, add_direction=True),
+            'created_at': (
+                f'{format_date(item.created_at, format="medium")},'
+                f' {format_time(item.created_at, format="short")}'
+            ),
+            'uploader': creator.screen_name if creator else None,
+        }
+
+    return {
+        'party': party,
+        'action': action,
+        'texts': {
+            **_maintenance_texts(action.id),
+            **_maintenance_preview_texts(action.id, party.title),
+        },
+        'rows': [to_row(item) for item in preview.items],
+        'kept_rows': [to_row(item) for item in preview.kept],
+        'more_count': preview.more_count,
+        'total_count': len(preview.items) + preview.more_count,
+        'locale': str(get_locale() or 'en').replace('_', '-'),
+    }
+
+
+@blueprint.post('/for_party/<party_id>/maintenance/<action_id>')
+@permission_required('lan_tournament.maintain')
+def run_maintenance_action(party_id, action_id):
+    """Delete the selected items of a maintenance action."""
+    party = _get_party_or_404(party_id)
+    action = _get_maintenance_action_or_404(action_id)
+
+    keys = request.form.getlist('key')
+    if not keys:
+        flash_notice(gettext('Nothing selected.'))
+        return redirect_to(
+            '.maintenance_preview', party_id=party.id, action_id=action.id
+        )
+
+    report = action.execute(party.id, keys, g.user.id, datetime.now(UTC))
+
+    _flash_maintenance_report(action.id, report)
+
+    return redirect_to('.maintenance', party_id=party.id)
+
+
+def _flash_maintenance_report(
+    action_id: str, report: tournament_maintenance_service.CleanupReport
+) -> None:
+    """Flash what a maintenance action did."""
+    size = format_file_size(report.byte_size)
+    is_image_action = action_id == 'unused-images'
+
+    if not report.deleted_count:
+        flash_notice(gettext('Nothing was deleted.'))
+    elif is_image_action:
+        flash_success(
+            ngettext(
+                '%(count)s image deleted, %(size)s freed.',
+                '%(count)s images deleted, %(size)s freed.',
+                report.deleted_count,
+                count=report.deleted_count,
+                size=size,
+            )
+        )
+    else:
+        flash_success(
+            ngettext(
+                '%(count)s file deleted, %(size)s freed.',
+                '%(count)s files deleted, %(size)s freed.',
+                report.deleted_count,
+                count=report.deleted_count,
+                size=size,
+            )
+        )
+
+    if is_image_action:
+        if report.in_use_count:
+            flash_notice(
+                ngettext(
+                    '%(count)s image was skipped because a tournament uses'
+                    ' it now.',
+                    '%(count)s images were skipped because a tournament uses'
+                    ' them now.',
+                    report.in_use_count,
+                    count=report.in_use_count,
+                )
+            )
+        other_skipped_count = report.skipped_count - report.in_use_count
+        if other_skipped_count:
+            flash_notice(
+                ngettext(
+                    '%(count)s image was skipped because it no longer'
+                    ' qualifies.',
+                    '%(count)s images were skipped because they no longer'
+                    ' qualify.',
+                    other_skipped_count,
+                    count=other_skipped_count,
+                )
+            )
+    elif report.skipped_count:
+        flash_notice(
+            ngettext(
+                '%(count)s file was skipped because it no longer'
+                ' qualifies.',
+                '%(count)s files were skipped because they no longer'
+                ' qualify.',
+                report.skipped_count,
+                count=report.skipped_count,
+            )
+        )
+
+    if report.failed_file_count:
+        if is_image_action:
+            flash_error(
+                ngettext(
+                    '%(count)s file could not be deleted from disk. It now'
+                    ' appears under "Orphaned image files".',
+                    '%(count)s files could not be deleted from disk. They now'
+                    ' appear under "Orphaned image files".',
+                    report.failed_file_count,
+                    count=report.failed_file_count,
+                )
+            )
+        else:
+            flash_error(
+                ngettext(
+                    '%(count)s file could not be deleted from disk.',
+                    '%(count)s files could not be deleted from disk.',
+                    report.failed_file_count,
+                    count=report.failed_file_count,
+                )
+            )
+
+
+def _get_maintenance_action_or_404(action_id):
+    action = tournament_maintenance_service.find_action(action_id)
+
+    if action is None:
+        abort(404)
+
+    if not g.user.has_permission(action.permission):
+        abort(403)
+
+    return action
+
+
+def _maintenance_preview_texts(
+    action_id: str, party_title: str
+) -> dict[str, str]:
+    """Return the texts of the preview page of the maintenance action."""
+    texts = {
+        'back': gettext('‹ Maintenance'),
+        'select_all': gettext('Select all'),
+        'cancel': gettext('Cancel'),
+        'more_hint': gettext('After deleting, the next ones show up here.'),
+        'kept_heading': gettext('Stay'),
+        'kept_note': gettext(
+            'Younger than 24 hours. One of them may be in an open tournament'
+            ' wizard right now.'
+        ),
+        'label_none': gettext('Nothing selected'),
+    }
+
+    if action_id == 'unused-images':
+        return {
+            **texts,
+            'lead': gettext(
+                'These images were uploaded for "%(party)s", and no'
+                ' tournament uses them. Untick everything that should stay.',
+                party=party_title,
+            ),
+            'delete_hint': gettext('Deleted images cannot be restored.'),
+            'delete_button': gettext('Delete selected images'),
+            'label_one': gettext('Delete %(count)s image (%(size)s)'),
+            'label_many': gettext('Delete %(count)s images (%(size)s)'),
+        }
+
+    if action_id == 'orphaned-files':
+        return {
+            **texts,
+            'lead': gettext(
+                'These files are in the image folder of "%(party)s", but none'
+                ' of them has an entry yet. No tournament and no image'
+                ' picker shows them.',
+                party=party_title,
+            ),
+            'delete_hint': gettext('Deleted files cannot be restored.'),
+            'delete_button': gettext('Delete selected files'),
+            'label_one': gettext('Delete %(count)s file (%(size)s)'),
+            'label_many': gettext('Delete %(count)s files (%(size)s)'),
+        }
+
+    abort(404)
+
+
+def _maintenance_texts(action_id: str) -> dict[str, str]:
+    """Return the static texts of the maintenance action."""
+    if action_id == 'unused-images':
+        return {
+            'title': gettext('Unused tournament images'),
+            'description': gettext(
+                'Uploaded images that no tournament uses, for example from'
+                ' abandoned tournament wizards.'
+            ),
+            'empty': gettext('Nothing to clean up.'),
+            'empty_hint': gettext(
+                'An unused image appears here 24 hours after its upload.'
+            ),
+        }
+
+    if action_id == 'orphaned-files':
+        return {
+            'title': gettext('Orphaned image files'),
+            'description': gettext(
+                "Files in the party's image folder without an entry. They no"
+                ' longer show up anywhere.'
+            ),
+            'empty': gettext('Nothing to clean up.'),
+            'empty_hint': '',
+        }
+
+    abort(404)
+
+
+def _maintenance_finding(
+    action_id: str,
+    summary: tournament_maintenance_service.MaintenanceSummary,
+    size: str,
+) -> tuple[Markup, str | None]:
+    """Return the finding sentence and the sentence about kept items."""
+    kept_finding = (
+        ngettext(
+            '%(count)s more is younger than 24 hours and stays.',
+            '%(count)s more are younger than 24 hours and stay.',
+            summary.kept_count,
+            count=summary.kept_count,
+        )
+        if summary.kept_count
+        else None
+    )
+
+    if action_id == 'unused-images':
+        finding = ngettext(
+            '<strong>%(count)s image</strong>, %(size)s.',
+            '<strong>%(count)s images</strong>, together %(size)s.',
+            summary.count,
+            count=summary.count,
+            size=size,
+        )
+    elif action_id == 'orphaned-files':
+        finding = ngettext(
+            '<strong>%(count)s file</strong>, %(size)s.',
+            '<strong>%(count)s files</strong>, together %(size)s.',
+            summary.count,
+            count=summary.count,
+            size=size,
+        )
+    else:
+        abort(404)
+
+    # Safe: `count` is an int and `size` comes from `format_file_size`.
+    return Markup(finding), kept_finding  # noqa: S704
 
 
 def _get_party_or_404(party_id) -> Party:

@@ -20,7 +20,7 @@
       <div class="tournament-icon">
         {%- if tournament.image_url %}
           <div class="tournament-media tournament-media--hero">
-            <img src="{{ tournament.image_url }}" alt="">
+            <img src="{{ tournament.image_url }}" alt="{{ tournament.image_alt_text or '' }}">
           </div>
         {%- else %}
           {{ render_icon('trophy') }}
@@ -91,7 +91,7 @@
     {%- if tournament.game_format and tournament.elimination_mode %}
     <div class="box">
       <div class="data-label">{{ _('Mode') }}</div>
-      <div class="data-value">{{ tournament.game_format.label }} / {{ tournament.elimination_mode.name|replace('_', ' ')|title }}</div>
+      <div class="data-value">{{ tournament.game_format.label }} / {{ elimination_mode_label }}</div>
     </div>
     {%- elif tournament.game_format %}
     <div class="box">

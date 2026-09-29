@@ -1,0 +1,36 @@
+{% extends 'layout/admin/lan_tournament.html' %}
+{% from 'macros/admin.html' import render_extra_in_heading %}
+{% set current_page_party = party %}
+{% set current_tab = 'maintenance' %}
+{% set page_title = [_('Maintenance'), party.title] %}
+
+{% block head %}{{ super() }}
+  <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_maintenance.css') }}">
+{%- endblock %}
+
+{% block body %}
+<div class="lt-maint">
+
+  <h1 class="title">{{ _('Maintenance') }}</h1>
+  <p class="lead">{{ _('Cleans up what no tournament needs any more. Each action shows you exactly what it deletes first.') }}</p>
+
+  <div class="lt-maint-actions">
+    {%- for row in rows %}
+    {%- set is_clean = row.summary.count == 0 %}
+    <article class="lt-maint-action{% if is_clean %} is-clean{% endif %}">
+      <h3>{{ row.texts.title }}</h3>
+      <p class="what">{{ row.texts.description }}</p>
+      {%- if is_clean %}
+      <p class="finding">{{ row.texts.empty }}{% if row.texts.get('empty_hint') %} {{ row.texts.empty_hint }}{% endif %}</p>
+      {%- else %}
+      <p class="finding">{{ row.finding }}{% if row.kept_finding %} <span class="dimmed">{{ row.kept_finding }}</span>{% endif %}</p>
+      <div class="go">
+        <a class="button" href="{{ url_for('.maintenance_preview', party_id=party.id, action_id=row.action.id) }}">{{ _('Show preview') }}</a>
+      </div>
+      {%- endif %}
+    </article>
+    {%- endfor %}
+  </div>
+
+</div>
+{% endblock %}

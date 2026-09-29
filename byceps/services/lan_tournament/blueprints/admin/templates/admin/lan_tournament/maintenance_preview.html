@@ -1,0 +1,117 @@
+{% extends 'layout/admin/lan_tournament.html' %}
+{% from 'macros/admin.html' import render_extra_in_heading %}
+{% set current_page_party = party %}
+{% set current_tab = 'maintenance' %}
+{% set page_title = [texts.title, _('Maintenance'), party.title] %}
+
+{% macro render_head(has_uploader, with_checkbox=False) -%}
+<div class="head">
+  {%- if with_checkbox %}
+  <label><input type="checkbox" class="js-all" data-maint-all checked hidden aria-label="{{ _('Select all') }}"></label>
+  {%- endif %}
+  <span>{{ _('Image') }}</span>
+  <span>{{ _('File') }}</span>
+  <span class="num">{{ _('Size') }}</span>
+  {%- if has_uploader %}
+  <span>{{ _('Uploaded by') }}</span>
+  <span>{{ _('Uploaded') }}</span>
+  {%- else %}
+  <span>{{ _('Last modified') }}</span>
+  {%- endif %}
+</div>
+{%- endmacro %}
+
+{% macro render_item_cells(row, has_uploader) -%}
+{%- set item = row.item %}
+<span class="lt-maint-thumb">
+  {%- if item.thumbnail_url %}<img loading="lazy" alt="" src="{{ item.thumbnail_url }}">{% endif -%}
+</span>
+<span class="name">{{ item.file_name }}
+  {%- if item.width and item.height or item.type_name %}
+  <span class="meta">
+    {%- if item.width and item.height %}{{ item.width }} × {{ item.height }}{% endif %}
+    {%- if item.width and item.height and item.type_name %}, {% endif %}
+    {%- if item.type_name %}{{ item.type_name }}{% endif -%}
+  </span>
+  {%- endif %}
+</span>
+<span class="num col-size">{{ row.size }}</span>
+{%- if has_uploader %}
+<span class="col-by">{% if row.uploader %}{{ row.uploader }}{% endif %}</span>
+<span class="col-at" title="{{ row.created_at }}">{{ row.age }}</span>
+{%- else %}
+<span class="col-at" title="{{ row.age }}">{{ row.created_at }}</span>
+{%- endif %}
+<span class="lt-maint-mmeta">{{ row.size }}
+  {%- if item.width and item.height %} · {{ item.width }} × {{ item.height }}{% endif -%}
+</span>
+<span class="lt-maint-mmeta">{{ row.age }}
+  {%- if has_uploader and row.uploader %}, {{ row.uploader }}{% endif -%}
+</span>
+{%- endmacro %}
+
+{% block head %}{{ super() }}
+  <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_maintenance.css') }}">
+{%- endblock %}
+
+{% block body %}
+{%- set has_uploader = action.id == 'unused-images' %}
+<div class="lt-maint">
+
+  <a class="backlink" href="{{ url_for('.maintenance', party_id=party.id) }}">{{ texts.back }}</a>
+
+  <h1 class="title">{{ texts.title }} {{ render_extra_in_heading(total_count) }}</h1>
+
+  {%- if rows %}
+  <p class="lead">{{ texts.lead }}</p>
+  <form method="post" action="{{ url_for('.run_maintenance_action', party_id=party.id, action_id=action.id) }}" data-maint-form data-locale="{{ locale }}" data-label-one="{{ texts.label_one }}" data-label-many="{{ texts.label_many }}" data-label-none="{{ texts.label_none }}">
+    <div class="lt-maint-list plist" role="group">
+      {{ render_head(has_uploader, with_checkbox=True) }}
+      {%- for row in rows %}
+      <label class="lt-maint-item item">
+        <input type="checkbox" name="key" value="{{ row.item.key }}" checked data-bytes="{{ row.item.byte_size }}">
+        {{ render_item_cells(row, has_uploader) }}
+      </label>
+      {%- endfor %}
+    </div>
+    <div class="lt-maint-bar bar">
+      <a class="button" href="{{ url_for('.maintenance', party_id=party.id) }}">{{ texts.cancel }}</a>
+      <div class="right">
+        <span class="warn">{{ texts.delete_hint }}</span>
+        <button type="submit" class="button color-danger" data-maint-go>{{ texts.delete_button }}</button>
+      </div>
+    </div>
+    {%- if more_count > 0 %}
+    <p class="lt-maint-more">{{ texts.more_hint }}</p>
+    {%- endif %}
+  </form>
+  {%- else %}
+  <div class="lt-maint-empty">
+    <p>{{ texts.empty }}</p>
+    {%- if texts.get('empty_hint') %}
+    <p class="dimmed">{{ texts.empty_hint }}</p>
+    {%- endif %}
+  </div>
+  {%- endif %}
+
+  {%- if kept_rows %}
+  <div class="lt-maint-kept kept">
+    <h2>{{ texts.kept_heading }} {{ render_extra_in_heading(kept_rows|length) }}</h2>
+    <p class="reason">{{ texts.kept_note }}</p>
+    <div class="lt-maint-list plist">
+      {{ render_head(has_uploader) }}
+      {%- for row in kept_rows %}
+      <div class="lt-maint-item item">
+        {{ render_item_cells(row, has_uploader) }}
+      </div>
+      {%- endfor %}
+    </div>
+  </div>
+  {%- endif %}
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='behavior/lan_tournament_maintenance.js') }}" defer></script>
+{% endblock %}

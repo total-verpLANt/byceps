@@ -20,6 +20,9 @@
  *   [data-field-value]          – the initial value for the hidden input
  *   [data-locked]               – (optional) renders read-only cards
  *   [data-ffa-cards-container]  – the flex/grid row of point cards
+ *   [data-no-drag]              – (optional) disables drag-and-drop reordering
+ *   [data-label-points]         – (optional) aria-label template, `%(n)s` = place
+ *   [data-label-remove]         – (optional) aria-label template, `%(n)s` = place
  *
  * Called on DOMContentLoaded.
  */
@@ -31,6 +34,9 @@ function initPointTableEditor() {
   if (!cardsContainer) return;
 
   var isLocked = wrapper.hasAttribute('data-locked');
+  var noDrag = wrapper.hasAttribute('data-no-drag');
+  var labelPoints = wrapper.getAttribute('data-label-points');
+  var labelRemove = wrapper.getAttribute('data-label-remove');
 
   /* Create the hidden input dynamically so it doesn't shadow noscript. */
   var hiddenInput = document.createElement('input');
@@ -63,6 +69,13 @@ function initPointTableEditor() {
   function syncToHidden() {
     if (isLocked) return;
     hiddenInput.value = readValues().join(',');
+    hiddenInput.dispatchEvent(new Event('change', {bubbles: true}));
+  }
+
+  /** Build an aria-label from a `%(n)s` template or a fallback prefix. */
+  function placeLabel(template, fallbackPrefix, n) {
+    if (template) return template.replace('%(n)s', String(n));
+    return fallbackPrefix + n;
   }
 
   /** Re-number the place badges (#1, #2, ...) after reorder. */
@@ -99,7 +112,7 @@ function initPointTableEditor() {
   function createCard(value, index) {
     var card = document.createElement('div');
     card.className = 'ffa-point-card';
-    card.setAttribute('draggable', 'true');
+    card.setAttribute('draggable', noDrag ? 'false' : 'true');
 
     var place = document.createElement('span');
     place.className = 'ffa-point-card__place';
@@ -110,14 +123,20 @@ function initPointTableEditor() {
     input.className = 'ffa-point-card__value';
     input.min = '0';
     input.value = String(value);
-    input.setAttribute('aria-label', 'Points for place ' + (index + 1));
+    input.setAttribute(
+      'aria-label',
+      placeLabel(labelPoints, 'Points for place ', index + 1)
+    );
 
     var removeBtn = document.createElement('button');
     removeBtn.type = 'button';
     removeBtn.className = 'ffa-point-card__remove';
     removeBtn.textContent = '\u00d7';
     removeBtn.title = 'Remove';
-    removeBtn.setAttribute('aria-label', 'Remove place ' + (index + 1));
+    removeBtn.setAttribute(
+      'aria-label',
+      placeLabel(labelRemove, 'Remove place ', index + 1)
+    );
 
     card.appendChild(place);
     card.appendChild(input);
@@ -127,21 +146,31 @@ function initPointTableEditor() {
     input.addEventListener('input', syncToHidden);
 
     removeBtn.addEventListener('click', function() {
+      var nextCard = card.nextElementSibling;
       card.remove();
       renumberCards();
       syncToHidden();
+      /* Keep keyboard focus inside the editor. */
+      var nextInput = nextCard ? nextCard.querySelector('input') : null;
+      if (nextInput) {
+        nextInput.focus();
+      } else if (addBtn) {
+        addBtn.focus();
+      }
     });
 
     /* --- drag-and-drop --- */
-    card.addEventListener('dragstart', function(e) {
-      card.classList.add('is-dragging');
-      e.dataTransfer.effectAllowed = 'move';
-      /* Store a lightweight marker – the actual reorder happens on drop. */
-      e.dataTransfer.setData('text/plain', '');
-    });
-    card.addEventListener('dragend', function() {
-      card.classList.remove('is-dragging');
-    });
+    if (!noDrag) {
+      card.addEventListener('dragstart', function(e) {
+        card.classList.add('is-dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        /* Store a lightweight marker – the actual reorder happens on drop. */
+        e.dataTransfer.setData('text/plain', '');
+      });
+      card.addEventListener('dragend', function() {
+        card.classList.remove('is-dragging');
+      });
+    }
 
     return card;
   }
@@ -165,26 +194,28 @@ function initPointTableEditor() {
   /*  Drop-zone handling on the cards container                          */
   /* ------------------------------------------------------------------ */
 
-  cardsContainer.addEventListener('dragover', function(e) {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
+  if (!noDrag) {
+    cardsContainer.addEventListener('dragover', function(e) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
 
-    var dragging = cardsContainer.querySelector('.is-dragging');
-    if (!dragging) return;
+      var dragging = cardsContainer.querySelector('.is-dragging');
+      if (!dragging) return;
 
-    var afterElement = _getDragAfterElement(cardsContainer, e.clientX);
-    if (afterElement == null) {
-      cardsContainer.appendChild(dragging);
-    } else {
-      cardsContainer.insertBefore(dragging, afterElement);
-    }
-  });
+      var afterElement = _getDragAfterElement(cardsContainer, e.clientX);
+      if (afterElement == null) {
+        cardsContainer.appendChild(dragging);
+      } else {
+        cardsContainer.insertBefore(dragging, afterElement);
+      }
+    });
 
-  cardsContainer.addEventListener('drop', function(e) {
-    e.preventDefault();
-    renumberCards();
-    syncToHidden();
-  });
+    cardsContainer.addEventListener('drop', function(e) {
+      e.preventDefault();
+      renumberCards();
+      syncToHidden();
+    });
+  }
 
   /** Find the card element *after* the cursor position (horizontal). */
   function _getDragAfterElement(container, x) {
