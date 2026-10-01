@@ -1,0 +1,29 @@
+.tournament-category-filter {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  padding: 0.25rem 0.25rem 0.75rem;
+}
+
+.tournament-category-filter .button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.tournament-category-filter .button:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+[data-tournament-filter][hidden],
+[data-tournament-category][hidden],
+[data-tournament-filter-empty][hidden] {
+  display: none !important;
+}
+
+.tournament-page .tournament-category-filter .button[aria-pressed="true"] {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+  box-shadow: 3px 3px 0 var(--redDeep);
+}

@@ -1,0 +1,7 @@
+<div class="tournament-category-filter block" role="group" aria-label="{{ _('Tournament category') }}" data-tournament-filter hidden>
+  <button type="button" class="button color-primary" data-category-filter="ALL" aria-pressed="true">{{ _('All') }}</button>
+  {%- for category in tournament_groups %}
+  <button type="button" class="button is-outlined" data-category-filter="{{ category.value }}" aria-pressed="false">{{ category.label }}</button>
+  {%- endfor %}
+</div>
+<p class="dimmed" data-tournament-filter-empty role="status" hidden>{{ _('No tournaments found.') }}</p>

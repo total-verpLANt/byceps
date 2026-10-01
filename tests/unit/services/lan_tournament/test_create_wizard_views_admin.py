@@ -46,6 +46,7 @@ _ALL_PERMISSIONS = frozenset(
 _REQUEST_ID = '11111111-1111-1111-1111-111111111111'
 
 _VALID_DATA = {
+    'category': 'MAIN',
     'name': 'New Tournament',
     'contestant_type': 'SOLO',
     'game_format': 'ONE_V_ONE',

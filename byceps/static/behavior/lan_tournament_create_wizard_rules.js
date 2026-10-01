@@ -22,7 +22,7 @@
 
   var STEP_FIELDS = [
     [
-      'name', 'game', 'start_time', 'description', 'ruleset', 'image',
+      'name', 'category', 'game', 'start_time', 'description', 'ruleset', 'image',
       'image_id', 'image_url', 'image_alt_text'
     ],
     ['contestant_type', 'game_format', 'elimination_mode'],
@@ -385,6 +385,9 @@
     }
 
     // Client-side form rules (twins of the create form's validators).
+    if (['MAIN', 'FUN', 'STAGE', 'USER_ORGANIZED'].indexOf(values.category) === -1) {
+      add('category', 'Please choose a valid tournament category.');
+    }
     var name = isBlank(values.name) ? '' : String(values.name).trim();
     if (name === '') {
       add('name', 'Please enter a name.');

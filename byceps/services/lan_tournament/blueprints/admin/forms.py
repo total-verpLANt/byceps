@@ -38,6 +38,9 @@ from byceps.services.lan_tournament.models.elimination_mode import (
 from byceps.services.lan_tournament.models.game_format import GameFormat
 from byceps.services.lan_tournament.models.playoff import PlayoffReleaseMode
 from byceps.services.lan_tournament.models.score_ordering import ScoreOrdering
+from byceps.services.lan_tournament.models.tournament_category import (
+    TournamentCategory,
+)
 
 
 MAX_COUNT = tournament_request_domain_service.MAX_PARTICIPANT_LIMIT
@@ -137,6 +140,18 @@ def _get_score_ordering_choices() -> list[tuple[str, str]]:
 
 
 class _BaseForm(LocalizedForm):
+    category = SelectField(
+        lazy_gettext('Tournament category'),
+        validators=[
+            InputRequired(
+                message=lazy_gettext('Please choose a valid tournament category.')
+            )
+        ],
+        choices=lambda: [
+            (category.value, category.label) for category in TournamentCategory
+        ],
+        default=TournamentCategory.MAIN.value,
+    )
     name = StringField(
         lazy_gettext('Name'),
         filters=[_strip],

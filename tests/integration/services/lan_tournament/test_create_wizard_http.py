@@ -87,6 +87,7 @@ def _validate_url() -> str:
 
 def _solo_data(name: str, **extra) -> dict:
     return {
+        'category': 'MAIN',
         'name': name,
         'contestant_type': 'SOLO',
         'game_format': 'ONE_V_ONE',
@@ -135,6 +136,7 @@ def test_nojs_team_ffa_de_create_via_form_post(client, party):
         data={
             'submission_token': token,
             'name': 'Team FFA DE via form',
+            'category': 'MAIN',
             'contestant_type': 'TEAM',
             'game_format': 'FREE_FOR_ALL',
             'elimination_mode': 'DOUBLE_ELIMINATION',
@@ -397,7 +399,11 @@ def test_validate_create_returns_json_and_writes_nothing(client, party):
 
     invalid = client.post(
         _validate_url(),
-        data={'submission_token': token, 'name': 'Only a name'},
+        data={
+            'submission_token': token,
+            'name': 'Only a name',
+            'category': 'MAIN',
+        },
     )
     valid = client.post(
         _validate_url(), data=_solo_data('Fine', submission_token=token)
@@ -461,6 +467,7 @@ def test_highscore_post_with_a_bracket_mode_is_stored_without_a_bracket(
         data={
             'submission_token': token,
             'name': 'Tampered highscore',
+            'category': 'MAIN',
             'contestant_type': 'SOLO',
             'game_format': 'HIGHSCORE',
             'elimination_mode': 'SINGLE_ELIMINATION',

@@ -177,6 +177,7 @@ def test_unlocked_tournament_uses_submitted_values(app):
 
     form_data = {
         'name': 'Renamed Tournament',
+        'category': 'MAIN',
         'game': 'Valorant',
         'description': 'New description',
         'image_url': '',

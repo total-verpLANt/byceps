@@ -60,6 +60,7 @@ from .models.operational_timing import (
 )
 from .models.tournament import Tournament, TournamentID
 from .models.tournament_dashboard import PartyDashboardThresholds
+from .models.tournament_category import TournamentCategory
 from .models.tournament_image import TournamentImageID
 from .models.tournament_log_entry import TournamentLogEntry
 from .models.tournament_match import (
@@ -153,6 +154,7 @@ def create_tournament(tournament: Tournament, *, commit: bool = True) -> None:
         tournament.name,
         tournament.created_at,
         game=tournament.game,
+        category=tournament.category.value,
         description=tournament.description,
         image_url=tournament.image_url,
         ruleset=tournament.ruleset,
@@ -239,6 +241,7 @@ def update_tournament(tournament: Tournament) -> None:
         raise ValueError(f'Unknown tournament ID "{tournament.id}"')
 
     db_tournament.name = tournament.name
+    db_tournament.category = tournament.category.value
     db_tournament.game = tournament.game
     db_tournament.description = tournament.description
     db_tournament.image_url = tournament.image_url
@@ -627,6 +630,7 @@ def _db_tournament_to_tournament(
         id=db_tournament.id,
         party_id=db_tournament.party_id,
         name=db_tournament.name,
+        category=TournamentCategory(db_tournament.category),
         game=db_tournament.game,
         description=db_tournament.description,
         image_url=db_tournament.image_url,

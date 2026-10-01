@@ -1309,6 +1309,7 @@ def test_admin_update_request_requires_request_view_permission_too(app):
 # --------------------------------------------------------------------- #
 
 _CREATE_FORM_DATA = {
+    'category': 'USER_ORGANIZED',
     'name': 'New Tournament',
     'from_request_id': '11111111-1111-1111-1111-111111111111',
     'contestant_type': 'SOLO',
@@ -1773,6 +1774,7 @@ def test_admin_create_team_type_clears_solo_fields(app):
 
     data = {
         'name': 'Blank Type Team',
+        'category': 'MAIN',
         'contestant_type': 'TEAM',
         'game_format': 'ONE_V_ONE',
         'elimination_mode': 'SINGLE_ELIMINATION',
@@ -1815,6 +1817,7 @@ def test_admin_create_solo_type_clears_team_fields(app):
 
     data = {
         'name': 'Blank Type Solo',
+        'category': 'MAIN',
         'contestant_type': 'SOLO',
         'game_format': 'ONE_V_ONE',
         'elimination_mode': 'SINGLE_ELIMINATION',
@@ -1880,6 +1883,7 @@ def test_admin_update_blank_type_with_team_size_two_clears_solo_fields(app):
 
     data = {
         'name': 'Blank Type Team Update',
+        'category': 'MAIN',
         'max_players': '20',
         'max_players_in_team': '2',
     }
@@ -1936,6 +1940,7 @@ def test_admin_update_blank_type_with_team_size_one_clears_team_fields(app):
 
     data = {
         'name': 'Blank Type Solo Update',
+        'category': 'MAIN',
         'max_players_in_team': '1',
         'max_teams': '8',
     }

@@ -105,6 +105,7 @@ def _stored(tournament_id) -> DbTournament:
 
 def _solo_form(name, **extra) -> dict:
     return {
+        'category': 'MAIN',
         'name': name,
         'contestant_type': 'SOLO',
         'game_format': 'ONE_V_ONE',
@@ -115,6 +116,7 @@ def _solo_form(name, **extra) -> dict:
 
 def _ffa_form(name, table, **extra) -> dict:
     return {
+        'category': 'MAIN',
         'name': name,
         'contestant_type': 'SOLO',
         'game_format': 'FREE_FOR_ALL',

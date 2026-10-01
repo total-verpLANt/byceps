@@ -77,6 +77,9 @@ from byceps.services.lan_tournament.models.tournament import (
     Tournament,
     TournamentID,
 )
+from byceps.services.lan_tournament.models.tournament_category import (
+    TournamentCategory,
+)
 from byceps.services.lan_tournament.models.tournament_dashboard import (
     DashboardQuery,
     DashboardSettings,
@@ -162,6 +165,7 @@ from byceps.services.lan_tournament.lan_tournament_view_helpers import (
     ffa_grand_final_offer,
     ffa_grand_final_refusal,
     ffa_phase,
+    group_tournaments_by_category,
     is_walkover_match,
     match_filter_options,
     match_uses_placements,
@@ -323,6 +327,7 @@ def overview(party_id):
     return {
         'party': party,
         'tournaments': tournaments,
+        'tournament_groups': group_tournaments_by_category(tournaments),
         'stats': stats,
         'participant_counts': participant_counts,
         'email_templates_configured': email_templates_configured,
@@ -345,6 +350,7 @@ def index(party_id):
     return {
         'party': party,
         'tournaments': tournaments,
+        'tournament_groups': group_tournaments_by_category(tournaments),
         'participant_counts': participant_counts,
         'team_counts': team_counts,
         'elimination_mode_labels': _build_elimination_mode_labels(),
@@ -359,7 +365,7 @@ def sort_tournaments(party_id):
     _get_party_or_404(party_id)
 
     data = request.get_json(silent=True)
-    if data is None or 'tournament_ids' not in data:
+    if not isinstance(data, dict) or 'tournament_ids' not in data:
         abort(400)
 
     tournament_ids = data['tournament_ids']
@@ -632,6 +638,7 @@ def create_form(
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class _CreateSubmission:
     name: str
+    category: TournamentCategory
     game: str | None
     description: str | None
     image_url: str | None
@@ -715,6 +722,7 @@ def create(party_id):
     result = tournament_service.create_tournament(
         party.id,
         sub.name,
+        category=sub.category,
         game=sub.game,
         description=sub.description,
         image_url=sub.image_url,
@@ -1007,6 +1015,14 @@ def _parse_create_submission(
             return None
 
     name = (form.name.data or '').strip()
+    try:
+        category = TournamentCategory(form.category.data)
+    except (ValueError, TypeError):
+        category = None
+    if category is None and not form.category.errors:
+        _add_field_error(
+            form.category, gettext('Please choose a valid tournament category.')
+        )
     game = form.game.data.strip() if form.game.data else None
     description = (
         form.description.data.strip() if form.description.data else None
@@ -1201,11 +1217,12 @@ def _parse_create_submission(
             image_id = image.id
     image_alt_text = form.image_alt_text.data or None
 
-    if any(field.errors for field in form) or form.form_errors:
+    if category is None or any(field.errors for field in form) or form.form_errors:
         return None
 
     return _CreateSubmission(
         name=name,
+        category=category,
         game=game,
         description=description,
         image_url=image_url,
@@ -1760,6 +1777,7 @@ def _prefill_form_from_request(form, tournament_request):
     function only ever sets one side.
     """
     form.from_request_id.data = str(tournament_request.id)
+    form.category.data = TournamentCategory.USER_ORGANIZED.value
     form.name.data = tournament_request.name
     form.game.data = tournament_request.game
     form.description.data = tournament_request.description
@@ -1955,6 +1973,7 @@ def update_form(tournament_id, erroneous_form=None):
         )
 
         data = dataclasses.asdict(tournament)
+        data['category'] = tournament.category.value
         data['start_time'] = start_time_local
         if tournament.contestant_type is not None:
             data['contestant_type'] = tournament.contestant_type.name
@@ -2152,6 +2171,7 @@ def update(tournament_id):
     )
     if is_locked:
         formdata['name'] = tournament.name
+        formdata['category'] = tournament.category.value
         formdata['game'] = tournament.game or ''
         formdata['contestant_type'] = (
             tournament.contestant_type.name
@@ -2395,6 +2415,7 @@ def update(tournament_id):
     result = tournament_service.update_tournament(
         tournament.id,
         name=name,
+        category=TournamentCategory(form.category.data),
         game=game,
         description=description,
         image_url=image_url,

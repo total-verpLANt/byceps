@@ -31,7 +31,7 @@ _PRESERVED = {
             '0a15f1a0f42d27231b315959716465477dfa43d92b56e1aa27e03eb16d60001b',
             '676a2c5b795afe79028e5d5b02a6bd58d7a36c567c6c5868a7415b6da2f23112',
         ],
-        'b40e4d52388c8cf96fdbc35dc2be1896271290c11052a60a3bb3a1dcbbb6bec2',
+        '6c056e3ab686a503b790737d0eb805d40c637790e7f6b98b69d0562bfbda94a6',
     ),
     '_bote_request_style.html': (
         [],

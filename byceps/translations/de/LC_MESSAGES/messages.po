@@ -16943,3 +16943,22 @@ msgstr "Angepinnt (Server-Stand %(server)s)"
 
 msgid "What is waiting right now – across all your tournaments."
 msgstr "Was gerade wartet – über alle deine Turniere."
+
+# lan_tournament: F-01 categories
+msgid "Tournament category"
+msgstr "Turnierkategorie"
+
+msgid "Main tournaments"
+msgstr "Hauptturniere"
+
+msgid "Fun tournaments"
+msgstr "Neben-/Funturniere"
+
+msgid "Stage / Offline"
+msgstr "Bühne / Offline"
+
+msgid "User Organized"
+msgstr "User Organized"
+
+msgid "Please choose a valid tournament category."
+msgstr "Bitte wähle eine gültige Turnierkategorie."

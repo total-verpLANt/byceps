@@ -33,7 +33,7 @@ const CTX = {
 const CLIENT_ONLY_FIELDS = new Set(rules.STEP_FIELDS[0].concat(['req_map']));
 
 function basics(values) {
-  return Object.assign({name: 'Cup'}, values);
+  return Object.assign({name: 'Cup', category: 'MAIN'}, values);
 }
 
 function errorsOf(values, ctx) {

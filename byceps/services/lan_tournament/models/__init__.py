@@ -5,6 +5,7 @@ from .round_robin_standing import (
 )
 from .tournament import Tournament as Tournament
 from .tournament import TournamentID as TournamentID
+from .tournament_category import TournamentCategory as TournamentCategory
 from .tournament_match import TournamentMatch as TournamentMatch
 from .tournament_match import TournamentMatchID as TournamentMatchID
 from .tournament_match_comment import (

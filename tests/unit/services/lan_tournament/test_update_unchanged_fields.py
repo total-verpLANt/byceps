@@ -48,7 +48,9 @@ def _tournament(**overrides):
 
 
 def _valid(tournament, **data) -> tuple[bool, TournamentUpdateForm]:
-    form = TournamentUpdateForm(MultiDict({'name': 'Cup', **data}))
+    form = TournamentUpdateForm(
+        MultiDict({'name': 'Cup', 'category': 'MAIN', **data})
+    )
     form.set_contestant_type_choices()
     form.set_game_format_choices()
     form.set_elimination_mode_choices()

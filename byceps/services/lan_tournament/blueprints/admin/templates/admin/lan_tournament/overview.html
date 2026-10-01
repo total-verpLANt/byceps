@@ -8,6 +8,7 @@
 
 {% block head %}
   <link rel="stylesheet" href="{{ url_for('static', filename='style/admin_dashboard.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_category_filter.css') }}">
   <style>
     .stats-grid {
       display: grid;
@@ -109,8 +110,13 @@
   {%- endif %}
 
   {# Tournament list #}
+  {% include 'lan_tournament/_category_filter.html' %}
+
   {%- if tournaments %}
   <h2>{{ _('Tournaments') }} {{ render_extra_in_heading(tournaments|length) }}</h2>
+  {%- for category, category_tournaments in tournament_groups.items() %}
+  <section class="block" data-tournament-category="{{ category.value }}" data-tournament-count="{{ category_tournaments|length }}">
+  <h3>{{ category.label }} {{ render_extra_in_heading(category_tournaments|length) }}</h3>
   <table class="itemlist is-vcentered is-wide">
     <thead>
       <tr>
@@ -123,7 +129,7 @@
       </tr>
     </thead>
     <tbody>
-    {%- for tournament in tournaments|sort(attribute='name') %}
+    {%- for tournament in category_tournaments %}
       <tr>
         <td>
           <a href="{{ url_for('.view', tournament_id=tournament.id) }}" class="disguised">
@@ -171,6 +177,8 @@
     {%- endfor %}
     </tbody>
   </table>
+  </section>
+  {%- endfor %}
   {%- else %}
   <div class="box no-data-message">
     {{ _('No tournaments exist.') }}
@@ -178,3 +186,8 @@
   {%- endif %}
 
 {%- endblock %}
+
+{% block scripts %}
+  {{ super() }}
+  <script src="{{ url_for('static', filename='behavior/lan_tournament_category_filter.js') }}" defer></script>
+{% endblock %}

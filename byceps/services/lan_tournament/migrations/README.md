@@ -774,6 +774,20 @@ with the human:
    the visual sign-off against the accepted design.
 4. Git publication: commit, push and merge.
 
+### 024_add_tournament_category.sql
+
+Adds `lan_tournaments.category TEXT NOT NULL DEFAULT 'MAIN'`, guarded by
+`ck_lan_tournaments_category` (`MAIN`, `FUN`, `STAGE`, `USER_ORGANIZED`).
+On first application, existing request-derived tournaments are backfilled to
+`USER_ORGANIZED`; all others receive `MAIN`. Repeated application preserves
+category selections, including request-derived tournaments promoted to `MAIN`.
+Request provenance and category are independent. Positions remain unchanged.
+Apply after 023; `create_all()` does not migrate existing tables.
+
+**Rollback:** `rollback_024.sql` removes only the category constraint and
+column. Category selections are lost; tournaments, requests, provenance,
+positions, images, creation tokens and orga assignments are preserved.
+
 ## Pre-Application Checklist
 
 Before applying any migration, complete these steps:

@@ -99,6 +99,7 @@ from byceps.services.lan_tournament.lan_tournament_view_helpers import (
     ffa_grand_final_offer,
     ffa_grand_final_refusal,
     ffa_phase,
+    group_tournaments_by_category,
     is_walkover_match,
     match_filter_options,
     match_uses_placements,
@@ -217,6 +218,7 @@ def index():
 
     return {
         'tournaments': visible_tournaments,
+        'tournament_groups': group_tournaments_by_category(visible_tournaments),
         'participant_counts': participant_counts,
         'team_counts': team_counts,
     }

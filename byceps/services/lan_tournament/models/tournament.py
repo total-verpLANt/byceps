@@ -6,6 +6,7 @@ from uuid import UUID
 from byceps.services.party.models import PartyID
 from .contestant_type import ContestantType
 from .tournament_status import TournamentStatus
+from .tournament_category import TournamentCategory
 from .score_ordering import ScoreOrdering
 from .game_format import GameFormat
 from .elimination_mode import EliminationMode
@@ -50,6 +51,7 @@ class Tournament:
     group_size_max: int | None = None
     points_carry_to_losers: bool | None = None
     position: int = 0
+    category: TournamentCategory = TournamentCategory.MAIN
     use_bracket_reset: bool = True
     winner_team_id: 'TournamentTeamID | None' = None
     winner_participant_id: 'TournamentParticipantID | None' = None
@@ -77,4 +79,4 @@ class Tournament:
 
     @property
     def is_user_organized(self) -> bool:
-        return self.created_from_request_id is not None
+        return self.category == TournamentCategory.USER_ORGANIZED

@@ -6,6 +6,7 @@
 
 {% block head %}
 {% include 'site/lan_tournament/_bote_tournament_style.html' %}
+<link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_category_filter.css') }}">
 {%- endblock %}
 
 {% block body %}
@@ -31,11 +32,17 @@
   </div>
   {%- endif %}
 
+  {% include 'lan_tournament/_category_filter.html' %}
+
   <div class="main-body-box">
   {%- if tournaments %}
     {# ===== populated: stock .tournament-card markup, re-set as Spielplan rows ===== #}
+    {%- for category, category_tournaments in tournament_groups.items() %}
+    {%- if category_tournaments %}
+    <section class="block" data-tournament-category="{{ category.value }}">
+    <h2>{{ category.label }}</h2>
     <div class="tournament-list">
-    {%- for tournament in tournaments %}
+    {%- for tournament in category_tournaments %}
       <div class="tournament-card">
         <div class="tournament-icon">
           {%- if tournament.image_url %}
@@ -91,6 +98,9 @@
       </div>
     {%- endfor %}
     </div>
+    </section>
+    {%- endif %}
+    {%- endfor %}
   {%- else %}
     {# ===== empty: "noch keine, aber bald" — Aushang vom Turnierbüro ===== #}
     <div class="tourney-empty">
@@ -151,3 +161,8 @@
 
 </div>
 {%- endblock %}
+
+{% block scripts %}
+  {{ super() }}
+  <script src="{{ url_for('static', filename='behavior/lan_tournament_category_filter.js') }}" defer></script>
+{% endblock %}

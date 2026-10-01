@@ -497,6 +497,7 @@ def test_request_visibility_excludes_requests_from_site_index():
 
         assert set(result.keys()) == {
             'tournaments',
+            'tournament_groups',
             'participant_counts',
             'team_counts',
         }

@@ -25,7 +25,7 @@
   {%- macro wiz_field(field, caption=None, optional=False, required=False, counter=None, label=None) %}
     {%- set attrs = {'class': 'form-control'} %}
     {%- set source_value = source_values.get(field.name) if source_values else none %}
-    {%- set current_value = field.data.strftime('%Y-%m-%dT%H:%M') if field.data.strftime is defined else field._value() %}
+    {%- set current_value = field.data.strftime('%Y-%m-%dT%H:%M') if field.data.strftime is defined else (field._value() if field._value is defined else field.data) %}
     {%- if caption or counter %}{% set unused = attrs.update({'aria-describedby': field.id ~ '-cap'}) %}{% endif %}
     {%- if field.data.strftime is defined %}{% set unused = attrs.update({'value': current_value}) %}{% endif %}
     {%- set unused = attrs.update(kwargs) %}
@@ -172,6 +172,7 @@
             {{ wiz_field(form.name, required=True, counter=80, autofocus='autofocus', maxlength=False) }}
             {{ wiz_field(form.game, optional=True, counter=80, placeholder=_('e.g. Mario Kart 8 Deluxe'), maxlength=False) }}
           </div>
+          {{ wiz_field(form.category, required=True) }}
           <div class="lt-wiz-row">
             {%- if wizard.timezone_detail %}
             {%- set timezone_caption = _('In your timezone: %(tz)s (%(offset)s).', tz=wizard.timezone_name, offset=wizard.timezone_detail) %}

@@ -37,6 +37,7 @@
     <div class="box">
       {{ form_field(form.name, maxlength=80, **lock) }}
       {{ form_field(form.game, **lock) }}
+      {{ form_field(form.category, **lock) }}
       {{ form_field(form.description) }}
       {{ form_field(form.image_url) }}
       {{ form_field(form.contestant_type, **lock) }}

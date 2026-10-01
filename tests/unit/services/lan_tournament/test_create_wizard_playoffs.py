@@ -71,6 +71,7 @@ _PLAYOFF_KWARGS = (
 )
 
 _ROUND_ROBIN = {
+    'category': 'MAIN',
     'name': 'Group stage',
     'contestant_type': 'SOLO',
     'game_format': 'ONE_V_ONE',
@@ -84,6 +85,7 @@ _ROUND_ROBIN = {
     'playoff_release_mode': 'MANUAL',
 }
 _HIGHSCORE = {
+    'category': 'MAIN',
     'name': 'Leaderboard',
     'contestant_type': 'SOLO',
     'game_format': 'HIGHSCORE',
@@ -454,6 +456,7 @@ def _playoff_tournament(**overrides) -> Tournament:
 
 
 _UPDATE_BASE = {
+    'category': 'MAIN',
     'name': 'Group stage',
     'contestant_type': 'SOLO',
     'game_format': 'ONE_V_ONE',
@@ -681,6 +684,7 @@ def test_update_reports_a_playoff_rule_translated_on_the_field(app):
 
 def test_update_highscore_playoff_errors_are_translated_with_their_params(app):
     data = {
+        'category': 'MAIN',
         'name': 'Leaderboard',
         'contestant_type': 'SOLO',
         'game_format': 'HIGHSCORE',
@@ -936,7 +940,7 @@ _RULES_JS = pathlib.Path('byceps/static/behavior/lan_tournament_create_wizard_ru
 _NODE = shutil.which('node')
 _SERVED_FIELDS = (*_PLAYOFF_FIELDS, 'point_table', 'group_size_min', 'group_size_max', 'advancement_count')
 
-_SOLO = {'contestant_type': 'SOLO', 'min_players': '12', 'max_players': '24'}
+_SOLO = {'category': 'MAIN', 'contestant_type': 'SOLO', 'min_players': '12', 'max_players': '24'}
 
 
 def _js(expression: str, payload) -> object:

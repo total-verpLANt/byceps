@@ -80,6 +80,7 @@ def _shows_ceiling_error(html: str) -> bool:
 def _create_data(token: str, name: str, point_table: str) -> dict:
     return {
         'submission_token': token,
+        'category': 'MAIN',
         'name': name,
         'contestant_type': 'SOLO',
         'game_format': 'FREE_FOR_ALL',
@@ -172,6 +173,7 @@ def test_update_post_with_a_huge_place_value_changes_nothing(client, party):
         f'{BASE_URL}/tournaments/{tournament.id}',
         data={
             'name': tournament.name,
+            'category': tournament.category.value,
             'contestant_type': 'SOLO',
             'game_format': 'FREE_FOR_ALL',
             'elimination_mode': 'SINGLE_ELIMINATION',
@@ -196,6 +198,7 @@ def test_update_post_with_the_ceiling_is_stored(client, party):
         f'{BASE_URL}/tournaments/{tournament.id}',
         data={
             'name': tournament.name,
+            'category': tournament.category.value,
             'contestant_type': 'SOLO',
             'game_format': 'FREE_FOR_ALL',
             'elimination_mode': 'SINGLE_ELIMINATION',

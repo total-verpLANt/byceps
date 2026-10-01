@@ -16,6 +16,7 @@ from .events import (
 )
 from .models.contestant_type import ContestantType
 from .models.tournament import Tournament, TournamentID
+from .models.tournament_category import TournamentCategory
 from .models.score_ordering import ScoreOrdering
 from .models.game_format import GameFormat, is_valid_combination
 from .models.elimination_mode import EliminationMode
@@ -105,6 +106,7 @@ def create_tournament(
     playoff_qualifier_count: int | None = None,
     playoff_release_mode: PlayoffReleaseMode | None = None,
     position: int = 0,
+    category: TournamentCategory = TournamentCategory.MAIN,
     created_from_request_id: 'TournamentRequestID | None' = None,
     image_id: 'TournamentImageID | None' = None,
     image_alt_text: str | None = None,
@@ -147,6 +149,7 @@ def create_tournament(
         playoff_qualifier_count=playoff_qualifier_count,
         playoff_release_mode=playoff_release_mode,
         position=position,
+        category=category,
         created_from_request_id=created_from_request_id,
         image_id=image_id,
         image_alt_text=image_alt_text,

@@ -101,6 +101,7 @@ def _update(client, tournament, point_table: str, *, name: str | None = None):
         headers={'Accept-Language': 'de-DE,de;q=0.9'},
         data={
             'name': name or tournament.name,
+            'category': tournament.category.value,
             'contestant_type': 'SOLO',
             'game_format': 'FREE_FOR_ALL',
             'elimination_mode': 'SINGLE_ELIMINATION',

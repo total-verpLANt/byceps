@@ -188,7 +188,9 @@ def _source_request(**overrides):
 
 
 def _make_form(data=None, *, validate=False):
-    form = TournamentCreateForm(formdata=MultiDict(data) if data else None)
+    form = TournamentCreateForm(
+        formdata=MultiDict({'category': 'MAIN', **data}) if data else None
+    )
     form.set_contestant_type_choices()
     form.set_game_format_choices()
     form.set_elimination_mode_choices()

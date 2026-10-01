@@ -8,6 +8,7 @@
 
 {% block head %}
   <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_sort.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_category_filter.css') }}">
 {%- endblock %}
 
 {% block body %}
@@ -25,7 +26,12 @@
     </div>
   </div>
 
+  {% include 'lan_tournament/_category_filter.html' %}
+
   {%- if tournaments %}
+  {%- for category, category_tournaments in tournament_groups.items() %}
+  <section class="block" data-tournament-category="{{ category.value }}" data-tournament-count="{{ category_tournaments|length }}">
+  <h2>{{ category.label }} {{ render_extra_in_heading(category_tournaments|length) }}</h2>
   <table class="itemlist is-vcentered is-wide">
     <thead>
       <tr>
@@ -41,8 +47,8 @@
         <th>{{ _('Status') }}</th>
       </tr>
     </thead>
-    <tbody id="tournament-list">
-    {%- for tournament in tournaments %}
+    <tbody data-tournament-group="{{ category.value }}">
+    {%- for tournament in category_tournaments %}
       <tr data-tournament-id="{{ tournament.id }}">
         {%- if g.user.has_permission('lan_tournament.update') %}
         <td class="drag-handle">&#9776;</td>
@@ -99,9 +105,13 @@
           {%- endif %}
         </td>
       </tr>
+    {%- else %}
+      <tr><td colspan="{{ 8 if g.user.has_permission('lan_tournament.update') else 7 }}" class="no-data-message">{{ _('No tournaments exist.') }}</td></tr>
     {%- endfor %}
     </tbody>
   </table>
+  </section>
+  {%- endfor %}
   {%- else %}
   <div class="box no-data-message">{{ _('No tournaments exist.') }}</div>
   {%- endif %}
@@ -109,6 +119,7 @@
 {%- endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='behavior/lan_tournament_category_filter.js') }}" defer></script>
 {%- if tournaments and g.user.has_permission('lan_tournament.update') %}
 <script src="{{ url_for('static', filename='behavior/sortable.min.js') }}"></script>
 <script src="{{ url_for('static', filename='behavior/lan_tournament_sort.js') }}" data-sort-url="{{ url_for('.sort_tournaments', party_id=party.id) }}"></script>

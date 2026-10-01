@@ -1964,6 +1964,8 @@
       var alt = String(values.image_alt_text || '').trim();
       sections.push({step: 0, title: t(STEP_TITLES[0]), rows: [
         row('name', null, String(values.name || '').trim()),
+        row('category', null, named('category')[0].selectedOptions.length
+          ? named('category')[0].selectedOptions[0].textContent : ''),
         row('game', null, String(values.game || '').trim()),
         row('start_time', null, startNodes(values.start_time)),
         row('description', null, clipNodes(String(values.description || '')

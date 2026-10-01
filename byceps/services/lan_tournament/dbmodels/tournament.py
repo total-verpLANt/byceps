@@ -25,6 +25,10 @@ class DbTournament(db.Model):
 
     __tablename__ = 'lan_tournaments'
     __table_args__ = (
+        db.CheckConstraint(
+            "category IN ('MAIN', 'FUN', 'STAGE', 'USER_ORGANIZED')",
+            name='ck_lan_tournaments_category',
+        ),
         db.Index(
             'uq_lan_tournaments_created_from_request_id',
             'created_from_request_id',
@@ -83,6 +87,9 @@ class DbTournament(db.Model):
         index=True,
     )
     name: Mapped[str] = mapped_column(db.UnicodeText)
+    category: Mapped[str] = mapped_column(
+        db.UnicodeText, nullable=False, default='MAIN', server_default='MAIN',
+    )
     game: Mapped[str | None] = mapped_column(db.UnicodeText)
     description: Mapped[str | None] = mapped_column(db.UnicodeText)
     image_url: Mapped[str | None] = mapped_column(db.UnicodeText)
@@ -172,6 +179,7 @@ class DbTournament(db.Model):
         created_at: datetime,
         *,
         game: str | None = None,
+        category: str = 'MAIN',
         description: str | None = None,
         image_url: str | None = None,
         ruleset: str | None = None,
@@ -208,6 +216,7 @@ class DbTournament(db.Model):
         self.id = tournament_id
         self.party_id = party_id
         self.name = name
+        self.category = category
         self.created_at = created_at
         self.updated_at = None
         self.game = game
