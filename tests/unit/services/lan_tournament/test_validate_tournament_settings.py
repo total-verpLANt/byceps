@@ -20,6 +20,8 @@ from byceps.services.lan_tournament.tournament_domain_service import (
     check_point_count,
     check_point_values,
     create_tournament,
+    ffa_cut_missing,
+    FFA_CUT_REQUIRED_MSGID,
     MAX_POINT_TABLE_PLACES,
     MAX_POINTS_PER_PLACE,
     TournamentSettings,
@@ -156,6 +158,7 @@ def test_combination_error_lands_on_elimination_mode():
         elimination_mode=EliminationMode.ROUND_ROBIN,
         point_table=[3, 2, 1],
         group_size_max=4,
+        advancement_count=1,
     )
 
     errors = _errors(settings, require_structure=True)
@@ -230,6 +233,7 @@ def test_ffa_point_table_at_most_64_places(places, valid):
         elimination_mode=EliminationMode.SINGLE_ELIMINATION,
         point_table=[1] * places,
         group_size_max=4,
+        advancement_count=1,
     )
 
     result = validate_tournament_settings(settings, require_structure=True)
@@ -242,13 +246,27 @@ def test_ffa_point_table_at_most_64_places(places, valid):
         assert dict(message.params) == {'max': 64}
 
 
-def _ffa_settings(point_table):
+def test_ffa_lobby_above_the_code_limit_is_refused():
+    refused = validate_tournament_settings(
+        _ffa_settings([3, 2, 1], group_size_max=256), require_structure=True
+    )
+
+    message = refused.unwrap_err()['group_size_max']
+    assert message.msgid == 'At most %(max)s.'
+    assert dict(message.params) == {'max': 255}
+    assert validate_tournament_settings(
+        _ffa_settings([3, 2, 1], group_size_max=255), require_structure=True
+    ).is_ok()
+
+
+def _ffa_settings(point_table, group_size_max=4):
     return _settings(
         contestant_type=ContestantType.SOLO,
         game_format=GameFormat.FREE_FOR_ALL,
         elimination_mode=EliminationMode.SINGLE_ELIMINATION,
         point_table=point_table,
-        group_size_max=4,
+        group_size_max=group_size_max,
+        advancement_count=1,
     )
 
 
@@ -380,6 +398,91 @@ def test_advancement_below_smallest_group():
         'Fewer than %(n)s must advance from the smallest group (%(n)s teams).'
     )
     assert dict(message.params) == {'n': 4}
+
+
+def _cut_settings(**overrides):
+    fields = {
+        'contestant_type': ContestantType.SOLO,
+        'game_format': GameFormat.FREE_FOR_ALL,
+        'elimination_mode': EliminationMode.SINGLE_ELIMINATION,
+        'point_table': [3, 2, 1],
+        'group_size_max': 4,
+    }
+    fields.update(overrides)
+    return _settings(**fields)
+
+
+_HIGHSCORE_PLAYOFF = {
+    'game_format': GameFormat.HIGHSCORE,
+    'elimination_mode': None,
+    'score_ordering': ScoreOrdering.HIGHER_IS_BETTER,
+    'playoff_game_format': GameFormat.FREE_FOR_ALL,
+    'playoff_elimination_mode': EliminationMode.SINGLE_ELIMINATION,
+    'playoff_qualifier_count': 8,
+}
+
+
+def _highscore_playoff_settings(**overrides):
+    return _cut_settings(**{**_HIGHSCORE_PLAYOFF, **overrides})
+
+
+# fmt: off
+@pytest.mark.parametrize(
+    ('settings', 'expected'),
+    [
+        (_cut_settings(elimination_mode=EliminationMode.DOUBLE_ELIMINATION,
+                       max_players=4),                              True),
+        (_cut_settings(),                                           True),
+        (_cut_settings(max_players=8),                              True),
+        (_cut_settings(max_players=4),                              False),
+        (_cut_settings(contestant_type=ContestantType.TEAM,
+                       max_teams=8),                                True),
+        (_cut_settings(contestant_type=ContestantType.TEAM,
+                       max_teams=4),                                False),
+        (_cut_settings(contestant_type=ContestantType.TEAM),        True),
+        (_highscore_playoff_settings(),                             True),
+        (_highscore_playoff_settings(playoff_qualifier_count=4),    False),
+        (_highscore_playoff_settings(playoff_elimination_mode=
+                                     EliminationMode.DOUBLE_ELIMINATION,
+                                     playoff_qualifier_count=4),    True),
+        (_cut_settings(advancement_count=1),                        False),
+        (_cut_settings(group_size_max=None),                        False),
+        (_cut_settings(game_format=GameFormat.ONE_V_ONE),           False),
+        (_cut_settings(game_format=GameFormat.HIGHSCORE,
+                       elimination_mode=None),                      False),
+    ],
+    ids=[
+        'de-single-lobby', 'se-no-bound', 'se-bound-above-lobby',
+        'se-bound-in-lobby', 'team-bound-above-lobby',
+        'team-bound-in-lobby', 'team-no-bound', 'playoff-above-lobby',
+        'playoff-in-lobby', 'playoff-de-single-lobby', 'cut-set',
+        'no-group-max', 'non-ffa', 'highscore-without-playoff',
+    ],
+)
+# fmt: on
+def test_ffa_cut_missing_table(settings, expected):
+    assert ffa_cut_missing(settings) is expected
+
+
+def test_ffa_cut_required_lands_on_advancement_count():
+    assert _msgids(_cut_settings(), require_structure=True) == {
+        'advancement_count': FFA_CUT_REQUIRED_MSGID
+    }
+
+
+def test_highscore_playoff_cut_required_for_two_lobbies():
+    msgids = _msgids(_highscore_playoff_settings(), require_structure=True)
+
+    assert msgids['advancement_count'] == FFA_CUT_REQUIRED_MSGID
+
+
+def test_an_earlier_cut_error_wins():
+    settings = _cut_settings(advancement_count=4)
+
+    msgids = _msgids(settings, require_structure=True)
+
+    assert msgids['advancement_count'].startswith('Fewer than %(n)s')
+    assert msgids['advancement_count'] != FFA_CUT_REQUIRED_MSGID
 
 
 def test_only_the_first_error_per_field_is_kept():

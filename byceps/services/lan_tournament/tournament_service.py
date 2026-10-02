@@ -21,7 +21,10 @@ from . import (
     tournament_repository,
     tournament_request_repository,
     tournament_request_service,
+    tournament_qualification_repository,
     tournament_score_service,
+    tournament_seeding_repository,
+    tournament_seeding_service,
     tournament_team_service,
 )
 from .db_error_helpers import extract_constraint_name
@@ -38,10 +41,13 @@ from .models.tournament_image import TournamentImageID
 from .models.score_ordering import ScoreOrdering
 from .models.game_format import GameFormat, is_valid_combination
 from .models.elimination_mode import EliminationMode
+from .models.playoff import PlayoffReleaseMode
 from .models.tournament_status import TournamentStatus
+from .models.validation_message import ValidationMessage
 from .tournament_log_service import create_log_entry
 
 if TYPE_CHECKING:
+    from .models.tournament_match import TournamentMatch
     from .models.tournament_request import TournamentRequestID
 
 
@@ -55,6 +61,66 @@ EDIT_LOCKED_STATUSES: frozenset[TournamentStatus] = frozenset({
     TournamentStatus.ONGOING,
     TournamentStatus.PAUSED,
 })
+
+PLAYOFF_FIELDS = (
+    'playoff_game_format',
+    'playoff_elimination_mode',
+    'playoff_group_count',
+    'playoff_qualifiers_per_group',
+    'playoff_qualifier_count',
+    'playoff_release_mode',
+)
+# A highscore tournament plays these in its playoff phase only.
+_HIGHSCORE_PLAYOFF_FIELDS = (
+    'point_table',
+    'group_size_min',
+    'group_size_max',
+    'advancement_count',
+    'points_carry_to_losers',
+)
+# The playoff switch and the group count shape the phase-1 groups.
+_STARTED_PLAYOFF_LOCK = frozenset(
+    {'playoff_game_format', 'playoff_group_count'}
+)
+_STARTED_STATUSES = EDIT_LOCKED_STATUSES | {TournamentStatus.COMPLETED}
+PLAYOFF_RELEASED_EDIT_ERROR = (
+    'The playoffs are released, so their settings are locked.'
+)
+PLAYOFF_STARTED_EDIT_ERROR = (
+    'Once the tournament has started, the playoffs cannot be switched on '
+    'or off and the group count cannot change.'
+)
+
+
+def _playoff_value(name: str, value: object) -> object:
+    """Return the value as compared: a missing carry flag is off."""
+    if name == 'points_carry_to_losers':
+        return bool(value)
+    return value
+
+
+def playoff_fields(tournament: Tournament) -> tuple[str, ...]:
+    """Return the fields the playoff rules govern, not the status lock."""
+    if (
+        tournament.has_playoffs
+        and tournament.game_format is GameFormat.HIGHSCORE
+    ):
+        return PLAYOFF_FIELDS + _HIGHSCORE_PLAYOFF_FIELDS
+    return PLAYOFF_FIELDS
+
+
+def locked_playoff_fields(tournament: Tournament) -> frozenset[str]:
+    """Return the playoff fields an edit may not change now.
+
+    All of them once the playoffs are released, in every status. Before
+    the release, the playoff switch and the group count once the
+    tournament has started; the rest stays editable.
+    """
+    if tournament.playoff_released_at is not None:
+        return frozenset(playoff_fields(tournament))
+    if tournament.tournament_status in _STARTED_STATUSES:
+        return _STARTED_PLAYOFF_LOCK
+    return frozenset()
 
 
 def _validate_ffa_config(
@@ -112,6 +178,59 @@ def _validate_ffa_config(
     return Ok(None)
 
 
+class _Unset:
+    """Marker type: a playoff kwarg that was not passed."""
+
+
+_UNSET = _Unset()
+
+
+def _settings_of(
+    tournament: Tournament,
+) -> tournament_domain_service.TournamentSettings:
+    """Return the settings the domain rules check."""
+    return tournament_domain_service.TournamentSettings(
+        contestant_type=tournament.contestant_type,
+        game_format=tournament.game_format,
+        elimination_mode=tournament.elimination_mode,
+        score_ordering=tournament.score_ordering,
+        min_players=tournament.min_players,
+        max_players=tournament.max_players,
+        min_teams=tournament.min_teams,
+        max_teams=tournament.max_teams,
+        min_players_in_team=tournament.min_players_in_team,
+        max_players_in_team=tournament.max_players_in_team,
+        point_table=tournament.point_table,
+        group_size_min=tournament.group_size_min,
+        group_size_max=tournament.group_size_max,
+        advancement_count=tournament.advancement_count,
+        playoff_game_format=tournament.playoff_game_format,
+        playoff_elimination_mode=tournament.playoff_elimination_mode,
+        playoff_group_count=tournament.playoff_group_count,
+        playoff_qualifiers_per_group=tournament.playoff_qualifiers_per_group,
+        playoff_qualifier_count=tournament.playoff_qualifier_count,
+        playoff_release_mode=tournament.playoff_release_mode,
+    )
+
+
+def _cut_editable(tournament: Tournament) -> bool:
+    """Tell whether an update may still change the cut."""
+    if 'advancement_count' in playoff_fields(tournament):
+        return 'advancement_count' not in locked_playoff_fields(tournament)
+    return tournament.tournament_status not in EDIT_LOCKED_STATUSES
+
+
+def _validate_playoff_config(
+    tournament: Tournament,
+) -> Result[None, ValidationMessage]:
+    """Return the message unformatted, for the view to format."""
+    settings = _settings_of(tournament)
+    match tournament_domain_service.validate_playoff_settings(settings):
+        case Err(errors):
+            return Err(next(iter(errors.values())))
+    return Ok(None)
+
+
 def _validate_image_url(image_url: str | None) -> Result[None, str]:
     """Validate image URL to prevent XSS/SSRF attacks."""
     if image_url is None or image_url == '':
@@ -154,13 +273,19 @@ def create_tournament(
     group_size_min: int | None = None,
     group_size_max: int | None = None,
     points_carry_to_losers: bool | None = None,
+    playoff_game_format: GameFormat | None = None,
+    playoff_elimination_mode: EliminationMode | None = None,
+    playoff_group_count: int | None = None,
+    playoff_qualifiers_per_group: int | None = None,
+    playoff_qualifier_count: int | None = None,
+    playoff_release_mode: PlayoffReleaseMode | None = None,
     position: int | None = None,
     created_from_request_id: 'TournamentRequestID | None' = None,
     initiator_id: UserID | None = None,
     image_id: TournamentImageID | None = None,
     image_alt_text: str | None = None,
     creation_token: UUID | None = None,
-) -> Result[tuple[Tournament, TournamentCreatedEvent], str]:
+) -> Result[tuple[Tournament, TournamentCreatedEvent], str | ValidationMessage]:
     """Create a tournament.
 
     SECURITY NOTE: Authorization must be checked at blueprint layer before
@@ -247,12 +372,25 @@ def create_tournament(
         group_size_min=group_size_min,
         group_size_max=group_size_max,
         points_carry_to_losers=points_carry_to_losers,
+        playoff_game_format=playoff_game_format,
+        playoff_elimination_mode=playoff_elimination_mode,
+        playoff_group_count=playoff_group_count,
+        playoff_qualifiers_per_group=playoff_qualifiers_per_group,
+        playoff_qualifier_count=playoff_qualifier_count,
+        playoff_release_mode=playoff_release_mode,
         position=position,
         created_from_request_id=created_from_request_id,
         image_id=image_id,
         image_alt_text=image_alt_text,
         creation_token=creation_token,
     )
+
+    playoff_result = _validate_playoff_config(tournament)
+    if playoff_result.is_err():
+        return Err(playoff_result.unwrap_err())
+
+    if tournament_domain_service.ffa_cut_missing(_settings_of(tournament)):
+        return Err(tournament_domain_service.FFA_CUT_REQUIRED_MSGID)
 
     try:
         tournament_repository.create_tournament(
@@ -342,7 +480,14 @@ def update_tournament(
     group_size_min: int | None = None,
     group_size_max: int | None = None,
     points_carry_to_losers: bool | None = None,
-) -> Result[Tournament, str]:
+    playoff_game_format: GameFormat | None | _Unset = _UNSET,
+    playoff_elimination_mode: EliminationMode | None | _Unset = _UNSET,
+    playoff_group_count: int | None | _Unset = _UNSET,
+    playoff_qualifiers_per_group: int | None | _Unset = _UNSET,
+    playoff_qualifier_count: int | None | _Unset = _UNSET,
+    playoff_release_mode: PlayoffReleaseMode | None | _Unset = _UNSET,
+    initiator_id: UserID | None = None,
+) -> Result[Tournament, str | ValidationMessage]:
     """Update a tournament.
 
     SECURITY NOTE: Authorization must be checked at blueprint layer before
@@ -351,6 +496,15 @@ def update_tournament(
     Note: tournament_status is not accepted here.  Status
     changes must go through ``change_status`` to enforce the
     state machine.
+
+    A playoff kwarg that is not passed keeps the stored value; pass
+    `None` to clear it. The release state is never a kwarg here: the
+    targeted repository writers own it.
+
+    The playoff fields follow `locked_playoff_fields`, not the status
+    lock. With an `initiator_id`, a changed playoff field of an ongoing
+    tournament tries the automatic release, since a new cut or release
+    mode can make it due.
     """
     # Never store a NULL contestant type: derive it from team size
     # before validation, so the FFA/team cross-check below sees it too.
@@ -362,6 +516,9 @@ def update_tournament(
     if len(name.strip()) > 80:
         return Err('Tournament name must not exceed 80 characters.')
 
+    # Read under the lock: a stale snapshot would hide a concurrent start
+    # from the structural lock below.
+    tournament_repository.lock_tournament_for_update(tournament_id)
     tournament = tournament_repository.get_tournament(tournament_id)
 
     # An unchanged URL (e.g. an uploaded image's relative served path)
@@ -370,11 +527,13 @@ def update_tournament(
     if image_url_changed:
         validation_result = _validate_image_url(image_url)
         if validation_result.is_err():
+            tournament_repository.rollback_session()
             return Err(validation_result.unwrap_err())
 
     # Validate game_format + elimination_mode combination
     if game_format is not None and elimination_mode is not None:
         if not is_valid_combination(game_format, elimination_mode):
+            tournament_repository.rollback_session()
             return Err(
                 f'Invalid combination: {game_format.name} + '
                 f'{elimination_mode.name}.'
@@ -387,7 +546,51 @@ def update_tournament(
         check_table_limits=point_table != tournament.point_table,
     )
     if ffa_result.is_err():
+        tournament_repository.rollback_session()
         return Err(ffa_result.unwrap_err())
+
+    if isinstance(playoff_game_format, _Unset):
+        playoff_game_format = tournament.playoff_game_format
+    if isinstance(playoff_elimination_mode, _Unset):
+        playoff_elimination_mode = tournament.playoff_elimination_mode
+    if isinstance(playoff_group_count, _Unset):
+        playoff_group_count = tournament.playoff_group_count
+    if isinstance(playoff_qualifiers_per_group, _Unset):
+        playoff_qualifiers_per_group = tournament.playoff_qualifiers_per_group
+    if isinstance(playoff_qualifier_count, _Unset):
+        playoff_qualifier_count = tournament.playoff_qualifier_count
+    if isinstance(playoff_release_mode, _Unset):
+        playoff_release_mode = tournament.playoff_release_mode
+
+    # Validate the playoff fields against the incoming structure.
+    playoff_result = _validate_playoff_config(
+        dataclasses.replace(
+            tournament,
+            contestant_type=contestant_type,
+            game_format=game_format,
+            elimination_mode=elimination_mode,
+            score_ordering=score_ordering,
+            min_players=min_players,
+            max_players=max_players,
+            min_teams=min_teams,
+            max_teams=max_teams,
+            min_players_in_team=min_players_in_team,
+            max_players_in_team=max_players_in_team,
+            point_table=point_table,
+            group_size_min=group_size_min,
+            group_size_max=group_size_max,
+            advancement_count=advancement_count,
+            playoff_game_format=playoff_game_format,
+            playoff_elimination_mode=playoff_elimination_mode,
+            playoff_group_count=playoff_group_count,
+            playoff_qualifiers_per_group=playoff_qualifiers_per_group,
+            playoff_qualifier_count=playoff_qualifier_count,
+            playoff_release_mode=playoff_release_mode,
+        )
+    )
+    if playoff_result.is_err():
+        tournament_repository.rollback_session()
+        return Err(playoff_result.unwrap_err())
 
     # Reject structural changes while the tournament is in play.
     if tournament.tournament_status in EDIT_LOCKED_STATUSES:
@@ -438,13 +641,41 @@ def update_tournament(
             locked_changes.append('group_size_max')
         if points_carry_to_losers != tournament.points_carry_to_losers:
             locked_changes.append('points_carry_to_losers')
+        governed = playoff_fields(tournament)
+        locked_changes = [n for n in locked_changes if n not in governed]
         if locked_changes:
             fields_str = ', '.join(locked_changes)
+            tournament_repository.rollback_session()
             return Err(
                 f'Tournament is {tournament.tournament_status.name.lower()}. '
                 f'Only description, image, and ruleset can be changed. '
                 f'Attempted to change: {fields_str}.'
             )
+
+    incoming = {
+        'playoff_game_format': playoff_game_format,
+        'playoff_elimination_mode': playoff_elimination_mode,
+        'playoff_group_count': playoff_group_count,
+        'playoff_qualifiers_per_group': playoff_qualifiers_per_group,
+        'playoff_qualifier_count': playoff_qualifier_count,
+        'playoff_release_mode': playoff_release_mode,
+        'point_table': point_table,
+        'group_size_min': group_size_min,
+        'group_size_max': group_size_max,
+        'advancement_count': advancement_count,
+        'points_carry_to_losers': points_carry_to_losers,
+    }
+    changed_playoff_fields = {
+        name
+        for name in playoff_fields(tournament)
+        if _playoff_value(name, incoming[name])
+        != _playoff_value(name, getattr(tournament, name))
+    }
+    if changed_playoff_fields & locked_playoff_fields(tournament):
+        tournament_repository.rollback_session()
+        if tournament.playoff_released_at is not None:
+            return Err(PLAYOFF_RELEASED_EDIT_ERROR)
+        return Err(PLAYOFF_STARTED_EDIT_ERROR)
 
     updated = dataclasses.replace(
         tournament,
@@ -476,7 +707,20 @@ def update_tournament(
         group_size_min=group_size_min,
         group_size_max=group_size_max,
         points_carry_to_losers=points_carry_to_losers,
+        playoff_game_format=playoff_game_format,
+        playoff_elimination_mode=playoff_elimination_mode,
+        playoff_group_count=playoff_group_count,
+        playoff_qualifiers_per_group=playoff_qualifiers_per_group,
+        playoff_qualifier_count=playoff_qualifier_count,
+        playoff_release_mode=playoff_release_mode,
     )
+
+    # A legacy row with an empty cut that is locked still saves other edits.
+    if tournament_domain_service.ffa_cut_missing(_settings_of(updated)) and (
+        tournament.advancement_count is not None or _cut_editable(tournament)
+    ):
+        tournament_repository.rollback_session()
+        return Err(tournament_domain_service.FFA_CUT_REQUIRED_MSGID)
 
     tournament_repository.update_tournament(updated)
 
@@ -486,6 +730,19 @@ def update_tournament(
         tournament_id=tournament_id,
     )
     signals.tournament_updated.send(None, event=event)
+
+    # A changed cut or release mode can make the release due.
+    if (
+        initiator_id is not None
+        and changed_playoff_fields
+        and updated.has_playoffs
+        and updated.tournament_status is TournamentStatus.ONGOING
+    ):
+        from . import tournament_qualification_service
+
+        tournament_qualification_service.try_auto_release(
+            tournament_id, triggered_by=initiator_id
+        )
 
     return Ok(updated)
 
@@ -521,7 +778,7 @@ def delete_tournament(
     5. Winner references (FK back to teams/participants)
     6. Participants
     7. Teams
-    8. Orga assignments
+    8. Orga assignments, seeding drafts and qualification decisions
     9. Tournament request link (`fk_lan_tournament_requests_created_
        tournament_id` carries no ON DELETE; a request that produced
        this tournament has its `created_tournament_id` cleared here,
@@ -580,6 +837,12 @@ def delete_tournament(
         )
         tournament_orga_repository.delete_orgas_for_tournament(
             tournament_id, commit=False
+        )
+        tournament_seeding_repository.delete_seedings_for_tournament(
+            tournament_id
+        )
+        tournament_qualification_repository.delete_decisions_for_tournament(
+            tournament_id
         )
 
         # Clear the reverse link before the row it points at is
@@ -683,12 +946,35 @@ def get_participant_counts_for_tournaments(
     )
 
 
+def _ffa_round_zero_stall(tournament: Tournament) -> bool:
+    """Tell whether the generated first FFA round runs into a dead end."""
+    if tournament.game_format is not GameFormat.FREE_FOR_ALL:
+        return False
+    matches = [
+        m
+        for m in tournament_repository.get_matches_for_tournament(tournament.id)
+        if m.phase == 1 and m.round == 0 and m.bracket is not Bracket.LOSERS
+    ]
+    if not matches:
+        return False
+    contestants = tournament_repository.get_contestants_for_matches(
+        [m.id for m in matches]
+    )
+    count = sum(len(members) for members in contestants.values())
+    return tournament_match_service.ffa_stall_for(tournament, count) is not None
+
+
 def change_status(
     tournament_id: TournamentID,
     new_status: TournamentStatus,
     initiator_id: UserID | None = None,
 ) -> Result[tuple[Tournament, TournamentStatusChangedEvent], str]:
-    """Change the tournament status."""
+    """Change the tournament status.
+
+    A plain round robin settled while it was not running completes on
+    the change into ONGOING; the returned tournament still says ONGOING
+    then.
+    """
     tournament_repository.lock_tournament_for_update(tournament_id)
     tournament = tournament_repository.get_tournament(tournament_id)
 
@@ -714,27 +1000,45 @@ def change_status(
         in (None, TournamentStatus.REGISTRATION_CLOSED)
     )
     if is_start:
-        if (
-            tournament.game_format
-            and tournament.game_format.requires_bracket_generation
+        violations: list[str] = []
+        if tournament.game_format and (
+            tournament.game_format.requires_bracket_generation
+            or tournament.game_format.uses_placements
         ):
-            violations = (
-                tournament_match_service.validate_bracket_for_start(
-                    tournament_id, tournament=tournament
-                )
+            violations = tournament_match_service.validate_bracket_for_start(
+                tournament_id, tournament=tournament
             )
-            if violations:
-                tournament_repository.rollback_session()
+        # A bracket of another structure fails the bracket check too; the
+        # seeding reason names the way out. Without matches there is no
+        # generation to compare.
+        seeding_violations: list[str] = []
+        if violations != ['no matches generated']:
+            seeding_violations = tournament_seeding_service.start_violations(
+                tournament_id
+            )
+        if not violations or seeding_violations == [
+            tournament_seeding_service.ERR_STRUCTURE_CHANGED_AFTER_GENERATION
+        ]:
+            violations = seeding_violations
+        if violations:
+            tournament_repository.rollback_session()
 
-                # Only this violation has a catalogue entry.
-                if violations == ['no matches generated']:
-                    return Err(
-                        'Cannot start tournament without generated '
-                        'brackets. Generate brackets first.'
-                    )
+            # Only these violations have a catalogue entry.
+            if violations == ['no matches generated']:
                 return Err(
-                    'Cannot start tournament: ' + '; '.join(violations)
+                    'Cannot start tournament without generated '
+                    'brackets. Generate brackets first.'
                 )
+            if len(violations) == 1 and violations[0] in (
+                tournament_seeding_service.ERR_ROSTER_CHANGED,
+                tournament_seeding_service.ERR_STRUCTURE_CHANGED_AFTER_GENERATION,
+            ):
+                return Err(violations[0])
+            return Err('Cannot start tournament: ' + '; '.join(violations))
+        # The cut or the minimum may have changed after the generation.
+        if _ffa_round_zero_stall(tournament):
+            tournament_repository.rollback_session()
+            return Err(tournament_match_service.FFA_STALLS_ERROR)
 
     (event,) = result.unwrap()
 
@@ -796,6 +1100,32 @@ def change_status(
     tournament_repository.commit_session()
 
     signals.tournament_status_changed.send(None, event=event)
+
+    # A plain round robin completes only while ONGOING, so one settled
+    # while paused or before the start completes now. Not on a reopen:
+    # that would undo it at once.
+    if (
+        new_status == TournamentStatus.ONGOING
+        and tournament.tournament_status != TournamentStatus.COMPLETED
+        and tournament_match_service.is_plain_round_robin(tournament)
+    ):
+        tournament_match_service.complete_settled_plain_round_robin(
+            tournament_id
+        )
+
+    # Only an ONGOING tournament releases, so a qualification that
+    # became ready while PAUSED is due now. A refusal leaves things as
+    # they are: the qualification panel shows why.
+    if (
+        new_status == TournamentStatus.ONGOING
+        and tournament.has_playoffs
+        and initiator_id is not None
+    ):
+        from . import tournament_qualification_service
+
+        tournament_qualification_service.try_auto_release(
+            tournament_id, triggered_by=initiator_id
+        )
 
     return Ok((updated, event))
 
@@ -880,19 +1210,25 @@ def resolve_podium_display_names(
     if tournament.tournament_status != TournamentStatus.COMPLETED:
         return empty
 
-    gf = tournament.game_format
-    em = tournament.elimination_mode
+    # A playoff tournament is decided by phase 2 alone.
+    phase = 2 if tournament.has_playoffs else None
+    gf = tournament_domain_service.game_format_for_phase(
+        tournament, phase or 1
+    )
+    em = tournament_domain_service.elimination_mode_for_phase(
+        tournament, phase or 1
+    )
     if gf == GameFormat.ONE_V_ONE and em in (
         EliminationMode.SINGLE_ELIMINATION,
         EliminationMode.DOUBLE_ELIMINATION,
     ):
-        runner_up, bronze = _resolve_bracket_podium(tournament)
+        runner_up, bronze = _resolve_bracket_podium(tournament, phase=phase)
     elif em == EliminationMode.ROUND_ROBIN:
         runner_up, bronze = _resolve_rr_podium(tournament)
     elif gf == GameFormat.HIGHSCORE:
         runner_up, bronze = _resolve_hs_podium(tournament)
     elif gf == GameFormat.FREE_FOR_ALL:
-        runner_up, bronze = _resolve_ffa_podium(tournament)
+        runner_up, bronze = _resolve_ffa_podium(tournament, phase=phase)
     else:
         runner_up, bronze = None, None
 
@@ -905,15 +1241,32 @@ def resolve_podium_display_names(
 # -- Private helpers for podium resolution -----------------------------------
 
 
+def _matches_of_phase(
+    tournament: Tournament, phase: int | None
+) -> list['TournamentMatch']:
+    """Return the matches of `phase`, or all of them without one."""
+    matches = tournament_match_service.get_matches_for_tournament(tournament.id)
+    if phase is None:
+        return matches
+    return [m for m in matches if m.phase == phase]
+
+
 def _resolve_bracket_podium(
     tournament: Tournament,
+    *,
+    phase: int | None = None,
 ) -> tuple[str | None, str | None]:
-    """Derive 2nd and 3rd place from SE or DE bracket matches."""
-    matches = tournament_match_service.get_matches_for_tournament(tournament.id)
+    """Derive 2nd and 3rd place from SE or DE bracket matches.
+
+    With a `phase`, only the matches of that phase count.
+    """
+    matches = _matches_of_phase(tournament, phase)
     if not matches:
         return None, None
 
-    em = tournament.elimination_mode
+    em = tournament_domain_service.elimination_mode_for_phase(
+        tournament, phase or 1
+    )
     runner_up_name: str | None = None
     bronze_name: str | None = None
 
@@ -963,6 +1316,9 @@ def _resolve_rr_podium(
     tournament: Tournament,
 ) -> tuple[str | None, str | None]:
     """Derive 2nd and 3rd place from round-robin standings."""
+    if tournament_match_service.is_plain_round_robin(tournament):
+        return _resolve_plain_rr_podium(tournament)
+
     matches = tournament_match_service.get_matches_for_tournament(tournament.id)
     contestants_by_match = tournament_match_service.get_contestants_for_tournament(
         tournament.id
@@ -996,6 +1352,23 @@ def _resolve_rr_podium(
     return runner_up, bronze
 
 
+def _resolve_plain_rr_podium(
+    tournament: Tournament,
+) -> tuple[str | None, str | None]:
+    """Derive 2nd and 3rd place from the ranking; shared ranks are joined."""
+    standing = tournament_match_service.plain_round_robin_standing(tournament)
+
+    def _names(rank: int) -> str | None:
+        names = [
+            _resolve_contestant_name(tournament, entry.contestant_id)
+            for entry in standing.ranking.entries
+            if entry.rank == rank
+        ]
+        return ' / '.join(n for n in names if n) or None
+
+    return _names(2), _names(3)
+
+
 def _resolve_hs_podium(
     tournament: Tournament,
 ) -> tuple[str | None, str | None]:
@@ -1019,13 +1392,16 @@ def _resolve_hs_podium(
 
 def _resolve_ffa_podium(
     tournament: Tournament,
+    *,
+    phase: int | None = None,
 ) -> tuple[str | None, str | None]:
     """Derive 2nd and 3rd place from FFA match placements.
 
-    Looks at all confirmed FFA matches in the tournament and finds
-    the overall 2nd and 3rd place from the final round's placements.
+    Looks at all confirmed FFA matches in the tournament (of `phase`,
+    if given) and finds the overall 2nd and 3rd place from the final
+    round's placements. A double-elimination grand final is the final.
     """
-    matches = tournament_match_service.get_matches_for_tournament(tournament.id)
+    matches = _matches_of_phase(tournament, phase)
     if not matches:
         return None, None
 
@@ -1033,8 +1409,12 @@ def _resolve_ffa_podium(
     if not confirmed:
         return None, None
 
-    max_round = max((m.round or 0) for m in confirmed)
-    final_matches = [m for m in confirmed if (m.round or 0) == max_round]
+    grand_finals = [m for m in confirmed if m.bracket == Bracket.GRAND_FINAL]
+    if grand_finals:
+        final_matches = grand_finals
+    else:
+        max_round = max((m.round or 0) for m in confirmed)
+        final_matches = [m for m in confirmed if (m.round or 0) == max_round]
 
     runner_up_name: str | None = None
     bronze_name: str | None = None

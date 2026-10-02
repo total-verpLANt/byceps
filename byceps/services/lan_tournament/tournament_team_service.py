@@ -433,6 +433,16 @@ def leave_team(
     # Auto-delete empty team: If captain was the last member, delete team
     remaining_members = tournament_repository.get_participants_for_team(team_id)
     if len(remaining_members) == 0:
+        tournament_repository.lock_tournament_for_update(
+            participant.tournament_id
+        )
+        entries = tournament_repository.find_contestant_entries_for_team_in_tournament(
+            participant.tournament_id, team_id
+        )
+        tournament_repository.lock_matches_for_update(
+            sorted({match.id for _contestant, match in entries})
+        )
+        tournament_repository.remove_team_from_contestants(team_id)
         tournament_repository.clear_winner_team_reference(team_id)
         tournament_repository.delete_team(team_id)
 
@@ -522,8 +532,14 @@ def admin_add_member(
 def remove_team_member(
     team_id: TournamentTeamID,
     user_id: UserID,
+    *,
+    initiator_id: UserID | None = None,
 ) -> Result[TeamMemberLeftEvent, str]:
-    """Remove a non-captain member from a team."""
+    """Remove a non-captain member from a team.
+
+    The `initiator_id` confirms the byes of an automatic playoff
+    release that the removal makes due; it defaults to the captain.
+    """
     # Note: Unlike self-service `leave_team`, this function
     # intentionally skips tournament status checks — callers are
     # responsible for enforcing status constraints where appropriate
@@ -572,12 +588,26 @@ def remove_team_member(
             # Defwin: advance opponents past the now-empty team
             from . import tournament_match_service
 
-            tournament_match_service.handle_defwin_for_removed_team(
+            defwin = tournament_match_service.handle_defwin_for_removed_team(
                 team.tournament_id, team_id,
+                initiator_id=initiator_id,
             )
             tournament_repository.remove_team_from_participants_flush(team_id)
             tournament_repository.soft_delete_team_flush(team_id, now)
             db.session.commit()
+            for advanced_event in defwin.advanced:
+                signals.contestant_advanced.send(None, event=advanced_event)
+            for confirmed_event in defwin.confirmed:
+                signals.match_confirmed.send(None, event=confirmed_event)
+            for completed_event in defwin.completed:
+                signals.tournament_completed.send(None, event=completed_event)
+            if tournament.has_playoffs:
+                from . import tournament_qualification_service
+
+                tournament_qualification_service.try_auto_release(
+                    team.tournament_id,
+                    triggered_by=initiator_id or team.captain_user_id,
+                )
         else:
             tournament_repository.remove_team_from_participants(team_id)
             tournament_repository.remove_team_from_contestants(team_id)

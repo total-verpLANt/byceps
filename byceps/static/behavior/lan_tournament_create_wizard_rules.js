@@ -34,10 +34,27 @@
       'score_ordering', 'point_table', 'group_size_min', 'group_size_max',
       'advancement_count', 'points_carry_to_losers'
     ],
+    [
+      'playoff_enabled', 'playoff_group_count', 'playoff_qualifiers_per_group',
+      'playoff_qualifier_count', 'playoff_elimination_mode',
+      'playoff_release_mode'
+    ],
     ['from_request_id', 'submission_token']
   ];
 
   var LAST_STEP = STEP_FIELDS.length - 1;
+  var SCORING_STEP = 3;
+  var PLAYOFF_STEP = 4;
+  // Highscore has no scoring step of its own: its Free-for-All fields are
+  // the settings of the playoff phase and live on the Playoffs step.
+  var HIGHSCORE_PLAYOFF_FIELDS = [
+    'point_table', 'group_size_min', 'group_size_max', 'advancement_count',
+    'points_carry_to_losers'
+  ];
+  var PLAYOFF_COUNTS = [
+    'playoff_group_count', 'playoff_qualifiers_per_group',
+    'playoff_qualifier_count'
+  ];
 
   var DEFAULT_LIMITS = {
     nameMax: 80,
@@ -45,7 +62,9 @@
     textMax: 10000,
     pointTableMax: 64,
     pointValueMax: 999999999,
-    countMax: 1024
+    countMax: 1024,
+    playoffGroupMax: 255,
+    lobbyMax: 255
   };
 
   var TYPE_LABELS = {SOLO: 'Solo', TEAM: 'Teams'};
@@ -190,6 +209,167 @@
     return /^https?:\/\/[^\s\/?#]+[^\s]*$/i.test(text);
   }
 
+  // 'rr': 1v1 round robin, 'hs': Highscore; the formats with a playoff phase.
+  function playoffKind(values) {
+    if (values.game_format === 'HIGHSCORE') {
+      return 'hs';
+    }
+    if (
+      values.game_format === 'ONE_V_ONE' &&
+      values.elimination_mode === 'ROUND_ROBIN'
+    ) {
+      return 'rr';
+    }
+    return null;
+  }
+
+  // The twin of `_check_playoffs`. The Free-for-All rules of a highscore
+  // playoff phase run with the other Free-for-All rules in `validate`.
+  function checkPlayoffs(values, counts, kind, add) {
+    if (!values.playoff_elimination_mode) {
+      add('playoff_elimination_mode', 'Please choose a playoff elimination mode.');
+    }
+    if (!values.playoff_release_mode) {
+      add(
+        'playoff_release_mode',
+        'Please choose how the playoffs are released.'
+      );
+    }
+    if (kind === 'rr') {
+      checkRoundRobinPlayoffs(values, counts, add);
+    } else {
+      checkHighscorePlayoffs(counts, add);
+    }
+  }
+
+  function checkRoundRobinPlayoffs(values, counts, add) {
+    var groups = counts.playoff_group_count;
+    var perGroup = counts.playoff_qualifiers_per_group;
+
+    if (groups === null) {
+      add('playoff_group_count', 'Please enter the number of groups.');
+    } else if (groups < 2) {
+      add('playoff_group_count', 'At least two groups are needed.');
+    }
+    if (perGroup === null) {
+      add(
+        'playoff_qualifiers_per_group',
+        'Please enter how many advance from each group.'
+      );
+    }
+    if (groups === null || perGroup === null || groups < 2) {
+      return;
+    }
+
+    var minimum = values.contestant_type === 'TEAM'
+      ? counts.min_teams
+      : counts.min_players;
+    if (minimum !== null) {
+      var smallest = Math.floor(minimum / groups);
+      if (smallest < 2) {
+        add(
+          'playoff_group_count',
+          'The minimum number of contestants is too small for this many ' +
+            'groups.'
+        );
+        return;
+      }
+      if (perGroup >= smallest) {
+        add(
+          'playoff_qualifiers_per_group',
+          'Fewer must advance from each group than the smallest group holds.'
+        );
+        return;
+      }
+    }
+
+    var maximum = values.contestant_type === 'TEAM'
+      ? counts.max_teams
+      : counts.max_players;
+    if (maximum !== null && groups > Math.floor(maximum / 2)) {
+      add(
+        'playoff_group_count',
+        'The maximum number of contestants is too small for this many ' +
+          'groups.'
+      );
+      return;
+    }
+
+    if (values.playoff_elimination_mode === 'DOUBLE_ELIMINATION') {
+      if (groups * perGroup < 4) {
+        add(
+          'playoff_qualifiers_per_group',
+          'Double elimination playoffs need at least 4 qualifiers in total.'
+        );
+      }
+    } else if (groups * perGroup < 2) {
+      add(
+        'playoff_qualifiers_per_group',
+        'Playoffs need at least 2 qualifiers in total.'
+      );
+    }
+  }
+
+  function ffaLobbiesFit(count, groupMin, groupMax) {
+    var lobbies = Math.ceil(count / groupMax);
+    return Math.floor(count / lobbies) >= groupMin;
+  }
+
+  // The twin of `ffa_cut_missing`. A highscore playoff phase is always
+  // Free-for-All in the wizard.
+  function ffaCutMissing(values, counts) {
+    if (counts.advancement_count !== null || counts.group_size_max === null) {
+      return false;
+    }
+    var mode;
+    var bound;
+    if (values.game_format === 'FREE_FOR_ALL') {
+      mode = values.elimination_mode;
+      bound = values.contestant_type === 'TEAM'
+        ? counts.max_teams
+        : counts.max_players;
+    } else if (
+      values.game_format === 'HIGHSCORE' && !!values.playoff_enabled
+    ) {
+      mode = values.playoff_elimination_mode;
+      bound = counts.playoff_qualifier_count;
+    } else {
+      return false;
+    }
+    if (mode === 'DOUBLE_ELIMINATION') {
+      return true;
+    }
+    return bound === null || bound > counts.group_size_max;
+  }
+
+  function checkHighscorePlayoffs(counts, add) {
+    var qualifiers = counts.playoff_qualifier_count;
+    if (qualifiers === null) {
+      add('playoff_qualifier_count', 'Please enter the number of qualifiers.');
+    } else if (qualifiers < 2) {
+      add('playoff_qualifier_count', 'At least two qualifiers are needed.');
+    } else if (
+      counts.group_size_min !== null && qualifiers < counts.group_size_min
+    ) {
+      add(
+        'playoff_qualifier_count',
+        'Qualifiers must be at least the minimum group size.'
+      );
+    } else if (
+      counts.group_size_max !== null &&
+      (counts.group_size_min || 2) <= counts.group_size_max &&
+      !ffaLobbiesFit(
+        qualifiers, counts.group_size_min || 2, counts.group_size_max
+      )
+    ) {
+      add(
+        'playoff_qualifier_count',
+        'The qualifiers cannot be split into lobbies between the minimum ' +
+          'and maximum group size.'
+      );
+    }
+  }
+
   function validate(values, ctx) {
     values = values || {};
     ctx = ctx || {};
@@ -242,9 +422,13 @@
       ['min_players', 1], ['max_players', 1], ['min_teams', 1],
       ['max_teams', 1], ['min_players_in_team', 1],
       ['max_players_in_team', 1], ['group_size_min', 2],
-      ['group_size_max', 2], ['advancement_count', 1]
+      ['group_size_max', 2, 'lobbyMax'], ['advancement_count', 1],
+      ['playoff_group_count', 1, 'playoffGroupMax'],
+      ['playoff_qualifiers_per_group', 1], ['playoff_qualifier_count', 1]
     ].forEach(function (rule) {
-      var parsed = parseCount(values[rule[0]], rule[1], limits.countMax);
+      var parsed = parseCount(
+        values[rule[0]], rule[1], limits[rule[2]] || limits.countMax
+      );
       counts[rule[0]] = parsed.value;
       if (parsed.error) {
         add(rule[0], parsed.error.msgid, parsed.error.params);
@@ -310,8 +494,12 @@
     var points = pointTableList(values);
     var groupMin = counts.group_size_min;
     var groupMax = counts.group_size_max;
+    var kind = playoffKind(values);
+    var playoffOn = !!values.playoff_enabled && kind !== null;
+    var ffaActive = gameFormat === 'FREE_FOR_ALL' ||
+      (playoffOn && kind === 'hs');
 
-    if (gameFormat === 'FREE_FOR_ALL') {
+    if (ffaActive) {
       var isTeam = contestantType === 'TEAM';
       var advancement = counts.advancement_count;
 
@@ -387,6 +575,13 @@
       }
     }
 
+    if (playoffOn) {
+      checkPlayoffs(values, counts, kind, add);
+    }
+    if (ffaCutMissing(values, counts)) {
+      add('advancement_count', 'Please enter how many advance per lobby.');
+    }
+
     // Warnings: hints only, never enforced.
     var seats = ctx.capacity;
     if (seats !== undefined && seats !== null) {
@@ -413,7 +608,7 @@
       }
     }
     if (
-      gameFormat === 'FREE_FOR_ALL' && !errors.point_table &&
+      ffaActive && !errors.point_table &&
       !errors.group_size_max && groupMax !== null && points.length < groupMax
     ) {
       var first = points.length + 1;
@@ -431,13 +626,28 @@
   function applicableScopes(values) {
     values = values || {};
     var ffa = values.game_format === 'FREE_FOR_ALL';
+    var kind = playoffKind(values);
+    var on = !!values.playoff_enabled && kind !== null;
+    var highscorePlayoffs = on && kind === 'hs';
     return {
       solo: values.contestant_type === 'SOLO',
       team: values.contestant_type === 'TEAM',
       highscore: values.game_format === 'HIGHSCORE',
-      ffa: ffa,
-      ffaDe: ffa && values.elimination_mode === 'DOUBLE_ELIMINATION',
-      oneVOne: values.game_format === 'ONE_V_ONE'
+      // A highscore playoff phase is a Free-for-All phase.
+      ffa: ffa || highscorePlayoffs,
+      ffaFormat: ffa,
+      ffaPlayoff: highscorePlayoffs,
+      ffaDe: (ffa && values.elimination_mode === 'DOUBLE_ELIMINATION') ||
+        (highscorePlayoffs &&
+          values.playoff_elimination_mode === 'DOUBLE_ELIMINATION'),
+      oneVOne: values.game_format === 'ONE_V_ONE',
+      playoffNone: kind === null,
+      playoffEligible: kind !== null,
+      playoffKindRr: kind === 'rr',
+      playoffKindHs: kind === 'hs',
+      playoffRr: on && kind === 'rr',
+      playoffHs: highscorePlayoffs,
+      playoffOn: on
     };
   }
 
@@ -468,18 +678,56 @@
     return values.game_format === 'ONE_V_ONE';
   }
 
+  // The Playoffs step only exists for 1v1 round robin and for Highscore.
+  function skipPlayoffs(values) {
+    return playoffKind(values || {}) === null;
+  }
+
+  function isSkipped(i, values) {
+    return (i === SCORING_STEP && skipScoring(values)) ||
+      (i === PLAYOFF_STEP && skipPlayoffs(values));
+  }
+
   function nextStep(i, values) {
-    if (i === 2 && skipScoring(values)) {
-      return 4;
+    var next = Math.min(i + 1, LAST_STEP);
+    while (next < LAST_STEP && isSkipped(next, values)) {
+      next += 1;
     }
-    return Math.min(i + 1, LAST_STEP);
+    return next;
   }
 
   function prevStep(i, values) {
-    if (i === 4 && skipScoring(values)) {
-      return 2;
+    var prev = Math.max(i - 1, 0);
+    while (prev > 0 && isSkipped(prev, values)) {
+      prev -= 1;
     }
-    return Math.max(i - 1, 0);
+    return prev;
+  }
+
+  // The fields whose errors belong to step `i` for these values.
+  function stepFields(i, values) {
+    var fields = STEP_FIELDS[i];
+    if ((values || {}).game_format !== 'HIGHSCORE') {
+      return fields;
+    }
+    if (i === PLAYOFF_STEP) {
+      return fields.concat(HIGHSCORE_PLAYOFF_FIELDS);
+    }
+    if (i === SCORING_STEP) {
+      return fields.filter(function (field) {
+        return HIGHSCORE_PLAYOFF_FIELDS.indexOf(field) === -1;
+      });
+    }
+    return fields;
+  }
+
+  function stepOf(field, values) {
+    for (var i = 0; i < STEP_FIELDS.length; i++) {
+      if (stepFields(i, values).indexOf(field) !== -1) {
+        return i;
+      }
+    }
+    return -1;
   }
 
   function wholeNumber(raw) {
@@ -505,6 +753,173 @@
     return Object.prototype.hasOwnProperty.call(SUMMARY_LABELS, value)
       ? [{msgid: SUMMARY_LABELS[value]}]
       : [];
+  }
+
+  function playoffPlan(values) {
+    return {
+      kind: playoffKind(values),
+      enabled: !!values.playoff_enabled,
+      groups: wholeNumber(values.playoff_group_count),
+      perGroup: wholeNumber(values.playoff_qualifiers_per_group),
+      qualifiers: wholeNumber(values.playoff_qualifier_count)
+    };
+  }
+
+  // What the playoff settings say, for the stepper and the review: one
+  // part, or none while they are incomplete.
+  function playoffWhat(values) {
+    var plan = playoffPlan(values);
+    if (plan.kind === 'rr' && plan.groups !== null && plan.perGroup !== null) {
+      return [{
+        msgid: plan.perGroup === 1
+          ? '%(g)s groups, the best one each'
+          : '%(g)s groups, top %(q)s each',
+        params: {g: plan.groups, q: plan.perGroup}
+      }];
+    }
+    if (plan.kind === 'hs' && plan.qualifiers !== null) {
+      return [{
+        msgid: 'Top %(k)s of the leaderboard',
+        params: {k: plan.qualifiers}
+      }];
+    }
+    return [];
+  }
+
+  function playoffStepSummary(values) {
+    var plan = playoffPlan(values);
+    if (plan.kind === null) {
+      return [{msgid: 'nothing to set'}];
+    }
+    if (!plan.enabled) {
+      return [{msgid: 'No playoffs'}];
+    }
+    var what = playoffWhat(values);
+    return what.length ? what : [{msgid: 'Playoffs'}];
+  }
+
+  // The bracket size after a group phase: the next power of two.
+  function bracketSlots(qualifiers) {
+    var slots = 2;
+    while (slots < qualifiers) {
+      slots *= 2;
+    }
+    return slots;
+  }
+
+  function spread(total, parts) {
+    var low = Math.floor(total / parts);
+    return {low: low, high: Math.ceil(total / parts)};
+  }
+
+  // The live preview of the playoff phase as segments of {sep, msgid,
+  // params}; null while the settings are incomplete or invalid.
+  function playoffPreview(values) {
+    var plan = playoffPlan(values);
+    if (plan.kind === null || !plan.enabled) {
+      return null;
+    }
+    var team = values.contestant_type === 'TEAM';
+    var top = wholeNumber(team ? values.max_teams : values.max_players);
+    var segments = [];
+
+    if (plan.kind === 'rr') {
+      var groups = plan.groups;
+      var per = plan.perGroup;
+      if (groups === null || per === null || groups < 2 || per < 1) {
+        return null;
+      }
+      if (top !== null && top >= groups) {
+        segments.push({
+          sep: '',
+          msgid: team ? '%(n)s teams' : '%(n)s players',
+          params: {n: top}
+        });
+        var size = spread(top, groups);
+        segments.push({
+          sep: ' · ',
+          msgid: size.low === size.high
+            ? '%(g)s groups of %(s)s'
+            : '%(g)s groups of %(s)s to %(t)s',
+          params: {g: groups, s: size.low, t: size.high}
+        });
+      } else {
+        segments.push({
+          sep: '', msgid: '%(g)s groups', params: {g: groups}
+        });
+      }
+      segments.push({
+        sep: ' · ',
+        msgid: per === 1 ? 'the best one' : 'the best %(q)s',
+        params: {q: per}
+      });
+      var total = groups * per;
+      if (values.playoff_elimination_mode === 'DOUBLE_ELIMINATION' &&
+          total < 4) {
+        return [
+          {sep: '', msgid: '%(n)s qualifiers', params: {n: total}},
+          {
+            sep: ' – ',
+            msgid: 'too few for double knockout (at least 4)',
+            params: {},
+            bad: true
+          }
+        ];
+      }
+      var slots = bracketSlots(total);
+      var byes = slots - total;
+      segments.push({
+        sep: ' → ', msgid: '%(n)s qualifiers', params: {n: total}
+      });
+      segments.push({
+        sep: ' → ',
+        msgid: byes === 0
+          ? 'bracket with %(slots)s places, no byes'
+          : byes === 1
+            ? 'bracket with %(slots)s places, 1 bye'
+            : 'bracket with %(slots)s places, %(byes)s byes',
+        params: {slots: slots, byes: byes}
+      });
+      return segments;
+    }
+
+    var k = plan.qualifiers;
+    if (k === null || k < 2) {
+      return null;
+    }
+    if (top !== null) {
+      segments.push({
+        sep: '',
+        msgid: team ? 'Up to %(n)s teams' : 'Up to %(n)s players',
+        params: {n: top}
+      });
+    }
+    segments.push({
+      sep: top !== null ? ' · ' : '',
+      msgid: 'the best %(q)s',
+      params: {q: k}
+    });
+    var lobbyMax = wholeNumber(values.group_size_max);
+    if (lobbyMax !== null && lobbyMax >= 2) {
+      var lobbies = Math.ceil(k / lobbyMax);
+      var lobby = spread(k, lobbies);
+      segments.push({
+        sep: ' → ',
+        msgid: lobby.low === lobby.high
+          ? '%(l)s lobbies of %(s)s'
+          : '%(l)s lobbies of %(s)s to %(t)s',
+        params: {l: lobbies, s: lobby.low, t: lobby.high}
+      });
+      var advance = wholeNumber(values.advancement_count);
+      if (advance !== null && advance >= 1) {
+        segments.push({
+          sep: ' → ',
+          msgid: 'each %(a)s advance',
+          params: {a: advance}
+        });
+      }
+    }
+    return segments;
   }
 
   // Subtitle of step `i` in the stepper: parts of {text} or {msgid, params}.
@@ -537,7 +952,10 @@
       }
       return [];
     }
-    if (i !== 3) {
+    if (i === PLAYOFF_STEP) {
+      return playoffStepSummary(values);
+    }
+    if (i !== SCORING_STEP) {
       return [];
     }
     if (skipScoring(values)) {
@@ -578,11 +996,18 @@
     if (i === state.step) {
       return 'cur';
     }
-    if (i === 3 && skipScoring(state.values || {}) && visited[2]) {
+    var values = state.values || {};
+    if (i === SCORING_STEP && skipScoring(values) && visited[2]) {
+      return 'skip';
+    }
+    if (
+      i === PLAYOFF_STEP && skipPlayoffs(values) &&
+      (visited[SCORING_STEP] || (skipScoring(values) && visited[2]))
+    ) {
       return 'skip';
     }
     if (visited[i]) {
-      var hasError = STEP_FIELDS[i].some(function (field) {
+      var hasError = stepFields(i, values).some(function (field) {
         return Object.prototype.hasOwnProperty.call(errors, field);
       });
       return hasError ? 'err' : 'done';
@@ -598,6 +1023,39 @@
 
   function isSet(value) {
     return value !== undefined && value !== null && value !== '';
+  }
+
+  var PLAYOFF_KEYS = ['playoff_enabled'].concat(
+    PLAYOFF_COUNTS, ['playoff_elimination_mode', 'playoff_release_mode']
+  );
+
+  function playoffFilled(values) {
+    return !!values.playoff_enabled || PLAYOFF_COUNTS.some(function (key) {
+      return isSet(values[key]);
+    });
+  }
+
+  // A change of format or mode that moves the tournament out of its
+  // playoff kind resets the playoff settings, visibly and with undo.
+  function reconcilePlayoffs(prev, values, restore, notices) {
+    var before = playoffKind(prev);
+    if (
+      before === null || before === playoffKind(values) ||
+      !playoffFilled(prev)
+    ) {
+      return;
+    }
+    PLAYOFF_KEYS.forEach(function (key) {
+      values[key] = key === 'playoff_enabled'
+        ? false
+        : PLAYOFF_COUNTS.indexOf(key) !== -1 ? '' : null;
+      restore[key] = prev[key];
+    });
+    notices.push({
+      msgid: 'Playoff settings reset. They do not fit the new format.',
+      params: {},
+      undo: restore
+    });
   }
 
   function dependentChange(prev, field, value, ctx) {
@@ -653,7 +1111,20 @@
           undo: restore
         });
       }
+      reconcilePlayoffs(prev, values, restore, notices);
       return {values: values, notices: notices.slice(0, 2)};
+    }
+
+    if (field === 'elimination_mode') {
+      var earlierMode = prev.elimination_mode || null;
+      if (earlierMode === value) {
+        return {values: values, notices: notices};
+      }
+      values.elimination_mode = value;
+      reconcilePlayoffs(
+        prev, values, {elimination_mode: earlierMode}, notices
+      );
+      return {values: values, notices: notices};
     }
 
     if (field === 'contestant_type') {
@@ -770,12 +1241,19 @@
     STEP_FIELDS: STEP_FIELDS,
     format: format,
     validate: validate,
+    ffaCutMissing: ffaCutMissing,
     applicableScopes: applicableScopes,
     modeArea: modeArea,
     skipScoring: skipScoring,
+    skipPlayoffs: skipPlayoffs,
+    playoffKind: playoffKind,
     nextStep: nextStep,
     prevStep: prevStep,
+    stepFields: stepFields,
+    stepOf: stepOf,
     stepStatus: stepStatus,
+    playoffWhat: playoffWhat,
+    playoffPreview: playoffPreview,
     summaryLabel: summaryLabel,
     stepSummary: stepSummary,
     stepSubtitle: stepSubtitle,

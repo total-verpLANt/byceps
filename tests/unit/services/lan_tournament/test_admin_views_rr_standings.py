@@ -8,10 +8,11 @@ the template, while SE tournaments still render the bracket.
 """
 
 from contextlib import contextmanager
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
-from flask import Flask
+from flask import Flask, g
 
 from byceps.services.lan_tournament.models.tournament import (
     Tournament,
@@ -57,6 +58,7 @@ def _make_tournament(
     t.game_format = game_format
     t.elimination_mode = elimination_mode
     t.tournament_status = TournamentStatus.REGISTRATION_CLOSED
+    t.has_playoffs = False
     t.party_id = PARTY_ID_STR
     return t
 
@@ -78,11 +80,15 @@ def _patched_view():
         patch(f'{_V}.build_contestant_name_lookups') as mock_name_lookups,
         patch(f'{_V}.build_hover_lookups') as mock_hover_lookups,
         patch(f'{_V}.build_round_robin_standings') as mock_rr_standings,
+        patch(f'{_V}.qualification_js_strings', return_value={}),
     ):
         mock_name_lookups.return_value = ({}, {})
         mock_hover_lookups.return_value = ({}, {})
         mock_match_svc.get_matches_for_tournament_ordered.return_value = []
         mock_match_svc.get_contestants_for_match.return_value = []
+        mock_match_svc.is_plain_round_robin.side_effect = (
+            lambda t: t.elimination_mode == EliminationMode.ROUND_ROBIN
+        )
         mock_party_svc.get_party.return_value = _make_party()
         yield {
             'get_tournament': mock_get_tournament,
@@ -104,6 +110,7 @@ def _call_bracket(app):
     raw_fn = views.bracket.__wrapped__.__wrapped__
 
     with app.test_request_context('/'):
+        g.user = SimpleNamespace(has_permission=lambda permission: False)
         return raw_fn(TOURNAMENT_ID_STR)
 
 

@@ -48,7 +48,12 @@
       {%- set match = data.match %}
       {%- set contestants = data.contestants %}
       <tr>
-        <td>{{ render_match_ref(match) }}</td>
+        <td>{{ render_match_ref(match) }}
+          {%- set match_label = match_labels.get(match.id|string) %}
+          {%- if match_label %}
+          <br><small class="dimmed">{{ match_label }}</small>
+          {%- endif %}
+        </td>
         <td>
           {%- if contestants|length == 1 %}
             {# Defwin match: only one contestant, free advancement #}

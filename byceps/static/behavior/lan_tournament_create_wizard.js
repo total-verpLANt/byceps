@@ -33,8 +33,9 @@
 
   var Rules = window.LtCreateWizardRules;
 
-  var STEP_COUNT = 5;
-  var REVIEW_STEP = 4;
+  var STEP_COUNT = 6;
+  var REVIEW_STEP = 5;
+  var PLAYOFF_STEP = 4;
   var PRECHECK_TIMEOUT_MS = 5000;
   var PREVIEW_MAX_ROWS = 32;
   var SESSION_EXCLUDE = ['submission_token', 'image_id'];
@@ -42,6 +43,11 @@
   var LABEL_PARAMS = ['other', 'mode', 'format', 'type'];
   var POINTS_TOO_HIGH = 'Points may be at most %(max)s.';
   var POINTS_TOO_LOW = 'Points may be at least %(min)s.';
+  var PLAYOFF_QUALIFIERS_CAPTION =
+    'At least 2 and at least the min. lobby size (%(min)s). ' +
+    'The first phase ends with "Close qualification".';
+  var PLAYOFF_DE_MINIMUM =
+    'Double elimination playoffs need at least 4 qualifiers in total.';
   // The summary line of these errors shows the first sentence only.
   var LEAD_SENTENCE_ONLY = [
     'With at most %(n)s teams no group of at least %(min)s teams can form. ' +
@@ -54,7 +60,7 @@
   var NOTICE_STEPS = 1;
   var STEP_TITLES = [
     'Basics', 'Competition', 'Participants', 'Scoring and groups',
-    'Review and create'
+    'Playoffs', 'Review and create'
   ];
   var SCOPE_KEYS = {
     'solo': 'solo',
@@ -63,8 +69,25 @@
     'one-v-one': 'oneVOne',
     'highscore': 'highscore',
     'ffa': 'ffa',
-    'ffa-preview': 'ffa',
-    'ffa-de': 'ffaDe'
+    'ffa-preview': 'ffaFormat',
+    'ffa-de': 'ffaDe',
+    'playoff-none': 'playoffNone',
+    'playoff-intro-rr': 'playoffKindRr',
+    'playoff-intro-hs': 'playoffKindHs',
+    'playoff-toggle': 'playoffEligible',
+    'playoff-rr': 'playoffRr',
+    'playoff-rr-mode': 'playoffRr',
+    'playoff-hs': 'playoffHs',
+    'playoff-hs-ffa': 'playoffHs',
+    'playoff-on': 'playoffOn'
+  };
+  var PLAYOFF_RR_COUNTS = ['playoff_group_count', 'playoff_qualifiers_per_group'];
+  var PLAYOFF_HS_COUNTS = ['playoff_qualifier_count'];
+  // Free-for-All pieces that move onto the Playoffs step for Highscore.
+  var FFA_LABELS = {
+    group_size_min: ['Min. group size', 'Min. lobby size'],
+    group_size_max: ['Max. group size', 'Max. lobby size'],
+    advancement_count: ['Advancing per group', 'Advancing per lobby']
   };
   var SOLO_COUNTS = ['min_players', 'max_players'];
   var TEAM_COUNTS = [
@@ -281,6 +304,12 @@
       if (!scopes.ffa) {
         blank(FFA_FIELDS);
       }
+      if (!scopes.playoffRr) {
+        blank(PLAYOFF_RR_COUNTS);
+      }
+      if (!scopes.playoffHs) {
+        blank(PLAYOFF_HS_COUNTS);
+      }
       if (!scopes.highscore) {
         result.score_ordering = null;
       }
@@ -299,12 +328,7 @@
     }
 
     function stepOf(field) {
-      for (var i = 0; i < Rules.STEP_FIELDS.length; i++) {
-        if (Rules.STEP_FIELDS[i].indexOf(field) !== -1) {
-          return i;
-        }
-      }
-      return -1;
+      return Rules.stepOf(field, state.values);
     }
 
     function isManaged(field) {
@@ -329,7 +353,7 @@
 
     function stepErrors(i) {
       var errors = allErrors();
-      return Rules.STEP_FIELDS[i].filter(function (field) {
+      return Rules.stepFields(i, state.values).filter(function (field) {
         return Object.prototype.hasOwnProperty.call(errors, field) &&
           isManaged(field);
       });
@@ -344,6 +368,24 @@
     }
 
     /* ---------- scopes ---------- */
+
+    // The Free-for-All fields of a highscore playoff phase and the playoff
+    // mode cards are pieces that move between slots with the format, so
+    // that each field exists once and the form keeps its unique names.
+    function placePieces(values) {
+      var scopes = Rules.applicableScopes(values);
+      var highscore = Rules.playoffKind(values) === 'hs';
+      qsa(form, '[data-wiz-piece]').forEach(function (piece) {
+        var name = piece.getAttribute('data-wiz-piece');
+        var moved = name === 'playoff-mode' ? highscore : scopes.ffaPlayoff;
+        var slot = qs(
+          form, '[data-wiz-slot="' + name + (moved ? '-moved' : '') + '"]'
+        );
+        if (slot && piece.parentNode !== slot) {
+          slot.appendChild(piece);
+        }
+      });
+    }
 
     function applyScopes(values) {
       var scopes = Rules.applicableScopes(values);
@@ -434,12 +476,12 @@
       }[status];
     }
 
-    function canVisit(i, status) {
+    function canVisit(i, status, before) {
       if (status === 'cur') {
         return false;
       }
       return !!state.visited[i] || status === 'skip' ||
-        !!state.visited[i - 1];
+        !!state.visited[i - 1] || before === 'skip';
     }
 
     function updateStepper(values) {
@@ -459,7 +501,8 @@
           var subtitle = partsText(Rules.stepSubtitle(
             status, errorCount, Rules.stepSummary(i, values), compactList
           ));
-          var key = status + '|' + subtitle + '|' + canVisit(i, status);
+          var reachable = canVisit(i, status, perStep[i - 1]);
+          var key = status + '|' + subtitle + '|' + reachable;
           if (item.getAttribute('data-wiz-key') === key) {
             return;
           }
@@ -474,7 +517,7 @@
             inner[1].appendChild(el('span', 'lt-wiz-stepper__s', subtitle));
           }
           var holder;
-          if (canVisit(i, status)) {
+          if (reachable) {
             holder = el('button', 'lt-wiz-stepper__btn');
             holder.type = 'button';
             holder.setAttribute('data-wiz-goto', String(i));
@@ -626,6 +669,7 @@
       var values = readValues();
       state.values = copy(values);
       state.values.reqMap = state.reqMap;
+      placePieces(values);
       applyScopes(values);
       state.result = Rules.validate(validationValues(values), rulesContext());
       showStep();
@@ -1392,6 +1436,139 @@
       }
     }
 
+    function firstText(node) {
+      for (var i = 0; i < node.childNodes.length; i++) {
+        if (node.childNodes[i].nodeType === 3) {
+          return node.childNodes[i];
+        }
+      }
+      return null;
+    }
+
+    function setLabelText(node, text) {
+      var holder = node && firstText(node);
+      if (holder && holder.nodeValue.trim() !== text) {
+        holder.nodeValue = text;
+      }
+    }
+
+    function previewSentence(segments) {
+      return segments.map(function (segment) {
+        return segment.sep + t(segment.msgid, segment.params);
+      }).join('');
+    }
+
+    // The sentence of the live preview, or the reason it cannot be given.
+    function playoffPreviewText(values) {
+      var errors = state.result.errors;
+      var blocking = PLAYOFF_RR_COUNTS.concat(
+        PLAYOFF_HS_COUNTS, ['playoff_elimination_mode']
+      ).filter(function (field) {
+        return hasOwn(errors, field) &&
+          (state.touched[field] || state.shown[PLAYOFF_STEP]);
+      });
+      if (blocking.length) {
+        var tooFew = errors[blocking[0]].msgid === PLAYOFF_DE_MINIMUM
+          ? Rules.playoffPreview(validationValues(values))
+          : null;
+        return {
+          bad: true,
+          text: '▲ ' + (tooFew
+            ? previewSentence(tooFew) + '.'
+            : tMessage(errors[blocking[0]]))
+        };
+      }
+      var segments = Rules.playoffPreview(validationValues(values));
+      if (!segments || Object.keys(errors).some(function (field) {
+        return PLAYOFF_RR_COUNTS.concat(PLAYOFF_HS_COUNTS).indexOf(field) !== -1;
+      })) {
+        return null;
+      }
+      return {bad: false, text: previewSentence(segments) + '.'};
+    }
+
+    function skippedText(values) {
+      var parts = [];
+      if (values.game_format) {
+        parts = parts.concat(Rules.summaryLabel(values.game_format));
+        if (values.game_format !== 'HIGHSCORE') {
+          parts = parts.concat(Rules.summaryLabel(values.elimination_mode));
+        }
+      }
+      return parts.length
+        ? t(
+          'Playoffs exist only for 1v1 with "Everyone plays everyone" and ' +
+          'for Highscore. This tournament (%(what)s) has one phase and ' +
+          'behaves as before.',
+          {what: parts.map(function (part) { return t(part.msgid); }).join(' · ')}
+        )
+        : null;
+    }
+
+    function paintPlayoffs(values) {
+      var scopes = Rules.applicableScopes(values);
+      var kind = Rules.playoffKind(values);
+
+      var skip = qs(form, '[data-wiz-playoff-skip]');
+      if (skip) {
+        var text = skippedText(values);
+        if (text === null) {
+          text = skip.getAttribute('data-wiz-default');
+        }
+        if (skip.textContent !== text) {
+          skip.textContent = text;
+        }
+      }
+
+      setLabelText(
+        qs(form, '[data-wiz-choice="playoff_elimination_mode"] legend'),
+        t(kind === 'hs' ? 'Pools' : 'Playoff mode')
+      );
+      qsa(form, '[data-wiz-choice="playoff_elimination_mode"] [data-wiz-ex]')
+        .forEach(function (example) {
+          setShown(
+            example,
+            example.getAttribute('data-wiz-ex') === values.game_format
+          );
+        });
+
+      Object.keys(FFA_LABELS).forEach(function (field) {
+        var wrap = qs(form, '[data-wiz-field="' + field + '"]');
+        setLabelText(
+          wrap && qs(wrap, 'label.form-label'),
+          t(FFA_LABELS[field][scopes.ffaPlayoff ? 1 : 0])
+        );
+      });
+
+      var caption = qs(
+        form, '[data-wiz-field="playoff_qualifier_count"] .form-caption'
+      );
+      if (caption) {
+        var lobbyMin = String(values.group_size_min || '').trim();
+        var captionText = t(PLAYOFF_QUALIFIERS_CAPTION, {
+          min: /^[0-9]+$/.test(lobbyMin) && Number(lobbyMin) >= 2
+            ? lobbyMin
+            : '2'
+        });
+        if (caption.textContent !== captionText) {
+          caption.textContent = captionText;
+        }
+      }
+
+      var box = qs(form, '[data-wiz-playoff-preview-text]');
+      if (box) {
+        var preview = scopes.playoffOn ? playoffPreviewText(values) : null;
+        setShown(box, !!preview);
+        if (preview) {
+          box.classList.toggle('color-danger', preview.bad);
+          box.classList.toggle('color-info', !preview.bad);
+          if (box.textContent !== preview.text) {
+            box.textContent = preview.text;
+          }
+        }
+      }
+    }
+
     function renderAux(values) {
       paintChoices(values);
       paintSourceTags(values);
@@ -1399,6 +1576,7 @@
       paintCapacity(values);
       paintGroupUnit(values);
       paintPreview(values);
+      paintPlayoffs(values);
       paintReqMap(values);
     }
 
@@ -1425,7 +1603,10 @@
       }
       markEdited(name);
       if (target.type === 'radio') {
-        if (name === 'contestant_type' || name === 'game_format') {
+        if (
+          name === 'contestant_type' || name === 'game_format' ||
+          name === 'elimination_mode'
+        ) {
           applyDependent(name, target.value);
           return;
         }
@@ -1725,6 +1906,61 @@
         };
       }
 
+      function ffaRows(lobby) {
+        var places = String(values.point_table || '').split(',')
+          .map(function (item) { return item.trim(); })
+          .filter(function (item) { return item !== ''; });
+        var points = null;
+        if (places.length) {
+          points = el('span', 'ptl');
+          places.forEach(function (item, i) {
+            var place = el('span');
+            place.appendChild(el('b', null, (i + 1) + '.'));
+            place.appendChild(document.createTextNode(' ' + item));
+            points.appendChild(place);
+          });
+        }
+        var unit = values.contestant_type === 'TEAM'
+          ? t('teams') : t('players');
+        var minSize = String(values.group_size_min || '').trim();
+        var size = formatNodes('%(min)s to %(max)s %(unit)s', {
+          min: minSize === '' ? '2' : minSize,
+          max: String(values.group_size_max || '').trim() || '?',
+          unit: unit
+        });
+        if (minSize === '') {
+          size.appendChild(document.createTextNode(' '));
+          size.appendChild(el('span', 'dimmed', '(' +
+            t('Minimum not set, technically 2') + ')'));
+        }
+        var sizeBad = ['group_size_min', 'group_size_max'].filter(
+          function (field) { return hasOwn(errors, field); }
+        );
+        var scoring = [
+          row('point_table', t('Points by placement'), points),
+          {
+            label: t(lobby ? 'Lobby size' : 'Group size'),
+            value: size,
+            invalid: sizeBad.length > 0,
+            error: sizeBad.length ? errsumText(sizeBad[0]) : ''
+          },
+          row(
+            'advancement_count',
+            t(lobby ? 'Advancing per lobby' : 'Advancing per group'),
+            String(values.advancement_count || '').trim()
+          )
+        ];
+        if (scopes.ffaDe) {
+          scoring.push(row(
+            'points_carry_to_losers', t('Points in the losers bracket'),
+            values.points_carry_to_losers
+              ? t('Yes, carried over')
+              : t('No, the losers bracket counts separately')
+          ));
+        }
+        return scoring;
+      }
+
       var alt = String(values.image_alt_text || '').trim();
       sections.push({step: 0, title: t(STEP_TITLES[0]), rows: [
         row('name', null, String(values.name || '').trim()),
@@ -1788,52 +2024,64 @@
           'score_ordering', null,
           choiceLabel('score_ordering', values.score_ordering)
         )]});
-      } else if (scopes.ffa) {
-        var places = String(values.point_table || '').split(',')
-          .map(function (item) { return item.trim(); })
-          .filter(function (item) { return item !== ''; });
-        var points = null;
-        if (places.length) {
-          points = el('span', 'ptl');
-          places.forEach(function (item, i) {
-            var place = el('span');
-            place.appendChild(el('b', null, (i + 1) + '.'));
-            place.appendChild(document.createTextNode(' ' + item));
-            points.appendChild(place);
-          });
-        }
-        var unit = values.contestant_type === 'TEAM'
-          ? t('teams') : t('players');
-        var minSize = String(values.group_size_min || '').trim();
-        var size = formatNodes('%(min)s to %(max)s %(unit)s', {
-          min: minSize === '' ? '2' : minSize,
-          max: String(values.group_size_max || '').trim() || '?',
-          unit: unit
+      } else if (scopes.ffaFormat) {
+        sections.push({
+          step: 3, title: t(STEP_TITLES[3]), rows: ffaRows(false)
         });
-        if (minSize === '') {
-          size.appendChild(document.createTextNode(' '));
-          size.appendChild(el('span', 'dimmed', '(' +
-            t('Minimum not set, technically 2') + ')'));
+      }
+
+      if (scopes.playoffEligible) {
+        var playoffRows = [];
+        if (!values.playoff_enabled) {
+          playoffRows.push({
+            label: t('Summary'),
+            value: t('No playoffs. One phase, as before.'),
+            invalid: false,
+            error: ''
+          });
+        } else {
+          var bad = Rules.stepFields(PLAYOFF_STEP, values).filter(
+            function (field) { return hasOwn(errors, field); }
+          );
+          var what = Rules.playoffWhat(validationValues(values));
+          var complete = what.length && values.playoff_elimination_mode &&
+            values.playoff_release_mode;
+          playoffRows.push({
+            label: t('Summary'),
+            value: complete
+              ? t(
+                'Playoffs: %(what)s → %(mode)s, release %(release)s.',
+                {
+                  what: partsText(what),
+                  mode: choiceLabel(
+                    'playoff_elimination_mode', values.playoff_elimination_mode
+                  ),
+                  release: t(
+                    values.playoff_release_mode === 'AUTOMATIC'
+                      ? 'automatic'
+                      : 'manual'
+                  )
+                }
+              )
+              : '',
+            invalid: bad.length > 0,
+            error: bad.length ? errsumText(bad[0]) : ''
+          });
+          var preview = bad.length ? null : playoffPreviewText(values);
+          playoffRows.push({
+            label: t('Preview'),
+            value: preview ? preview.text : '',
+            invalid: false,
+            error: ''
+          });
+          if (scopes.ffaPlayoff) {
+            playoffRows = playoffRows.concat(ffaRows(true));
+          }
         }
-        var sizeBad = ['group_size_min', 'group_size_max'].filter(
-          function (field) { return hasOwn(errors, field); }
-        );
-        var scoring = [
-          row('point_table', t('Points by placement'), points),
-          {label: t('Group size'), value: size, invalid: sizeBad.length > 0,
-            error: sizeBad.length ? errsumText(sizeBad[0]) : ''},
-          row('advancement_count', t('Advancing per group'),
-            String(values.advancement_count || '').trim())
-        ];
-        if (scopes.ffaDe) {
-          scoring.push(row(
-            'points_carry_to_losers', t('Points in the losers bracket'),
-            values.points_carry_to_losers
-              ? t('Yes, carried over')
-              : t('No, the losers bracket counts separately')
-          ));
-        }
-        sections.push({step: 3, title: t(STEP_TITLES[3]), rows: scoring});
+        sections.push({
+          step: PLAYOFF_STEP, title: t(STEP_TITLES[PLAYOFF_STEP]),
+          rows: playoffRows
+        });
       }
 
       if (origin) {
@@ -2227,6 +2475,7 @@
       var image = state.image;
       var payload = {
         values: sessionValues(),
+        steps: STEP_COUNT,
         step: state.step,
         visited: state.visited,
         reqMap: state.reqMap,
@@ -2309,9 +2558,12 @@
           writeValue(name, payload.values[name]);
         }
       });
+      // A session from before the Playoffs step counts its steps otherwise.
+      var sameSteps = payload.steps === STEP_COUNT;
       var step = parseInt(payload.step, 10);
-      state.step = step >= 0 && step < STEP_COUNT ? step : 0;
-      state.visited = payload.visited && typeof payload.visited === 'object'
+      state.step = sameSteps && step >= 0 && step < STEP_COUNT ? step : 0;
+      state.visited = sameSteps && payload.visited &&
+        typeof payload.visited === 'object'
         ? payload.visited
         : {};
       state.reqMap = payload.reqMap || null;

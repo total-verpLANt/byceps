@@ -2,13 +2,14 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, UTC
 from math import ceil
-from typing import TYPE_CHECKING
+from typing import Literal, TYPE_CHECKING
 from uuid import UUID
 
 from byceps.services.party.models import PartyID
 from byceps.util.result import Err, Ok, Result
 from byceps.util.uuid import generate_uuid7
 
+from . import seed_code
 from .events import (
     TournamentCreatedEvent,
     TournamentStatusChangedEvent,
@@ -18,6 +19,7 @@ from .models.tournament import Tournament, TournamentID
 from .models.score_ordering import ScoreOrdering
 from .models.game_format import GameFormat, is_valid_combination
 from .models.elimination_mode import EliminationMode
+from .models.playoff import PlayoffReleaseMode
 from .models.round_robin_standing import RoundRobinStanding
 from .models.tournament_match_to_contestant import (
     TournamentMatchToContestant,
@@ -96,6 +98,12 @@ def create_tournament(
     group_size_min: int | None = None,
     group_size_max: int | None = None,
     points_carry_to_losers: bool | None = None,
+    playoff_game_format: GameFormat | None = None,
+    playoff_elimination_mode: EliminationMode | None = None,
+    playoff_group_count: int | None = None,
+    playoff_qualifiers_per_group: int | None = None,
+    playoff_qualifier_count: int | None = None,
+    playoff_release_mode: PlayoffReleaseMode | None = None,
     position: int = 0,
     created_from_request_id: 'TournamentRequestID | None' = None,
     image_id: 'TournamentImageID | None' = None,
@@ -132,6 +140,12 @@ def create_tournament(
         group_size_min=group_size_min,
         group_size_max=group_size_max,
         points_carry_to_losers=points_carry_to_losers,
+        playoff_game_format=playoff_game_format,
+        playoff_elimination_mode=playoff_elimination_mode,
+        playoff_group_count=playoff_group_count,
+        playoff_qualifiers_per_group=playoff_qualifiers_per_group,
+        playoff_qualifier_count=playoff_qualifier_count,
+        playoff_release_mode=playoff_release_mode,
         position=position,
         created_from_request_id=created_from_request_id,
         image_id=image_id,
@@ -190,6 +204,12 @@ class TournamentSettings:
     group_size_min: int | None
     group_size_max: int | None
     advancement_count: int | None
+    playoff_game_format: GameFormat | None = None
+    playoff_elimination_mode: EliminationMode | None = None
+    playoff_group_count: int | None = None
+    playoff_qualifiers_per_group: int | None = None
+    playoff_qualifier_count: int | None = None
+    playoff_release_mode: PlayoffReleaseMode | None = None
 
 
 MAX_POINT_TABLE_PLACES = 64
@@ -198,12 +218,38 @@ MAX_POINT_TABLE_PLACES = 64
 # points are stored in a 32-bit column when a group is confirmed.
 MAX_POINTS_PER_PLACE = 999_999_999
 
+# The seed code stores the parameter in 8 bits (`seed_code.MAX_PARAM`).
+MAX_PLAYOFF_GROUP_COUNT = seed_code.MAX_PARAM
+MAX_LOBBY_SIZE = seed_code.MAX_PARAM
+
 
 POINTS_TOO_HIGH_MSGID = 'Points may be at most %(max)s.'
 
 POINTS_TOO_LOW_MSGID = 'Points may be at least %(min)s.'
 
 TOO_MANY_PLACES_MSGID = 'At most %(max)s places.'
+
+
+def game_format_for_phase(
+    tournament: Tournament, phase: int
+) -> GameFormat | None:
+    """Return the game format that `phase` of the tournament runs."""
+    if phase == 1:
+        return tournament.game_format
+    if phase == 2:
+        return tournament.playoff_game_format
+    return None
+
+
+def elimination_mode_for_phase(
+    tournament: Tournament, phase: int
+) -> EliminationMode | None:
+    """Return the elimination mode that `phase` of the tournament runs."""
+    if phase == 1:
+        return tournament.elimination_mode
+    if phase == 2:
+        return tournament.playoff_elimination_mode
+    return None
 
 
 def check_point_count(point_table: list[int]) -> ValidationMessage | None:
@@ -296,9 +342,384 @@ def validate_tournament_settings(
     if game_format == GameFormat.FREE_FOR_ALL:
         _check_free_for_all(settings, add)
 
+    _check_playoffs(settings, add)
+
+    if ffa_cut_missing(settings):
+        add('advancement_count', FFA_CUT_REQUIRED_MSGID)
+
     if errors:
         return Err(errors)
     return Ok(None)
+
+
+def validate_playoff_settings(
+    settings: TournamentSettings,
+) -> Result[None, dict[str, ValidationMessage]]:
+    """Check the playoff rules alone, for callers without a form."""
+    errors: dict[str, ValidationMessage] = {}
+
+    def add(field: str, msgid: str, **params: str | int) -> None:
+        errors.setdefault(
+            field, ValidationMessage(msgid, tuple(params.items()))
+        )
+
+    _check_playoffs(settings, add)
+
+    if errors:
+        return Err(errors)
+    return Ok(None)
+
+
+NO_PLAYOFF_PHASE_MSGID = 'This format has no playoff phase.'
+
+_PLAYOFF_MODES = frozenset(
+    {EliminationMode.SINGLE_ELIMINATION, EliminationMode.DOUBLE_ELIMINATION}
+)
+
+
+def _check_playoffs(
+    settings: TournamentSettings, add: Callable[..., None]
+) -> None:
+    """Add the playoff rules of `validate_tournament_settings`."""
+    fields = (
+        settings.playoff_game_format,
+        settings.playoff_elimination_mode,
+        settings.playoff_group_count,
+        settings.playoff_qualifiers_per_group,
+        settings.playoff_qualifier_count,
+        settings.playoff_release_mode,
+    )
+    if all(value is None for value in fields):
+        return
+
+    is_round_robin = (
+        settings.game_format == GameFormat.ONE_V_ONE
+        and settings.elimination_mode == EliminationMode.ROUND_ROBIN
+    )
+    is_highscore = settings.game_format == GameFormat.HIGHSCORE
+    if not is_round_robin and not is_highscore:
+        add('playoff_game_format', NO_PLAYOFF_PHASE_MSGID)
+        return
+
+    if is_round_robin:
+        required_format = GameFormat.ONE_V_ONE
+        wrong_format = 'Round robin playoffs must be 1v1.'
+    else:
+        required_format = GameFormat.FREE_FOR_ALL
+        wrong_format = 'Highscore playoffs must be Free-for-All.'
+
+    playoff_format = settings.playoff_game_format
+    if playoff_format is None:
+        add('playoff_game_format', 'Please choose the playoff format.')
+    elif playoff_format != required_format:
+        add('playoff_game_format', wrong_format)
+
+    playoff_mode = settings.playoff_elimination_mode
+    if playoff_mode is None:
+        add(
+            'playoff_elimination_mode',
+            'Please choose a playoff elimination mode.',
+        )
+    elif playoff_mode not in _PLAYOFF_MODES:
+        add(
+            'playoff_elimination_mode',
+            'Playoffs must use single or double elimination.',
+        )
+
+    if settings.playoff_release_mode is None:
+        add(
+            'playoff_release_mode',
+            'Please choose how the playoffs are released.',
+        )
+
+    if is_round_robin:
+        _check_round_robin_playoffs(settings, add)
+    else:
+        _check_highscore_playoffs(settings, add)
+
+
+def _check_round_robin_playoffs(
+    settings: TournamentSettings, add: Callable[..., None]
+) -> None:
+    """Add the group and qualifier rules for round robin playoffs."""
+    groups = settings.playoff_group_count
+    per_group = settings.playoff_qualifiers_per_group
+
+    if settings.playoff_qualifier_count is not None:
+        add(
+            'playoff_qualifier_count',
+            'Only used for highscore playoffs.',
+        )
+
+    if groups is None:
+        add('playoff_group_count', 'Please enter the number of groups.')
+    elif groups < 2:
+        add('playoff_group_count', 'At least two groups are needed.')
+    elif groups > MAX_PLAYOFF_GROUP_COUNT:
+        add(
+            'playoff_group_count',
+            'At most %(max)s.',
+            max=MAX_PLAYOFF_GROUP_COUNT,
+        )
+
+    if per_group is None:
+        add(
+            'playoff_qualifiers_per_group',
+            'Please enter how many advance from each group.',
+        )
+    elif per_group < 1:
+        add(
+            'playoff_qualifiers_per_group',
+            'At least one contestant must advance from each group.',
+        )
+
+    if (
+        groups is None
+        or per_group is None
+        or groups < 2
+        or groups > MAX_PLAYOFF_GROUP_COUNT
+        or per_group < 1
+    ):
+        return
+
+    if settings.contestant_type == ContestantType.TEAM:
+        minimum = settings.min_teams
+    else:
+        minimum = settings.min_players
+    if minimum is not None:
+        smallest = minimum // groups
+        if smallest < 2:
+            add(
+                'playoff_group_count',
+                'The minimum number of contestants is too small for this '
+                'many groups.',
+            )
+            return
+        if per_group >= smallest:
+            add(
+                'playoff_qualifiers_per_group',
+                'Fewer must advance from each group than the smallest '
+                'group holds.',
+            )
+            return
+
+    if settings.contestant_type == ContestantType.TEAM:
+        maximum = settings.max_teams
+    else:
+        maximum = settings.max_players
+    if maximum is not None and groups > maximum // 2:
+        add(
+            'playoff_group_count',
+            'The maximum number of contestants is too small for this many '
+            'groups.',
+        )
+        return
+
+    if settings.playoff_elimination_mode == EliminationMode.DOUBLE_ELIMINATION:
+        if groups * per_group < 4:
+            add(
+                'playoff_qualifiers_per_group',
+                'Double elimination playoffs need at least 4 qualifiers '
+                'in total.',
+            )
+    elif groups * per_group < 2:
+        add(
+            'playoff_qualifiers_per_group',
+            'Playoffs need at least 2 qualifiers in total.',
+        )
+
+
+QUALIFIERS_SPLIT_MSGID = (
+    'The qualifiers cannot be split into lobbies between the minimum '
+    'and maximum group size.'
+)
+
+
+FFA_CUT_REQUIRED_MSGID = 'Please enter how many advance per lobby.'
+
+
+def ffa_cut_missing(settings: TournamentSettings) -> bool:
+    """Tell whether an FFA phase needs a cut it does not have.
+
+    Double elimination always needs one. Single elimination needs one
+    when more than one lobby can form: no bound on the contestants, or
+    a bound above the largest lobby. The bound of highscore playoffs is
+    the qualifier count.
+    """
+    if (
+        settings.advancement_count is not None
+        or settings.group_size_max is None
+    ):
+        return False
+    if settings.game_format == GameFormat.FREE_FOR_ALL:
+        mode = settings.elimination_mode
+        bound = (
+            settings.max_teams
+            if settings.contestant_type == ContestantType.TEAM
+            else settings.max_players
+        )
+    elif (
+        settings.game_format == GameFormat.HIGHSCORE
+        and settings.playoff_game_format == GameFormat.FREE_FOR_ALL
+    ):
+        mode = settings.playoff_elimination_mode
+        bound = settings.playoff_qualifier_count
+    else:
+        return False
+    if mode == EliminationMode.DOUBLE_ELIMINATION:
+        return True
+    return bound is None or bound > settings.group_size_max
+
+
+def ffa_lobbies_fit(count: int, group_min: int, group_max: int) -> bool:
+    """Tell whether `count` contestants make lobbies of `group_min` to `group_max`.
+
+    As few lobbies as the maximum allows, sizes differing by at most one,
+    like `snake_seed_groups` and the seeding layout.
+    """
+    lobbies = ceil(count / group_max)
+    return count // lobbies >= group_min
+
+
+FFA_NO_PROGRESS_MSGID = (
+    'With %(count)s contestants, round %(round)s would send everyone on: '
+    'lobbies of %(sizes)s with %(cut)s advancing per lobby never shrink. '
+    'Lower the number advancing per lobby or raise the minimum lobby size.'
+)
+FFA_STALLS_MSGID = (
+    'With %(count)s contestants, round %(round)s would need lobbies of '
+    '%(sizes)s, below the minimum of %(minimum)s. Change the number '
+    'advancing per lobby or the lobby sizes.'
+)
+HIGHSCORE_FFA_NO_PROGRESS_MSGID = (
+    'With %(count)s qualifiers, round %(round)s would send everyone on: '
+    'lobbies of %(sizes)s with %(cut)s advancing per lobby never shrink. '
+    'Lower the number advancing per lobby, raise the minimum lobby size '
+    'or change the qualifiers.'
+)
+HIGHSCORE_FFA_STALLS_MSGID = (
+    'With %(count)s qualifiers, round %(round)s would need lobbies of '
+    '%(sizes)s, below the minimum of %(minimum)s. Change the number '
+    'advancing per lobby, the lobby sizes or the qualifiers.'
+)
+
+
+@dataclass(frozen=True, kw_only=True)
+class FfaDeadEnd:
+    reason: Literal['below_minimum', 'no_progress']
+    round_number: int  # 0-based round that cannot be formed or repeats
+    count: int
+    lobby_sizes: tuple[int, ...]  # descending
+    minimum: int
+
+
+def _ffa_lobby_split(count: int, group_max: int) -> tuple[int, ...]:
+    """Return lobby sizes as `snake_seed_groups` and the seeding layout cut them."""
+    lobbies = max(1, ceil(count / max(2, group_max)))
+    base, extra = divmod(count, lobbies)
+    return (base + 1,) * extra + (base,) * (lobbies - extra)
+
+
+def ffa_single_track_dead_end(
+    count: int, group_min: int | None, group_max: int, cut: int
+) -> FfaDeadEnd | None:
+    """Return the first later single-track round whose lobbies fall below the minimum."""
+    minimum = max(2, group_min or 2)
+    round_number = 0
+    while True:
+        sizes = _ffa_lobby_split(count, group_max)
+        if len(sizes) == 1:
+            return None
+        if round_number > 0 and sizes[-1] < minimum:
+            return FfaDeadEnd(
+                reason='below_minimum',
+                round_number=round_number,
+                count=count,
+                lobby_sizes=sizes,
+                minimum=minimum,
+            )
+        next_count = sum(min(cut, size) for size in sizes)
+        if next_count >= count:
+            return FfaDeadEnd(
+                reason='no_progress',
+                round_number=round_number + 1,
+                count=next_count,
+                lobby_sizes=_ffa_lobby_split(next_count, group_max),
+                minimum=minimum,
+            )
+        count, round_number = next_count, round_number + 1
+
+
+def _check_highscore_playoffs(
+    settings: TournamentSettings, add: Callable[..., None]
+) -> None:
+    """Add the qualifier rules for highscore playoffs."""
+    qualifiers = settings.playoff_qualifier_count
+
+    if (
+        settings.playoff_group_count is not None
+        or settings.playoff_qualifiers_per_group is not None
+    ):
+        add(
+            'playoff_group_count',
+            'Only used for round robin playoffs.',
+        )
+
+    if qualifiers is None:
+        add('playoff_qualifier_count', 'Please enter the number of qualifiers.')
+    elif qualifiers < 2:
+        add('playoff_qualifier_count', 'At least two qualifiers are needed.')
+    elif (
+        settings.group_size_min is not None
+        and qualifiers < settings.group_size_min
+    ):
+        add(
+            'playoff_qualifier_count',
+            'Qualifiers must be at least the minimum group size.',
+        )
+    elif (
+        settings.group_size_max is not None
+        and (settings.group_size_min or 2) <= settings.group_size_max
+        and not ffa_lobbies_fit(
+            qualifiers, settings.group_size_min or 2, settings.group_size_max
+        )
+    ):
+        add('playoff_qualifier_count', QUALIFIERS_SPLIT_MSGID)
+
+    if (
+        settings.playoff_elimination_mode is EliminationMode.SINGLE_ELIMINATION
+        and settings.advancement_count is not None
+        and settings.group_size_max is not None
+        and qualifiers is not None
+        and not (
+            qualifiers < 2
+            or (
+                settings.group_size_min is not None
+                and qualifiers < settings.group_size_min
+            )
+        )
+        and (
+            dead_end := ffa_single_track_dead_end(
+                qualifiers,
+                settings.group_size_min,
+                settings.group_size_max,
+                settings.advancement_count,
+            )
+        )
+    ):
+        add(
+            'playoff_qualifier_count',
+            HIGHSCORE_FFA_STALLS_MSGID
+            if dead_end.reason == 'below_minimum'
+            else HIGHSCORE_FFA_NO_PROGRESS_MSGID,
+            cut=settings.advancement_count,
+            count=dead_end.count,
+            round=dead_end.round_number + 1,
+            sizes=', '.join(map(str, dead_end.lobby_sizes)),
+            minimum=dead_end.minimum,
+        )
+
+    _check_free_for_all(settings, add)
 
 
 def _check_free_for_all(
@@ -321,6 +742,8 @@ def _check_free_for_all(
     group_min_too_large = False
     if group_max is None:
         add('group_size_max', 'Required for Free-for-All.')
+    elif group_max > MAX_LOBBY_SIZE:
+        add('group_size_max', 'At most %(max)s.', max=MAX_LOBBY_SIZE)
     elif group_min is not None and group_min > group_max:
         group_min_too_large = True
         add(
@@ -630,6 +1053,11 @@ def _standard_seed_order(bracket_size: int) -> list[int]:
 # FFA domain logic
 # -------------------------------------------------------------------- #
 
+# Keep this a static msgid; the views translate it without parameters.
+GROUP_BELOW_MINIMUM_ERROR = (
+    'A group has fewer contestants than the minimum group size.'
+)
+
 
 def snake_seed_groups(
     contestant_ids: list[str],
@@ -659,12 +1087,9 @@ def snake_seed_groups(
         groups[target].append(cid)
 
     # Validate minimum group size.
-    for idx, group in enumerate(groups):
+    for group in groups:
         if len(group) < group_size_min:
-            return Err(
-                f'Group {idx} has {len(group)} contestants,'
-                f' below the minimum of {group_size_min}.'
-            )
+            return Err(GROUP_BELOW_MINIMUM_ERROR)
 
     return Ok(groups)
 

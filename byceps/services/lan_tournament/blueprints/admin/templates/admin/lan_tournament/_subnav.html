@@ -1,0 +1,40 @@
+{#- The sub-section navigation of a tournament; `active_tab` marks the current page. #}
+{%- macro render_admin_subnav(tournament, active_tab='') %}
+<style>
+  .subnav .button--current {
+    border-color: #1199ff;
+    opacity: 1;
+  }
+</style>
+  <div class="button-row subnav block">
+    <a class="button{% if active_tab == 'overview' %} button--current{% endif %}" href="{{ url_for('.view', tournament_id=tournament.id) }}">{{ _('Overview') }}</a>
+    <a class="button" href="{{ url_for('.participants_for_tournament', tournament_id=tournament.id) }}">{{ _('Participants') }}</a>
+    {% if tournament.contestant_type.name == 'TEAM' %}
+    <a class="button" href="{{ url_for('.teams_for_tournament', tournament_id=tournament.id) }}">{{ _('Teams') }}</a>
+    {% endif %}
+    <a class="button" href="{{ url_for('.matches_for_tournament', tournament_id=tournament.id) }}">{{ _('Matches') }}</a>
+    {%- if tournament.game_format and tournament.game_format.name != 'HIGHSCORE' %}
+    <a class="button{% if active_tab == 'seeding' %} button--current{% endif %}" href="{{ url_for('.seeding', tournament_id=tournament.id) }}">{{ _('Seeding') }}</a>
+    {%- endif %}
+    {%- if tournament.has_playoffs or (tournament.elimination_mode and tournament.elimination_mode.name == 'ROUND_ROBIN') %}
+    <a class="button{% if active_tab == 'qualification' %} button--current{% endif %}" href="{{ url_for('.qualification', tournament_id=tournament.id) }}">{{ _('Qualification & release') }}</a>
+    {%- endif %}
+    <a class="button{% if active_tab == 'orgas' %} button--current{% endif %}" href="{{ url_for('.orgas_for_tournament', tournament_id=tournament.id) }}">{{ _('Orgas') }}</a>
+    {% if tournament.game_format and tournament.game_format.name == 'HIGHSCORE' %}
+    <a class="button{% if active_tab == 'highscore' %} button--current{% endif %}" href="{{ url_for('.highscore', tournament_id=tournament.id) }}">{{ _('Leaderboard') }}</a>
+    {%- if tournament.has_playoffs %}
+    <a class="button{% if active_tab == 'bracket' %} button--current{% endif %}" href="{{ url_for('.bracket', tournament_id=tournament.id) }}">{{ _('Playoffs') }}</a>
+    {%- endif %}
+    {% else %}
+    <a class="button{% if active_tab == 'bracket' %} button--current{% endif %}" href="{{ url_for('.bracket', tournament_id=tournament.id) }}">
+      {%- if tournament.game_format and tournament.game_format.name == 'FREE_FOR_ALL' -%}
+        {{ _('Standings') }}
+      {%- elif tournament.elimination_mode and tournament.elimination_mode.name == 'ROUND_ROBIN' -%}
+        {{ _('Standings') }}
+      {%- else -%}
+        {{ _('Bracket') }}
+      {%- endif -%}
+    </a>
+    {% endif %}
+  </div>
+{%- endmacro %}

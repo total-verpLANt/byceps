@@ -1,9 +1,0 @@
-from dataclasses import dataclass
-
-
-@dataclass(frozen=True, kw_only=True)
-class TournamentSeed:
-    match_order: int
-    round: int
-    entry_a: str
-    entry_b: str

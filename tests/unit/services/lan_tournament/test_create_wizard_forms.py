@@ -100,7 +100,8 @@ def test_count_above_ceiling_is_rejected(app, field_name, value):
     with app.test_request_context('/'):
         form = _validate(TournamentCreateForm, **{field_name: value})
 
-        assert _errors(form, field_name) == ['At most 1024.']
+        ceiling = 255 if field_name == 'group_size_max' else 1024
+        assert _errors(form, field_name) == [f'At most {ceiling}.']
 
 
 def test_count_ceiling_itself_is_accepted(app):

@@ -25,6 +25,10 @@
   {%- endif -%}
 {%- endmacro %}
 
+{% block head %}{{ super() }}
+  <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_seeding.css') }}">
+{%- endblock %}
+
 {% block body %}
 
   <nav class='breadcrumbs'>
@@ -55,6 +59,9 @@
         {{ render_tag(_('FFA'), class='color-info') }}
       {%- endif %}
     </div>
+    {%- if match_label %}
+    <p class='match-label'>{{ match_label }}</p>
+    {%- endif %}
 
     {#- The result column. The orga desk is a sibling, placed beside
         this block by the site theme; source order is unchanged so a
@@ -328,6 +335,7 @@
          is_walkover=is_walkover,
          ffa_result_consumed=ffa_result_consumed,
          results_editable=results_editable,
+         phase_lock=phase_lock,
        ) }}
 
   </div>

@@ -121,7 +121,8 @@
         "8",
         "6"
       ],
-      "group_size_max": "4"
+      "group_size_max": "4",
+      "advancement_count": "1"
     },
     "require_structure": true,
     "expected": {
@@ -305,7 +306,8 @@
         "1",
         "1"
       ],
-      "group_size_max": "4"
+      "group_size_max": "4",
+      "advancement_count": "1"
     },
     "require_structure": true,
     "expected": {
@@ -384,7 +386,8 @@
         "1",
         "1"
       ],
-      "group_size_max": "4"
+      "group_size_max": "4",
+      "advancement_count": "1"
     },
     "require_structure": true,
     "expected": {}
@@ -400,7 +403,8 @@
         "10",
         "1000000000",
         "1"
-      ]
+      ],
+      "advancement_count": "1"
     },
     "require_structure": true,
     "expected": {
@@ -416,7 +420,8 @@
       "group_size_max": "4",
       "point_table": [
         "1000000000000"
-      ]
+      ],
+      "advancement_count": "1"
     },
     "require_structure": true,
     "expected": {
@@ -433,7 +438,8 @@
       "point_table": [
         "10",
         "-1000000000"
-      ]
+      ],
+      "advancement_count": "1"
     },
     "require_structure": true,
     "expected": {
@@ -451,7 +457,8 @@
         "999999999",
         "0",
         "-999999999"
-      ]
+      ],
+      "advancement_count": "1"
     },
     "require_structure": true,
     "expected": {}
@@ -468,7 +475,8 @@
         "6"
       ],
       "group_size_min": "6",
-      "group_size_max": "4"
+      "group_size_max": "4",
+      "advancement_count": "1"
     },
     "require_structure": true,
     "expected": {
@@ -509,7 +517,8 @@
         "8",
         "6"
       ],
-      "group_size_max": "6"
+      "group_size_max": "6",
+      "advancement_count": "1"
     },
     "require_structure": true,
     "expected": {
@@ -548,7 +557,8 @@
         "8",
         "6"
       ],
-      "group_size_max": "6"
+      "group_size_max": "6",
+      "advancement_count": "1"
     },
     "require_structure": true,
     "expected": {}
@@ -565,7 +575,8 @@
         "8",
         "6"
       ],
-      "group_size_max": "6"
+      "group_size_max": "6",
+      "advancement_count": "1"
     },
     "require_structure": true,
     "expected": {}
@@ -680,11 +691,84 @@
       "point_table": [
         "10",
         "999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999"
-      ]
+      ],
+      "advancement_count": "1"
     },
     "require_structure": true,
     "expected": {
       "point_table": "Points may be at most %(max)s."
+    }
+  },
+  {
+    "name": "ffa_se_unbounded_without_cut",
+    "values": {
+      "contestant_type": "SOLO",
+      "game_format": "FREE_FOR_ALL",
+      "elimination_mode": "SINGLE_ELIMINATION",
+      "point_table": [
+        "10",
+        "8",
+        "6"
+      ],
+      "group_size_max": "4"
+    },
+    "require_structure": true,
+    "expected": {
+      "advancement_count": "Please enter how many advance per lobby."
+    }
+  },
+  {
+    "name": "ffa_de_single_lobby_without_cut",
+    "values": {
+      "contestant_type": "SOLO",
+      "game_format": "FREE_FOR_ALL",
+      "elimination_mode": "DOUBLE_ELIMINATION",
+      "point_table": [
+        "10",
+        "8",
+        "6"
+      ],
+      "group_size_max": "4",
+      "max_players": "4"
+    },
+    "require_structure": true,
+    "expected": {
+      "advancement_count": "Please enter how many advance per lobby."
+    }
+  },
+  {
+    "name": "ffa_se_single_lobby_without_cut_valid",
+    "values": {
+      "contestant_type": "SOLO",
+      "game_format": "FREE_FOR_ALL",
+      "elimination_mode": "SINGLE_ELIMINATION",
+      "point_table": [
+        "10",
+        "8",
+        "6"
+      ],
+      "group_size_max": "4",
+      "max_players": "4"
+    },
+    "require_structure": true,
+    "expected": {}
+  },
+  {
+    "name": "ffa_team_unbounded_without_cut",
+    "values": {
+      "contestant_type": "TEAM",
+      "game_format": "FREE_FOR_ALL",
+      "elimination_mode": "SINGLE_ELIMINATION",
+      "point_table": [
+        "10",
+        "8",
+        "6"
+      ],
+      "group_size_max": "4"
+    },
+    "require_structure": true,
+    "expected": {
+      "advancement_count": "Please enter how many advance per lobby."
     }
   }
 ]

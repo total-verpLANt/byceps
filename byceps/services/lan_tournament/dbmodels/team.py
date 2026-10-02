@@ -64,7 +64,9 @@ class DbTournamentTeam(db.Model):
     join_code: Mapped[str | None] = mapped_column(db.UnicodeText)
     created_at: Mapped[datetime]
     updated_at: Mapped[datetime | None]
-    removed_at: Mapped[datetime | None] = mapped_column(default=None)
+    removed_at: Mapped[datetime | None] = mapped_column(
+        db.DateTime(timezone=True), default=None
+    )
 
     def __init__(
         self,

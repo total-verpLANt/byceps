@@ -9,8 +9,10 @@ from .tournament_status import TournamentStatus
 from .score_ordering import ScoreOrdering
 from .game_format import GameFormat
 from .elimination_mode import EliminationMode
+from .playoff import PlayoffReleaseMode
 
 if TYPE_CHECKING:
+    from byceps.services.user.models import UserID
     from .tournament_participant import TournamentParticipantID
     from .tournament_team import TournamentTeamID
     from .tournament_image import TournamentImageID
@@ -55,6 +57,20 @@ class Tournament:
     image_id: 'TournamentImageID | None' = None
     image_alt_text: str | None = None
     creation_token: UUID | None = None
+    playoff_game_format: GameFormat | None = None
+    playoff_elimination_mode: EliminationMode | None = None
+    playoff_group_count: int | None = None
+    playoff_qualifiers_per_group: int | None = None
+    playoff_qualifier_count: int | None = None
+    playoff_release_mode: PlayoffReleaseMode | None = None
+    playoff_auto_release_suspended: bool = False
+    playoff_released_at: datetime | None = None
+    playoff_released_by: 'UserID | None' = None
+    leaderboard_closed_at: datetime | None = None
+
+    @property
+    def has_playoffs(self) -> bool:
+        return self.playoff_game_format is not None
 
     @property
     def is_user_organized(self) -> bool:

@@ -204,7 +204,8 @@ function _ltBuildEntrant(contestant, placeholder) {
     score: (contestant.score != null) ? contestant.score : null,
     id: contestant.team_id || contestant.participant_id,
     teamId: contestant.team_id ? String(contestant.team_id) : null,
-    participantId: contestant.participant_id ? String(contestant.participant_id) : null
+    participantId: contestant.participant_id ? String(contestant.participant_id) : null,
+    origin: contestant.origin ? String(contestant.origin) : ''
   };
 }
 
@@ -218,7 +219,8 @@ function _ltFormatEntrantForView(entrant) {
   return {
     text: entrant.label || entrant.name || _t('tbd', 'TBD'),
     className: '',
-    key: _ltNormalizePlayer(entrant.name)
+    key: _ltNormalizePlayer(entrant.name),
+    origin: entrant.origin || ''
   };
 }
 
@@ -551,8 +553,9 @@ function parseBracketData(json) {
   }
 
   // Decorate round titles
-  winnerRounds = _ltDecorateRounds(winnerRounds);
-  loserRounds = _ltDecorateRounds(loserRounds);
+  var isSingleElimination = loserRounds.length === 0;
+  winnerRounds = _ltDecorateRounds(winnerRounds, isSingleElimination);
+  loserRounds = _ltDecorateRounds(loserRounds, false);
 
   return {
     tournament: tournament,
@@ -731,15 +734,35 @@ function _ltBucketsToRounds(buckets, bracket) {
 }
 
 /**
- * Add title/subtitle to each round.
+ * Return the title of round `index` of `count`; only the single-elimination
+ * main bracket names its last three rounds.
  */
-function _ltDecorateRounds(rounds) {
+function roundTitle(index, count, isMainBracket, strings) {
+  var fromEnd = count - 1 - index;
+  var names = [
+    ['final', 'Final'],
+    ['semifinal', 'Semifinal'],
+    ['quarterfinal', 'Quarterfinal']
+  ];
+  if (isMainBracket && fromEnd >= 0 && fromEnd < names.length) {
+    var key = names[fromEnd][0];
+    if (strings && strings[key] != null) return strings[key];
+    return names[fromEnd][1];
+  }
+  var round = (strings && strings.round != null) ? strings.round : 'Round';
+  return round + ' ' + (index + 1);
+}
+
+/**
+ * Add title/subtitle to each round; titles come from `roundTitle`.
+ */
+function _ltDecorateRounds(rounds, isMainBracket) {
   var i, round, matchCount, title, subtitle;
   for (i = 0; i < rounds.length; i++) {
     round = rounds[i];
     if (round.title) continue;  // already decorated (e.g. GF)
     matchCount = round.matches.length;
-    title = _t('round', 'Round') + ' ' + (i + 1);
+    title = roundTitle(i, rounds.length, isMainBracket, _ltStrings);
     subtitle = matchCount + ' ' + _tp(matchCount, 'matchSingular', 'matchPlural');
     round.title = title;
     round.subtitle = subtitle;
@@ -1219,12 +1242,13 @@ function buildTeamRow(entrant, isWinner, score, dims, matchRef, hoverData, place
       '</svg></span>'
     : '';
 
+  var originAttr = team.origin ? ' data-origin="' + _ltEscapeHtml(team.origin) + '"' : '';
   var teamTextHtml;
   if (hoverHtml) {
-    teamTextHtml = '<span class="lt-hover-wrap lt-team-text" tabindex="0" title="' +
+    teamTextHtml = '<span class="lt-hover-wrap lt-team-text"' + originAttr + ' tabindex="0" title="' +
       _ltEscapeHtml(team.text) + '">' + trophyHtml + _ltEscapeHtml(team.text) + hoverHtml + '</span>';
   } else {
-    teamTextHtml = '<span class="lt-team-text" title="' + _ltEscapeHtml(team.text) + '">' +
+    teamTextHtml = '<span class="lt-team-text"' + originAttr + ' title="' + _ltEscapeHtml(team.text) + '">' +
       trophyHtml + _ltEscapeHtml(team.text) + '</span>';
   }
 

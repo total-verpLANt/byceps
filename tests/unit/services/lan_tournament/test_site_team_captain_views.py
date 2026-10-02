@@ -633,7 +633,9 @@ def test_remove_member_captain_can_remove_non_captain(app):
         ):
             raw_fn(TOURNAMENT_ID_STR, TEAM_ID_STR)
 
-    mocks['team_svc'].remove_team_member.assert_called_once()
+    mocks['team_svc'].remove_team_member.assert_called_once_with(
+        mocks['team'].id, MEMBER_USER_ID, initiator_id=CAPTAIN_USER_ID
+    )
     mocks['flash_success'].assert_called_once()
     mocks['flash_error'].assert_not_called()
 

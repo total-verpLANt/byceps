@@ -21,10 +21,17 @@
   {% if is_locked %}
     <div class="notification color-info" style="margin-bottom: 1rem;">
       {{ render_icon('lock') }} {{ _('This tournament is ongoing. Only description, image, and ruleset can be changed.') }}
+      {% if tournament.has_playoffs and not tournament.playoff_released_at %}
+        {{ _('The playoff settings stay editable until the release.') }}
+      {% endif %}
     </div>
   {% endif %}
 
   {% set lock = {'disabled': 'disabled'} if is_locked else {} %}
+  {% set ffa_lock = {'disabled': 'disabled'} if ffa_locked else {} %}
+  {% set switch_lock = {'disabled': 'disabled'} if 'playoff_game_format' in locked_playoff_fields else {} %}
+  {% set group_lock = {'disabled': 'disabled'} if 'playoff_group_count' in locked_playoff_fields else {} %}
+  {% set playoff_lock = {'disabled': 'disabled'} if 'playoff_release_mode' in locked_playoff_fields else {} %}
 
   <form action="{{ url_for('.update', tournament_id=tournament.id) }}" method="post">
     <div class="box">
@@ -44,9 +51,9 @@
              data-field-id="{{ form.point_table.id }}"
              data-field-name="{{ form.point_table.name }}"
              data-field-value="{{ form.point_table.data or '' }}"
-             {{ 'data-locked' if is_locked else '' }}>
+             {{ 'data-locked' if ffa_locked else '' }}>
           <label class="form-label">{{ form.point_table.label.text }}</label>
-          {% if not is_locked %}
+          {% if not ffa_locked %}
           <div class="ffa-point-editor__toolbar">
             <button type="button" data-ffa-preset="10,8,6,4,2,1">F1 (10-8-6-4-2-1)</button>
             <button type="button" data-ffa-preset="25,18,15,12,10,8,6,4,2,1">Top 10</button>
@@ -55,15 +62,15 @@
           {% endif %}
           <div class="ffa-point-cards" data-ffa-cards-container></div>
           <noscript>
-            {{ form_field(form.point_table, **lock) }}
+            {{ form_field(form.point_table, **ffa_lock) }}
           </noscript>
         </div>
-        {{ form_field(form.group_size_min, min=2, style='width: 5rem;', **lock) }}
-        {{ form_field(form.group_size_max, min=2, style='width: 5rem;', **lock) }}
-        {{ form_field(form.advancement_count, min=1, style='width: 5rem;', **lock) }}
+        {{ form_field(form.group_size_min, min=2, style='width: 5rem;', **ffa_lock) }}
+        {{ form_field(form.group_size_max, min=2, style='width: 5rem;', **ffa_lock) }}
+        {{ form_field(form.advancement_count, min=1, style='width: 5rem;', **ffa_lock) }}
       </div>
       <div id="ffa-de-constraints" style="display: none;">
-        {{ form_field(form.points_carry_to_losers, **lock) }}
+        {{ form_field(form.points_carry_to_losers, **ffa_lock) }}
       </div>
       {{ form_field(form.start_time, **lock) }}
       {{ form_field(form.ruleset) }}
@@ -83,6 +90,33 @@
       </div>
     </div>
 
+    <div class="notification color-warning" id="playoff-removal-note" style="display: none;">
+      {{ _('This format has no playoff phase. The playoff settings are removed when you save.') }}
+    </div>
+
+    <div class="box" id="playoff-constraints" style="display: none;">
+      <h3>{{ _('Playoffs') }}</h3>
+      {{ form_field(form.playoff_enabled, **switch_lock) }}
+      <div id="playoff-rr-fields" style="display: none;">
+        {{ form_field(form.playoff_group_count, min=2, style='width: 5rem;', **group_lock) }}
+        {{ form_field(form.playoff_qualifiers_per_group, min=1, style='width: 5rem;', **playoff_lock) }}
+      </div>
+      <div id="playoff-hs-fields" style="display: none;">
+        {{ form_field(form.playoff_qualifier_count, min=2, style='width: 5rem;', **playoff_lock) }}
+      </div>
+      <div id="playoff-common-fields" style="display: none;">
+        {{ form_field(form.playoff_elimination_mode, **playoff_lock) }}
+        {{ form_field(form.playoff_release_mode, **playoff_lock) }}
+      </div>
+      <div class="form-caption">
+        {% if tournament.playoff_released_at %}
+          {{ _('Locked while the playoffs are released.') }}
+        {% else %}
+          {{ _('Editable until the release. Once the tournament has started, the playoffs cannot be switched on or off and the group count stays.') }}
+        {% endif %}
+      </div>
+    </div>
+
     {{ form_buttons(_('Save')) }}
   </form>
 
@@ -99,21 +133,52 @@
     const ffaConstraints = document.getElementById('ffa-constraints');
     const ffaDeConstraints = document.getElementById('ffa-de-constraints');
     const highscoreConstraints = document.getElementById('highscore-constraints');
+    const playoffEnabled = document.getElementById('playoff_enabled');
+    const playoffMode = document.getElementById('playoff_elimination_mode');
+    const playoffBox = document.getElementById('playoff-constraints');
+    const playoffRrFields = document.getElementById('playoff-rr-fields');
+    const playoffHsFields = document.getElementById('playoff-hs-fields');
+    const playoffCommonFields = document.getElementById('playoff-common-fields');
+    const playoffRemovalNote = document.getElementById('playoff-removal-note');
+
+    function show(node, shown) {
+      if (node) node.style.display = shown ? '' : 'none';
+    }
 
     function updateFormatVisibility() {
       if (!gameFormatSelect) return;
       const gf = gameFormatSelect.value;
       const em = eliminationModeSelect ? eliminationModeSelect.value : '';
 
-      /* FFA fields: visible when game_format = FREE_FOR_ALL */
+      /* Playoffs: 1v1 round robin and Highscore only. */
+      const isRr = gf === 'ONE_V_ONE' && em === 'ROUND_ROBIN';
+      const isHs = gf === 'HIGHSCORE';
+      const playoffsOn = (isRr || isHs) && !!(playoffEnabled && playoffEnabled.checked);
+      const playoffDe = !!playoffMode && playoffMode.value === 'DOUBLE_ELIMINATION';
+      show(playoffBox, isRr || isHs);
+      /* Stale playoff settings go with the format: say so before the save. */
+      show(
+        playoffRemovalNote,
+        !isRr && !isHs && !!(playoffEnabled && playoffEnabled.checked)
+      );
+      show(playoffRrFields, isRr && playoffsOn);
+      show(playoffHsFields, isHs && playoffsOn);
+      show(playoffCommonFields, playoffsOn);
+
+      /* FFA fields: visible when game_format = FREE_FOR_ALL, or for the
+         playoff phase of a Highscore tournament */
       if (ffaConstraints) {
-        ffaConstraints.style.display = (gf === 'FREE_FOR_ALL') ? '' : 'none';
+        ffaConstraints.style.display = (
+          gf === 'FREE_FOR_ALL' || (isHs && playoffsOn)
+        ) ? '' : 'none';
       }
 
-      /* Points carry: visible when FFA + DOUBLE_ELIMINATION */
+      /* Points carry: visible when FFA + DOUBLE_ELIMINATION, or for a
+         Highscore playoff phase in double elimination */
       if (ffaDeConstraints) {
         ffaDeConstraints.style.display = (
-          gf === 'FREE_FOR_ALL' && em === 'DOUBLE_ELIMINATION'
+          (gf === 'FREE_FOR_ALL' && em === 'DOUBLE_ELIMINATION') ||
+          (isHs && playoffsOn && playoffDe)
         ) ? '' : 'none';
       }
 
@@ -128,6 +193,12 @@
     }
     if (eliminationModeSelect) {
       eliminationModeSelect.addEventListener('change', updateFormatVisibility);
+    }
+    if (playoffEnabled) {
+      playoffEnabled.addEventListener('change', updateFormatVisibility);
+    }
+    if (playoffMode) {
+      playoffMode.addEventListener('change', updateFormatVisibility);
     }
     updateFormatVisibility();
   })();

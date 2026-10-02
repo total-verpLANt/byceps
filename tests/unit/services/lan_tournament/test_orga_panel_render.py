@@ -287,3 +287,96 @@ def test_status_actions_render_per_status(env):
             True,
         )
         assert expected in out
+
+
+def _render_ffa_de_actions(env, grand_final=None, **kwargs):
+    tournament = SimpleNamespace(
+        id='t0',
+        tournament_status=SimpleNamespace(name='ONGOING'),
+        game_format=SimpleNamespace(name='FREE_FOR_ALL'),
+        elimination_mode=SimpleNamespace(name='DOUBLE_ELIMINATION'),
+        has_playoffs=False,
+    )
+    macro = env.get_template('orga').module.render_orga_tournament_status_actions
+    if grand_final is not None:
+        kwargs['grand_final'] = grand_final
+    return macro(tournament, True, **kwargs)
+
+
+def test_grand_final_ready_offers_the_generate_form(env):
+    out = _render_ffa_de_actions(
+        env,
+        {'state': 'ready', 'count': 4, 'match_id': None, 'reason': None},
+    )
+
+    assert 'data-lt-gf="ready"' in out
+    assert 'action=".orga_generate_ffa_grand_final"' in out
+    assert 'Generate Grand Final' in out
+    assert 'Grand Final is ready to be generated.' in out
+    assert 'orga_advance_ffa_round' not in out
+
+
+def test_grand_final_pending_shows_the_reason_and_no_form(env):
+    out = _render_ffa_de_actions(
+        env,
+        {
+            'state': 'pending',
+            'count': None,
+            'match_id': None,
+            'reason': 'Bracket matches are not confirmed.',
+        },
+    )
+
+    assert 'data-lt-gf="pending"' in out
+    assert 'Bracket matches are not confirmed.' in out
+    assert 'orga_generate_ffa_grand_final' not in out
+    assert 'orga_advance_ffa_round' in out
+
+
+def test_grand_final_exists_links_the_match_and_drops_the_advance_buttons(env):
+    out = _render_ffa_de_actions(
+        env,
+        {'state': 'exists', 'count': None, 'match_id': 'gf0', 'reason': None},
+    )
+
+    assert 'data-lt-gf="exists"' in out
+    assert 'href=".view_match"' in out
+    assert 'orga_advance_ffa_round' not in out
+    assert 'orga_generate_ffa_grand_final' not in out
+
+
+def test_no_grand_final_block_without_an_offer(env):
+    out = _render_ffa_de_actions(env)
+
+    assert 'data-lt-gf' not in out
+    assert 'orga_generate_ffa_grand_final' not in out
+    assert 'orga_advance_ffa_round' in out
+
+
+def _render_plain_rr_actions(env, **kwargs):
+    tournament = SimpleNamespace(
+        id='t0',
+        tournament_status=SimpleNamespace(name='ONGOING'),
+        game_format=SimpleNamespace(name='ONE_V_ONE'),
+        elimination_mode=SimpleNamespace(name='ROUND_ROBIN'),
+        has_playoffs=False,
+    )
+    macro = env.get_template(
+        'orga'
+    ).module.render_orga_tournament_status_actions
+    return macro(tournament, True, **kwargs)
+
+
+@pytest.mark.parametrize('winner_tie', ['open', 'decided'])
+def test_status_actions_link_the_qualification_for_a_winner_tie(
+    env, winner_tie
+):
+    out = _render_plain_rr_actions(env, winner_tie=winner_tie)
+
+    assert '.orga_qualification' in out
+
+
+def test_status_actions_hide_the_qualification_without_playoffs_or_tie(env):
+    out = _render_plain_rr_actions(env, winner_tie=None)
+
+    assert '.orga_qualification' not in out

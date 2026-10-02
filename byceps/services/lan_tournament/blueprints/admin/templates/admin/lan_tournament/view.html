@@ -1,6 +1,7 @@
 {% extends 'layout/admin/lan_tournament.html' %}
 {% from 'macros/icons.html' import render_icon %}
 {% from 'macros/misc.html' import render_notification_block, render_tag %}
+{% from 'admin/lan_tournament/_subnav.html' import render_admin_subnav %}
 {% set current_page_party = party %}
 {% set current_tab = 'tournaments' %}
 {% set page_title = [_('Tournament'), party.title] %}
@@ -8,9 +9,28 @@
 {% block head %}
 {{ super() }}
 <style>
-  .subnav .button--current {
-    border-color: #1199ff;
-    opacity: 1;
+  .lt-start-gate {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0;
+  }
+
+  .lt-start-gate__why {
+    margin: 0;
+    font-size: 0.875rem;
+    opacity: 0.85;
+  }
+
+  .lt-start-gate__confirm {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .lt-start-gate button[disabled] {
+    cursor: not-allowed;
   }
 
   .lt-admin-tournament-image {
@@ -252,29 +272,7 @@
     </div>
   </div>
 
-  {# Sub-section navigation #}
-  <div class="button-row subnav block">
-    <a class="button{% if active_tab == 'overview' %} button--current{% endif %}" href="{{ url_for('.view', tournament_id=tournament.id) }}">{{ _('Overview') }}</a>
-    <a class="button" href="{{ url_for('.participants_for_tournament', tournament_id=tournament.id) }}">{{ _('Participants') }}</a>
-    {% if is_team_tournament %}
-    <a class="button" href="{{ url_for('.teams_for_tournament', tournament_id=tournament.id) }}">{{ _('Teams') }}</a>
-    {% endif %}
-    <a class="button" href="{{ url_for('.matches_for_tournament', tournament_id=tournament.id) }}">{{ _('Matches') }}</a>
-    <a class="button{% if active_tab == 'orgas' %} button--current{% endif %}" href="{{ url_for('.orgas_for_tournament', tournament_id=tournament.id) }}">{{ _('Orgas') }}</a>
-    {% if tournament.game_format and tournament.game_format.name == 'HIGHSCORE' %}
-    <a class="button{% if active_tab == 'highscore' %} button--current{% endif %}" href="{{ url_for('.highscore', tournament_id=tournament.id) }}">{{ _('Leaderboard') }}</a>
-    {% else %}
-    <a class="button{% if active_tab == 'bracket' %} button--current{% endif %}" href="{{ url_for('.bracket', tournament_id=tournament.id) }}">
-      {%- if tournament.game_format and tournament.game_format.name == 'FREE_FOR_ALL' -%}
-        {{ _('Standings') }}
-      {%- elif tournament.elimination_mode and tournament.elimination_mode.name == 'ROUND_ROBIN' -%}
-        {{ _('Standings') }}
-      {%- else -%}
-        {{ _('Bracket') }}
-      {%- endif -%}
-    </a>
-    {% endif %}
-  </div>
+  {{ render_admin_subnav(tournament, active_tab) }}
 
   {# Basic info #}
   <div class="row row--space-between row--wrap block">
@@ -478,7 +476,7 @@
   {%- endif %}
 
   {# FFA Configuration #}
-  {%- if tournament.game_format and tournament.game_format.name == 'FREE_FOR_ALL' %}
+  {%- if ffa_phase is defined and ffa_phase %}
   <div class="grid block">
     <div class="column">
       <div class="box column-cell--grow">
@@ -506,7 +504,7 @@
         <div class="data-value">{{ tournament.advancement_count|default('–', true) }}</div>
       </div>
     </div>
-    {%- if tournament.elimination_mode and tournament.elimination_mode.name == 'DOUBLE_ELIMINATION' %}
+    {%- if ffa_mode is defined and ffa_mode and ffa_mode.name == 'DOUBLE_ELIMINATION' %}
     <div class="column">
       <div class="box column-cell--grow">
         <div class="data-label">{{ _('Points carry to losers') }}</div>
@@ -584,19 +582,38 @@
       </form>
       {%- if requires_bracket %}
       {%- if has_bracket %}
-      <form action="{{ url_for('.generate_bracket', tournament_id=tournament.id) }}" method="post" id="regenerate-bracket-form">
-        <input type="hidden" name="force" value="true">
-        <button type="submit" class="button color-warning">{{ render_icon('arrange') }} {{ _('Regenerate bracket') }}</button>
+      <a href="{{ url_for('.seeding', tournament_id=tournament.id) }}" class="button color-warning" id="regenerate-bracket-link">{{ render_icon('arrange') }} {{ _('Regenerate bracket') }}</a>
+      {%- else %}
+      <a href="{{ url_for('.seeding', tournament_id=tournament.id) }}" class="button">{{ render_icon('arrange') }} {{ _('Generate bracket') }}</a>
+      {%- endif %}
+      {%- endif %}
+      {%- if start_gate.state == 'blocked' %}
+      <span class="lt-start-gate" data-lt-start-gate="blocked">
+        <button type="button" class="button color-success" disabled aria-describedby="start-gate-why">{{ _('Start tournament') }}</button>
+        <span class="lt-start-gate__why" id="start-gate-why">{{ _(start_gate.reason) }}
+          <a href="{{ url_for('.seeding', tournament_id=tournament.id) }}">{{ _('Open seeding') }}</a></span>
+        {%- for text in (start_gate.notices if start_gate else ()) %}
+        <p class="lt-start-gate__why">{{ text }}</p>
+        {%- endfor %}
+      </span>
+      {%- elif start_gate.state == 'confirm' %}
+      <form action="{{ url_for('.start', tournament_id=tournament.id) }}" method="post" class="lt-start-gate" data-lt-start-gate="confirm">
+        <p class="lt-start-gate__why">{{ _('The seeding was changed after the bracket was generated. Starting uses the generated layout; later seeding changes are dropped.') }}
+          <a href="{{ url_for('.seeding', tournament_id=tournament.id) }}">{{ _('Open seeding') }}</a></p>
+        {%- for text in (start_gate.notices if start_gate else ()) %}
+        <p class="lt-start-gate__why">{{ text }}</p>
+        {%- endfor %}
+        <label class="lt-start-gate__confirm"><input type="checkbox" name="confirm_generated_layout" value="1" required> {{ _('Start with the generated layout') }}</label>
+        <button type="submit" class="button color-success">{{ _('Start tournament') }}</button>
       </form>
       {%- else %}
-      <form action="{{ url_for('.generate_bracket', tournament_id=tournament.id) }}" method="post">
-        <button type="submit" class="button">{{ render_icon('arrange') }} {{ _('Generate bracket') }}</button>
-      </form>
-      {%- endif %}
-      {%- endif %}
+      {%- for text in (start_gate.notices if start_gate else ()) %}
+      <p class="lt-start-gate__why">{{ text }}</p>
+      {%- endfor %}
       <form action="{{ url_for('.start', tournament_id=tournament.id) }}" method="post">
         <button type="submit" class="button color-success">{{ _('Start tournament') }}</button>
       </form>
+      {%- endif %}
       <form action="{{ url_for('.cancel', tournament_id=tournament.id) }}" method="post" data-action="cancel-tournament">
         <button type="submit" class="button color-danger">{{ _('Cancel') }}</button>
       </form>
@@ -668,17 +685,6 @@
 
 {% block scripts %}
 <script>
-  // Regenerate bracket confirmation dialog
-  const regenerateForm = document.getElementById('regenerate-bracket-form');
-  if (regenerateForm) {
-    regenerateForm.addEventListener('submit', function(event) {
-      const confirmed = confirm('WARNING: Regenerating the bracket will DELETE all existing matches, scores, and bracket data. This action cannot be undone. Are you sure you want to continue?');
-      if (!confirmed) {
-        event.preventDefault();
-      }
-    });
-  }
-
   // Confirmation modal helper
   function setupConfirmModal(actionSelector, overlayId, confirmId, dismissId) {
     var forms = document.querySelectorAll('[data-action="' + actionSelector + '"]');
