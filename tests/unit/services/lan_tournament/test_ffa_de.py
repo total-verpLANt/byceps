@@ -44,6 +44,9 @@ from byceps.services.lan_tournament.models.tournament_team import (
     TournamentTeamID,
 )
 from byceps.services.lan_tournament import tournament_match_service
+from byceps.services.lan_tournament.tournament_match_service import (
+    QUALIFICATION_TIE_ERROR,
+)
 from byceps.services.party.models import PartyID
 from byceps.services.user.models import UserID
 
@@ -59,6 +62,27 @@ REPO_PATH = (
     'byceps.services.lan_tournament'
     '.tournament_match_service.tournament_repository'
 )
+
+
+class _Everyone:
+    """Contain every ID: nobody was removed."""
+
+    def __contains__(self, item):
+        return True
+
+
+@pytest.fixture(autouse=True)
+def _no_stored_decisions():
+    with patch(
+        'byceps.services.lan_tournament.tournament_match_service'
+        '.tournament_qualification_repository'
+    ) as repo, patch(
+        'byceps.services.lan_tournament.tournament_match_service'
+        '.active_contestant_ids',
+        return_value=_Everyone(),
+    ):
+        repo.get_decisions_for_tournament.return_value = {}
+        yield repo
 
 
 # -------------------------------------------------------------------- #
@@ -544,8 +568,11 @@ def test_gf_trigger_lb_pool(mock_repo):
 # -------------------------------------------------------------------- #
 
 
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.create_log_entry'
+)
 @patch(REPO_PATH)
-def test_generate_gf_creates_single_grand_final_match(mock_repo):
+def test_generate_gf_creates_single_grand_final_match(mock_repo, mock_log):
     """generate_ffa_grand_final merges all survivors into one
     GRAND_FINAL match."""
     tournament = _create_de_tournament(
@@ -568,7 +595,6 @@ def test_generate_gf_creates_single_grand_final_match(mock_repo):
     # LB round 0: 1 match of 2 -> 1 survivor.
     lb_mid = TournamentMatchID(generate_uuid())
     lb_pid = TournamentParticipantID(generate_uuid())
-    lb_pid_b = TournamentParticipantID(generate_uuid())
 
     lb_m = _create_match(
         match_id=lb_mid, confirmed_by=USER_ID, round=0,
@@ -595,7 +621,7 @@ def test_generate_gf_creates_single_grand_final_match(mock_repo):
         if mid == lb_mid:
             return [
                 _make_contestant(lb_pid, lb_mid, placement=1, points=8),
-                _make_contestant(lb_pid_b, lb_mid, placement=2, points=3),
+                _make_contestant(wb_pid_b, lb_mid, placement=2, points=3),
             ]
         return []
 
@@ -615,6 +641,15 @@ def test_generate_gf_creates_single_grand_final_match(mock_repo):
 
     # Verify 2 contestants created (1 WB + 1 LB survivor).
     assert mock_repo.create_match_contestant.call_count == 2
+
+    # Verify the audit entry is staged inside the transaction.
+    mock_log.assert_called_once()
+    args, kwargs = mock_log.call_args
+    assert args[:3] == ('bracket-generated', TOURNAMENT_ID, USER_ID)
+    assert kwargs['commit'] is False
+    assert kwargs['data']['target'] == 'ffa:GF'
+    assert kwargs['data']['contestants'] == sorted(kwargs['data']['contestants'])
+    assert len(kwargs['data']['contestants']) == 2
     mock_repo.commit_session.assert_called_once()
 
 
@@ -876,7 +911,7 @@ def test_wb_advancement_detects_tie(mock_repo):
     )
 
     assert result.is_err()
-    assert 'tie' in result.unwrap_err().lower()
+    assert result.unwrap_err() == QUALIFICATION_TIE_ERROR
 
 
 # -------------------------------------------------------------------- #
@@ -884,8 +919,11 @@ def test_wb_advancement_detects_tie(mock_repo):
 # -------------------------------------------------------------------- #
 
 
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.create_log_entry'
+)
 @patch(REPO_PATH)
-def test_generate_gf_with_teams(mock_repo):
+def test_generate_gf_with_teams(mock_repo, mock_log):
     """generate_ffa_grand_final correctly uses team_id for
     TEAM contestant type."""
     tournament = _create_de_tournament(
@@ -908,7 +946,6 @@ def test_generate_gf_with_teams(mock_repo):
     # LB: 1 match, 1 team survivor.
     lb_mid = TournamentMatchID(generate_uuid())
     team_c = TournamentTeamID(generate_uuid())
-    team_d = TournamentTeamID(generate_uuid())
 
     lb_m = _create_match(
         match_id=lb_mid, confirmed_by=USER_ID, round=0,
@@ -935,7 +972,7 @@ def test_generate_gf_with_teams(mock_repo):
         if mid == lb_mid:
             return [
                 _make_team_contestant(team_c, lb_mid, placement=1, points=8),
-                _make_team_contestant(team_d, lb_mid, placement=2, points=3),
+                _make_team_contestant(team_b, lb_mid, placement=2, points=3),
             ]
         return []
 
@@ -986,8 +1023,11 @@ def test_generate_gf_rejects_duplicate(mock_repo):
 # -------------------------------------------------------------------- #
 
 
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.create_log_entry'
+)
 @patch(REPO_PATH)
-def test_generate_gf_seeding_carry_enabled(mock_repo):
+def test_generate_gf_seeding_carry_enabled(mock_repo, mock_log):
     """When points_carry=True, GF seeding uses full cross-bracket
     cumulative.  A LB survivor with high WB points can outrank
     a WB survivor with fewer total points."""
@@ -1061,13 +1101,18 @@ def test_generate_gf_seeding_carry_enabled(mock_repo):
     created = [
         c.args[0] for c in mock_repo.create_match_contestant.call_args_list
     ]
-    # First contestant should be pid_b (15 pts), second pid_a (10 pts).
-    assert created[0].participant_id == pid_b
-    assert created[1].participant_id == pid_a
+    # Members are stored in contestant-ID order, not in seed order.
+    assert [str(c.participant_id) for c in created] == sorted(
+        [str(pid_a), str(pid_b)]
+    )
+    assert {c.participant_id for c in created} == {pid_a, pid_b}
 
 
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.create_log_entry'
+)
 @patch(REPO_PATH)
-def test_generate_gf_seeding_carry_disabled(mock_repo):
+def test_generate_gf_seeding_carry_disabled(mock_repo, mock_log):
     """When points_carry=False, GF seeding ranks WB survivors first
     (by WB-only cumulative), then LB survivors (by LB-only cumulative).
     WB points do NOT carry for LB survivors."""
@@ -1139,8 +1184,106 @@ def test_generate_gf_seeding_carry_disabled(mock_repo):
     created = [
         c.args[0] for c in mock_repo.create_match_contestant.call_args_list
     ]
-    assert created[0].participant_id == pid_a
-    assert created[1].participant_id == pid_b
+    # Members are stored in contestant-ID order, not in seed order.
+    assert [str(c.participant_id) for c in created] == sorted(
+        [str(pid_a), str(pid_b)]
+    )
+    assert {c.participant_id for c in created} == {pid_a, pid_b}
+
+
+# -------------------------------------------------------------------- #
+# Dropped WB players and cut ties
+# -------------------------------------------------------------------- #
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.create_log_entry'
+)
+@patch(REPO_PATH)
+def test_generate_ffa_grand_final_includes_dropped_wb_players(mock_repo, mock_log):
+    """The GF holds exactly the players the GF trigger counted."""
+    tournament = _create_de_tournament(
+        advancement_count=2, group_size_min=2, group_size_max=4,
+    )
+    mock_repo.get_tournament.return_value = tournament
+
+    wb_mid = TournamentMatchID(generate_uuid())
+    pids = [TournamentParticipantID(generate_uuid()) for _ in range(4)]
+    wb_m = _create_match(
+        match_id=wb_mid, confirmed_by=USER_ID, round=0,
+        bracket=Bracket.WINNERS,
+    )
+
+    mock_repo.get_matches_for_tournament_ordered.return_value = [wb_m]
+    mock_repo.get_matches_for_round.return_value = [wb_m]
+    mock_repo.get_contestants_for_match.return_value = [
+        _make_contestant(pid, wb_mid, placement=i + 1, points=points)
+        for i, (pid, points) in enumerate(zip(pids, [10, 8, 5, 3], strict=True))
+    ]
+
+    trigger = tournament_match_service.advance_ffa_round(
+        TOURNAMENT_ID, pool=Bracket.WINNERS, initiator_id=USER_ID,
+    )
+    assert trigger.unwrap() == 'grand_final_eligible'
+
+    result = tournament_match_service.generate_ffa_grand_final(
+        TOURNAMENT_ID, initiator_id=USER_ID,
+    )
+
+    assert result.is_ok()
+    created = [
+        c.args[0] for c in mock_repo.create_match_contestant.call_args_list
+    ]
+    assert len(created) == 4
+    assert {c.participant_id for c in created} == set(pids)
+
+
+@patch(REPO_PATH)
+def test_collect_wb_survivors_tie_at_cut_returns_err(mock_repo):
+    tournament = _create_de_tournament(advancement_count=1)
+    wb_mid = TournamentMatchID(generate_uuid())
+    pid_a = TournamentParticipantID(generate_uuid())
+    pid_b = TournamentParticipantID(generate_uuid())
+    wb_m = _create_match(
+        match_id=wb_mid, confirmed_by=USER_ID, round=0,
+        bracket=Bracket.WINNERS,
+    )
+    mock_repo.get_matches_for_round.return_value = [wb_m]
+    mock_repo.get_contestants_for_match.return_value = [
+        _make_contestant(pid_a, wb_mid, placement=1, points=10),
+        _make_contestant(pid_b, wb_mid, placement=2, points=10),
+    ]
+
+    result = tournament_match_service._collect_wb_survivors(
+        tournament, [wb_m],
+    )
+
+    assert result.is_err()
+    assert sorted(result.unwrap_err()) == sorted([str(pid_a), str(pid_b)])
+
+
+@patch(REPO_PATH)
+def test_collect_lb_survivors_tie_at_cut_returns_err(mock_repo):
+    tournament = _create_de_tournament(advancement_count=1)
+    lb_mid = TournamentMatchID(generate_uuid())
+    pid_a = TournamentParticipantID(generate_uuid())
+    pid_b = TournamentParticipantID(generate_uuid())
+    lb_m = _create_match(
+        match_id=lb_mid, confirmed_by=USER_ID, round=0,
+        bracket=Bracket.LOSERS,
+    )
+    mock_repo.get_matches_for_round.return_value = [lb_m]
+    mock_repo.get_contestants_for_match.return_value = [
+        _make_contestant(pid_a, lb_mid, placement=1, points=10),
+        _make_contestant(pid_b, lb_mid, placement=2, points=10),
+    ]
+
+    result = tournament_match_service._collect_lb_survivors(
+        tournament, [lb_m],
+    )
+
+    assert result.is_err()
+    assert sorted(result.unwrap_err()) == sorted([str(pid_a), str(pid_b)])
 
 
 # -------------------------------------------------------------------- #

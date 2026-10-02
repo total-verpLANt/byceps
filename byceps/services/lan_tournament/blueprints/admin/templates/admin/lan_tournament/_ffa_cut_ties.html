@@ -1,0 +1,143 @@
+{#- The cut ties of the current FFA round: the PRD sentence, the ordering board and the reason. #}
+{%- macro glyph(kind) %}{{ {'ok': '✓', 'warn': '▲', 'err': '✕', 'info': 'i', 'mute': '–'}[kind] }}{% endmacro %}
+
+{#- The reason field and its submit button; the script keeps the button off while the reason is empty. #}
+{%- macro reason_field(field_id, label, submit_label, submit_class='color-primary', placeholder='') %}
+<label class="lt-seed-lbl" for="{{ field_id }}">{{ label }} <em>{{ _('Required') }}</em></label>
+<textarea class="lt-seed-inp" name="reason" id="{{ field_id }}" rows="2" maxlength="500" required data-lt-reason{% if placeholder %} placeholder="{{ placeholder }}"{% endif %}></textarea>
+<div class="lt-seed-row">
+  <span class="lt-seed-bw">
+    <button type="submit" class="button {{ submit_class }}" data-lt-reason-submit>{{ submit_label }}</button>
+    <span class="lt-seed-why" data-lt-reason-why hidden>{{ _('Reason missing.') }}</span>
+  </span>
+  {{ caller() if caller is defined else '' }}
+</div>
+{%- endmacro %}
+
+{#- The ordering board of one open tie. Without the script the places are plain selects. #}
+{%- macro order_board(blocker, decide_url, back_page) %}
+{%- set tied = blocker.contestants|sort(attribute='name') %}
+{%- set field_id = (blocker.scope ~ '-' ~ blocker.rank_from)|replace(':', '-') %}
+<form class="lt-seed-ob" action="{{ decide_url }}" method="post" data-lt-order data-lt-reason-form>
+  <input type="hidden" name="scope" value="{{ blocker.scope }}">
+  <input type="hidden" name="back" value="{{ back_page }}">
+  <input type="hidden" name="action" value="save">
+  <p class="lt-seed-lbl">{{ _('Set the order') }} · {{ _('Starting order is alphabetical') }}</p>
+  <ol class="lt-seed-oblist" data-lt-order-fallback>
+    {%- for slot in tied %}
+    <li class="lt-seed-obi lt-seed-obs">
+      <label class="lt-seed-obr" for="order-{{ field_id }}-{{ loop.index0 }}">{{ _('Place %(n)s', n=blocker.rank_from + loop.index0) }}</label>
+      <select class="lt-seed-inp" name="order" id="order-{{ field_id }}-{{ loop.index0 }}" required>
+        {%- for option in tied %}
+        <option value="{{ option.id }}"{% if option.id == slot.id %} selected{% endif %}>{{ option.name }}</option>
+        {%- endfor %}
+      </select>
+    </li>
+    {%- endfor %}
+  </ol>
+  <ol class="lt-seed-oblist" data-lt-order-list data-first-place="{{ blocker.rank_from }}" hidden>
+    {%- for slot in tied %}
+    <li class="lt-seed-obi" data-id="{{ slot.id }}" data-name="{{ slot.name }}">
+      <span class="lt-seed-hd" aria-hidden="true">⋮⋮</span>
+      <span class="lt-seed-obr" data-order-place>{{ _('Place %(n)s', n=blocker.rank_from + loop.index0) }}</span>
+      <b>{{ slot.name }}</b>
+      <span class="lt-seed-ud">
+        <button type="button" class="lt-seed-mv" data-order-move="up" aria-label="{{ _('Move %(name)s up', name=slot.name) }}" title="{{ _('Move up') }}">↑</button>
+        <button type="button" class="lt-seed-mv" data-order-move="down" aria-label="{{ _('Move %(name)s down', name=slot.name) }}" title="{{ _('Move down') }}">↓</button>
+      </span>
+      <input type="hidden" value="{{ slot.id }}" data-order-value>
+    </li>
+    {%- endfor %}
+  </ol>
+  {%- call reason_field('reason-' ~ field_id, _('Reason'), _('Save orga decision'), placeholder=_('Why this order?')) %}{% endcall %}
+</form>
+{%- endmacro %}
+
+{%- if ffa_cut_ties %}
+{%- set decide_url = url_for('.qualification_decide', tournament_id=tournament.id) %}
+{%- set decisions_locked = tournament.tournament_status is defined and tournament.tournament_status.name in ('COMPLETED', 'CANCELLED') %}
+{%- set locked_text = (_('The tournament is completed. Take back a result first.') if tournament.tournament_status.name == 'COMPLETED' else _('The tournament is cancelled. Tie decisions can no longer change.')) if decisions_locked else '' %}
+{%- set back_page = cut_ties_back|default('bracket') %}
+<div class="lt-seed lt-seed-q" data-lt-order-root data-ffa-cut-ties>
+  <script type="application/json" data-lt-strings>{{ js_strings|tojson }}</script>
+
+  {%- for blocker in ffa_cut_ties if blocker.status == 'open' %}
+  <section class="lt-seed-nt nt-err lt-seed-tieb" role="alert" data-blocker="cut" data-scope="{{ blocker.scope }}">
+    <p class="lt-seed-nth"><i aria-hidden="true">{{ glyph('err') }}</i><span>{{ blocker.text }}</span></p>
+    <div class="lt-seed-ntb">
+      <p>{{ blocker.scope_label }}: {{ _('Places %(range)s are equal on every criterion.', range=blocker.places) }}
+        {%- for c in blocker.contestants %} {{ c.name }} ({{ c.points }} {{ _('Pts') }}){% if not loop.last %},{% endif %}{% endfor %}.</p>
+      {%- if blocker.locked %}
+      <p class="lt-seed-why">{{ _('A later round has already been built from this lobby, so its tie decision can no longer be changed.') }}</p>
+      {%- elif decisions_locked %}
+      <p class="lt-seed-why">{{ locked_text }}</p>
+      {%- else %}
+      {{ order_board(blocker, decide_url, back_page) }}
+      {%- endif %}
+    </div>
+  </section>
+  {%- endfor %}
+
+  {%- for tie in ffa_cut_ties if tie.status == 'decided' %}
+  {%- set wd_id = 'withdraw-' ~ tie.status ~ '-' ~ tie.scope|replace(':', '-') ~ '-' ~ loop.index %}
+  <section class="lt-seed-nt nt-ok lt-seed-tieb" role="status" data-decision="{{ tie.scope }}">
+    <p class="lt-seed-nth"><i aria-hidden="true">{{ glyph('ok') }}</i><span>{{ _('Orga decision on file') }}</span></p>
+    <div class="lt-seed-ntb">
+      <p>{{ tie.scope_label }}:
+        {%- for c in tie.contestants %} {{ tie.rank_from + loop.index0 }}. {{ c.name }}{% if not loop.last %},{% endif %}{% endfor %}.</p>
+      {%- if tie.decision %}
+      <p class="lt-seed-quote">{{ _('Reason') }}: „{{ tie.decision.reason }}“</p>
+      <p class="lt-seed-small">{% if tie.decision.decided_by %}{{ tie.decision.decided_by }} · {% endif %}{{ tie.decision.decided_at|dateformat }}, {{ tie.decision.decided_at|timeformat('short') }}</p>
+      {%- endif %}
+      {%- if tie.locked %}
+      <p class="lt-seed-why">{{ _('A later round has already been built from this lobby, so its tie decision can no longer be changed.') }}</p>
+      {%- elif decisions_locked %}
+      <p class="lt-seed-why">{{ locked_text }}</p>
+      {%- else %}
+      <button type="button" class="button is-compact" data-lt-reveal="{{ wd_id }}" data-js-only hidden>{{ _('Withdraw decision') }}</button>
+      <form class="lt-seed-wd" id="{{ wd_id }}" action="{{ decide_url }}" method="post" data-lt-reason-form data-lt-reveal-target>
+        <input type="hidden" name="scope" value="{{ tie.scope }}">
+        <input type="hidden" name="back" value="{{ back_page }}">
+        <input type="hidden" name="action" value="withdraw">
+        {%- for cid in tie.withdraw_ids %}<input type="hidden" name="order" value="{{ cid }}">{% endfor %}
+        {%- call reason_field('reason-' ~ wd_id, _('Reason for withdrawing'), _('Withdraw decision'), submit_class='color-danger') %}
+        <button type="button" class="button is-compact" data-lt-hide="{{ wd_id }}" data-js-only hidden>{{ _('Cancel') }}</button>
+        {%- endcall %}
+      </form>
+      {%- endif %}
+    </div>
+  </section>
+  {%- endfor %}
+
+  {%- for tie in ffa_cut_ties if tie.status == 'outdated' %}
+  {%- set wd_id = 'withdraw-' ~ tie.status ~ '-' ~ tie.scope|replace(':', '-') ~ '-' ~ loop.index %}
+  <section class="lt-seed-nt nt-warn lt-seed-tieb" role="status" data-decision="{{ tie.scope }}" data-decision-status="outdated">
+    <p class="lt-seed-nth"><i aria-hidden="true">{{ glyph('warn') }}</i><span>{{ _('Decision outdated') }}</span></p>
+    <div class="lt-seed-ntb">
+      <p>{{ tie.text }}</p>
+      <p>{{ tie.scope_label }}: {{ tie.contestants|map(attribute='name')|join(', ') }}.</p>
+      {%- if tie.decision %}
+      <p class="lt-seed-quote">{{ _('Reason') }}: „{{ tie.decision.reason }}“</p>
+      <p class="lt-seed-small">{% if tie.decision.decided_by %}{{ tie.decision.decided_by }} · {% endif %}{{ tie.decision.decided_at|dateformat }}, {{ tie.decision.decided_at|timeformat('short') }}</p>
+      {%- endif %}
+      {%- if tie.locked %}
+      <p class="lt-seed-why">{{ _('A later round has already been built from this lobby, so its tie decision can no longer be changed.') }}</p>
+      {%- elif decisions_locked %}
+      <p class="lt-seed-why">{{ locked_text }}</p>
+      {%- else %}
+      <button type="button" class="button is-compact" data-lt-reveal="{{ wd_id }}" data-js-only hidden>{{ _('Withdraw decision') }}</button>
+      <form class="lt-seed-wd" id="{{ wd_id }}" action="{{ decide_url }}" method="post" data-lt-reason-form data-lt-reveal-target>
+        <input type="hidden" name="scope" value="{{ tie.scope }}">
+        <input type="hidden" name="back" value="{{ back_page }}">
+        <input type="hidden" name="action" value="withdraw">
+        {%- for cid in tie.withdraw_ids %}<input type="hidden" name="order" value="{{ cid }}">{% endfor %}
+        {%- call reason_field('reason-' ~ wd_id, _('Reason for withdrawing'), _('Withdraw decision'), submit_class='color-danger') %}
+        <button type="button" class="button is-compact" data-lt-hide="{{ wd_id }}" data-js-only hidden>{{ _('Cancel') }}</button>
+        {%- endcall %}
+      </form>
+      {%- endif %}
+    </div>
+  </section>
+  {%- endfor %}
+</div>
+{%- endif %}

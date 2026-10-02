@@ -1,0 +1,376 @@
+{%- macro glyph(kind) %}{{ {'ok': '✓', 'warn': '▲', 'err': '✕', 'info': 'i'}[kind] }}{% endmacro %}
+
+{#- Body and actions of a notice come from the caller block. #}
+{%- macro notice(kind, title, extra_class='') %}
+<div class="lt-seed-nt nt-{{ kind }}{% if extra_class %} {{ extra_class }}{% endif %}" role="{{ 'alert' if kind == 'err' else 'status' }}">
+  <p class="lt-seed-nth"><i aria-hidden="true">{{ glyph(kind) }}</i><span>{{ title }}</span></p>
+  {%- if caller is defined %}{{ caller() }}{% endif %}
+</div>
+{%- endmacro %}
+
+{#- The reason field and its submit button; the script keeps the button off while the reason is empty. #}
+{%- macro reason_field(field_id, label, submit_label, submit_class='color-primary', placeholder='') %}
+<label class="lt-seed-lbl" for="{{ field_id }}">{{ label }} <em>{{ _('Required') }}</em></label>
+<textarea class="lt-seed-inp" name="reason" id="{{ field_id }}" rows="2" maxlength="500" required data-lt-reason{% if placeholder %} placeholder="{{ placeholder }}"{% endif %}></textarea>
+<div class="lt-seed-row">
+  <span class="lt-seed-bw">
+    <button type="submit" class="button {{ submit_class }}" data-lt-reason-submit>{{ submit_label }}</button>
+    <span class="lt-seed-why" data-lt-reason-why hidden>{{ _('Reason missing.') }}</span>
+  </span>
+  {{ caller() if caller is defined else '' }}
+</div>
+{%- endmacro %}
+
+{#- The ordering board of one open tie. Without the script the places are plain selects. #}
+{%- macro decision_form(blocker) %}
+{%- set tied = blocker.contestants|sort(attribute='name') %}
+{%- set field_id = (blocker.scope ~ '-' ~ blocker.rank_from)|replace(':', '-') %}
+<form action="{{ url_for('.orga_qualification_decide', tournament_id=tournament.id) }}" method="post" class="lt-seed-ob lt-qual-decide" data-qualification-decide data-lt-order data-lt-reason-form>
+  <input type="hidden" name="scope" value="{{ blocker.scope }}">
+  <input type="hidden" name="action" value="save">
+  <p class="lt-seed-lbl">{{ _('Set the order') }} · {{ _('Starting order is alphabetical') }}</p>
+  <ol class="lt-seed-oblist lt-qual-order" data-lt-qual-order data-lt-order-fallback>
+    {%- for slot in tied %}
+    {%- set place = blocker.rank_from + loop.index0 %}
+    <li class="lt-seed-obi lt-seed-obs lt-qual-order-item">
+      <label class="lt-seed-obr" for="order-{{ field_id }}-{{ loop.index0 }}">{{ _('Place %(n)s', n=place) }}</label>
+      <select name="order" id="order-{{ field_id }}-{{ loop.index0 }}" class="form-control lt-seed-inp" required>
+        {%- for option in tied %}
+        <option value="{{ option.id }}"{% if option.id == slot.id %} selected{% endif %}>{{ option.name }}</option>
+        {%- endfor %}
+      </select>
+    </li>
+    {%- endfor %}
+  </ol>
+  <ol class="lt-seed-oblist" data-lt-order-list data-first-place="{{ blocker.rank_from }}" hidden>
+    {%- for slot in tied %}
+    <li class="lt-seed-obi" data-id="{{ slot.id }}" data-name="{{ slot.name }}">
+      <span class="lt-seed-hd" aria-hidden="true">⋮⋮</span>
+      <span class="lt-seed-obr" data-order-place>{{ _('Place %(n)s', n=blocker.rank_from + loop.index0) }}</span>
+      <b>{{ slot.name }}</b>
+      <span class="lt-seed-ud">
+        <button type="button" class="lt-seed-mv" data-order-move="up" aria-label="{{ _('Move %(name)s up', name=slot.name) }}" title="{{ _('Move up') }}">↑</button>
+        <button type="button" class="lt-seed-mv" data-order-move="down" aria-label="{{ _('Move %(name)s down', name=slot.name) }}" title="{{ _('Move down') }}">↓</button>
+      </span>
+      <input type="hidden" value="{{ slot.id }}" data-order-value>
+    </li>
+    {%- endfor %}
+  </ol>
+  {%- call reason_field('reason-' ~ field_id, _('Reason'), _('Save orga decision'), placeholder=_('Why this order?')) %}{% endcall %}
+</form>
+{%- endmacro %}
+
+{%- set q = qualification %}
+{%- set release = q.release %}
+{%- set decisions_locked = tournament.tournament_status and tournament.tournament_status.name in ('COMPLETED', 'CANCELLED') %}
+{%- set locked_text = (_('The tournament is completed. Take back a result first.') if tournament.tournament_status.name == 'COMPLETED' else _('The tournament is cancelled. Tie decisions can no longer change.')) if decisions_locked else '' %}
+{%- set release_notices = [release.get('shortfall') and release.get('shortfall').text, release.get('de_fallback_text')]|select|list %}
+{%- set is_leaderboard = q.source == 'leaderboard' %}
+{%- set has_release = q.source in ['groups', 'leaderboard'] %}
+{%- set open_blockers = q.blockers|rejectattr('decided')|list %}
+{%- set tag_kind = {'qualified': 'ok', 'out': 'mute', 'tie': 'warn', 'open': 'info'} %}
+
+<div class="lt-seed lt-seed-site lt-qual" data-lt-qual data-lt-order-root>
+  <script type="application/json" data-lt-strings>{{ js_strings|tojson }}</script>
+
+  <div class="lt-seed-tgt">
+    <div class="lt-seed-tgtl">
+      <span class="lt-seed-lbl">{{ _('Qualification') }}</span>
+      <b>{{ tournament.name }}</b>
+    </div>
+    <div class="lt-seed-tags">
+      {%- if is_leaderboard %}
+      {%- if q.leaderboard_closed %}<span class="lt-seed-tag t-ok">{{ _('Qualification closed') }}</span>
+      {%- else %}<span class="lt-seed-tag t-info">{{ _('Qualification still open') }}</span>{% endif %}
+      {%- elif q.source == 'groups' %}
+      {%- if q.open_match_count %}<span class="lt-seed-tag t-info">{{ _('Group stage running') }}</span>
+      {%- else %}<span class="lt-seed-tag t-ok">{{ _('Group stage finished') }}</span>{% endif %}
+      {%- endif %}
+      {%- if open_blockers %}<span class="lt-seed-tag t-err">{{ _('Blocked') }}</span>{% endif %}
+      {%- if release.released %}<span class="lt-seed-tag t-ok">{{ _('Playoffs released') }}</span>{% endif %}
+      <span class="lt-seed-orga">{{ _('Visible to orgas only') }}</span>
+    </div>
+  </div>
+
+  {%- if release.released %}
+  {% call notice('ok', _('Released (%(mode)s) by %(user)s · %(time)s · %(n)s qualified.',
+      mode=(_('Automatic') if release.mode == 'AUTOMATIC' else _('Manual')),
+      user=(release.released_by or _('System')),
+      time=(release.released_at|dateformat ~ ', ' ~ release.released_at|timeformat('short')),
+      n=(q.qualifiers|length if q.qualifiers else 0)), 'lt-qual-released') %}
+  <div class="lt-seed-ntb">
+    <p>{{ _('The playoff matches are generated. Group results are locked.') }}</p>
+    {%- for text in release_notices %}
+    <p data-release-notice>{{ text }}</p>
+    {%- endfor %}
+    <p><a href="{{ url_for('.orga_seeding', tournament_id=tournament.id, target='playoff') }}">{{ _('Open playoff seeding') }}</a></p>
+  </div>
+  {% endcall %}
+  {%- endif %}
+
+  {%- for blocker in open_blockers %}
+  {% call notice('err' if blocker.kind == 'cut' else 'warn', blocker.text, 'lt-qual-tie') %}
+  <div class="lt-seed-ntb" data-blocker="{{ blocker.kind }}">
+    <p>{{ blocker.scope_label }}: {{ _('Places %(range)s are equal on every criterion.', range=blocker.places) }}
+      {{ blocker.contestants|map(attribute='name')|join(', ') }}.</p>
+    {%- if decisions_locked %}
+    <p class="lt-seed-why">{{ locked_text }}</p>
+    {%- else %}
+    {{ decision_form(blocker) }}
+    {%- endif %}
+  </div>
+  {% endcall %}
+  {%- endfor %}
+
+  {%- for decision in q.decisions %}
+  {%- set outdated = decision.status == 'outdated' %}
+  {% call notice('warn' if outdated else 'ok', _('Decision outdated') if outdated else _('Orga decision on file'), 'lt-qual-decision') %}
+  <div class="lt-seed-ntb" data-decision="{{ decision.scope }}"{% if outdated %} data-decision-status="outdated"{% endif %}>
+    {%- if outdated %}
+    <p>{{ _('This decision no longer matches a tie. Decide the tie again, or withdraw the decision.') }}</p>
+    <p>{{ decision.scope_label }}: {{ decision.contestants|map(attribute='name')|join(', ') }}.</p>
+    {%- else %}
+    <p>{{ decision.scope_label }}:
+      {%- for c in decision.contestants %} {{ c.place }}. {{ c.name }}{% if not loop.last %},{% endif %}{% endfor %}.</p>
+    {%- endif %}
+    <p class="lt-seed-quote">{{ _('Reason') }}: „{{ decision.reason }}“</p>
+    <p class="lt-seed-small">{% if decision.decided_by %}{{ decision.decided_by }} · {% endif %}{{ decision.decided_at|dateformat }}, {{ decision.decided_at|timeformat('short') }}</p>
+    {%- if release.released %}
+    <p class="lt-seed-why">{{ _('Locked while the playoffs are released.') }}</p>
+    {%- elif decisions_locked %}
+    <p class="lt-seed-why">{{ locked_text }}</p>
+    {%- else %}
+    {%- set wd_id = 'withdraw-' ~ decision.scope|replace(':', '-') ~ '-' ~ loop.index %}
+    <button type="button" class="button is-compact" data-lt-reveal="{{ wd_id }}" data-js-only hidden>{{ _('Withdraw decision') }}</button>
+    <form class="lt-seed-wd lt-qual-withdraw" id="{{ wd_id }}" action="{{ url_for('.orga_qualification_decide', tournament_id=tournament.id) }}" method="post" data-lt-reason-form data-lt-reveal-target>
+      <input type="hidden" name="scope" value="{{ decision.scope }}">
+      <input type="hidden" name="action" value="withdraw">
+      {%- for cid in decision.withdraw_ids %}<input type="hidden" name="order" value="{{ cid }}">{% endfor %}
+      {%- call reason_field('reason-' ~ wd_id, _('Reason for withdrawing'), _('Withdraw decision'), submit_class='color-danger') %}
+      <button type="button" class="button is-compact" data-lt-hide="{{ wd_id }}" data-js-only hidden>{{ _('Cancel') }}</button>
+      {%- endcall %}
+    </form>
+    {%- endif %}
+  </div>
+  {% endcall %}
+  {%- endfor %}
+
+  {%- for ranking in q.rankings %}
+  {%- for tie in ranking.ties if tie.kind == 'harmless' %}
+  {% call notice('info', tie.text, 'lt-qual-harmless') %}
+  <div class="lt-seed-ntb" data-harmless="{{ ranking.scope }}">
+    <p>{{ tie.scope_label }}: {{ _('Place %(n)s', n=tie.places) }} {{ tie.contestants|map(attribute='name')|join(', ') }}.</p>
+  </div>
+  {% endcall %}
+  {%- endfor %}
+  {%- endfor %}
+
+  <p class="lt-qual-chain"><span class="lt-seed-lbl">{{ _('Tie-break order') }}</span>
+    {% if is_leaderboard %}{{ _('Value → Orga decision. Never by lot.') }}{% else %}{{ _('Points → Head-to-head → Difference → Scored → Orga decision. Never by lot.') }} <span class="lt-seed-muted">{{ _('Across groups: points per match → difference per match → scored per match → orga decision.') }}</span>{% endif %}</p>
+
+  <div class="lt-qual-cards">
+  {%- for ranking in q.rankings %}
+  <section class="lt-qual-card lt-seed-panel" data-ranking="{{ ranking.scope }}">
+    <header class="lt-seed-ph lt-qual-cardh">
+      <h2>{{ ranking.label }}</h2>
+      {%- if is_leaderboard %}
+      <span class="lt-seed-tag {{ 't-ok' if q.leaderboard_closed else 't-info' }}">{{ _('Closed') if q.leaderboard_closed else _('Running') }}</span>
+      {%- elif ranking.open_matches %}
+      <span class="lt-seed-tag t-warn">{{ ngettext('%(n)s match open', '%(n)s matches open', ranking.open_matches, n=ranking.open_matches) }}</span>
+      {%- else %}
+      <span class="lt-seed-tag t-ok">{{ _('Results final') }}</span>{% endif %}
+    </header>
+    <div class="lt-seed-scroll lt-qual-scroll" tabindex="0" role="region" aria-label="{{ ranking.label }}">
+      <table class="itemlist is-vcentered is-wide lt-qual-table">
+        <thead>
+          <tr>
+            <th scope="col" class="c-rk">{{ _('Place') }}</th>
+            <th scope="col" class="c-nm">{{ _('Participant') }}</th>
+            {%- if is_leaderboard %}
+            <th scope="col" class="c-n">{{ _('Value') }}</th>
+            <th scope="col" class="c-n c-time">{{ _('Time submitted') }}</th>
+            {%- else %}
+            <th scope="col" class="c-n">{{ _('Played') }}</th>
+            <th scope="col" class="c-n">{{ _('Won') }}</th>
+            <th scope="col" class="c-n">{{ _('Draw') }}</th>
+            <th scope="col" class="c-n">{{ _('Lost') }}</th>
+            <th scope="col" class="c-n">{{ _('Difference') }}</th>
+            <th scope="col" class="c-n">{{ _('Scored') }}</th>
+            <th scope="col" class="c-pk">{{ _('Points') }}</th>
+            {%- endif %}
+            <th scope="col" class="c-st">{{ _('Status') }}</th>
+            <th scope="col" class="c-by">{{ _('Decided by') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {%- for entry in ranking.entries %}
+          {%- set stats = entry.stats %}
+          <tr data-status="{{ entry.status }}"{% if entry.status == 'tie' %} class="is-tie"{% endif %}>
+            <td class="c-rk">{{ entry.rank_label }}</td>
+            <th scope="row" class="c-nm">{{ entry.name }}</th>
+            {%- if is_leaderboard %}
+            <td class="c-n">{{ entry.value }}</td>
+            {%- set submitted = entry.get('submitted_at') %}
+            <td class="c-n c-time">{% if submitted %}<time datetime="{{ submitted.isoformat() }}" title="{{ submitted|dateformat }}, {{ submitted|timeformat('short') }}">{{ submitted|timeformat('short') }}</time>{% endif %}</td>
+            {%- else %}
+            <td class="c-n">{{ stats.played if stats else '' }}</td>
+            <td class="c-n">{{ stats.won if stats else '' }}</td>
+            <td class="c-n">{{ stats.drawn if stats else '' }}</td>
+            <td class="c-n">{{ stats.lost if stats else '' }}</td>
+            <td class="c-n">{{ stats.diff if stats else '' }}</td>
+            <td class="c-n">{{ stats.score_for if stats else '' }}</td>
+            <td class="c-pk"><b>{{ stats.points if stats else '' }}</b></td>
+            {%- endif %}
+            <td class="c-st"><span class="lt-seed-tag t-{{ tag_kind.get(entry.status, 'mute') }}">{{ entry.status_label }}</span></td>
+            <td class="c-by">{{ entry.decided_by_label or '' }}</td>
+          </tr>
+          {%- if ranking.cut is not none and entry.rank == ranking.cut and not loop.last and ranking.entries[loop.index0 + 1].rank > ranking.cut %}
+          <tr class="lt-qual-cut" aria-hidden="true">
+            <td colspan="{{ 6 if is_leaderboard else 12 }}"><span>{{ _('Qualification line') }}</span></td>
+          </tr>
+          {%- endif %}
+          {%- endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {%- endfor %}
+  </div>
+
+  {%- if has_release %}
+  <section class="lt-seed-panel lt-qual-release" data-release-panel>
+    <header class="lt-seed-ph">
+      <h2>{{ _('Playoff release') }}</h2>
+      {%- if release.released %}<span class="lt-seed-pill p-ok">{{ _('Released') }}</span>
+      {%- elif q.ready %}<span class="lt-seed-pill p-ok">{{ _('Ready') }}</span>
+      {%- else %}<span class="lt-seed-pill p-info">{{ _('Waiting') }}</span>{% endif %}
+    </header>
+    <ul class="lt-qual-check">
+      {%- if not is_leaderboard %}
+      <li><span>{{ _('Group matches final: %(done)s of %(total)s', done=(q.total_match_count - q.open_match_count), total=q.total_match_count) }}</span>
+        <b>{{ _('Resolved') if not q.open_match_count else _('Open') }}</b></li>
+      {%- else %}
+      <li><span>{{ _('Qualification closed') if q.leaderboard_closed else _('Qualification still open') }}</span>
+        <b>{{ _('Resolved') if q.leaderboard_closed else _('Open') }}</b></li>
+      {%- endif %}
+      <li><span>{{ _('Ties needing an orga decision: %(n)s', n=open_blockers|length) }}</span>
+        <b>{{ _('Blocked') if open_blockers else _('Free') }}</b></li>
+      <li><span>{{ _('Release mode') }}</span>
+        <b>{{ _('Automatic') if release.mode == 'AUTOMATIC' else _('Manual') }}</b></li>
+    </ul>
+
+    {%- for text in release_notices %}
+    {% call notice('warn', text, 'lt-qual-shortfall') %}{% endcall %}
+    {%- endfor %}
+
+    {%- if q.qualifiers %}
+    <p><span class="lt-seed-lbl">{{ _('Qualifiers') }}</span>
+      {%- for qualifier in q.qualifiers %} {{ qualifier.name }}{% if not loop.last %},{% endif %}{% endfor %}.</p>
+    {%- else %}
+    <p class="lt-seed-muted">{{ _('The qualifiers are set once all results are final and all ties are decided.') }}</p>
+    {%- endif %}
+
+    {%- if is_leaderboard and not q.leaderboard_closed and tournament.tournament_status.name == 'ONGOING' %}
+    <form action="{{ url_for('.orga_leaderboard_close', tournament_id=tournament.id) }}" method="post" class="lt-seed-row"
+          data-confirm-title="{{ _('Close the qualification?') }}"
+          data-confirm-body="{{ _('No further scores are accepted.') ~ '\n' ~ _('The qualifiers are determined from the leaderboard.') }}"
+          data-confirm-ok="{{ _('Close qualification') }}">
+      <button type="submit" class="button color-primary">{{ _('Close qualification') }}</button>
+    </form>
+    {%- elif release.released %}
+      {%- if release.can_unrelease %}
+    <button type="button" class="button is-compact" data-lt-reveal="unrelease" data-js-only hidden>{{ _('Undo release') }} …</button>
+    <form id="unrelease" class="lt-seed-wd lt-qual-unrelease" action="{{ url_for('.orga_qualification_unrelease', tournament_id=tournament.id) }}" method="post" data-lt-reason-form data-lt-reveal-target
+          data-confirm-title="{{ _('Undo the release?') }}"
+          data-confirm-body="{{ _('Deletes the playoff matches, unlocks the group results and keeps the draft.') }}"
+          data-confirm-ok="{{ _('Undo release') }}" data-confirm-danger="1">
+      {%- call reason_field('unrelease-reason', _('Reason'), _('Undo release'), submit_class='color-danger') %}
+      <button type="button" class="button is-compact" data-lt-hide="unrelease" data-js-only hidden>{{ _('Cancel') }}</button>
+      {%- endcall %}
+      <p class="lt-seed-small">{{ _('Deletes the playoff matches, unlocks the group results and keeps the draft.') }}
+        {%- if release.mode == 'AUTOMATIC' %} {{ _('Automatic release stays suspended afterwards.') }}{% endif %}</p>
+    </form>
+      {%- else %}
+    <p class="lt-seed-why">{{ release.get('unrelease_why') or _('A playoff result is confirmed. The release can no longer be undone.') }}</p>
+      {%- endif %}
+    {%- elif release.mode == 'AUTOMATIC' and not release.auto_suspended %}
+    <p class="lt-seed-small">{{ _('The playoffs start as soon as all results are final and no tie blocks.') }}</p>
+    {%- else %}
+      {%- if release.mode == 'AUTOMATIC' %}
+    {% call notice('warn', _('Automatic release suspended. Release the playoffs manually.')) %}{% endcall %}
+      {%- endif %}
+      {%- if playoff_version is not none %}
+    <form action="{{ url_for('.orga_qualification_release', tournament_id=tournament.id) }}" method="post" class="lt-seed-row"
+          data-confirm-title="{{ _('Release the playoffs?') }}"
+          data-confirm-body="{{ _('The playoff matches are generated from the draft.') ~ '\n' ~ _('The players of the first matches are notified (match ready).') ~ '\n' ~ _('The group results are locked.') ~ ('\n' ~ release_notices|join('\n') if release_notices else '') }}"
+          data-confirm-ok="{{ _('Release playoffs') }}">
+      <input type="hidden" name="version" value="{{ playoff_version }}" data-lt-playoff-version>
+      <button type="submit" class="button color-primary">{{ _('Release playoffs') }}</button>
+    </form>
+    <p class="lt-seed-small">
+      <a href="{{ url_for('.orga_seeding', tournament_id=tournament.id, target='playoff') }}">{{ _('Open playoff seeding') }}</a>
+      · {{ _('Before the release you can adjust the playoff draft.') }}
+    </p>
+      {%- elif playoff_release_open %}
+    <form action="{{ url_for('.orga_qualification_draft_create', tournament_id=tournament.id) }}" method="post" class="lt-seed-row" data-lt-draft-create>
+      <button type="submit" class="button color-primary">{{ _('Create playoff draft') }}</button>
+    </form>
+    <p class="lt-seed-small">{{ _('The playoff draft is missing. Create it to adjust it and release the playoffs.') }}</p>
+      {%- else %}
+    <p class="lt-seed-row"><button type="button" class="button" disabled>{{ _('Release playoffs') }}</button></p>
+    <p class="lt-seed-why">{{ _('Needs all group results final and no blocking tie.') }}</p>
+      {%- endif %}
+    {%- endif %}
+  </section>
+  {%- endif %}
+
+  {%- if has_release and playoff_board is not none %}
+  {%- set seed_embedded = true %}
+  {%- set seed_action_url = url_for('.orga_qualification_draft_action', tournament_id=tournament.id) %}
+  {%- set seed_page_url = url_for('.orga_qualification', tournament_id=tournament.id) %}
+  {%- set board = playoff_board %}
+  <div class="lt-seed-p2" data-lt-playoff-draft>
+    <div class="lt-seed-p2h">
+      <h2>{{ _('Playoff draft') }}</h2>
+      <span class="lt-seed-small">
+        {%- if is_leaderboard %}{{ _('Prefilled from the leaderboard order, cut into tiers.') }}
+        {%- else %}{{ _('Prefilled crosswise: all group winners first, then the runners-up, and so on. Within equal ranks: points → difference → scored → group order.') }}{% endif -%}
+      </span>
+    </div>
+    {% include 'site/lan_tournament/_seeding_board.html' %}
+  </div>
+  {%- endif %}
+
+  <section class="lt-seed-panel lt-qual-audit">
+    <header class="lt-seed-ph">
+      <h2>{{ _('Audit log') }}</h2>
+      <span class="lt-seed-small">{{ _('Seeding and qualification of this tournament · newest first') }}</span>
+    </header>
+    {%- if audit_rows %}
+    <div class="lt-seed-scroll" tabindex="0" role="region" aria-label="{{ _('Audit log') }}">
+    <table class="lt-seed-audit">
+      <thead>
+        <tr>
+          <th scope="col">{{ _('Time') }}</th>
+          <th scope="col">{{ _('Who') }}</th>
+          <th scope="col">{{ _('Action') }}</th>
+          <th scope="col">{{ _('Details') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {%- for row in audit_rows %}
+        <tr data-event="{{ row.event_type }}">
+          <td>{{ row.occurred_at|dateformat }}, {{ row.occurred_at|timeformat('short') }}</td>
+          <td>{% if row.who %}{{ row.who }}{% else %}{{ _('System') }}{% endif %}</td>
+          <td>{{ row.label }}</td>
+          <td>{{ row.details }}</td>
+        </tr>
+        {%- endfor %}
+      </tbody>
+    </table>
+    </div>
+    {%- else %}
+    <p class="lt-seed-empty">{{ _('No entries yet.') }}</p>
+    {%- endif %}
+  </section>
+</div>

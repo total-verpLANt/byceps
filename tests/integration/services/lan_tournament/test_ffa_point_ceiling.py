@@ -225,13 +225,14 @@ def test_confirming_a_group_stores_the_highest_allowed_points(
         assert tournament_participant_service.join_tournament(
             tournament.id, user.id
         ).is_ok()
-    for status in (
-        TournamentStatus.REGISTRATION_CLOSED,
-        TournamentStatus.ONGOING,
-    ):
-        assert tournament_service.change_status(tournament.id, status).is_ok()
+    assert tournament_service.change_status(
+        tournament.id, TournamentStatus.REGISTRATION_CLOSED
+    ).is_ok()
     assert tournament_match_service.generate_ffa_round(
         tournament.id, initiator_id=admin.id
+    ).is_ok()
+    assert tournament_service.change_status(
+        tournament.id, TournamentStatus.ONGOING
     ).is_ok()
     (group,) = tournament_match_service.get_matches_for_tournament_ordered(
         tournament.id

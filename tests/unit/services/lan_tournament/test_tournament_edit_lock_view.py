@@ -12,7 +12,7 @@ from datetime import datetime, UTC
 from unittest.mock import MagicMock, patch
 
 import pytest
-from flask import Flask
+from flask import Flask, g
 
 from byceps.services.lan_tournament.models.contestant_type import (
     ContestantType,
@@ -120,6 +120,7 @@ def _call_update(app, tournament, form_data: dict):
             patch(f'{_V}.flash_success'),
             patch(f'{_V}.redirect_to'),
         ):
+            g.user = MagicMock()
             views.update.__wrapped__(TOURNAMENT_ID_STR)
 
     return mock_update.call_args

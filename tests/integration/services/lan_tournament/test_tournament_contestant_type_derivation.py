@@ -181,13 +181,16 @@ def test_update_locked_tournament_with_unchanged_derived_type_is_not_a_change(
 
     # Simulate a legacy row: NULL contestant_type in the database,
     # written directly through the repository, bypassing the service.
-    legacy = dataclasses.replace(
-        tournament,
-        contestant_type=None,
-        tournament_status=TournamentStatus.ONGOING,
-    )
+    legacy = dataclasses.replace(tournament, contestant_type=None)
     tournament_repository.update_tournament(legacy)
+    tournament_repository.set_tournament_status_flush(
+        tournament.id, TournamentStatus.ONGOING
+    )
     tournament_repository.commit_session()
+    assert (
+        tournament_repository.get_tournament(tournament.id).tournament_status
+        is TournamentStatus.ONGOING
+    )
 
     result = tournament_service.update_tournament(
         tournament.id,

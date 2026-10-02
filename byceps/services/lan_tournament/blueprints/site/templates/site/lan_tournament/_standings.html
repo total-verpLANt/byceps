@@ -1,0 +1,172 @@
+{#- Participant views of a tournament with a playoff phase.
+
+   Everything here is public: the rankings come from
+   `participant_rankings()`, which carries no reason, decider, seed or
+   tier. Keep it that way. -#}
+
+{% macro render_phase_switch(tournament, phase_view) -%}
+<nav class='lt-phase' aria-label='{{ _("Phase") }}'>
+  <a class='lt-phase__link{% if phase_view == 1 %} is-on{% endif %}'
+     href='{{ url_for("lan_tournament.bracket", tournament_id=tournament.id, phase=1) }}'
+     {%- if phase_view == 1 %} aria-current='page'{% endif %}>{{ _('Group phase') }}</a>
+  <a class='lt-phase__link{% if phase_view == 2 %} is-on{% endif %}'
+     href='{{ url_for("lan_tournament.bracket", tournament_id=tournament.id, phase=2) }}'
+     {%- if phase_view == 2 %} aria-current='page'{% endif %}>{{ _('Playoffs') }}</a>
+</nav>
+{%- endmacro %}
+
+
+{% macro render_playoffs_waiting(reason) -%}
+{%- if reason in ('groups', 'leaderboard', 'tie', 'release') %}
+<section class='lt-wait' data-lt-wait='{{ reason }}'>
+  <p class='lt-wait__label'>{{ _('Playoffs') }}</p>
+  <h3>{{ _('Playoffs: waiting for release') }}</h3>
+  <p class='lt-wait__reason'>
+    {%- if reason == 'groups' -%}
+      {{ _('The playoffs begin as soon as all group matches are finished.') }}
+    {%- elif reason == 'leaderboard' -%}
+      {{ _('The playoffs begin as soon as the orga closes the qualification.') }}
+    {%- elif reason == 'tie' -%}
+      {{ _('A tie has to be decided by the orga.') }}
+    {%- else -%}
+      {{ _('The qualifiers are set. The orga releases the playoffs.') }}
+    {%- endif -%}
+  </p>
+</section>
+{%- endif %}
+{%- endmacro %}
+
+
+{% macro render_group_standings(rankings, cut=none) -%}
+{%- if rankings %}
+{%- set is_table = rankings[0].entries and rankings[0].entries[0].stats %}
+<p class='lt-chain'>
+  <span class='lt-chain__label'>{{ _('Order on a tie') }}</span>
+  {% if is_table -%}
+    {{ _('Points → Head-to-head → Difference → Scored → Orga decision. Never by lot.') }}
+  {%- else -%}
+    {{ _('Value → Orga decision. Never by lot.') }}
+  {%- endif %}
+</p>
+<div class='lt-gcards'>
+  {%- for ranking in rankings %}
+  {%- set line = cut if cut is not none else ranking.get('cut') %}
+  <section class='lt-gcard{% if ranking.has_tie %} is-tie{% endif %}' data-lt-ranking>
+    <header class='lt-gcard__head'>
+      <b>{{ ranking.label }}</b>
+      {%- if ranking.open_matches %}
+      <span class='lt-tag lt-tag--warn'>{{ ngettext('%(n)s match open', '%(n)s matches open', ranking.open_matches, n=ranking.open_matches) }}</span>
+      {%- elif is_table %}
+      <span class='lt-tag lt-tag--ok'>{{ _('Results final') }}</span>
+      {%- endif %}
+      {%- if ranking.has_tie %}
+      <span class='lt-tag lt-tag--warn'>{{ _('Tie') }}</span>
+      {%- endif %}
+    </header>
+    <div class='lt-gcard__scroll table-scroll-wrap' tabindex='0' role='region'
+         aria-label='{{ _("Table: %(name)s", name=ranking.label) }}'>
+      <table class='lt-st{% if not is_table %} lt-st--board{% endif %}'>
+        <thead>
+          <tr>
+            <th scope='col' class='c-rk'>{% if is_table %}#{% else %}{{ _('Place') }}{% endif %}</th>
+            <th scope='col' class='c-nm'>{% if is_table %}{{ _('Player/Team') }}{% else %}{{ _('Participant') }}{% endif %}</th>
+            {%- if is_table %}
+            <th scope='col' class='c-n' title='{{ _("Matches played") }}'>{{ _('Pld.') }}</th>
+            <th scope='col' class='c-n' title='{{ _("Wins") }}'>{{ _('W') }}</th>
+            <th scope='col' class='c-n' title='{{ _("Draws") }}'>{{ _('D') }}</th>
+            <th scope='col' class='c-n' title='{{ _("Losses") }}'>{{ _('L') }}</th>
+            <th scope='col' class='c-n'>{{ _('Diff.') }}</th>
+            <th scope='col' class='c-n' title='{{ _("Scored") }}'>{{ _('For') }}</th>
+            <th scope='col' class='c-pk'>{{ _('Pts') }}</th>
+            {%- else %}
+            <th scope='col' class='c-n'>{{ _('Value') }}</th>
+            {%- endif %}
+            <th scope='col' class='c-st'>{{ _('Status') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {%- for entry in ranking.entries %}
+          <tr class='{% if entry.status == "tie" %}is-tie{% endif %}'>
+            <td class='c-rk'>{{ entry.rank_label }}</td>
+            <th scope='row' class='c-nm'>{{ entry.name }}</th>
+            {%- if is_table %}
+            {%- set stats = entry.stats %}
+            <td class='c-n'>{{ stats.played }}</td>
+            <td class='c-n'>{{ stats.won }}</td>
+            <td class='c-n'>{{ stats.drawn }}</td>
+            <td class='c-n'>{{ stats.lost }}</td>
+            <td class='c-n'>{{ '%+d'|format(stats.diff) if stats.diff else '0' }}</td>
+            <td class='c-n'>{{ stats.score_for }}</td>
+            <td class='c-pk'><b>{{ stats.points }}</b></td>
+            {%- else %}
+            <td class='c-n'>{{ entry.value if entry.value is not none else '–' }}</td>
+            {%- endif %}
+            <td class='c-st'>
+              <span class='lt-stw is-{{ entry.status }}'>{{ entry.status_label }}</span>
+              {%- if entry.decided_by == 'orga' %}
+              <span class='lt-tag lt-tag--orga'>{{ _('Orga decision') }}</span>
+              {%- elif entry.decided_by_label %}
+              <span class='lt-by'>{{ entry.decided_by_label }}</span>
+              {%- endif %}
+            </td>
+          </tr>
+          {%- if line is not none and loop.index == line %}
+          <tr class='lt-cut'><td colspan='{{ 10 if is_table else 4 }}'><span>{{ _('Qualification line') }}</span></td></tr>
+          {%- endif %}
+          {%- endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {%- endfor %}
+</div>
+{%- endif %}
+{%- endmacro %}
+
+
+{% macro render_playoff_lobbies(lobby_rounds) -%}
+{%- for round in lobby_rounds %}
+<h3 class='lt-sh'>{{ _('Playoffs') }}{% if round.pool %} · {{ round.pool }}{% endif %}{% if round.number %} · {{ _('Round %(num)s', num=round.number) }}{% endif %}</h3>
+<div class='lt-lobbies'>
+  {%- for lobby in round.lobbies %}
+  <section class='lt-lobby'>
+    <header class='lt-lobby__head'>
+      <b>{{ _('Lobby') }} {{ loop.index }}</b>
+      <span>{% if round.number %}{{ _('Round %(num)s · %(count)s players', num=round.number, count=lobby.names|length) }}{% else %}{{ _('%(count)s players', count=lobby.names|length) }}{% endif %}</span>
+    </header>
+    <ol class='lt-lobby__list'>
+      {%- for name in lobby.names %}
+      <li>{{ name }}</li>
+      {%- endfor %}
+    </ol>
+  </section>
+  {%- endfor %}
+</div>
+{%- endfor %}
+{%- endmacro %}
+
+
+{% macro render_phase_match_list(rows) -%}
+{%- if rows %}
+<h3 class='lt-sh'>{{ _('Matches') }}</h3>
+<ul class='lt-ml'>
+  {%- for row in rows %}
+  <li>
+    <a href='{{ url_for("lan_tournament.view_match", match_id=row.match_id) }}'>
+      <span class='lt-ml__label'>{{ row.label }}</span>
+      <b>{{ row.names|join(' – ') if row.names else '–' }}</b>
+      <span class='lt-ml__status'>
+        {%- if row.status == 'confirmed' -%}
+          {% if row.score %}{{ row.score }} · {% endif %}{{ _('Confirmed') }}
+        {%- elif row.status == 'ready' -%}
+          {{ _('Ready') }}
+        {%- else -%}
+          {{ _('Pending') }}
+        {%- endif -%}
+      </span>
+    </a>
+  </li>
+  {%- endfor %}
+</ul>
+{%- endif %}
+{%- endmacro %}

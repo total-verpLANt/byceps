@@ -184,11 +184,11 @@ def ffa(party, players, orga):
     tournament_service.change_status(
         tournament.id, TournamentStatus.REGISTRATION_CLOSED
     ).unwrap()
-    tournament_service.change_status(
-        tournament.id, TournamentStatus.ONGOING
-    ).unwrap()
     tournament_match_service.generate_ffa_round(
         tournament.id, initiator_id=orga.id
+    ).unwrap()
+    tournament_service.change_status(
+        tournament.id, TournamentStatus.ONGOING
     ).unwrap()
     tournament_orga_service.assign_orga(
         tournament.id, orga.id, orga.id

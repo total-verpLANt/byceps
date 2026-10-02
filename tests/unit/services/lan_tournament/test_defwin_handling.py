@@ -27,9 +27,15 @@ from byceps.services.lan_tournament.models.tournament_team import (
 )
 from byceps.services.party.models import PartyID
 from byceps.services.user.models import UserID
+from byceps.util.result import Ok
 
 from tests.helpers import generate_uuid
 
+
+_QUALIFICATION_REPOSITORY = (
+    'byceps.services.lan_tournament.tournament_match_service'
+    '.tournament_qualification_repository'
+)
 
 NOW = datetime(2025, 6, 15, 14, 0, 0, tzinfo=UTC)
 TOURNAMENT_ID = TournamentID(generate_uuid())
@@ -389,10 +395,13 @@ def test_defwin_participant_with_initiator_calls_confirm_match(mock_repo):
     assert result.completed == []
 
 
+@patch(_QUALIFICATION_REPOSITORY)
 @patch(
     'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
 )
-def test_defwin_participant_terminal_with_initiator_confirms(mock_repo):
+def test_defwin_participant_terminal_with_initiator_confirms(
+    mock_repo, mock_decisions
+):
     """When a terminal match (no next_match_id) has a sole remaining
     opponent and initiator_id is provided, the match IS confirmed
     even though no advancement occurs."""
@@ -417,6 +426,18 @@ def test_defwin_participant_terminal_with_initiator_confirms(mock_repo):
     mock_tournament = _create_tournament(game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.ROUND_ROBIN)
     mock_repo.get_tournament.return_value = mock_tournament
 
+    # Another group match is still open, so the round robin goes on.
+    open_match = _create_match()
+    confirmed_match = _create_match(
+        match_id=match_id, confirmed_by=INITIATOR_ID
+    )
+    _stub_round_robin_standing(
+        mock_repo,
+        [confirmed_match, open_match],
+        {match_id: [opponent]},
+    )
+    mock_decisions.find_decision.return_value = None
+
     result = tournament_match_service.handle_defwin_for_removed_participant(
         TOURNAMENT_ID, participant_id, initiator_id=INITIATOR_ID
     )
@@ -429,7 +450,7 @@ def test_defwin_participant_terminal_with_initiator_confirms(mock_repo):
     # MatchConfirmedEvent emitted
     assert len(result.confirmed) == 1
     assert result.confirmed[0].match_id == match_id
-    # RR mode → no auto-complete
+    # An open match keeps the round robin ongoing
     assert result.completed == []
     mock_repo.set_tournament_winner.assert_not_called()
 
@@ -631,12 +652,15 @@ def test_defwin_terminal_elimination_triggers_auto_complete(mock_repo):
     )
 
 
+@patch(_QUALIFICATION_REPOSITORY)
 @patch(
     'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
 )
-def test_defwin_terminal_rr_no_auto_complete(mock_repo):
-    """Terminal RR match with initiator: confirm_match called but NO
-    auto-complete (RR mode is not eligible)."""
+def test_defwin_terminal_rr_completes_plain_round_robin(
+    mock_repo, mock_decisions
+):
+    """Defwin on the last match of a plain round robin completes it
+    with the sole remaining contestant as winner."""
     participant_id = TournamentParticipantID(generate_uuid())
     opponent_participant_id = TournamentParticipantID(generate_uuid())
     match_id = TournamentMatchID(generate_uuid())
@@ -654,9 +678,14 @@ def test_defwin_terminal_rr_no_auto_complete(mock_repo):
     ]
     mock_repo.get_contestants_for_match.return_value = [opponent]
 
-    # RR mode → auto-complete should NOT trigger.
     mock_tournament = _create_tournament(game_format=GameFormat.ONE_V_ONE, elimination_mode=EliminationMode.ROUND_ROBIN)
     mock_repo.get_tournament.return_value = mock_tournament
+    _stub_round_robin_standing(
+        mock_repo,
+        [_create_match(match_id=match_id, confirmed_by=INITIATOR_ID)],
+        {match_id: [opponent]},
+    )
+    mock_decisions.find_decision.return_value = None
 
     result = tournament_match_service.handle_defwin_for_removed_participant(
         TOURNAMENT_ID, participant_id, initiator_id=INITIATOR_ID
@@ -668,10 +697,17 @@ def test_defwin_terminal_rr_no_auto_complete(mock_repo):
     # MatchConfirmedEvent emitted
     assert len(result.confirmed) == 1
     assert result.confirmed[0].match_id == match_id
-    # RR → no TournamentCompletedEvent
-    assert result.completed == []
-    mock_repo.set_tournament_winner.assert_not_called()
-    mock_repo.set_tournament_status_flush.assert_not_called()
+    # RR without playoffs → TournamentCompletedEvent for the winner
+    assert len(result.completed) == 1
+    assert result.completed[0].winner_participant_id == opponent_participant_id
+    mock_repo.set_tournament_winner.assert_called_once_with(
+        TOURNAMENT_ID,
+        winner_team_id=None,
+        winner_participant_id=opponent_participant_id,
+    )
+    mock_repo.set_tournament_status_flush.assert_called_once_with(
+        TOURNAMENT_ID, TournamentStatus.COMPLETED
+    )
 
 
 @patch(
@@ -786,10 +822,29 @@ def test_clear_bracket_returns_ok_on_empty(mock_repo, _mock_signals):
     mock_repo.commit_session.assert_not_called()
 
 
+def _stub_round_robin_standing(mock_repo, matches, contestants_by_match):
+    """Stub the reads behind the plain round robin ranking."""
+    mock_repo.get_matches_for_tournament_ordered_fresh.return_value = matches
+    mock_repo.get_contestants_for_tournament.return_value = (
+        contestants_by_match
+    )
+    # Everybody in the matches is still in the tournament.
+    entries = [e for es in contestants_by_match.values() for e in es]
+    mock_repo.get_participants_for_tournament.return_value = [
+        Mock(id=e.participant_id) for e in entries if e.participant_id
+    ]
+    mock_repo.get_teams_for_tournament.return_value = [
+        Mock(id=e.team_id) for e in entries if e.team_id
+    ]
+    mock_repo.set_tournament_winner.return_value = Ok(None)
+    mock_repo.set_tournament_status_flush.return_value = Ok(None)
+
+
 def _create_match(
     *,
     match_id: TournamentMatchID | None = None,
     next_match_id: TournamentMatchID | None = None,
+    confirmed_by: UserID | None = None,
 ) -> TournamentMatch:
     if match_id is None:
         match_id = TournamentMatchID(generate_uuid())
@@ -800,7 +855,7 @@ def _create_match(
         match_order=0,
         round=0,
         next_match_id=next_match_id,
-        confirmed_by=None,
+        confirmed_by=confirmed_by,
         created_at=NOW,
     )
 

@@ -1,6 +1,7 @@
 import json
 import logging
 from datetime import datetime
+from enum import Enum
 from typing import TYPE_CHECKING, TypeVar, cast
 from uuid import UUID
 
@@ -37,6 +38,7 @@ from .models.score_submission import ScoreSubmission
 from .models.contestant_status import ContestantStatus
 from .models.game_format import GameFormat
 from .models.elimination_mode import EliminationMode
+from .models.playoff import PlayoffReleaseMode
 from .models.tournament_participant import (
     TournamentParticipant,
     TournamentParticipantID,
@@ -137,6 +139,14 @@ def create_tournament(tournament: Tournament, *, commit: bool = True) -> None:
         image_id=tournament.image_id,
         image_alt_text=tournament.image_alt_text,
         creation_token=tournament.creation_token,
+        playoff_game_format=_enum_name(tournament.playoff_game_format),
+        playoff_elimination_mode=_enum_name(
+            tournament.playoff_elimination_mode
+        ),
+        playoff_group_count=tournament.playoff_group_count,
+        playoff_qualifiers_per_group=tournament.playoff_qualifiers_per_group,
+        playoff_qualifier_count=tournament.playoff_qualifier_count,
+        playoff_release_mode=_enum_name(tournament.playoff_release_mode),
     )
 
     db_tournament.position = tournament.position
@@ -149,7 +159,10 @@ def create_tournament(tournament: Tournament, *, commit: bool = True) -> None:
 
 
 def update_tournament(tournament: Tournament) -> None:
-    """Update a tournament in place (no delete/recreate)."""
+    """Update a tournament in place (no delete/recreate).
+
+    Status, winner, position and release state have their own writers.
+    """
     db_tournament = db.session.get(DbTournament, tournament.id)
     if db_tournament is None:
         raise ValueError(f'Unknown tournament ID "{tournament.id}"')
@@ -171,11 +184,6 @@ def update_tournament(tournament: Tournament) -> None:
     db_tournament.contestant_type = (
         tournament.contestant_type.name if tournament.contestant_type else None
     )
-    db_tournament.tournament_status = (
-        tournament.tournament_status.name
-        if tournament.tournament_status
-        else None
-    )
     db_tournament.game_format = (
         tournament.game_format.name if tournament.game_format else None
     )
@@ -196,12 +204,81 @@ def update_tournament(tournament: Tournament) -> None:
     db_tournament.group_size_min = tournament.group_size_min
     db_tournament.group_size_max = tournament.group_size_max
     db_tournament.points_carry_to_losers = tournament.points_carry_to_losers
-    db_tournament.position = tournament.position
-    db_tournament.winner_team_id = tournament.winner_team_id
-    db_tournament.winner_participant_id = tournament.winner_participant_id
     db_tournament.updated_at = tournament.updated_at
+    db_tournament.playoff_game_format = _enum_name(
+        tournament.playoff_game_format
+    )
+    db_tournament.playoff_elimination_mode = _enum_name(
+        tournament.playoff_elimination_mode
+    )
+    db_tournament.playoff_group_count = tournament.playoff_group_count
+    db_tournament.playoff_qualifiers_per_group = (
+        tournament.playoff_qualifiers_per_group
+    )
+    db_tournament.playoff_qualifier_count = tournament.playoff_qualifier_count
+    db_tournament.playoff_release_mode = _enum_name(
+        tournament.playoff_release_mode
+    )
 
     db.session.commit()
+
+
+def set_playoff_release(
+    tournament_id: TournamentID,
+    *,
+    released_at: datetime,
+    released_by: UserID,
+) -> None:
+    """Record the playoff release (flush only, caller owns commit)."""
+    db.session.execute(
+        update(DbTournament)
+        .filter_by(id=tournament_id)
+        .values(
+            playoff_released_at=released_at,
+            playoff_released_by=released_by,
+        )
+    )
+    db.session.flush()
+
+
+def set_playoff_elimination_mode(
+    tournament_id: TournamentID, mode: EliminationMode
+) -> None:
+    """Set the phase-2 elimination mode (flush only, caller owns commit)."""
+    db.session.execute(
+        update(DbTournament)
+        .filter_by(id=tournament_id)
+        .values(playoff_elimination_mode=_enum_name(mode))
+    )
+    db.session.flush()
+
+
+def clear_playoff_release(
+    tournament_id: TournamentID, *, suspend_auto: bool
+) -> None:
+    """Clear the playoff release (flush only, caller owns commit)."""
+    db.session.execute(
+        update(DbTournament)
+        .filter_by(id=tournament_id)
+        .values(
+            playoff_released_at=None,
+            playoff_released_by=None,
+            playoff_auto_release_suspended=suspend_auto,
+        )
+    )
+    db.session.flush()
+
+
+def set_leaderboard_closed(
+    tournament_id: TournamentID, closed_at: datetime | None
+) -> None:
+    """Set or clear the leaderboard close time (flush only)."""
+    db.session.execute(
+        update(DbTournament)
+        .filter_by(id=tournament_id)
+        .values(leaderboard_closed_at=closed_at)
+    )
+    db.session.flush()
 
 
 def delete_tournament(
@@ -462,7 +539,29 @@ def _db_tournament_to_tournament(
         ),
         image_alt_text=db_tournament.image_alt_text,
         creation_token=db_tournament.creation_token,
+        playoff_game_format=_safe_enum_lookup(
+            GameFormat, db_tournament.playoff_game_format
+        ),
+        playoff_elimination_mode=_safe_enum_lookup(
+            EliminationMode, db_tournament.playoff_elimination_mode
+        ),
+        playoff_group_count=db_tournament.playoff_group_count,
+        playoff_qualifiers_per_group=db_tournament.playoff_qualifiers_per_group,
+        playoff_qualifier_count=db_tournament.playoff_qualifier_count,
+        playoff_release_mode=_safe_enum_lookup(
+            PlayoffReleaseMode, db_tournament.playoff_release_mode
+        ),
+        playoff_auto_release_suspended=(
+            db_tournament.playoff_auto_release_suspended
+        ),
+        playoff_released_at=db_tournament.playoff_released_at,
+        playoff_released_by=db_tournament.playoff_released_by,
+        leaderboard_closed_at=db_tournament.leaderboard_closed_at,
     )
+
+
+def _enum_name(member: Enum | None) -> str | None:
+    return member.name if member is not None else None
 
 
 # -- team --
@@ -580,6 +679,7 @@ def get_teams_for_tournament(
     stmt = select(DbTournamentTeam).filter_by(tournament_id=tournament_id)
     if not include_removed:
         stmt = stmt.where(DbTournamentTeam.removed_at.is_(None))
+    stmt = stmt.order_by(DbTournamentTeam.created_at, DbTournamentTeam.id)
     db_teams = db.session.execute(stmt).scalars().all()
     return [_db_team_to_team(t) for t in db_teams]
 
@@ -883,8 +983,39 @@ def get_participants_for_tournament(
     )
     if not include_removed:
         stmt = stmt.where(DbTournamentParticipant.removed_at.is_(None))
+    stmt = stmt.order_by(
+        DbTournamentParticipant.created_at, DbTournamentParticipant.id
+    )
     db_participants = db.session.execute(stmt).scalars().all()
     return [_db_participant_to_participant(p) for p in db_participants]
+
+
+def get_contestant_ids_removed_since_phase_start(
+    tournament_id: TournamentID, phase: int, *, teams: bool
+) -> frozenset[str]:
+    """Return the contestants removed after the phase's first match was made.
+
+    Compares in SQL: PostgreSQL casts the TIMESTAMP `created_at` with the
+    session time zone it was written in, so it meets a TIMESTAMPTZ
+    `removed_at` correctly.
+    """
+    started = (
+        select(func.min(DbTournamentMatch.created_at))
+        .where(
+            DbTournamentMatch.tournament_id == tournament_id,
+            DbTournamentMatch.phase == phase,
+        )
+        .scalar_subquery()
+    )
+    model = DbTournamentTeam if teams else DbTournamentParticipant
+    ids = db.session.scalars(
+        select(model.id).where(
+            model.tournament_id == tournament_id,
+            model.removed_at.is_not(None),
+            model.removed_at >= started,
+        )
+    ).all()
+    return frozenset(str(i) for i in ids)
 
 
 def get_participants_for_team(
@@ -1011,6 +1142,8 @@ def create_match(match: TournamentMatch) -> None:
         bracket=match.bracket.value if match.bracket else None,
         loser_next_match_id=match.loser_next_match_id,
         confirmed_by=match.confirmed_by,
+        phase=match.phase,
+        seeding_target=match.seeding_target,
     )
 
     db.session.add(db_match)
@@ -1021,6 +1154,29 @@ def delete_match(match_id: TournamentMatchID) -> None:
     """Delete a match."""
     db.session.execute(delete(DbTournamentMatch).filter_by(id=match_id))
     db.session.commit()
+
+
+def get_matches_for_seeding_target(
+    tournament_id: TournamentID, seeding_target: str
+) -> list[TournamentMatch]:
+    """Return the matches a seeding draft generated for its target."""
+    db_matches = (
+        db.session.execute(
+            select(DbTournamentMatch)
+            .filter_by(
+                tournament_id=tournament_id, seeding_target=seeding_target
+            )
+            .order_by(
+                DbTournamentMatch.round,
+                DbTournamentMatch.group_order.asc().nulls_last(),
+                DbTournamentMatch.match_order,
+                DbTournamentMatch.id,
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [_db_match_to_match(m) for m in db_matches]
 
 
 def delete_match_flush(match_id: TournamentMatchID) -> None:
@@ -1223,6 +1379,11 @@ def get_matches_for_round(
     )
     if bracket is not None:
         query = query.filter(DbTournamentMatch.bracket == bracket.value)
+    query = query.order_by(
+        DbTournamentMatch.group_order.asc().nulls_last(),
+        DbTournamentMatch.match_order,
+        DbTournamentMatch.id,
+    )
     db_matches = db.session.execute(query).scalars().all()
     return [_db_match_to_match(m) for m in db_matches]
 
@@ -1348,6 +1509,8 @@ def _db_match_to_match(
         created_at=db_match.created_at,
         bracket=_safe_bracket_lookup(db_match.bracket),
         loser_next_match_id=db_match.loser_next_match_id,
+        phase=db_match.phase,
+        seeding_target=db_match.seeding_target,
     )
 
 
@@ -1567,7 +1730,10 @@ def get_contestants_for_match(
         db.session.execute(
             select(DbTournamentMatchToContestant)
             .filter_by(tournament_match_id=match_id)
-            .order_by(DbTournamentMatchToContestant.created_at)
+            .order_by(
+                DbTournamentMatchToContestant.created_at,
+                DbTournamentMatchToContestant.id,
+            )
         )
         .scalars()
         .all()
@@ -1592,7 +1758,10 @@ def get_contestants_for_tournament(
                 == DbTournamentMatch.id,
             )
             .filter(DbTournamentMatch.tournament_id == tournament_id)
-            .order_by(DbTournamentMatchToContestant.created_at)
+            .order_by(
+                DbTournamentMatchToContestant.created_at,
+                DbTournamentMatchToContestant.id,
+            )
         )
         .scalars()
         .all()
@@ -1619,7 +1788,10 @@ def get_contestants_for_matches(
                     match_ids
                 )
             )
-            .order_by(DbTournamentMatchToContestant.created_at)
+            .order_by(
+                DbTournamentMatchToContestant.created_at,
+                DbTournamentMatchToContestant.id,
+            )
         )
         .scalars()
         .all()

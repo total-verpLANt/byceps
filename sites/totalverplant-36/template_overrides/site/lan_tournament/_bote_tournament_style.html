@@ -211,4 +211,37 @@
     .tournament-page .plate-art .stamp{ font-size:11px; letter-spacing:.18em; padding:5px 10px; }
     .tournament-page .bracket .slot{ font-size:10px; }
   }
+  /* ============================================================
+     TEILNEHMER-ANSICHTEN -- Gruppentabellen, Wartetafel, Lobbys.
+
+     Used by site/lan_tournament/bracket.html, which includes this
+     partial when it exists. The module stylesheet
+     (lan_tournament_standings.css) draws the structure from the --lt-*
+     tokens that totalverplant-36.css already points at the paper
+     palette, so Spaetausgabe (dark) is automatic. This block only
+     sets the type: serif display heads, mono labels, an inked cut line.
+     Scoped under body.lt-dark like the module bridge.
+     ============================================================ */
+  body.lt-dark .lt-gcard__head b,
+  body.lt-dark .lt-wait h3,
+  body.lt-dark .lt-lobby__head b,
+  body.lt-dark .lt-sh{ font-family:var(--display); font-weight:900; }
+  body.lt-dark .lt-phase__link,
+  body.lt-dark .lt-chain__label,
+  body.lt-dark .lt-wait__label,
+  body.lt-dark .lt-tag,
+  body.lt-dark .lt-stw,
+  body.lt-dark .lt-st thead th,
+  body.lt-dark .lt-st .c-rk,
+  body.lt-dark .lt-st tr.lt-cut span,
+  body.lt-dark .lt-ml__label,
+  body.lt-dark .lt-lobby__head span{ font-family:var(--mono); }
+  body.lt-dark .lt-st tbody th,
+  body.lt-dark .lt-lobby__list li,
+  body.lt-dark .lt-ml b{ font-family:var(--body); font-size:1.15rem; }
+  body.lt-dark .lt-st tr.lt-cut td{ border-top-color:var(--ink); }
+  body.lt-dark .lt-phase,
+  body.lt-dark .lt-wait,
+  body.lt-dark .lt-tag{ border-radius:0; }
+  body.lt-dark .lt-wait__reason{ font-family:var(--body); font-size:1.25rem; }
 </style>

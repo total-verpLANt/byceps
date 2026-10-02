@@ -266,12 +266,12 @@ def test_create_form_has_no_inline_display_none(env, ctx):
     assert 'style=' not in out
 
 
-def test_create_form_renders_five_steps_and_scope_legends(env, ctx):
+def test_create_form_renders_six_steps_and_scope_legends(env, ctx):
     out = _render(env, _make_form())
 
-    assert re.findall(r'data-wiz-step="(\d)"', out) == list('01234')
-    assert re.findall(r'<fieldset class="lt-wiz-step[^"]*" data-wiz-step', out)
-    assert '<section class="lt-wiz-step box" data-wiz-step="4">' in out
+    assert re.findall(r'data-wiz-step="(\d)"', out) == list('012345')
+    assert len(re.findall(r'<fieldset class="lt-wiz-step[^"]*" data-wiz-step', out)) == 5
+    assert '<section class="lt-wiz-step box" data-wiz-step="5">' in out
     assert re.findall(r'data-wiz-scope="([a-z-]+)"', out) == [
         'solo',
         'team',
@@ -281,6 +281,16 @@ def test_create_form_renders_five_steps_and_scope_legends(env, ctx):
         'ffa',
         'ffa-de',
         'ffa-preview',
+        'playoff-none',
+        'playoff-none',
+        'playoff-intro-rr',
+        'playoff-intro-hs',
+        'playoff-toggle',
+        'playoff-rr',
+        'playoff-rr-mode',
+        'playoff-hs',
+        'playoff-hs-ffa',
+        'playoff-on',
     ]
     for legend in (
         '<span class="lt-wiz-legend-js">Solo · players</span>',
@@ -299,7 +309,8 @@ def test_create_form_renders_five_steps_and_scope_legends(env, ctx):
     ):
         assert f'<legend>{retired}</legend>' not in out
     assert '1 · Basics' in out
-    assert '5 · Review and create' in out
+    assert '5 · Playoffs' in out
+    assert '6 · Review and create' in out
 
 
 def _card(out, field, value):
@@ -412,6 +423,23 @@ def test_create_form_participant_fields_carry_placeholders_and_captions(
         )
 
 
+def test_ffa_cut_field_has_no_optional_marker(env, ctx):
+    out = _render(env, _make_form(), party=_party())
+
+    def label(name):
+        match = re.search(
+            rf'data-wiz-field="{name}"[^>]*>\s*'
+            rf'<label class="form-label" for="{name}">(.*?)</label>',
+            out,
+            re.DOTALL,
+        )
+        assert match is not None
+        return match.group(1)
+
+    assert '(optional)' in label('game')
+    assert '(optional)' not in label('advancement_count')
+
+
 def test_create_form_capacity_lines_sit_inside_their_fieldsets(env, ctx):
     out = _render(env, _make_form(), party=_party())
 
@@ -439,7 +467,7 @@ def test_create_form_step_four_has_no_scope_fieldsets_around_its_parts(
     out = _render(env, _make_form())
     step = re.search(
         r'<fieldset class="lt-wiz-step box" data-wiz-step="3">.*?</fieldset>\s*'
-        r'<section',
+        r'<fieldset class="lt-wiz-step box" data-wiz-step="4">',
         out,
         re.S,
     ).group(0)
@@ -616,7 +644,7 @@ def test_create_form_renders_field_errors_and_summary_links(env, ctx):
         re.DOTALL,
     )
     assert 'Please enter a name.' in name_block.group(1)
-    review = out[out.index('data-wiz-step="4"') :]
+    review = out[out.index('data-wiz-step="5"') :]
     assert 'The request is gone.' in review
     assert 'Something is wrong overall.' in review
     assert 'data-first-error-step="0"' in out
@@ -643,7 +671,7 @@ def test_create_form_summary_leaves_out_what_the_review_box_shows(env, ctx):
     out = _render(env, form)
 
     assert 'data-wiz-errsum' not in out.replace('[data-wiz-errsum]', '')
-    review = out[out.index('data-wiz-step="4"') :]
+    review = out[out.index('data-wiz-step="5"') :]
     assert '<li>The request is gone.</li>' in review
     assert '<li>Something is wrong overall.</li>' in review
 
@@ -895,6 +923,8 @@ def test_build_create_wizard_context_keys(ctx):
         'pointTableMax': 64,
         'pointValueMax': 999_999_999,
         'countMax': 1024,
+        'playoffGroupMax': 255,
+        'lobbyMax': 255,
         'uploadBytes': 5 * 1024 * 1024,
         'minWidth': 960,
         'minHeight': 540,
@@ -1001,7 +1031,7 @@ def test_step_fields_cover_every_form_field(ctx):
 
 def test_step_fields_include_req_map_pseudo_field():
     assert 'req_map' in CREATE_WIZARD_STEP_FIELDS[2]
-    assert len(CREATE_WIZARD_STEP_FIELDS) == 5
+    assert len(CREATE_WIZARD_STEP_FIELDS) == 6
 
 
 def _fake_form(errors):
@@ -1021,8 +1051,8 @@ def test_first_error_step_is_none_without_errors():
 
 
 def test_first_error_step_maps_form_errors_to_review():
-    assert first_error_step(_fake_form({'': ['boom']})) == 4
-    assert first_error_step(_fake_form({'from_request_id': ['gone']})) == 4
+    assert first_error_step(_fake_form({'': ['boom']})) == 5
+    assert first_error_step(_fake_form({'from_request_id': ['gone']})) == 5
     assert first_error_step(_fake_form({'': ['boom'], 'name': ['x']})) == 0
 
 
@@ -1030,7 +1060,7 @@ def test_first_error_step_with_a_real_form_error(ctx):
     form = _make_form()
     form.form_errors.append('boom')
 
-    assert first_error_step(form) == 4
+    assert first_error_step(form) == 5
 
 
 def test_create_form_request_box_sits_between_banner_markers():

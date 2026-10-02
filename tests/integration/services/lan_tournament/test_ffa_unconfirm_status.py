@@ -82,14 +82,14 @@ def _started_ffa(name, ticketed, admin):
     assert tournament_service.change_status(
         tournament.id, TournamentStatus.REGISTRATION_CLOSED
     ).is_ok()
-    assert tournament_service.change_status(
-        tournament.id, TournamentStatus.ONGOING
-    ).is_ok()
 
     generated = tournament_match_service.generate_ffa_round(
         tournament.id, initiator_id=admin.id
     )
     assert generated.is_ok(), generated.unwrap_err()
+    assert tournament_service.change_status(
+        tournament.id, TournamentStatus.ONGOING
+    ).is_ok()
 
     round_0 = tournament_match_service.get_matches_for_tournament_ordered(
         tournament.id
@@ -217,16 +217,17 @@ def _started_ffa_de(name, ticketed, admin):
             tournament.id, user.id
         )
         assert join.is_ok(), join.unwrap_err()
-    for status in (
-        TournamentStatus.REGISTRATION_CLOSED,
-        TournamentStatus.ONGOING,
-    ):
-        assert tournament_service.change_status(tournament.id, status).is_ok()
+    assert tournament_service.change_status(
+        tournament.id, TournamentStatus.REGISTRATION_CLOSED
+    ).is_ok()
 
     generated = tournament_match_service.generate_ffa_round(
         tournament.id, bracket=Bracket.WINNERS, initiator_id=admin.id
     )
     assert generated.is_ok(), generated.unwrap_err()
+    assert tournament_service.change_status(
+        tournament.id, TournamentStatus.ONGOING
+    ).is_ok()
 
     wb_round_0 = tournament_match_service.get_matches_for_tournament_ordered(
         tournament.id
@@ -284,8 +285,27 @@ def test_unconfirming_group_seeding_the_grand_final_is_refused(
     party, ticketed, admin
 ):
     """The grand final was built from the latest winners round."""
-    tournament, wb_round_0 = _started_ffa_de(
+    tournament, _wb_round_0 = _started_ffa_de(
         'FFA DE unconfirm after grand final', ticketed, admin
+    )
+    # Reach a legal four-player GF instead of forcing all eight entrants in.
+    for _ in range(2):
+        advanced = tournament_match_service.advance_ffa_round(
+            tournament.id, pool=Bracket.WINNERS, initiator_id=admin.id
+        )
+        assert advanced.is_ok(), advanced.unwrap_err()
+        assert advanced.unwrap() == 'advanced_wb'
+        for match in tournament_match_service.get_matches_for_tournament_ordered(
+            tournament.id
+        ):
+            if match.confirmed_by is None:
+                _place_and_confirm(match, admin)
+    (source_group,) = (
+        match
+        for match in tournament_match_service.get_matches_for_tournament_ordered(
+            tournament.id
+        )
+        if match.bracket is Bracket.WINNERS and match.round == 2
     )
     generated = tournament_match_service.generate_ffa_grand_final(
         tournament.id, initiator_id=admin.id
@@ -293,10 +313,10 @@ def test_unconfirming_group_seeding_the_grand_final_is_refused(
     assert generated.is_ok(), generated.unwrap_err()
 
     result = tournament_match_service.unconfirm_match(
-        wb_round_0[0].id, admin.id, reason='fix a WB placement'
+        source_group.id, admin.id, reason='fix a WB placement'
     )
 
-    _assert_refused(result, tournament, wb_round_0[0])
+    _assert_refused(result, tournament, source_group)
 
 
 def test_unconfirming_deciding_ffa_group_reopens_tournament(

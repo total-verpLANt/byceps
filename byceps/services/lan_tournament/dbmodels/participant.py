@@ -59,7 +59,9 @@ class DbTournamentParticipant(db.Model):
     )
     team: Mapped[DbTournamentTeam | None] = relationship(DbTournamentTeam)
     created_at: Mapped[datetime]
-    removed_at: Mapped[datetime | None] = mapped_column(default=None)
+    removed_at: Mapped[datetime | None] = mapped_column(
+        db.DateTime(timezone=True), default=None
+    )
 
     def __init__(
         self,

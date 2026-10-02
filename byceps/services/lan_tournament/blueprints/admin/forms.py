@@ -24,7 +24,10 @@ from wtforms.validators import (
 from byceps.services.user import screen_name_validator, user_service
 from byceps.util.l10n import LocalizedForm
 
-from byceps.services.lan_tournament import tournament_request_domain_service
+from byceps.services.lan_tournament import (
+    tournament_domain_service,
+    tournament_request_domain_service,
+)
 from byceps.services.lan_tournament.form_validators import SafeNumberRange
 from byceps.services.lan_tournament.models.contestant_type import (
     ContestantType,
@@ -33,6 +36,7 @@ from byceps.services.lan_tournament.models.elimination_mode import (
     EliminationMode,
 )
 from byceps.services.lan_tournament.models.game_format import GameFormat
+from byceps.services.lan_tournament.models.playoff import PlayoffReleaseMode
 from byceps.services.lan_tournament.models.score_ordering import ScoreOrdering
 
 
@@ -277,7 +281,8 @@ class _BaseForm(LocalizedForm):
             _stop_on_parse_error,
             SafeNumberRange(min=2, message=lazy_gettext('At least 2.')),
             SafeNumberRange(
-                max=MAX_COUNT, message=lazy_gettext('At most %(max)s.')
+                max=tournament_domain_service.MAX_LOBBY_SIZE,
+                message=lazy_gettext('At most %(max)s.'),
             ),
         ],
     )
@@ -294,6 +299,71 @@ class _BaseForm(LocalizedForm):
     )
     points_carry_to_losers = BooleanField(
         lazy_gettext('Points carry to losers pool'),
+    )
+    playoff_enabled = BooleanField(lazy_gettext('Add playoff phase'))
+    playoff_group_count = _CountField(
+        lazy_gettext('Number of groups'),
+        [
+            Optional(),
+            _stop_on_parse_error,
+            SafeNumberRange(
+                min=1, message=lazy_gettext('Whole numbers from 1 only.')
+            ),
+            SafeNumberRange(
+                max=tournament_domain_service.MAX_PLAYOFF_GROUP_COUNT,
+                message=lazy_gettext('At most %(max)s.'),
+            ),
+        ],
+    )
+    playoff_qualifiers_per_group = _CountField(
+        lazy_gettext('Qualifiers per group'),
+        [
+            Optional(),
+            _stop_on_parse_error,
+            SafeNumberRange(
+                min=1, message=lazy_gettext('Whole numbers from 1 only.')
+            ),
+            SafeNumberRange(
+                max=MAX_COUNT, message=lazy_gettext('At most %(max)s.')
+            ),
+        ],
+    )
+    playoff_qualifier_count = _CountField(
+        lazy_gettext('Qualifying places'),
+        [
+            Optional(),
+            _stop_on_parse_error,
+            SafeNumberRange(
+                min=1, message=lazy_gettext('Whole numbers from 1 only.')
+            ),
+            SafeNumberRange(
+                max=MAX_COUNT, message=lazy_gettext('At most %(max)s.')
+            ),
+        ],
+    )
+    playoff_elimination_mode = SelectField(
+        lazy_gettext('Playoff mode'),
+        choices=[
+            ('', lazy_gettext('– select –')),
+            (
+                EliminationMode.SINGLE_ELIMINATION.name,
+                lazy_gettext('Single knockout'),
+            ),
+            (
+                EliminationMode.DOUBLE_ELIMINATION.name,
+                lazy_gettext('Double knockout'),
+            ),
+        ],
+        validators=[Optional()],
+    )
+    playoff_release_mode = SelectField(
+        lazy_gettext('Release mode'),
+        choices=[
+            ('', lazy_gettext('– select –')),
+            (PlayoffReleaseMode.AUTOMATIC.name, lazy_gettext('Automatic')),
+            (PlayoffReleaseMode.MANUAL.name, lazy_gettext('Manual')),
+        ],
+        validators=[Optional()],
     )
 
     @staticmethod

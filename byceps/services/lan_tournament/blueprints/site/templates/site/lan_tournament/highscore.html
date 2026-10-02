@@ -3,6 +3,13 @@
 {% from 'macros/lan_tournament.html' import render_highscore_leaderboard, render_tournament_subnav %}
 {% set page_title = [_('Highscore'), tournament.name] %}
 
+{% block head %}{{ super() }}
+  {%- if tournament.has_playoffs %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_standings.css') }}">
+  {% include 'site/lan_tournament/_bote_tournament_style.html' ignore missing %}
+  {%- endif %}
+{%- endblock %}
+
 {% block body %}
 
   <nav class='breadcrumbs'>
@@ -15,6 +22,15 @@
   </nav>
 
   {{ render_tournament_subnav(tournament, active_tab) }}
+
+  {% if tournament.has_playoffs %}
+  <nav class='lt-phase' aria-label='{{ _("Phase") }}'>
+    <a class='lt-phase__link is-on' aria-current='page'
+       href='{{ url_for(".highscore", tournament_id=tournament.id) }}'>{{ _('Highscore') }}</a>
+    <a class='lt-phase__link'
+       href='{{ url_for(".bracket", tournament_id=tournament.id, phase=2) }}'>{{ _('Playoffs') }}</a>
+  </nav>
+  {% endif %}
 
   {{ render_highscore_leaderboard(leaderboard, tournament, teams_by_id=teams_by_id, participants_by_id=participants_by_id) }}
 

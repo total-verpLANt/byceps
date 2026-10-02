@@ -13861,3 +13861,1574 @@ msgid "%(count)s file could not be deleted from disk."
 msgid_plural "%(count)s files could not be deleted from disk."
 msgstr[0] "%(count)s Datei konnte nicht vom Datenträger gelöscht werden."
 msgstr[1] "%(count)s Dateien konnten nicht vom Datenträger gelöscht werden."
+
+# lan_tournament: F-10 seeding & playoffs
+
+msgid "Qualification cannot be determined automatically because of a tie. An orga decision is required."
+msgstr "Qualifikation kann aufgrund eines Gleichstands nicht automatisch bestimmt werden. Orgaentscheidung erforderlich."
+
+msgid "The seeding was changed by another orga. Reload the page."
+msgstr "Eine andere Orga hat die Setzliste gerade geändert. Lade die Seite neu."
+
+msgid "Match %(n)s has two byes. A match needs at least one contestant."
+msgstr "M%(n)s hat zwei Freilose. Eine Partie braucht mindestens einen Teilnehmer."
+
+msgid "Every group needs at least two contestants."
+msgstr "Jede Gruppe braucht mindestens zwei Teilnehmer."
+
+msgid "Round robin groups need at least two groups."
+msgstr "Gruppen im Jeder-gegen-jeden brauchen mindestens zwei Gruppen."
+
+msgid "Double elimination needs at least four contestants."
+msgstr "Double Elimination braucht mindestens vier Teilnehmer."
+
+msgid "The seeding opens once registration is closed."
+msgstr "Die Setzliste ist ab Anmeldeschluss verfügbar."
+
+msgid "The seeding is locked once the tournament has started."
+msgstr "Die Setzliste ist gesperrt, sobald das Turnier gestartet ist."
+
+msgid "There is no seeding for this tournament."
+msgstr "Für dieses Turnier gibt es keine Setzliste."
+
+msgid "Unknown seeding target."
+msgstr "Unbekanntes Setzlisten-Ziel."
+
+msgid "This tournament mode has no seeding."
+msgstr "Dieser Turniermodus hat keine Setzliste."
+
+msgid "Need at least 2 contestants for a seeding."
+msgstr "Für eine Setzliste braucht es mindestens zwei Teilnehmer."
+
+msgid "A seeding supports at most 1023 contestants."
+msgstr "Eine Setzliste unterstützt höchstens 1023 Teilnehmer."
+
+msgid "The roster changed since the seed code was made. Re-seed first."
+msgstr "Die Teilnehmer haben sich seit Erstellung des Codes geändert. Setze zuerst neu."
+
+msgid "Tiers are only available for free-for-all."
+msgstr "Stufen gibt es nur bei Free-for-All."
+
+msgid "That change to the seeding is not possible."
+msgstr "Diese Änderung an der Setzliste ist nicht möglich."
+
+msgid "This code belongs to a different tournament mode."
+msgstr "Dieser Code gehört zu einem anderen Turniermodus."
+
+msgid "The stored seed code is damaged."
+msgstr "Der gespeicherte Code ist beschädigt."
+
+msgid "Team %(name)s has no members. Remove or fill it first."
+msgstr "Team %(name)s hat keine Mitglieder. Entferne es oder fülle es zuerst auf."
+
+msgid "The check character does not match. Check for a typo."
+msgstr "Das Prüfzeichen stimmt nicht. Prüfe den Code auf Tippfehler."
+
+msgid "Unknown seed code version."
+msgstr "Diese Code-Version ist unbekannt."
+
+msgid "The seed code is damaged."
+msgstr "Der Code ist unvollständig oder beschädigt."
+
+msgid "The seed code carries extra data."
+msgstr "Der Code enthält überzählige Daten."
+
+msgid "This code belongs to a different roster."
+msgstr "Dieser Code gehört zu anderen Teilnehmern."
+
+msgid "The seeding does not match the roster."
+msgstr "Die Setzliste passt nicht zu den Teilnehmern."
+
+msgid "The seeding has problems. Fix them before generating."
+msgstr "Die Setzliste hat Probleme. Behebe sie vor dem Generieren."
+
+msgid "The roster changed after generation. Re-seed and regenerate first."
+msgstr "Die Teilnehmer haben sich nach dem Generieren geändert. Setze neu und generiere erneut."
+
+msgid "This format has no playoff phase."
+msgstr "Dieses Format hat keine Playoff-Phase."
+
+msgid "Please choose the playoff format."
+msgstr "Bitte wähle das Playoff-Format."
+
+msgid "Round robin playoffs must be 1v1."
+msgstr "Playoffs eines Rundenturniers müssen 1v1 sein."
+
+msgid "Highscore playoffs must be Free-for-All."
+msgstr "Playoffs eines Highscore-Turniers müssen Free-for-All sein."
+
+msgid "Please choose a playoff elimination mode."
+msgstr "Bitte wähle einen Playoff-Eliminationsmodus."
+
+msgid "Playoffs must use single or double elimination."
+msgstr "Playoffs müssen Single oder Double Elimination nutzen."
+
+msgid "Please choose how the playoffs are released."
+msgstr "Bitte wähle, wie die Playoffs freigegeben werden."
+
+msgid "Only used for highscore playoffs."
+msgstr "Wird nur für Highscore-Playoffs verwendet."
+
+msgid "Only used for round robin playoffs."
+msgstr "Wird nur für Rundenturnier-Playoffs verwendet."
+
+msgid "Please enter the number of groups."
+msgstr "Bitte gib die Anzahl der Gruppen ein."
+
+msgid "At least two groups are needed."
+msgstr "Es werden mindestens zwei Gruppen benötigt."
+
+msgid "Please enter how many advance from each group."
+msgstr "Bitte gib ein, wie viele pro Gruppe weiterkommen."
+
+msgid "At least one contestant must advance from each group."
+msgstr "Mindestens ein Teilnehmer muss pro Gruppe weiterkommen."
+
+msgid "The minimum number of contestants is too small for this many groups."
+msgstr "Die Mindestteilnehmerzahl ist für so viele Gruppen zu klein."
+
+msgid "Fewer must advance from each group than the smallest group holds."
+msgstr "Pro Gruppe müssen weniger weiterkommen, als die kleinste Gruppe Teilnehmer hat."
+
+msgid "Double elimination playoffs need at least 4 qualifiers in total."
+msgstr "Double-Elimination-Playoffs brauchen insgesamt mindestens 4 Qualifizierte."
+
+msgid "Playoffs need at least 2 qualifiers in total."
+msgstr "Playoffs brauchen insgesamt mindestens 2 Qualifizierte."
+
+msgid "Please enter the number of qualifiers."
+msgstr "Bitte gib die Anzahl der Qualifizierten ein."
+
+msgid "At least two qualifiers are needed."
+msgstr "Es werden mindestens zwei Qualifizierte benötigt."
+
+msgid "Qualifiers must be at least the minimum group size."
+msgstr "Die Zahl der Qualifizierten muss mindestens der minimalen Gruppengröße entsprechen."
+
+msgid "Bye"
+msgstr "Freilos"
+
+msgid "Seeding"
+msgstr "Setzliste"
+
+msgid "Visible to orgas only"
+msgstr "Nur für Orgas sichtbar"
+
+msgid "Initial placement (round 1)"
+msgstr "Erstplatzierung (Runde 1)"
+
+msgid "Left"
+msgstr "Ausgetreten"
+
+msgid "New"
+msgstr "Neu"
+
+msgid "Re-seed, keep tiers"
+msgstr "Neu setzen, Stufen behalten"
+
+msgid "Draw again"
+msgstr "Neu auslosen"
+
+msgid "Reshuffle within tiers"
+msgstr "Innerhalb der Stufen neu mischen"
+
+msgid "Reset layout fixes"
+msgstr "Layout-Korrekturen zurücksetzen"
+
+msgid "Tiers"
+msgstr "Stufen"
+
+msgid "Tier"
+msgstr "Stufe"
+
+msgid "Tier %(letter)s"
+msgstr "Stufe %(letter)s"
+
+msgid "Layout"
+msgstr "Layout"
+
+msgid "Slot"
+msgstr "Setzplatz"
+
+msgid "Seed position"
+msgstr "Setzplatz"
+
+msgid "Group %(letter)s"
+msgstr "Gruppe %(letter)s"
+
+msgid "Lobby"
+msgstr "Lobby"
+
+msgid "Lobby %(n)s"
+msgstr "Lobby %(n)s"
+
+msgid "Swap"
+msgstr "Tauschen"
+
+msgid "At the end of the tier"
+msgstr "Ans Ende der Stufe"
+
+msgid "Before %(name)s"
+msgstr "Vor %(name)s"
+
+msgid "Seed code"
+msgstr "Setzcode"
+
+msgid "Layout fixes"
+msgstr "Layout-Korrekturen"
+
+msgid "pure draw"
+msgstr "reine Auslosung"
+
+msgid "ordered by hand"
+msgstr "von Hand geordnet"
+
+msgid "Paste seed code"
+msgstr "Setzcode einfügen"
+
+msgid "Replay"
+msgstr "Nachstellen"
+
+msgid "Generation"
+msgstr "Generierung"
+
+msgid "Regenerate from this code"
+msgstr "Aus diesem Code neu generieren"
+
+msgid "No entries yet."
+msgstr "Noch keine Einträge."
+
+msgid "Tournament not found."
+msgstr "Turnier nicht gefunden."
+
+msgid "Tie decisions are locked after the playoffs are released."
+msgstr "Nach der Freigabe der Playoffs sind Orgaentscheidungen gesperrt."
+
+msgid "Please give a reason for the decision."
+msgstr "Bitte gib eine Begründung für die Entscheidung an."
+
+msgid "The reason is too long."
+msgstr "Die Begründung ist zu lang."
+
+msgid "There is no tie to decide in this scope."
+msgstr "In diesem Bereich gibt es keinen Gleichstand zu entscheiden."
+
+msgid "This tie is already decided. Withdraw the decision first."
+msgstr "Dieser Gleichstand ist bereits entschieden. Ziehe die Entscheidung zuerst zurück."
+
+msgid "The order must list every tied contestant exactly once."
+msgstr "Die Reihenfolge muss jede beteiligte Person oder jedes beteiligte Team genau einmal enthalten."
+
+msgid "The order must list exactly the tied contestants."
+msgstr "Die Reihenfolge muss genau die am Gleichstand Beteiligten enthalten."
+
+msgid "There is no decision to withdraw."
+msgstr "Es gibt keine Entscheidung, die zurückgezogen werden könnte."
+
+msgid "This tournament has no playoff phase."
+msgstr "Dieses Turnier hat keine Playoff-Phase."
+
+msgid "The playoffs are already released."
+msgstr "Die Playoffs sind bereits freigegeben."
+
+msgid "The playoffs are not released."
+msgstr "Die Playoffs sind nicht freigegeben."
+
+msgid "The release cannot be taken back: a playoff match already has a result."
+msgstr "Ein Playoff-Ergebnis ist bestätigt. Die Freigabe kann nicht mehr zurückgenommen werden."
+
+msgid "The playoffs can only be seeded while the tournament is running."
+msgstr "Die Playoffs können nur gesetzt werden, solange das Turnier läuft."
+
+msgid "The playoffs are not released yet."
+msgstr "Die Playoffs sind noch nicht freigegeben."
+
+msgid "The playoff seeding is locked once a playoff match has a result."
+msgstr "Die Playoff-Setzung ist gesperrt, sobald ein Playoff-Spiel ein Ergebnis hat."
+
+msgid "The qualification is not ready yet."
+msgstr "Die Qualifikation ist noch nicht abgeschlossen."
+
+msgid "The playoffs are released. Group results are locked. Take the release back first."
+msgstr "Die Playoffs sind freigegeben. Gruppenergebnisse sind gesperrt. Nimm zuerst die Freigabe zurück, um ein Gruppenergebnis zu korrigieren."
+
+msgid "The qualification is closed. Scores are locked."
+msgstr "Die Qualifikation ist abgeschlossen. Ergebnisse sind gesperrt."
+
+msgid "The tournament is completed. Take back a result first."
+msgstr "Das Turnier ist abgeschlossen. Nimm zuerst ein Ergebnis zurück."
+
+msgid "The grand final is next. Generate it instead."
+msgstr "Als Nächstes folgt das Große Finale. Generiere stattdessen dieses."
+
+msgid "A match of this round already has a result. Its seeding is locked."
+msgstr "Ein Spiel dieser Runde hat bereits ein Ergebnis. Die Setzung ist gesperrt."
+
+msgid "A round can only be seeded while the tournament is running."
+msgstr "Eine Runde kann nur gesetzt werden, solange das Turnier läuft."
+
+msgid "Playoff rounds are generated from the seeding draft."
+msgstr "Die Playoff-Runden werden aus der Setzliste erzeugt."
+
+msgid "Choose between 2 and 4 tiers."
+msgstr "Wähle zwischen 2 und 4 Stufen."
+
+msgid "Drag"
+msgstr "Ziehen"
+
+msgid "Locked: %(reason)s"
+msgstr "Gesperrt: %(reason)s"
+
+msgid "Seed %(n)s"
+msgstr "Setzplatz %(n)s"
+
+msgid "Seeding target"
+msgstr "Setzziel"
+
+msgid "Generated"
+msgstr "Generiert"
+
+msgid "Board differs"
+msgstr "Board weicht ab"
+
+msgid "Not generated"
+msgstr "Nicht generiert"
+
+msgid "Locked"
+msgstr "Gesperrt"
+
+msgid "Seed code outdated"
+msgstr "Setzcode veraltet"
+
+msgid "While registration is open, the roster still changes. The first draw is made here once registration is closed."
+msgstr "Solange die Anmeldung läuft, ändert sich die Teilnehmerliste noch. Nach Anmeldeschluss entsteht hier die erste Auslosung."
+
+msgid "No longer taking part: %(names)s. Generating is blocked until you re-seed."
+msgstr "Nicht mehr dabei: %(names)s. Generieren ist gesperrt, bis neu gesetzt wird."
+
+msgid "Fingerprint in the code: %(code)s."
+msgstr "Fingerabdruck im Code: %(code)s."
+
+msgid "Starting the tournament is blocked as well."
+msgstr "Auch „Turnier starten“ ist gesperrt."
+
+msgid "Placement locked"
+msgstr "Platzierung gesperrt"
+
+msgid "Layout invalid. Generating is blocked."
+msgstr "Layout ungültig. Generieren ist gesperrt."
+
+msgid "%(n)s layout fix will be lost."
+msgid_plural "%(n)s layout fixes will be lost."
+msgstr[0] "%(n)s Layout-Korrektur geht verloren."
+msgstr[1] "%(n)s Layout-Korrekturen gehen verloren."
+
+msgid "Saved"
+msgstr "Gespeichert"
+
+msgid "Tier board"
+msgstr "Stufen-Board"
+
+msgid "Layout board"
+msgstr "Layout-Board"
+
+msgid "Origin of the tiers"
+msgstr "Herkunft der Stufen"
+
+msgid "From the draw (draw number %(draw)s), spread evenly over %(n)s tiers in draw order. Then order them by your own judgement."
+msgstr "Aus der Auslosung (Losnummer %(draw)s), in Auslosungsreihenfolge gleichmäßig auf %(n)s Stufen verteilt. Ordne danach nach deiner Einschätzung."
+
+msgid "Set by hand, starting from the draw (draw number %(draw)s)."
+msgstr "Von Hand geordnet, ausgehend von der Auslosung (Losnummer %(draw)s)."
+
+msgid "Quarter %(n)s"
+msgstr "Viertel %(n)s"
+
+msgid "Half %(n)s"
+msgstr "Hälfte %(n)s"
+
+msgid "Final"
+msgstr "Finale"
+
+msgid "M%(n)s, position %(pos)s"
+msgstr "M%(n)s, Position %(pos)s"
+
+msgid "Only winners round 1 is seeded here. Losers-bracket entry follows the fixed losers routing."
+msgstr "Hier wird nur Runde 1 der Gewinnerseite gesetzt. Der Einstieg in die Verliererseite folgt der festen Verlierer-Zuordnung."
+
+msgid "Tier mix"
+msgstr "Stufenmischung"
+
+msgid "%(count)s × tier %(letter)s (at most %(max)s)"
+msgstr "%(count)s × Stufe %(letter)s (höchstens %(max)s)"
+
+msgid "One group: the order only sets the schedule, not the pairings."
+msgstr "Eine Gruppe: die Reihenfolge bestimmt nur den Spielplan, nicht die Paarungen."
+
+msgid "Change without dragging"
+msgstr "Ohne Ziehen ändern"
+
+msgid "with slot"
+msgstr "mit Setzplatz"
+
+msgid "These forms work without a script and are the accessible alternative to dragging."
+msgstr "Diese Formulare funktionieren ohne Skript und sind die barrierearme Alternative zum Ziehen."
+
+msgid "Layout invalid"
+msgstr "Layout ungültig"
+
+msgid "%(n)s cluster"
+msgid_plural "%(n)s clusters"
+msgstr[0] "%(n)s Häufung"
+msgstr[1] "%(n)s Häufungen"
+
+msgid "Tiers evenly spread"
+msgstr "Stufen gleichmäßig verteilt"
+
+msgid "Tiers per lobby"
+msgstr "Stufen je Lobby"
+
+msgid "Allowed"
+msgstr "Erlaubt"
+
+msgid "too many"
+msgstr "zu viele"
+
+msgid "Lobby %(n)s: %(count)s players from tier %(letter)s (an even spread allows at most %(max)s)."
+msgstr "Lobby %(n)s: %(count)s Spieler aus Stufe %(letter)s (gleichmäßig wären höchstens %(max)s)."
+
+msgid "Allowed = tier size divided by the number of lobbies, rounded up."
+msgstr "Erlaubt = Stufengröße ÷ Lobbyzahl, aufgerundet."
+
+msgid "Placement check"
+msgstr "Platzierungsprüfung"
+
+msgid "Layout valid"
+msgstr "Layout gültig"
+
+msgid "Position %(n)s"
+msgstr "Position %(n)s"
+
+msgid "Byes: %(list)s."
+msgstr "Freilose: %(list)s."
+
+msgid "Byes: none."
+msgstr "Freilose: keine."
+
+msgid "Group sizes: %(list)s."
+msgstr "Gruppengrößen: %(list)s."
+
+msgid "No tiers in this mode. Only the placement is checked."
+msgstr "Keine Stufen in diesem Modus. Geprüft wird nur die Platzierung."
+
+msgid "No code while the layout is invalid."
+msgstr "Kein Code, solange das Layout ungültig ist."
+
+msgid "Copy code"
+msgstr "Code kopieren"
+
+msgid "%(n)s characters · check character at the end"
+msgstr "%(n)s Zeichen · Prüfzeichen am Ende"
+
+msgid "max. %(n)s per lobby"
+msgstr "max. %(n)s je Lobby"
+
+msgid "%(n)s tier"
+msgid_plural "%(n)s tiers"
+msgstr[0] "%(n)s Stufe"
+msgstr[1] "%(n)s Stufen"
+
+msgid "%(n)s group of %(size)s"
+msgid_plural "%(n)s groups of %(size)s"
+msgstr[0] "%(n)s Gruppe à %(size)s"
+msgstr[1] "%(n)s Gruppen à %(size)s"
+
+msgid "%(n)s group"
+msgid_plural "%(n)s groups"
+msgstr[0] "%(n)s Gruppe"
+msgstr[1] "%(n)s Gruppen"
+
+msgid "no tiers"
+msgstr "keine Stufen"
+
+msgid "Roster fingerprint"
+msgstr "Teilnehmer-Fingerabdruck"
+
+msgid "Draw number"
+msgstr "Losnummer"
+
+msgid "%(n)s swap"
+msgid_plural "%(n)s swaps"
+msgstr[0] "%(n)s Tausch"
+msgstr[1] "%(n)s Tausche"
+
+msgid "Case, spaces and hyphens do not matter. O counts as 0, I and L as 1."
+msgstr "Groß-/Kleinschreibung, Leerzeichen und Bindestriche egal. O zählt als 0, I und L als 1."
+
+msgid "Lobbies"
+msgstr "Lobbys"
+
+msgid "Layout invalid: %(problem)s"
+msgstr "Layout ungültig: %(problem)s"
+
+msgid "The seed code is outdated. Re-seed first."
+msgstr "Der Setzcode ist veraltet. Zuerst neu setzen."
+
+msgid "Generate bracket from this code"
+msgstr "Turnierbaum aus diesem Code generieren"
+
+msgid "Generate lobbies from this code"
+msgstr "Lobbys aus diesem Code generieren"
+
+msgid "Generate groups from this code"
+msgstr "Gruppen aus diesem Code generieren"
+
+msgid "Starting the tournament stays blocked until the initial placement is generated."
+msgstr "„Turnier starten“ bleibt gesperrt, bis die Erstplatzierung generiert ist."
+
+msgid "%(what)s generated from %(code)s."
+msgstr "%(what)s generiert aus %(code)s."
+
+msgid "The board matches the generated state."
+msgstr "Das Board entspricht dem generierten Stand."
+
+msgid "The board differs from the generated state."
+msgstr "Das Board weicht vom generierten Stand ab."
+
+msgid "no valid code"
+msgstr "kein gültiger Code"
+
+msgid "Starting the tournament uses the generated state."
+msgstr "Ein Start nutzt den generierten Stand."
+
+msgid "Layout invalid."
+msgstr "Layout ungültig."
+
+msgid "Regenerate from this code?"
+msgstr "Aus diesem Code neu generieren?"
+
+msgid "Generated from %(code)s again. The previous code %(old)s stays in the audit trail."
+msgstr "Neu erzeugt aus %(code)s. Der bisherige Code %(old)s bleibt im Protokoll."
+
+msgid "Regenerate"
+msgstr "Neu generieren"
+
+msgid "Seeding and qualification of this tournament · newest first"
+msgstr "Setzliste und Qualifikation dieses Turniers · neueste zuerst"
+
+msgid "Who"
+msgstr "Wer"
+
+msgid "Action"
+msgstr "Aktion"
+
+msgid "invalid"
+msgstr "ungültig"
+
+msgid "balanced"
+msgstr "ausgewogen"
+
+msgid "valid"
+msgstr "gültig"
+
+msgid "Playoffs"
+msgstr "Playoffs"
+
+msgid "Round %(n)s"
+msgstr "Runde %(n)s"
+
+msgid "Round %(n)s · winners pool, prefilled from the standings after round %(prev)s"
+msgstr "Runde %(n)s · Gewinner-Pool, vorbelegt aus der Rangliste nach Runde %(prev)s"
+
+msgid "Round %(n)s · losers pool, prefilled from the standings after round %(prev)s"
+msgstr "Runde %(n)s · Verlierer-Pool, vorbelegt aus der Rangliste nach Runde %(prev)s"
+
+msgid "Round %(n)s · prefilled from the standings after round %(prev)s"
+msgstr "Runde %(n)s · vorbelegt aus der Rangliste nach Runde %(prev)s"
+
+msgid "%(name)s selected. Choose the target."
+msgstr "%(name)s ausgewählt. Wähle das Ziel."
+
+msgid "Choose where %(name)s goes."
+msgstr "Wähle, wohin %(name)s kommt."
+
+msgid "Cancelled."
+msgstr "Abgebrochen."
+
+msgid "Swapped: %(a)s (%(wa)s) with %(b)s (%(wb)s)."
+msgstr "Getauscht: %(a)s (%(wa)s) mit %(b)s (%(wb)s)."
+
+msgid "%(name)s moved to tier %(letter)s, now seed %(n)s."
+msgstr "%(name)s nach Stufe %(letter)s verschoben, jetzt Setzplatz %(n)s."
+
+msgid "%(name)s moved to tier %(letter)s, now seed %(n)s. Layout fixes reset."
+msgstr "%(name)s nach Stufe %(letter)s verschoben, jetzt Setzplatz %(n)s. Layout-Korrekturen zurückgesetzt."
+
+msgid "At the end of tier %(letter)s"
+msgstr "Ans Ende von Stufe %(letter)s"
+
+msgid "Saving …"
+msgstr "Speichert …"
+
+msgid "Not saved – try again"
+msgstr "Nicht gespeichert – erneut versuchen"
+
+msgid "The request failed. Check your connection and try again."
+msgstr "Die Anfrage ist fehlgeschlagen. Prüfe deine Verbindung und versuche es erneut."
+
+msgid "Your last change was not saved."
+msgstr "Deine letzte Änderung wurde nicht gespeichert."
+
+msgid "Reload"
+msgstr "Neu laden"
+
+msgid "Copied."
+msgstr "Kopiert."
+
+msgid "Rebuilt from the code: %(format)s, %(n)s participants, %(fixes)s."
+msgstr "Aus dem Code nachgestellt: %(format)s, %(n)s Teilnehmer, %(fixes)s."
+
+msgid "no layout fixes"
+msgstr "keine Layout-Korrekturen"
+
+msgid "1 layout fix"
+msgstr "1 Layout-Korrektur"
+
+msgid "%(n)s layout fixes"
+msgstr "%(n)s Layout-Korrekturen"
+
+msgid "Your layout fixes were reset because the tiers changed. Check the layout again."
+msgstr "Deine Layout-Korrekturen wurden zurückgesetzt, weil sich die Stufen geändert haben. Prüfe das Layout erneut."
+
+msgid "The layout was rebuilt from the tiers (snake order)."
+msgstr "Das Layout wurde aus den Stufen neu aufgebaut (Schlangenreihenfolge)."
+
+msgid "%(names)s removed; the order of the others is kept. Layout fixes reset."
+msgstr "%(names)s nicht mehr dabei; Reihenfolge der anderen behalten. Layout-Korrekturen zurückgesetzt."
+
+msgid "Open layout board"
+msgstr "Layout-Board öffnen"
+
+msgid "Drawn"
+msgstr "Ausgelost"
+
+msgid "Swapped"
+msgstr "Getauscht"
+
+msgid "Tier changed"
+msgstr "Stufe geändert"
+
+msgid "Order changed"
+msgstr "Reihenfolge geändert"
+
+msgid "Tier count changed"
+msgstr "Stufenzahl geändert"
+
+msgid "Layout fixes reset"
+msgstr "Korrekturen zurückgesetzt"
+
+msgid "Code replayed"
+msgstr "Code nachgestellt"
+
+msgid "Re-seeded (roster)"
+msgstr "Neu gesetzt (Teilnehmerliste)"
+
+msgid "Regenerated"
+msgstr "Neu generiert"
+
+msgid "Bracket cleared"
+msgstr "Turnierbaum gelöscht"
+
+msgid "Qualification closed"
+msgstr "Qualifikation abgeschlossen"
+
+msgid "Tie decided"
+msgstr "Gleichstand entschieden"
+
+msgid "Decision withdrawn"
+msgstr "Entscheidung zurückgezogen"
+
+msgid "Playoffs released"
+msgstr "Playoffs freigegeben"
+
+msgid "Release undone"
+msgstr "Freigabe zurückgenommen"
+
+msgid "Other action"
+msgstr "Weitere Aktion"
+
+msgid "Draw number %(draw)s · %(n)s participants"
+msgstr "Losnummer %(draw)s · %(n)s Teilnehmer"
+
+msgid "From %(code)s"
+msgstr "Aus %(code)s"
+
+msgid "Seed code %(code)s"
+msgstr "Setzcode %(code)s"
+
+msgid "%(n)s × swapped"
+msgstr "%(n)s × Getauscht"
+
+msgid "This winners round was not made from a seeding. Its seeding is locked."
+msgstr "Diese Gewinnerrunde wurde nicht aus einer Setzung erzeugt. Die Setzung ist gesperrt."
+
+msgid "Board view"
+msgstr "Board-Ansicht"
+
+msgid "Current board"
+msgstr "Aktuelles Board"
+
+msgid "Seed order"
+msgstr "Reihenfolge"
+
+msgid "dropped out"
+msgstr "nicht mehr dabei"
+
+msgid "Add playoff phase"
+msgstr "Playoff-Phase anschließen"
+
+msgid "Number of groups"
+msgstr "Anzahl Gruppen"
+
+msgid "Qualifiers per group"
+msgstr "Qualifizierte je Gruppe"
+
+msgid "Qualifying places"
+msgstr "Qualifizierte Plätze"
+
+msgid "Playoff mode"
+msgstr "Playoff-Modus"
+
+msgid "Release mode"
+msgstr "Freigabe"
+
+msgid "Automatic"
+msgstr "Automatisch"
+
+msgid "Manual"
+msgstr "Manuell"
+
+msgid "Invalid release mode selected."
+msgstr "Ungültige Freigabe ausgewählt."
+
+msgid "Open seeding"
+msgstr "Setzliste öffnen"
+
+msgid "Pools"
+msgstr "Pools"
+
+msgid "Playoffs exist only for 1v1 with \"Everyone plays everyone\" and for Highscore. This tournament (%(what)s) has one phase and behaves as before."
+msgstr "Playoffs gibt es nur für 1v1 mit „Jeder gegen jeden“ und für Highscore. Dieses Turnier (%(what)s) hat eine Phase und verhält sich wie bisher."
+
+msgid "Playoffs exist only for 1v1 with \"Everyone plays everyone\" and for Highscore. Other formats have one phase and behave as before."
+msgstr "Playoffs gibt es nur für 1v1 mit „Jeder gegen jeden“ und für Highscore. Andere Formate haben eine Phase und verhalten sich wie bisher."
+
+msgid "Min. lobby size"
+msgstr "Min. Lobbygröße"
+
+msgid "Max. lobby size"
+msgstr "Max. Lobbygröße"
+
+msgid "Advancing per lobby"
+msgstr "Aufsteiger je Lobby"
+
+msgid "Lobby size"
+msgstr "Lobbygröße"
+
+msgid "Summary"
+msgstr "Zusammenfassung"
+
+msgid "No playoffs. One phase, as before."
+msgstr "Keine Playoffs. Eine Phase wie bisher."
+
+msgid "Playoffs: %(what)s → %(mode)s, release %(release)s."
+msgstr "Playoffs: %(what)s → %(mode)s, Freigabe %(release)s."
+
+msgid "manual"
+msgstr "manuell"
+
+msgid "No playoffs"
+msgstr "Keine Playoffs"
+
+msgid "%(g)s groups, top %(q)s each"
+msgstr "%(g)s Gruppen, die besten %(q)s je Gruppe"
+
+msgid "%(g)s groups, the best one each"
+msgstr "%(g)s Gruppen, der Beste je Gruppe"
+
+msgid "Top %(k)s of the leaderboard"
+msgstr "Die besten %(k)s der Rangliste"
+
+msgid "%(n)s teams"
+msgstr "%(n)s Teams"
+
+msgid "%(n)s players"
+msgstr "%(n)s Spieler"
+
+msgid "%(g)s groups of %(s)s"
+msgstr "%(g)s Gruppen à %(s)s"
+
+msgid "%(g)s groups of %(s)s to %(t)s"
+msgstr "%(g)s Gruppen à %(s)s–%(t)s"
+
+msgid "%(g)s groups"
+msgstr "%(g)s Gruppen"
+
+msgid "the best one"
+msgstr "der Beste"
+
+msgid "the best %(q)s"
+msgstr "die besten %(q)s"
+
+msgid "%(n)s qualifiers"
+msgstr "%(n)s Qualifizierte"
+
+msgid "bracket with %(slots)s places, no byes"
+msgstr "Turnierbaum mit %(slots)s Plätzen, keine Freilose"
+
+msgid "bracket with %(slots)s places, 1 bye"
+msgstr "Turnierbaum mit %(slots)s Plätzen, 1 Freilos"
+
+msgid "bracket with %(slots)s places, %(byes)s byes"
+msgstr "Turnierbaum mit %(slots)s Plätzen, %(byes)s Freilose"
+
+msgid "Up to %(n)s teams"
+msgstr "Bis %(n)s Teams"
+
+msgid "Up to %(n)s players"
+msgstr "Bis %(n)s Spieler"
+
+msgid "%(l)s lobbies of %(s)s"
+msgstr "%(l)s Lobbys à %(s)s"
+
+msgid "%(l)s lobbies of %(s)s to %(t)s"
+msgstr "%(l)s Lobbys à %(s)s–%(t)s"
+
+msgid "each %(a)s advance"
+msgstr "je %(a)s kommen weiter"
+
+msgid "Playoff settings reset. They do not fit the new format."
+msgstr "Playoff-Einstellungen zurückgesetzt. Sie passen nicht zum neuen Format."
+
+msgid "Skipped"
+msgstr "Übersprungen"
+
+msgid "Group phase"
+msgstr "Gruppenphase"
+
+msgid "Qualification"
+msgstr "Qualifikation"
+
+msgid "Playoffs · Free-for-All"
+msgstr "Playoffs · Alle gegen alle"
+
+msgid "Optional: a second phase after the group phase. Only for 1v1 with \"Everyone plays everyone\" and for Highscore."
+msgstr "Optional: eine zweite Phase nach der Gruppenphase. Nur für 1v1 mit „Jeder gegen jeden“ und für Highscore."
+
+msgid "Optional: the best of the leaderboard play the playoffs in lobbies (Free-for-All)."
+msgstr "Optional: Die Besten der Rangliste spielen Playoffs in Lobbys (Alle gegen alle)."
+
+msgid "Without JavaScript: for Highscore playoffs, enter points and lobby sizes in step 4 (Free-for-All settings)."
+msgstr "Ohne JavaScript: Für Highscore-Playoffs trägst du Punkte und Lobbygrößen in Schritt 4 (Free-for-All-Einstellungen) ein."
+
+msgid "Off: one phase, as before."
+msgstr "Aus: eine Phase wie bisher."
+
+msgid "At least 2; each group needs at least 2 players."
+msgstr "Mindestens 2; jede Gruppe mindestens 2 Spieler."
+
+msgid "Fewer than the smallest group. Groups × qualifiers: at least 2 (single knockout) or 4 (double knockout)."
+msgstr "Weniger als die kleinste Gruppe. Gruppen × Qualifizierte ≥ 2 (Einfaches K.-o.) bzw. ≥ 4 (Doppeltes K.-o.)."
+
+msgid "At least 2 and at least the min. lobby size. The first phase ends with \"Close qualification\"."
+msgstr "Mindestens 2 und mindestens die min. Lobbygröße. Phase 1 endet über „Qualifikation abschließen“."
+
+msgid "The loser is out."
+msgstr "Wer verliert, scheidet aus."
+
+msgid "Whoever does not advance is out."
+msgstr "Wer nicht weiterkommt, scheidet aus."
+
+msgid "The first defeat leads to the losers bracket."
+msgstr "Die erste Niederlage führt in die Verliererrunde."
+
+msgid "Whoever does not advance keeps playing in the losers bracket."
+msgstr "Wer nicht weiterkommt, spielt in der Verliererrunde weiter."
+
+msgid "Manual (\"Release playoffs\")"
+msgstr "Manuell („Playoffs freigeben“)"
+
+msgid "The playoffs start as soon as all results are final and no tie blocks."
+msgstr "Die Playoffs entstehen, sobald alle Ergebnisse final sind und kein Gleichstand blockiert."
+
+msgid "The orga checks the prefilled draft and releases the playoffs."
+msgstr "Die Orga prüft den vorbelegten Entwurf und gibt die Playoffs selbst frei."
+
+msgid "The final check with the real group sizes runs at generation and at release."
+msgstr "Die endgültige Prüfung mit den echten Gruppengrößen läuft beim Generieren und bei der Freigabe."
+
+msgid "This format has no playoff phase. The playoff settings are removed when you save."
+msgstr "Dieses Format hat keine Playoff-Phase. Die Playoff-Einstellungen werden beim Speichern entfernt."
+
+msgid "Editable until the start."
+msgstr "Bis zum Start bearbeitbar."
+
+msgid "Set the order"
+msgstr "Reihenfolge festlegen"
+
+msgid "Starting order is alphabetical"
+msgstr "Startreihenfolge alphabetisch"
+
+msgid "Place %(n)s"
+msgstr "Platz %(n)s"
+
+msgid "Save orga decision"
+msgstr "Orgaentscheidung speichern"
+
+msgid "Orga decision saved."
+msgstr "Orgaentscheidung gespeichert."
+
+msgid "Withdraw decision"
+msgstr "Entscheidung zurückziehen"
+
+msgid "Decision withdrawn."
+msgstr "Entscheidung zurückgezogen."
+
+msgid "Orga decision on file"
+msgstr "Orgaentscheidung hinterlegt"
+
+msgid "Locked while the playoffs are released."
+msgstr "Gesperrt, solange die Playoffs freigegeben sind."
+
+msgid "Places %(range)s are equal on every criterion."
+msgstr "Plätze %(range)s sind in allen Kriterien gleich."
+
+msgid "Tie between seeding ranks. It decides the playoff seeding; the orga sets the order."
+msgstr "Gleichstand zwischen Setzrängen. Er entscheidet die Playoff-Setzung; die Orga legt die Reihenfolge fest."
+
+msgid "Tie for the tournament win. The orga sets the order."
+msgstr "Gleichstand um den Turniersieg. Die Orga legt die Reihenfolge fest."
+
+msgid "Tie without effect on qualification. The shared place stays; nobody needs to decide."
+msgstr "Gleichstand ohne Einfluss auf die Qualifikation. Der geteilte Platz bleibt; niemand muss entscheiden."
+
+msgid "Qualified"
+msgstr "Qualifiziert"
+
+msgid "Tie"
+msgstr "Gleichstand"
+
+msgid "Head-to-head"
+msgstr "Direkter Vergleich"
+
+msgid "Difference"
+msgstr "Differenz"
+
+msgid "Scored"
+msgstr "Erzielte"
+
+msgid "Orga decision"
+msgstr "Orgaentscheidung"
+
+msgid "Tournament win"
+msgstr "Turniersieg"
+
+msgid "Decided by"
+msgstr "Entschieden durch"
+
+msgid "Qualification line"
+msgstr "Qualifikationsgrenze"
+
+msgid "Participant"
+msgstr "Teilnehmer"
+
+msgid "Played"
+msgstr "Spiele"
+
+msgid "Won"
+msgstr "Siege"
+
+msgid "Lost"
+msgstr "Niederlagen"
+
+msgid "Closed"
+msgstr "Abgeschlossen"
+
+msgid "Running"
+msgstr "Läuft"
+
+msgid "Results final"
+msgstr "Final"
+
+msgid "%(n)s match open"
+msgid_plural "%(n)s matches open"
+msgstr[0] "%(n)s Partie offen"
+msgstr[1] "%(n)s Partien offen"
+
+msgid "Playoff release"
+msgstr "Playoff-Freigabe"
+
+msgid "Released"
+msgstr "Freigegeben"
+
+msgid "Waiting"
+msgstr "Wartet"
+
+msgid "Released (%(mode)s) by %(user)s · %(time)s · %(n)s qualified."
+msgstr "Freigegeben (%(mode)s) von %(user)s · %(time)s · %(n)s Qualifizierte."
+
+msgid "The playoff matches are generated. Group results are locked."
+msgstr "Die Playoff-Partien sind erzeugt. Gruppenergebnisse sind gesperrt."
+
+msgid "Open playoff seeding"
+msgstr "Playoff-Setzliste öffnen"
+
+msgid "Group matches final: %(done)s of %(total)s"
+msgstr "Gruppenspiele final: %(done)s von %(total)s"
+
+msgid "Qualification still open"
+msgstr "Qualifikation läuft noch"
+
+msgid "Ties needing an orga decision: %(n)s"
+msgstr "Gleichstände mit nötiger Orgaentscheidung: %(n)s"
+
+msgid "Qualifiers"
+msgstr "Qualifizierte"
+
+msgid "The qualifiers are set once all results are final and all ties are decided."
+msgstr "Die Qualifizierten stehen fest, sobald alle Ergebnisse final und alle Gleichstände entschieden sind."
+
+msgid "Close qualification"
+msgstr "Qualifikation abschließen"
+
+msgid "Qualification closed."
+msgstr "Qualifikation abgeschlossen."
+
+msgid "Undo release"
+msgstr "Freigabe zurücknehmen"
+
+msgid "Release undone."
+msgstr "Freigabe zurückgenommen."
+
+msgid "A playoff result is confirmed. The release can no longer be undone."
+msgstr "Ein Playoff-Ergebnis ist bestätigt. Die Freigabe kann nicht mehr zurückgenommen werden."
+
+msgid "Automatic release suspended. Release the playoffs manually."
+msgstr "Automatische Freigabe ausgesetzt. Gib die Playoffs manuell frei."
+
+msgid "Release playoffs"
+msgstr "Playoffs freigeben"
+
+msgid "Playoffs released with %(count)d matches."
+msgstr "Playoffs mit %(count)d Partien freigegeben."
+
+msgid "Before the release you can adjust the playoff draft."
+msgstr "Vor der Freigabe kannst du den Playoff-Entwurf anpassen."
+
+msgid "Needs all group results final and no blocking tie."
+msgstr "Braucht alle Gruppenergebnisse final und keinen blockierenden Gleichstand."
+
+msgid "Why this order?"
+msgstr "Warum diese Reihenfolge?"
+
+msgid "Group stage running"
+msgstr "Gruppenphase läuft"
+
+msgid "Group stage finished"
+msgstr "Gruppenphase beendet"
+
+msgid "Blocked"
+msgstr "Blockiert"
+
+msgid "Free"
+msgstr "Frei"
+
+msgid "Reason for withdrawing"
+msgstr "Begründung für das Zurückziehen"
+
+msgid "Tie-break order"
+msgstr "Reihenfolge bei Gleichstand"
+
+msgid "Value → Orga decision. Never by lot."
+msgstr "Wert → Orgaentscheidung. Nie per Los."
+
+msgid "Points → Head-to-head → Difference → Scored → Orga decision. Never by lot."
+msgstr "Punkte → Direkter Vergleich → Differenz → Erzielte → Orgaentscheidung. Nie per Los."
+
+msgid "Deletes the playoff matches, unlocks the group results and keeps the draft."
+msgstr "Löscht die Playoff-Partien, entsperrt die Gruppenergebnisse und behält den Entwurf."
+
+msgid "Automatic release stays suspended afterwards."
+msgstr "Die automatische Freigabe bleibt danach ausgesetzt."
+
+msgid "The playoff draft is not ready yet. Reload the page in a moment."
+msgstr "Der Playoff-Entwurf ist noch nicht bereit. Lade die Seite gleich neu."
+
+msgid "Audit log"
+msgstr "Protokoll"
+
+msgid "Reason missing."
+msgstr "Begründung fehlt."
+
+msgid "Move %(name)s up"
+msgstr "%(name)s nach oben"
+
+msgid "Move %(name)s down"
+msgstr "%(name)s nach unten"
+
+msgid "Tie · decision needed"
+msgstr "Gleichstand · Entscheidung nötig"
+
+msgid "Phases"
+msgstr "Phasen"
+
+msgid "Phase 1: Highscore · Phase 2: Playoffs (%(mode)s)"
+msgstr "Phase 1: Highscore · Phase 2: Playoffs (%(mode)s)"
+
+msgid "Free for all, lobbies"
+msgstr "Alle gegen alle, Lobbys"
+
+msgid "Phase 1: Group stage · Phase 2: Playoffs (%(mode)s)"
+msgstr "Phase 1: Gruppenphase · Phase 2: Playoffs (%(mode)s)"
+
+msgid "Qualified: the top %(n)s of the leaderboard"
+msgstr "Qualifiziert: die besten %(n)s der Rangliste"
+
+msgid "Qualified: the best %(n)s of each group"
+msgstr "Qualifiziert: die besten %(n)s je Gruppe"
+
+msgid "Playoffs running"
+msgstr "Playoffs laufen"
+
+msgid "Order on a tie"
+msgstr "Reihenfolge bei Gleichstand"
+
+msgid "Value → Orga decision."
+msgstr "Wert → Orgaentscheidung."
+
+msgid "The time does not decide a tie."
+msgstr "Der Zeitpunkt entscheidet keinen Gleichstand."
+
+msgid "Table: %(name)s"
+msgstr "Tabelle: %(name)s"
+
+msgid "Pld."
+msgstr "Sp."
+
+msgid "W"
+msgstr "S"
+
+msgid "D"
+msgstr "U"
+
+msgid "L"
+msgstr "N"
+
+msgid "Diff."
+msgstr "Diff."
+
+msgid "For"
+msgstr "Erz."
+
+msgid "Matches played"
+msgstr "Spiele"
+
+msgid "Wins"
+msgstr "Siege"
+
+msgid "Draws"
+msgstr "Unentschieden"
+
+msgid "Losses"
+msgstr "Niederlagen"
+
+msgid "Settled"
+msgstr "Erledigt"
+
+msgid "Release is automatic: the playoffs are created as soon as nothing blocks them any more."
+msgstr "Freigabe automatisch: Die Playoffs entstehen, sobald kein Hindernis mehr besteht."
+
+msgid "Release is manual: the orga checks the playoff draft and releases the playoffs."
+msgstr "Freigabe manuell: Die Orga prüft den Playoff-Entwurf und gibt die Playoffs frei."
+
+msgid "Undo release …"
+msgstr "Freigabe zurücknehmen …"
+
+msgid "Undo the release?"
+msgstr "Freigabe zurücknehmen?"
+
+msgid "The automatic release stays suspended afterwards."
+msgstr "Die automatische Freigabe bleibt danach ausgesetzt."
+
+msgid "No button needed: the system releases the playoffs as soon as both rows above show “Settled” and “Free”."
+msgstr "Kein Knopf nötig: Das System gibt frei, sobald beide Zeilen oben „Erledigt“ und „Frei“ zeigen."
+
+msgid "Release the playoffs?"
+msgstr "Playoffs freigeben?"
+
+msgid "The playoff matches are generated from the draft."
+msgstr "Die Playoff-Partien werden aus dem Entwurf generiert."
+
+msgid "The players of the first matches are notified (match ready)."
+msgstr "Die Spieler der ersten Partien werden benachrichtigt (Partie bereit)."
+
+msgid "The group results are locked."
+msgstr "Die Gruppenergebnisse werden gesperrt."
+
+msgid "The playoff draft is missing. It is created as soon as a result or a decision changes."
+msgstr "Der Playoff-Entwurf fehlt noch. Er wird erstellt, sobald sich ein Ergebnis oder eine Entscheidung ändert."
+
+msgid "Playoff draft"
+msgstr "Playoff-Entwurf"
+
+msgid "The qualifiers are set. The draft is prefilled crosswise."
+msgstr "Die Qualifizierten stehen fest. Der Entwurf ist überkreuz vorbelegt."
+
+msgid "The draft opens prefilled as soon as the qualifiers are set."
+msgstr "Der Entwurf öffnet sich vorbelegt, sobald die Qualifizierten feststehen."
+
+msgid "To qualification and release"
+msgstr "Zu Qualifikation & Freigabe"
+
+msgid "%(name)s is now in place %(place)s."
+msgstr "%(name)s jetzt Platz %(place)s."
+
+msgid "Phase"
+msgstr "Phase"
+
+msgid "Tie – the orga decides"
+msgstr "Gleichstand – die Orga entscheidet"
+
+#, python-format
+msgid "Playoffs · %(label)s"
+msgstr "Playoffs · %(label)s"
+
+msgid "Quarterfinal"
+msgstr "Viertelfinale"
+
+msgid "Semifinal"
+msgstr "Halbfinale"
+
+msgid "Playoffs: waiting for release"
+msgstr "Playoffs: warten auf Freigabe"
+
+msgid "The playoffs begin as soon as all group matches are finished."
+msgstr "Die Playoffs beginnen, sobald alle Gruppenspiele beendet sind."
+
+msgid "The playoffs begin as soon as the orga closes the qualification."
+msgstr "Die Playoffs beginnen, sobald die Orga die Qualifikation abschließt."
+
+msgid "A tie has to be decided by the orga."
+msgstr "Ein Gleichstand muss von der Orga entschieden werden."
+
+msgid "The qualifiers are set. The orga releases the playoffs."
+msgstr "Die Qualifizierten stehen fest. Die Orga gibt die Playoffs frei."
+
+msgid "Player/Team"
+msgstr "Spieler/Team"
+
+#, python-format
+msgid "Round %(num)s · %(count)s players"
+msgstr "Runde %(num)s · %(count)s Spieler"
+
+msgid "No first-round match pairs two players from the same group."
+msgstr "Keine Paarung der Runde 1 enthält zwei Spieler aus derselben Gruppe."
+
+msgid "No swap found that separates all pairs."
+msgstr "Kein Tausch gefunden, der alle Paare trennt."
+
+#, python-format
+msgid "Qualified as %(origin)s"
+msgstr "Qualifiziert als %(origin)s"
+
+#, python-format
+msgid "Both from group %(group)s: %(a)s (%(la)s) and %(b)s (%(lb)s)."
+msgstr "Beide aus Gruppe %(group)s: %(a)s (%(la)s) und %(b)s (%(lb)s)."
+
+#, python-format
+msgid "M%(n)s: %(a)s (%(la)s) and %(b)s (%(lb)s) are both from group %(group)s."
+msgstr "M%(n)s: %(a)s (%(la)s) und %(b)s (%(lb)s) kommen aus Gruppe %(group)s."
+
+#, python-format
+msgid "%(n)s first-round match pairs players from one group."
+msgid_plural "%(n)s first-round matches pair players from one group."
+msgstr[0] "%(n)s Paarung der Runde 1 hat Spieler aus einer Gruppe."
+msgstr[1] "%(n)s Paarungen der Runde 1 haben Spieler aus einer Gruppe."
+
+msgid "A round 1 pairing from the same group. The release is still possible."
+msgid_plural "Round 1 pairings from the same group. The release is still possible."
+msgstr[0] "Eine Paarung aus derselben Gruppe in Runde 1. Die Freigabe ist trotzdem möglich."
+msgstr[1] "Paarungen aus derselben Gruppe in Runde 1. Die Freigabe ist trotzdem möglich."
+
+msgid "Separate same-group pairings"
+msgstr "Paarungen gleicher Gruppen trennen"
+
+msgid "The release generates the playoffs from this draft."
+msgstr "Die Freigabe generiert die Playoffs aus diesem Entwurf."
+
+msgid "Prefilled from the leaderboard order, cut into tiers."
+msgstr "Aus der Rangliste vorbelegt und in Stufen geteilt."
+
+msgid "Prefilled crosswise: all group winners first, then the runners-up, and so on. Within equal ranks: points → difference → scored → group order."
+msgstr "Überkreuz vorbelegt: erst alle Gruppensieger, dann die Zweiten und so weiter. Innerhalb gleicher Ränge: Punkte → Differenz → Erzielte → Gruppenreihenfolge."
+
+msgid "Time submitted"
+msgstr "Zeitpunkt"
+
+msgid "Close the qualification?"
+msgstr "Qualifikation abschließen?"
+
+msgid "No further scores are accepted."
+msgstr "Es werden keine weiteren Werte mehr angenommen."
+
+msgid "The qualifiers are determined from the leaderboard."
+msgstr "Die Qualifizierten stehen dann anhand der Rangliste fest."
+
+msgid "The playoffs are running. Group results are locked for good."
+msgstr "Die Playoffs laufen. Gruppenergebnisse sind endgültig gesperrt."
+
+msgid "A playoff result is confirmed, the release can no longer be undone. A correction of this result is no longer possible."
+msgstr "Ein Playoff-Ergebnis ist bestätigt, die Freigabe kann nicht mehr zurückgenommen werden. Eine Korrektur dieses Ergebnisses ist nicht mehr möglich."
+
+#, python-format
+msgid "Separated: %(pairs)s."
+msgstr "Getrennt: %(pairs)s."
+
+msgid "Same-group pairings separated"
+msgstr "Gleiche Gruppen getrennt"
+
+msgid "Lobby balance"
+msgstr "Ausgewogenheit"
+
+msgid "The leaderboard can only be closed while the tournament is ongoing."
+msgstr "Die Rangliste kann nur geschlossen werden, solange das Turnier läuft."
+
+msgid "A later round has already been built from this lobby, so its tie decision can no longer be changed."
+msgstr "Aus dieser Lobby wurde bereits eine weitere Runde erstellt. Die Entscheidung zum Gleichstand lässt sich nicht mehr ändern."
+
+msgid "The seed code is too long."
+msgstr "Der Code ist zu lang."
+
+msgid "The tournament structure changed since the seeding was drawn. Re-seed first."
+msgstr "Der Turnieraufbau hat sich seit der Auslosung geändert. Setze zuerst neu."
+
+msgid "The tournament structure changed after generation. Regenerate on the seeding board first."
+msgstr "Der Turnieraufbau hat sich nach dem Generieren geändert. Generiere zuerst auf der Setzliste neu."
+
+msgid "The tournament structure changed since the seeding was drawn. The board shows a new draw for the current structure. Re-seed to adopt it."
+msgstr "Der Turnieraufbau hat sich seit der Auslosung geändert. Die Setzliste zeigt eine neue Auslosung für den aktuellen Aufbau. Setze neu, um sie zu übernehmen."
+
+msgid "Original reason: %(reason)s"
+msgstr "Ursprüngliche Begründung: %(reason)s"
+
+msgid "Automatic release suspended"
+msgstr "Automatische Freigabe ausgesetzt"
+
+msgid "%(mode)s · %(n)s match"
+msgid_plural "%(mode)s · %(n)s matches"
+msgstr[0] "%(mode)s · %(n)s Partie"
+msgstr[1] "%(mode)s · %(n)s Partien"
+
+msgid "The playoff draft contains a contestant who is no longer in the tournament. Re-seed the playoffs first."
+msgstr "Die Playoff-Setzliste enthält jemanden, der nicht mehr im Turnier ist. Setze die Playoffs zuerst neu."
+
+msgid "The seeding was changed after the bracket was generated. Starting uses the generated layout; later seeding changes are dropped."
+msgstr "Die Setzliste wurde nach der Erzeugung des Turnierbaums geändert. Der Start verwendet das erzeugte Layout; spätere Änderungen an der Setzliste gehen verloren."
+
+msgid "Start with the generated layout"
+msgstr "Mit dem erzeugten Layout starten"
+
+msgid "Confirm that the generated layout is used before starting."
+msgstr "Bestätige, dass das erzeugte Layout verwendet wird, bevor du startest."
+
+msgid "Create playoff draft"
+msgstr "Playoff-Entwurf erstellen"
+
+msgid "The playoff draft is missing. Create it to adjust it and release the playoffs."
+msgstr "Der Playoff-Entwurf fehlt. Erstelle ihn, um ihn anzupassen und die Playoffs freizugeben."
+
+msgid "Playoff draft created."
+msgstr "Playoff-Entwurf erstellt."
+
+msgid "%(count)s players"
+msgstr "%(count)s Spieler"
+
+msgid "A lobby has fewer contestants than the minimum group size."
+msgstr "Eine Lobby hat weniger Teilnehmende als die Mindestgröße."
+
+msgid "the winners pool"
+msgstr "der Gewinner-Pool"
+
+msgid "the losers pool"
+msgstr "der Verlierer-Pool"
+
+msgid "this round"
+msgstr "diese Runde"
+
+msgid "Because participants were removed, %(where)s has only %(count)s contestants. Lobby sizes: %(sizes)s, below the minimum of %(minimum)s."
+msgstr "Weil Teilnehmende entfernt wurden, hat %(where)s nur %(count)s Teilnehmende. Lobbygrößen: %(sizes)s, unter dem Minimum von %(minimum)s."
+
+msgid "Lobby below the minimum"
+msgstr "Lobby unter dem Minimum"
+
+msgid "Removed participants: %(where)s has lobbies of %(sizes)s, below the minimum of %(minimum)s."
+msgstr "Entfernte Teilnehmende: %(where)s hat Lobbys mit %(sizes)s, unter dem Minimum von %(minimum)s."
+
+msgid "A group has fewer contestants than the minimum group size."
+msgstr "Eine Gruppe hat weniger Teilnehmende als die Mindestgröße."
+
+msgid "Only one contestant is left in the losers pool. They get a bye and join the next losers round."
+msgstr "Im Verlierer-Pool ist nur noch eine Person übrig. Sie bekommt ein Freilos und spielt in der nächsten Verlierer-Runde mit."
+
+msgid "Bye: %(name)s is alone in the losers pool and gets no lobby this round. They join the next losers round, or the Grand Final."
+msgstr "Freilos: %(name)s ist allein im Verlierer-Pool und bekommt in dieser Runde keine Lobby. Die Person spielt in der nächsten Verlierer-Runde oder im Grand Final mit."
+
+msgid "Bye: %(name)s waits in %(where)s, round %(round)s."
+msgstr "Freilos: %(name)s wartet in %(where)s, Runde %(round)s."
+
+msgid "%(name)s is waiting for the Grand Final while the lower bracket continues."
+msgstr "%(name)s wartet auf das große Finale, während das Verlierer-Bracket weiterläuft."
+
+msgid "%(name)s won the winners bracket, round %(round)s, and waits for the Grand Final."
+msgstr "%(name)s hat das Gewinner-Bracket in Runde %(round)s gewonnen und wartet auf das große Finale."
+
+msgid "Lone survivor wins"
+msgstr "Letzter verbliebener Teilnehmer gewinnt"
+
+msgid "%(name)s is the lone survivor and wins the tournament, round %(round)s."
+msgstr "%(name)s ist der letzte verbliebene Teilnehmer und gewinnt das Turnier in Runde %(round)s."
+
+msgid "The tournament is complete. The lone survivor wins."
+msgstr "Das Turnier ist abgeschlossen. Der letzte verbliebene Teilnehmer gewinnt."
+
+msgid "The winners bracket is finished. Continue the losers bracket."
+msgstr "Das Gewinner-Bracket ist abgeschlossen. Setze das Verlierer-Bracket fort."
+
+msgid "Losers bracket matches are not confirmed."
+msgstr "Die Begegnungen im Verlierer-Bracket sind noch nicht bestätigt."
+
+msgid "The tournament must be ongoing to advance an FFA round."
+msgstr "Das Turnier muss laufen, um eine FFA-Runde fortzusetzen."
+
+msgid "The Grand Final is not eligible yet. Continue the bracket rounds."
+msgstr "Das große Finale ist noch nicht möglich. Spiele zuerst die weiteren Turnierrunden."
+
+msgid "Bracket matches are not confirmed."
+msgstr "Die Turnierbaum-Partien sind noch nicht bestätigt."
+
+# lan_tournament: F-10 natural WB shortfall
+msgid "Advancement leaves %(where)s with %(count)s contestants. Lobby sizes: %(sizes)s, below the minimum of %(minimum)s."
+msgstr "Durch das Weiterkommen verbleiben in %(where)s %(count)s Teilnehmende. Lobbygrößen: %(sizes)s, unter dem Minimum von %(minimum)s."
+
+msgid "Natural shortfall after advancement: %(where)s has lobbies of %(sizes)s, below the minimum of %(minimum)s."
+msgstr "Natürliche Unterbesetzung nach dem Weiterkommen: %(where)s hat Lobbys mit %(sizes)s Teilnehmenden, unter dem Minimum von %(minimum)s."
+
+msgid "Decision outdated"
+msgstr "Entscheidung veraltet"
+
+msgid "This decision no longer matches a tie. Decide the tie again, or withdraw the decision."
+msgstr "Diese Entscheidung passt zu keinem Gleichstand mehr. Entscheide den Gleichstand neu oder zieh die Entscheidung zurück."
+
+msgid "A seeding supports at most 1024 contestants."
+msgstr "Eine Setzliste unterstützt höchstens 1024 Teilnehmende."
+
+msgid "The roster gives %(groups)s groups instead of the configured %(configured)s."
+msgstr "Die Teilnehmerzahl ergibt %(groups)s Gruppen statt der eingestellten %(configured)s."
+
+msgid "Only %(qualifiers)s contestants qualify instead of the configured %(configured)s."
+msgstr "Nur %(qualifiers)s Teilnehmende qualifizieren sich statt der eingestellten %(configured)s."
+
+msgid "With fewer than 4 qualifiers the playoffs run as single knockout."
+msgstr "Mit weniger als 4 Qualifizierten laufen die Playoffs als einfaches K.-o."
+
+msgid "Playoff seeding"
+msgstr "Playoff-Setzung"
+
+msgid "Across groups: points per match → difference per match → scored per match → orga decision."
+msgstr "Gruppenübergreifend: Punkte pro Spiel → Differenz pro Spiel → Erzielte pro Spiel → Orgaentscheidung."
+
+msgid "The maximum number of contestants is too small for this many groups."
+msgstr "Die Höchstteilnehmerzahl ist für so viele Gruppen zu klein."
+
+msgid "The qualifiers cannot be split into lobbies between the minimum and maximum group size."
+msgstr "Die Qualifizierten lassen sich nicht in Lobbys zwischen minimaler und maximaler Gruppengröße aufteilen."
+
+msgid "Nothing to regenerate: the matches already follow this seed code."
+msgstr "Nichts neu zu generieren: Die Partien folgen bereits diesem Setzcode."
+
+msgid "Saved. Reload the page to see the current board."
+msgstr "Gespeichert. Lade die Seite neu, um das aktuelle Board zu sehen."
+
+msgid "Too few qualifiers for full lobbies: lobby sizes %(sizes)s, below the minimum of %(minimum)s. The playoffs start with them anyway."
+msgstr "Zu wenige Qualifizierte für volle Lobbys: Lobbygrößen %(sizes)s, unter dem Minimum von %(minimum)s. Die Playoffs starten trotzdem damit."
+
+msgid "Grand Final with %(n)s contestants"
+msgstr "Großes Finale mit %(n)s Teilnehmenden"
+
+msgid "The playoffs are released, so their settings are locked."
+msgstr "Die Playoffs sind freigegeben, ihre Einstellungen sind daher gesperrt."
+
+msgid "Once the tournament has started, the playoffs cannot be switched on or off and the group count cannot change."
+msgstr "Sobald das Turnier begonnen hat, lassen sich die Playoffs nicht mehr ein- oder ausschalten und die Anzahl der Gruppen nicht mehr ändern."
+
+msgid "Editable until the release. Once the tournament has started, the playoffs cannot be switched on or off and the group count stays."
+msgstr "Bis zur Freigabe bearbeitbar. Sobald das Turnier begonnen hat, lassen sich die Playoffs nicht mehr ein- oder ausschalten, und die Anzahl der Gruppen bleibt."
+
+msgid "The playoff settings stay editable until the release."
+msgstr "Die Playoff-Einstellungen bleiben bis zur Freigabe bearbeitbar."
+
+msgid "Only %(qualified)s of %(configured)s playoff places are filled. The playoffs start smaller; the top seeds get the byes."
+msgstr "Nur %(qualified)s von %(configured)s Playoff-Plätzen sind besetzt. Die Playoffs starten kleiner; die besten Setzplätze bekommen die Freilose."
+
+msgid "Only %(qualified)s of %(configured)s playoff places are filled. The first playoff round may have smaller lobbies, with at least 2 each."
+msgstr "Nur %(qualified)s von %(configured)s Playoff-Plätzen sind besetzt. Die erste Playoff-Runde kann kleinere Lobbys haben, mit mindestens 2 pro Lobby."
+
+msgid "Double elimination needs at least 4 qualifiers. With %(n)s, the playoffs run as single elimination."
+msgstr "Double Elimination braucht mindestens 4 Qualifizierte. Mit %(n)s laufen die Playoffs als Single Elimination."
+
+msgid "Released with fewer qualifiers"
+msgstr "Mit weniger Qualifizierten freigegeben"
+
+msgid "Single instead of double elimination"
+msgstr "Single statt Double Elimination"
+
+msgid "%(qualified)s of %(configured)s places filled"
+msgstr "%(qualified)s von %(configured)s Plätzen besetzt"
+
+msgid "%(n)s qualifier"
+msgid_plural "%(n)s qualifiers"
+msgstr[0] "%(n)s Qualifizierter"
+msgstr[1] "%(n)s Qualifizierte"
+
+msgid "The qualification changed since the playoff draft was made. Re-prefill it from the qualification first."
+msgstr "Die Qualifikation hat sich seit dem Playoff-Entwurf geändert. Fülle ihn zuerst neu aus der Qualifikation."
+
+msgid "The qualification ranks changed after this draft was made. Generating is blocked until you re-prefill it."
+msgstr "Die Platzierungen der Qualifikation haben sich nach diesem Entwurf geändert. Generieren ist gesperrt, bis du ihn neu befüllst."
+
+msgid "Re-prefill from qualification"
+msgstr "Neu aus der Qualifikation befüllen"
+
+msgid "Re-prefilled from qualification"
+msgstr "Neu aus der Qualifikation befüllt"
+
+msgid "Automatic: nobody had changed the draft"
+msgstr "Automatisch: niemand hatte den Entwurf geändert"
+
+msgid "The tournament is cancelled. Tie decisions can no longer change."
+msgstr "Das Turnier ist abgebrochen. Orgaentscheidungen können nicht mehr geändert werden."
+
+msgid "The release can only be taken back while the tournament is ongoing or paused."
+msgstr "Die Freigabe kann nur zurückgenommen werden, solange das Turnier läuft oder pausiert ist."
+
+msgid "%(n)s contestants play the Grand Final."
+msgstr "%(n)s Teilnehmer spielen das Große Finale."
+
+msgid "Open Grand Final"
+msgstr "Großes Finale öffnen"
+
+msgid "The maximum number of teams is below the minimum lobby size."
+msgstr "Die Höchstzahl an Teams liegt unter der Mindestgröße einer Lobby."
+
+msgid "Please enter how many advance per lobby."
+msgstr "Bitte angeben, wie viele pro Lobby weiterkommen."

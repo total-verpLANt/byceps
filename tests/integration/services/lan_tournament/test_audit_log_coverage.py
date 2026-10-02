@@ -155,11 +155,11 @@ def _ffa_match(name, ticketed, admin):
         advancement_count=2,
         point_table=[10, 6, 3, 1],
     )
-    assert tournament_service.change_status(
-        tournament.id, TournamentStatus.ONGOING
-    ).is_ok()
     assert tournament_match_service.generate_ffa_round(
         tournament.id, initiator_id=admin.id
+    ).is_ok()
+    assert tournament_service.change_status(
+        tournament.id, TournamentStatus.ONGOING
     ).is_ok()
     (match,) = tournament_match_service.get_matches_for_tournament_ordered(
         tournament.id

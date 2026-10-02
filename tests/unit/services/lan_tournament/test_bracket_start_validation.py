@@ -11,6 +11,8 @@ from dataclasses import replace
 from itertools import combinations
 from unittest.mock import patch
 
+import pytest
+
 from byceps.services.lan_tournament.models.bracket import Bracket
 from byceps.services.lan_tournament.models.elimination_mode import (
     EliminationMode,
@@ -473,21 +475,13 @@ def test_validator_accepts_round_robin_schedule_odd_count(repo):
 
 
 @patch(REPO)
-def test_validator_skips_ffa_and_highscore(repo):
-    """Formats without bracket generation are valid without repo access."""
+def test_validator_skips_highscore(repo):
+    """Highscore has no matches and is valid without repo access."""
     from byceps.services.lan_tournament.tournament_match_service import (
         validate_bracket_for_start,
     )
 
     cases = [
-        (
-            GameFormat.FREE_FOR_ALL,
-            EliminationMode.SINGLE_ELIMINATION,
-        ),
-        (
-            GameFormat.FREE_FOR_ALL,
-            EliminationMode.DOUBLE_ELIMINATION,
-        ),
         (
             GameFormat.HIGHSCORE,
             EliminationMode.NONE,
@@ -506,6 +500,52 @@ def test_validator_skips_ffa_and_highscore(repo):
 
         assert violations == []
         repo.get_matches_for_tournament_ordered.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    'elimination_mode',
+    [EliminationMode.SINGLE_ELIMINATION, EliminationMode.DOUBLE_ELIMINATION],
+)
+@patch(REPO)
+def test_ffa_without_round_one_blocks_start(repo, elimination_mode):
+    """An FFA tournament without any generated match cannot start."""
+    from byceps.services.lan_tournament.tournament_match_service import (
+        validate_bracket_for_start,
+    )
+
+    tournament = _make_tournament(
+        game_format=GameFormat.FREE_FOR_ALL,
+        elimination_mode=elimination_mode,
+    )
+    repo.get_tournament.return_value = tournament
+    repo.get_matches_for_tournament_ordered.return_value = []
+
+    assert validate_bracket_for_start(tournament.id) == [
+        'no matches generated'
+    ]
+
+
+@pytest.mark.parametrize(
+    'elimination_mode',
+    [EliminationMode.SINGLE_ELIMINATION, EliminationMode.DOUBLE_ELIMINATION],
+)
+@patch(REPO)
+def test_ffa_with_round_one_passes(repo, elimination_mode):
+    """An FFA tournament with a generated round 1 may start."""
+    from byceps.services.lan_tournament.tournament_match_service import (
+        validate_bracket_for_start,
+    )
+
+    tournament = _make_tournament(
+        game_format=GameFormat.FREE_FOR_ALL,
+        elimination_mode=elimination_mode,
+    )
+    repo.get_tournament.return_value = tournament
+    repo.get_matches_for_tournament_ordered.return_value = [
+        _make_match(tournament.id, round=1)
+    ]
+
+    assert validate_bracket_for_start(tournament.id) == []
 
 
 # -------------------------------------------------------------------- #

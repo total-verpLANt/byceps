@@ -7,8 +7,16 @@ depending on the tournament's ``GameFormat.requires_bracket_generation`` flag.
 """
 
 from datetime import datetime
+from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
+from byceps.services.lan_tournament import (
+    seed_code,
+    tournament_seeding_domain_service as seeding_domain,
+)
+from byceps.services.lan_tournament.models.seeding import SeedingFormat
 from byceps.services.lan_tournament.models.tournament import (
     Tournament,
     TournamentID,
@@ -38,6 +46,16 @@ from tests.helpers import generate_uuid
 
 
 NOW = datetime(2025, 6, 15, 14, 0, 0)
+
+SEEDING_SERVICE = 'byceps.services.lan_tournament.tournament_seeding_service'
+
+
+@pytest.fixture(autouse=True)
+def no_seeding_draft():
+    """Give every tournament the legacy shape: no seeding draft."""
+    with patch(f'{SEEDING_SERVICE}.tournament_seeding_repository') as repo:
+        repo.find_seeding.return_value = None
+        yield repo
 
 
 def _create_tournament(**kwargs) -> Tournament:
@@ -397,3 +415,234 @@ def test_start_from_registration_closed_still_validates(
         'Generate brackets first.'
     )
     mock_match_repo.get_matches_for_tournament_ordered.assert_called_once()
+
+
+# -------------------------------------------------------------------- #
+# seeding: the roster must equal the one the bracket was generated from
+# -------------------------------------------------------------------- #
+
+
+def _generated_code(roster_ids) -> str:
+    state = seeding_domain.initial_state(
+        SeedingFormat.SINGLE_ELIMINATION,
+        0,
+        roster_ids,
+        tier_count=1,
+        draw_seed=7,
+    )
+    return seed_code.encode_seed_code(state, state.layout)
+
+
+def _roster(ids):
+    return SimpleNamespace(ids=tuple(ids))
+
+
+def _start(tournament):
+    from byceps.services.lan_tournament import tournament_service
+
+    return tournament_service.change_status(
+        tournament.id, TournamentStatus.ONGOING
+    )
+
+
+@pytest.mark.parametrize(
+    ('current_ids',),
+    # fmt: off
+    [
+        (['p1', 'p2', 'p3'],),  # removal
+        (['p1', 'p2', 'p3', 'p4', 'p5'],),  # join after generation
+        (['p1', 'p2', 'p3', 'p9'],),  # swap, same size
+    ],
+    # fmt: on
+)
+@patch(f'{SEEDING_SERVICE}._roster')
+@patch(f'{SEEDING_SERVICE}.tournament_repository')
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.validate_bracket_for_start',
+    return_value=[],
+)
+@patch(
+    'byceps.services.lan_tournament.tournament_service.tournament_repository'
+)
+@patch('byceps.services.lan_tournament.tournament_service.signals')
+def test_start_blocked_when_roster_changed_after_generation(
+    mock_signals,
+    mock_repository,
+    mock_validate,
+    mock_seeding_tournament_repo,
+    mock_roster,
+    no_seeding_draft,
+    current_ids,
+):
+    tournament = _create_tournament()
+    mock_repository.get_tournament.return_value = tournament
+    mock_seeding_tournament_repo.get_tournament.return_value = tournament
+    no_seeding_draft.find_seeding.return_value = SimpleNamespace(
+        generated_seed_code=_generated_code(['p1', 'p2', 'p3', 'p4'])
+    )
+    mock_roster.return_value = _roster(current_ids)
+
+    result = _start(tournament)
+
+    assert result.is_err()
+    assert result.unwrap_err() == (
+        'The roster changed after generation. Re-seed and regenerate first.'
+    )
+    mock_repository.rollback_session.assert_called_once()
+    mock_signals.tournament_status_changed.send.assert_not_called()
+
+
+@patch('byceps.services.lan_tournament.tournament_service.create_log_entry')
+@patch(f'{SEEDING_SERVICE}._roster')
+@patch(f'{SEEDING_SERVICE}.tournament_repository')
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.validate_bracket_for_start',
+    return_value=[],
+)
+@patch(
+    'byceps.services.lan_tournament.tournament_service.tournament_repository'
+)
+@patch('byceps.services.lan_tournament.tournament_service.signals')
+def test_start_allowed_when_roster_matches_generation(
+    mock_signals,
+    mock_repository,
+    mock_validate,
+    mock_seeding_tournament_repo,
+    mock_roster,
+    mock_create_log_entry,
+    no_seeding_draft,
+):
+    tournament = _create_tournament()
+    mock_repository.get_tournament.return_value = tournament
+    mock_repository.set_tournament_status_flush.return_value = Ok(None)
+    mock_seeding_tournament_repo.get_tournament.return_value = tournament
+    no_seeding_draft.find_seeding.return_value = SimpleNamespace(
+        generated_seed_code=_generated_code(['p1', 'p2', 'p3', 'p4'])
+    )
+    mock_roster.return_value = _roster(['p4', 'p3', 'p2', 'p1'])
+
+    assert _start(tournament).is_ok()
+
+
+@patch(f'{SEEDING_SERVICE}._roster')
+@patch(f'{SEEDING_SERVICE}.tournament_repository')
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.validate_bracket_for_start',
+    return_value=[],
+)
+@patch(
+    'byceps.services.lan_tournament.tournament_service.tournament_repository'
+)
+@patch('byceps.services.lan_tournament.tournament_service.signals')
+def test_start_blocked_when_structure_changed_after_generation(
+    mock_signals,
+    mock_repository,
+    mock_validate,
+    mock_seeding_tournament_repo,
+    mock_roster,
+    no_seeding_draft,
+):
+    ids = ['p1', 'p2', 'p3', 'p4']
+    tournament = _create_tournament(
+        elimination_mode=EliminationMode.DOUBLE_ELIMINATION
+    )
+    mock_repository.get_tournament.return_value = tournament
+    mock_seeding_tournament_repo.get_tournament.return_value = tournament
+    no_seeding_draft.find_seeding.return_value = SimpleNamespace(
+        generated_seed_code=_generated_code(ids)
+    )
+    mock_roster.return_value = _roster(ids)
+
+    result = _start(tournament)
+
+    assert result.unwrap_err() == (
+        'The tournament structure changed after generation. '
+        'Regenerate on the seeding board first.'
+    )
+    mock_repository.rollback_session.assert_called_once()
+    mock_signals.tournament_status_changed.send.assert_not_called()
+
+
+@patch('byceps.services.lan_tournament.tournament_service.create_log_entry')
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.validate_bracket_for_start',
+    return_value=[],
+)
+@patch(
+    'byceps.services.lan_tournament.tournament_service.tournament_repository'
+)
+@patch('byceps.services.lan_tournament.tournament_service.signals')
+def test_start_allowed_for_legacy_tournament_without_seeding(
+    mock_signals,
+    mock_repository,
+    mock_validate,
+    mock_create_log_entry,
+    no_seeding_draft,
+):
+    tournament = _create_tournament()
+    mock_repository.get_tournament.return_value = tournament
+    mock_repository.set_tournament_status_flush.return_value = Ok(None)
+
+    # No draft at all, then a draft that was never generated from.
+    assert _start(tournament).is_ok()
+
+    no_seeding_draft.find_seeding.return_value = SimpleNamespace(
+        generated_seed_code=None
+    )
+    assert _start(tournament).is_ok()
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.validate_bracket_for_start',
+    return_value=['no grand-final match'],
+)
+@patch(
+    'byceps.services.lan_tournament.tournament_service.tournament_repository'
+)
+@patch('byceps.services.lan_tournament.tournament_service.signals')
+def test_start_reports_bracket_violation_without_a_seeding_reason(
+    mock_signals, mock_repository, mock_validate, no_seeding_draft
+):
+    tournament = _create_tournament()
+    mock_repository.get_tournament.return_value = tournament
+
+    message = _start(tournament).unwrap_err()
+
+    assert message == 'Cannot start tournament: no grand-final match'
+
+
+@patch(f'{SEEDING_SERVICE}._roster')
+@patch(f'{SEEDING_SERVICE}.tournament_repository')
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.validate_bracket_for_start',
+    return_value=['no grand-final match'],
+)
+@patch(
+    'byceps.services.lan_tournament.tournament_service.tournament_repository'
+)
+@patch('byceps.services.lan_tournament.tournament_service.signals')
+def test_start_names_the_structure_change_over_a_bracket_violation(
+    mock_signals,
+    mock_repository,
+    mock_validate,
+    mock_seeding_tournament_repo,
+    mock_roster,
+    no_seeding_draft,
+):
+    ids = ['p1', 'p2', 'p3', 'p4']
+    tournament = _create_tournament(
+        elimination_mode=EliminationMode.DOUBLE_ELIMINATION
+    )
+    mock_repository.get_tournament.return_value = tournament
+    mock_seeding_tournament_repo.get_tournament.return_value = tournament
+    no_seeding_draft.find_seeding.return_value = SimpleNamespace(
+        generated_seed_code=_generated_code(ids)
+    )
+    mock_roster.return_value = _roster(ids)
+
+    message = _start(tournament).unwrap_err()
+
+    assert message == (
+        'The tournament structure changed after generation. '
+        'Regenerate on the seeding board first.'
+    )

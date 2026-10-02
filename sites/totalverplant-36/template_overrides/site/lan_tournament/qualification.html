@@ -1,0 +1,32 @@
+{% extends 'layout/base.html' %}
+{% set current_page = 'tournaments' %}
+{% set page_title = [_('Qualification'), tournament.name] %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_seeding.css') }}">
+{% include 'site/lan_tournament/_bote_qualification_style.html' %}
+{%- endblock %}
+
+{% block body %}
+<div class="bote-page tournament-page qualification-page">
+
+  <nav class="crumbs">
+    <a href="{{ url_for('.index') }}">{{ _('Tournaments') }}</a><span>»</span>
+    <a href="{{ url_for('.view', tournament_id=tournament.id) }}">{{ tournament.name }}</a><span>»</span>
+  </nav>
+
+  <header class="head">
+    <div>
+      <div class="kick">{{ _('Orga Actions') }} · {{ tournament.name }}</div>
+      <h1>{{ _('Qualification') }} &amp; {{ _('Playoff release') }}</h1>
+    </div>
+  </header>
+
+{% include 'site/lan_tournament/_qualification_panels.html' %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='behavior/sortable.min.js') }}"></script>
+<script src="{{ url_for('static', filename='behavior/lan_tournament_seeding.js') }}"></script>
+{% endblock %}

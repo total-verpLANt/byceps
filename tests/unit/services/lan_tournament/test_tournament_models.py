@@ -46,9 +46,6 @@ from byceps.services.lan_tournament.models.tournament_participant import (
     TournamentParticipant,
     TournamentParticipantID,
 )
-from byceps.services.lan_tournament.models.tournament_seed import (
-    TournamentSeed,
-)
 from byceps.services.lan_tournament.models.tournament_status import (
     TournamentStatus,
 )
@@ -354,32 +351,6 @@ def test_tournament_match_to_contestant_with_participant():
     assert contestant.team_id is None
     assert contestant.participant_id == participant_id
     assert contestant.score is None
-
-
-def test_tournament_seed_creation():
-    seed = TournamentSeed(
-        match_order=1,
-        round=0,
-        entry_a='Team A',
-        entry_b='Team B',
-    )
-
-    assert seed.match_order == 1
-    assert seed.round == 0
-    assert seed.entry_a == 'Team A'
-    assert seed.entry_b == 'Team B'
-
-
-def test_tournament_seed_is_frozen():
-    seed = TournamentSeed(
-        match_order=1,
-        round=0,
-        entry_a='Team A',
-        entry_b='Team B',
-    )
-
-    with pytest.raises(FrozenInstanceError):
-        seed.match_order = 2
 
 
 # -------------------------------------------------------------------- #

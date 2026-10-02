@@ -15,6 +15,7 @@ from byceps.services.lan_tournament.models.tournament_team import (
     TournamentTeamID,
 )
 from byceps.services.party.models import PartyID
+from byceps.services.user.models import UserID
 from byceps.util.instances import ReprBuilder
 from byceps.util.uuid import generate_uuid7
 
@@ -31,6 +32,36 @@ class DbTournament(db.Model):
             postgresql_where=text('created_from_request_id IS NOT NULL'),
         ),
         db.Index('ix_lan_tournaments_image_id', 'image_id'),
+        db.CheckConstraint(
+            '('
+            'playoff_game_format IS NULL'
+            ' AND playoff_elimination_mode IS NULL'
+            ' AND playoff_group_count IS NULL'
+            ' AND playoff_qualifiers_per_group IS NULL'
+            ' AND playoff_qualifier_count IS NULL'
+            ' AND playoff_release_mode IS NULL'
+            ') OR COALESCE(('
+            "game_format = 'ONE_V_ONE'"
+            " AND elimination_mode = 'ROUND_ROBIN'"
+            " AND playoff_game_format = 'ONE_V_ONE'"
+            " AND playoff_elimination_mode IN"
+            " ('SINGLE_ELIMINATION', 'DOUBLE_ELIMINATION')"
+            ' AND playoff_group_count >= 2'
+            ' AND playoff_qualifiers_per_group >= 1'
+            ' AND playoff_qualifier_count IS NULL'
+            ' AND playoff_release_mode IS NOT NULL'
+            '), FALSE) OR COALESCE(('
+            "game_format = 'HIGHSCORE'"
+            " AND playoff_game_format = 'FREE_FOR_ALL'"
+            " AND playoff_elimination_mode IN"
+            " ('SINGLE_ELIMINATION', 'DOUBLE_ELIMINATION')"
+            ' AND playoff_qualifier_count >= 2'
+            ' AND playoff_group_count IS NULL'
+            ' AND playoff_qualifiers_per_group IS NULL'
+            ' AND playoff_release_mode IS NOT NULL'
+            '), FALSE)',
+            name='ck_lan_tournaments_playoff_config',
+        ),
         db.Index(
             'uq_lan_tournaments_creation_token',
             'creation_token',
@@ -104,6 +135,25 @@ class DbTournament(db.Model):
     )
     image_alt_text: Mapped[str | None] = mapped_column(db.UnicodeText)
     creation_token: Mapped[UUID | None] = mapped_column(db.Uuid)
+    playoff_game_format: Mapped[str | None] = mapped_column(db.UnicodeText)
+    playoff_elimination_mode: Mapped[str | None] = mapped_column(
+        db.UnicodeText
+    )
+    playoff_group_count: Mapped[int | None]
+    playoff_qualifiers_per_group: Mapped[int | None]
+    playoff_qualifier_count: Mapped[int | None]
+    playoff_release_mode: Mapped[str | None] = mapped_column(db.UnicodeText)
+    playoff_auto_release_suspended: Mapped[bool] = mapped_column(
+        db.Boolean, nullable=False, default=False, server_default=db.false()
+    )
+    playoff_released_at: Mapped[datetime | None]
+    playoff_released_by: Mapped[UserID | None] = mapped_column(
+        db.Uuid,
+        db.ForeignKey(
+            'users.id', name='fk_lan_tournaments_playoff_released_by'
+        ),
+    )
+    leaderboard_closed_at: Mapped[datetime | None]
 
     def __init__(
         self,
@@ -139,6 +189,12 @@ class DbTournament(db.Model):
         image_id: UUID | None = None,
         image_alt_text: str | None = None,
         creation_token: UUID | None = None,
+        playoff_game_format: str | None = None,
+        playoff_elimination_mode: str | None = None,
+        playoff_group_count: int | None = None,
+        playoff_qualifiers_per_group: int | None = None,
+        playoff_qualifier_count: int | None = None,
+        playoff_release_mode: str | None = None,
     ) -> None:
         self.id = tournament_id
         self.party_id = party_id
@@ -172,6 +228,13 @@ class DbTournament(db.Model):
         self.image_id = image_id
         self.image_alt_text = image_alt_text
         self.creation_token = creation_token
+        self.playoff_game_format = playoff_game_format
+        self.playoff_elimination_mode = playoff_elimination_mode
+        self.playoff_group_count = playoff_group_count
+        self.playoff_qualifiers_per_group = playoff_qualifiers_per_group
+        self.playoff_qualifier_count = playoff_qualifier_count
+        self.playoff_release_mode = playoff_release_mode
+        self.playoff_auto_release_suspended = False
 
     def __repr__(self) -> str:
         return (

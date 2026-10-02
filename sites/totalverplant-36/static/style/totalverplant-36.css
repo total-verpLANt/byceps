@@ -2058,6 +2058,38 @@
     color: var(--inkSoft);
   }
 
+  /* The grand final slip: a double rule under the button row, the
+     lead line in the ink serif, the size of the final in the mono. */
+  body.lt-dark .lt-orga-gf {
+    margin-top: 18px;
+    padding-top: 18px;
+    border-top: 3px double var(--ink);
+  }
+  body.lt-dark .lt-orga-gf__lead {
+    font-family: var(--body);
+    font-size: 17px;
+    font-weight: 700;
+    line-height: 1.3;
+    color: var(--ink);
+  }
+  body.lt-dark .lt-orga-gf__note {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: .08em;
+    line-height: 1.5;
+    color: var(--inkSoft);
+    opacity: 1;
+  }
+  body.lt-dark .lt-orga-gf__form > .button {
+    flex: 0 0 auto;
+  }
+  @media (max-width: 480px) {
+    body.lt-dark .lt-orga-gf__form > .button {
+      flex: 1 1 100%;
+      justify-content: center;
+    }
+  }
+
   /* ----- comments ----- */
   body.lt-dark .comments-section .title {
     font-family: var(--display);

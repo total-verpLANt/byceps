@@ -1,0 +1,27 @@
+{% extends 'layout/site/lan_tournament.html' %}
+{% set page_title = [_('Qualification'), tournament.name] %}
+
+{% block head %}{{ super() }}
+  <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_seeding.css') }}">
+{%- endblock %}
+
+
+{% block body %}
+
+  <nav class="breadcrumbs">
+    <ol>
+      <li><a href="{{ url_for('.index') }}">{{ _('Tournaments') }}</a></li>
+      <li><a href="{{ url_for('.view', tournament_id=tournament.id) }}">{{ tournament.name }}</a></li>
+    </ol>
+  </nav>
+
+  <h1 class="title lt-seed-title">{{ _('Qualification') }} <small>{{ tournament.name }}</small></h1>
+
+{% include 'site/lan_tournament/_qualification_panels.html' %}
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="{{ url_for('static', filename='behavior/sortable.min.js') }}"></script>
+<script src="{{ url_for('static', filename='behavior/lan_tournament_seeding.js') }}"></script>
+{% endblock %}

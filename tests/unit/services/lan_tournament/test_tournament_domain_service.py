@@ -34,12 +34,17 @@ from byceps.services.lan_tournament.tournament_domain_service import (
     compute_round_robin_standings,
     create_tournament,
     determine_match_winner,
+    ffa_lobbies_fit,
     generate_round_robin_schedule,
     validate_participant_count,
     validate_team_count,
 )
 from byceps.services.lan_tournament.models.tournament_participant import (
     TournamentParticipantID,
+)
+from byceps.services.lan_tournament.models.seeding import SeedingFormat
+from byceps.services.lan_tournament.tournament_seeding_domain_service import (
+    group_sizes,
 )
 from byceps.services.party.models import PartyID
 
@@ -564,3 +569,16 @@ def _create_tournament(**kwargs) -> Tournament:
     }
     defaults.update(kwargs)
     return Tournament(**defaults)
+
+
+def test_ffa_lobbies_fit_matches_the_seeding_layout():
+    mismatches = [
+        (n, low, high)
+        for high in range(2, 65)
+        for low in range(2, high + 1)
+        for n in range(2, 300)
+        if ffa_lobbies_fit(n, low, high)
+        != (min(group_sizes(SeedingFormat.FREE_FOR_ALL, n, high)) >= low)
+    ]
+
+    assert mismatches == []

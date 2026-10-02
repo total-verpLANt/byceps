@@ -80,14 +80,15 @@ def ffa_group(party, ticketed, admin):
         assert tournament_participant_service.join_tournament(
             tournament.id, user.id
         ).is_ok()
-    for status in (
-        TournamentStatus.REGISTRATION_CLOSED,
-        TournamentStatus.ONGOING,
-    ):
-        assert tournament_service.change_status(tournament.id, status).is_ok()
+    assert tournament_service.change_status(
+        tournament.id, TournamentStatus.REGISTRATION_CLOSED
+    ).is_ok()
 
     assert tournament_match_service.generate_ffa_round(
         tournament.id, initiator_id=admin.id
+    ).is_ok()
+    assert tournament_service.change_status(
+        tournament.id, TournamentStatus.ONGOING
     ).is_ok()
     (group,) = tournament_match_service.get_matches_for_tournament_ordered(
         tournament.id
@@ -95,8 +96,15 @@ def ffa_group(party, ticketed, admin):
     return tournament, group
 
 
+def _by_id(contestants):
+    """Order by contestant ID: the fetch order must not pick the lowest."""
+    return sorted(contestants, key=lambda c: str(c.participant_id))
+
+
 def _scores(match_id):
-    contestants = tournament_match_service.get_contestants_for_match(match_id)
+    contestants = _by_id(
+        tournament_match_service.get_contestants_for_match(match_id)
+    )
     return {c.participant_id: 10 - i for i, c in enumerate(contestants)}
 
 
@@ -113,8 +121,9 @@ def _state(tournament_id, match_id):
 
 
 def _losing_user(tournament_id, match_id, users):
-    contestants = tournament_match_service.get_contestants_for_match(match_id)
-    lowest = contestants[-1]
+    lowest = _by_id(
+        tournament_match_service.get_contestants_for_match(match_id)
+    )[-1]
     participants = (
         tournament_participant_service.get_participants_for_tournament(
             tournament_id
@@ -177,7 +186,9 @@ def test_the_placement_path_still_confirms_and_completes(
 ):
     """The rejections above must not have closed the real path."""
     tournament, group = ffa_group
-    contestants = tournament_match_service.get_contestants_for_match(group.id)
+    contestants = _by_id(
+        tournament_match_service.get_contestants_for_match(group.id)
+    )
 
     assert tournament_match_service.set_ffa_placements(
         group.id,
@@ -191,10 +202,10 @@ def test_the_placement_path_still_confirms_and_completes(
     assert winner_id is not None
     # Decided by placement, so the score columns stay empty.
     assert scores == [None] * len(contestants)
-    assert [
+    assert sorted(
         (c.placement, c.points)
         for c in tournament_match_service.get_contestants_for_match(group.id)
-    ] == [(1, 10), (2, 6), (3, 3), (4, 1)]
+    ) == [(1, 10), (2, 6), (3, 3), (4, 1)]
 
 
 @pytest.fixture(scope='module')

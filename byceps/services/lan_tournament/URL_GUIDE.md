@@ -126,7 +126,8 @@ This guide documents all available URLs for the LAN Tournament module, covering 
 - **URL**: `/lan-tournaments/tournaments/<tournament_id>/start`
 - **Method**: POST
 - **Permission**: `lan_tournament.administrate`
-- **Description**: Changes status to ONGOING, tournament is now active
+- **Form Fields**: `confirm_generated_layout` (optional; required when the seeding board changed after the bracket was generated, so the start uses the generated layout)
+- **Description**: Changes status to ONGOING, tournament is now active. A tournament without a seeding draft (generated before the seeding board existed) starts without a confirmation
 
 #### Pause Tournament
 - **URL**: `/lan-tournaments/tournaments/<tournament_id>/pause`
@@ -156,8 +157,88 @@ This guide documents all available URLs for the LAN Tournament module, covering 
 - **URL**: `/lan-tournaments/tournaments/<tournament_id>/generate_bracket`
 - **Method**: POST
 - **Permission**: `lan_tournament.administrate`
-- **Description**: Generates single-elimination bracket with matches based on registered contestants
+- **Description**: Generates nothing. Redirects to the seeding board (`.../seeding`); generation runs from the seeding draft only (see Seeding and Playoffs (Admin))
 - **Example**: `/lan-tournaments/tournaments/01234567-89ab-cdef-0123-456789abcdef/generate_bracket`
+
+### Seeding and Playoffs (Admin)
+
+All routes: `lan_tournament.administrate`. A seeding target is `initial` (default), `playoff` (the playoff draft) or `ffa:<SE|WB|LB>:<round>` (a later FFA round). A seeding write carries the `version` it was made against; a stale version is answered with 409. A request that sends `Accept: application/json` gets JSON (`board` or `qualification`, errors as `{error}`), any other request flashes and redirects.
+
+#### Seeding Board
+- **URL**: `/lan-tournaments/tournaments/<tournament_id>/seeding`
+- **Method**: GET
+- **Query**: `target` (default `initial`)
+- **Description**: Shows the seeding draft: seed code, roster, problems, orga actions and the audit entries (`seeding-*`, `bracket-*`, `qualification-*`, `playoffs-*`). The initial board opens once registration is closed and stays readable after the start
+- **Example**: `/lan-tournaments/tournaments/01234567-89ab-cdef-0123-456789abcdef/seeding?target=playoff`
+
+#### Seeding Action
+- **URL**: `/lan-tournaments/tournaments/<tournament_id>/seeding/actions`
+- **Method**: POST
+- **Form Fields**: `version`, `target`, `action` and its arguments:
+  - `swap`: `p`, `q` (positions)
+  - `move_tier`: `contestant_id`, `tier`, optional `ref_id`, `after` (FFA only)
+  - `set_tier_count`: `n` (2 to 4, FFA only)
+  - `replay`: `code` (a seed code of the same mode)
+  - `redraw`, `reset_fixes`, `reseed_keep_tiers`, `separate`: no arguments
+- **Description**: Applies one orga action to the draft and answers with the new board. A malformed request is 422, a stale `version` 409
+
+#### Generate From Seeding
+- **URL**: `/lan-tournaments/tournaments/<tournament_id>/seeding/generate`
+- **Method**: POST
+- **Form Fields**: `version`, `target`
+- **Description**: Generates the bracket, the groups or the lobbies from the draft. The only entry for initial generation, for regenerating the playoffs after their release and for creating a later FFA round. Refused while the draft has problems or is stale. Consumes the draft version: a second submit with the same version is refused with the flash 'changed by another orga'. When the matches already follow the current code, nothing is regenerated (notice flash)
+
+#### Qualification
+- **URL**: `/lan-tournaments/tournaments/<tournament_id>/qualification`
+- **Method**: GET
+- **Description**: Shows who qualifies for the playoffs (group standings or leaderboard), the ties that block the release, the playoff draft and the release controls
+
+#### Qualification: Playoff Draft Action
+- **URL**: `/lan-tournaments/tournaments/<tournament_id>/qualification/draft`
+- **Method**: POST
+- **Form Fields**: same as Seeding Action; the target is always `playoff`
+- **Description**: Applies one seeding action to the playoff draft
+
+#### Qualification: Create Playoff Draft
+- **URL**: `/lan-tournaments/tournaments/<tournament_id>/qualification/draft/create`
+- **Method**: POST
+- **Permission**: `lan_tournament.administrate`
+- **Description**: Creates the prefilled playoff draft once the qualification is ready and none exists. Logs `seeding-drawn` with the acting user
+
+#### Qualification: Decisions
+- **URL**: `/lan-tournaments/tournaments/<tournament_id>/qualification/decisions`
+- **Method**: POST
+- **Form Fields**: `scope` (a group, or `ffa:<pool>:<round>:<n>`), `action` (`save` or `withdraw`), `order` (repeated, the decided order; `save` only), `reason`, `back` (FFA scopes only: `bracket` or `ffa_standings`, the page the decision returns to; anything else returns to the bracket)
+- **Description**: Saves or withdraws an orga decision on a tie. Locked after the release, except for FFA scopes
+
+#### Qualification: Release
+- **URL**: `/lan-tournaments/tournaments/<tournament_id>/qualification/release`
+- **Method**: POST
+- **Form Fields**: `version` (of the playoff draft)
+- **Description**: Generates the playoff phase from the playoff draft. Refused while a tie blocks the qualification
+
+#### Qualification: Unrelease
+- **URL**: `/lan-tournaments/tournaments/<tournament_id>/qualification/unrelease`
+- **Method**: POST
+- **Form Fields**: `reason`
+- **Description**: Takes the release back and removes the playoff matches. Refused once a playoff match has a result
+
+#### Close Leaderboard
+- **URL**: `/lan-tournaments/tournaments/<tournament_id>/leaderboard/close`
+- **Method**: POST
+- **Description**: Ends the score phase of a highscore tournament, so its qualification can be decided
+
+#### Advance FFA Round (Draft)
+- **URL**: `/lan-tournaments/tournaments/<tournament_id>/advance_ffa_round`
+- **Method**: POST
+- **Form Fields**: `pool` (`WB` or `LB`, double elimination only)
+- **Description**: Drafts the next FFA round and redirects to its seeding board (`.../seeding?target=ffa:...`); the lobbies are generated from the draft, never here. Works for FFA tournaments and for an FFA playoff phase
+
+#### Generate FFA Grand Final
+- **URL**: `/lan-tournaments/tournaments/<tournament_id>/generate_ffa_grand_final`
+- **Method**: POST
+- **Permission**: `lan_tournament.administrate`
+- **Description**: Generates the grand final lobby of a double-elimination FFA phase (FFA tournament or HS->FFA playoffs) once the service gate allows it; audited as `bracket-generated`
 
 ### Team Management (Admin)
 
@@ -428,6 +509,25 @@ This guide documents all available URLs for the LAN Tournament module, covering 
 - **Description**: Displays tournament bracket visualization for public viewing
 - **Example**: `/lan-tournaments/01234567-89ab-cdef-0123-456789abcdef/bracket`
 
+### Orga Seeding and Playoffs (Site)
+
+Tournament orgas (and global administrators) run the seeding flow on the site. All routes need `@login_required` and `@scoped_orga_required`; the behaviour, form fields, JSON answers and status codes match the admin routes of the same name (see Seeding and Playoffs (Admin)).
+
+| Route | Method | Admin counterpart |
+|-------|--------|-------------------|
+| `/lan-tournaments/orga/tournaments/<tournament_id>/seeding` | GET | Seeding Board |
+| `/lan-tournaments/orga/tournaments/<tournament_id>/seeding/actions` | POST | Seeding Action |
+| `/lan-tournaments/orga/tournaments/<tournament_id>/seeding/generate` | POST | Generate From Seeding |
+| `/lan-tournaments/orga/tournaments/<tournament_id>/qualification` | GET | Qualification |
+| `/lan-tournaments/orga/tournaments/<tournament_id>/qualification/draft` | POST | Playoff Draft Action |
+| `/lan-tournaments/orga/tournaments/<tournament_id>/qualification/draft/create` | POST | Create Playoff Draft |
+| `/lan-tournaments/orga/tournaments/<tournament_id>/qualification/decisions` | POST | Decisions |
+| `/lan-tournaments/orga/tournaments/<tournament_id>/qualification/release` | POST | Release |
+| `/lan-tournaments/orga/tournaments/<tournament_id>/qualification/unrelease` | POST | Unrelease |
+| `/lan-tournaments/orga/tournaments/<tournament_id>/leaderboard/close` | POST | Close Leaderboard |
+| `/lan-tournaments/orga/tournaments/<tournament_id>/advance_ffa_round` | POST | Advance FFA Round (Draft) |
+| `/lan-tournaments/orga/tournaments/<tournament_id>/generate_ffa_grand_final` | POST | Generate FFA Grand Final |
+
 ---
 
 ## API Endpoints
@@ -471,7 +571,7 @@ Currently, there are no dedicated REST API endpoints. All interactions happen th
 3. (Optional) Add participants manually → `/lan-tournaments/tournaments/<tournament_id>/participants/add`
 4. Close registration → `/lan-tournaments/tournaments/<tournament_id>/close_registration`
 5. (Optional) Add late participants → `/lan-tournaments/tournaments/<tournament_id>/participants/add` (works after registration closes)
-6. Generate bracket → `/lan-tournaments/tournaments/<tournament_id>/generate_bracket`
+6. Seed and generate → `/lan-tournaments/tournaments/<tournament_id>/seeding` (then `/seeding/generate`; with playoffs: `/qualification`, then release)
 7. Start tournament → `/lan-tournaments/tournaments/<tournament_id>/start`
 8. Manage matches → `/lan-tournaments/matches/<match_id>`
 9. Complete tournament → `/lan-tournaments/tournaments/<tournament_id>/complete`

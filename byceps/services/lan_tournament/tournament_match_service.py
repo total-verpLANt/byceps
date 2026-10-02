@@ -1,6 +1,7 @@
 import logging
-from collections.abc import Callable, Collection, Iterable
-from dataclasses import replace
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
+from dataclasses import dataclass, replace
+from functools import cache, partial
 from datetime import UTC, datetime
 from typing import NamedTuple
 from uuid import UUID
@@ -9,7 +10,12 @@ from byceps.services.user.models import UserID
 from byceps.util.result import Err, Ok, Result
 from byceps.util.uuid import generate_uuid7
 
-from . import tournament_repository
+from . import (
+    tournament_qualification_domain_service as qualification_domain,
+    tournament_qualification_repository,
+    tournament_repository,
+    tournament_seeding_repository,
+)
 from .events import (
     ContestantAdvancedEvent,
     MatchConfirmedEvent,
@@ -39,7 +45,6 @@ from .models.tournament_match_to_contestant import (
     TournamentMatchToContestantID,
 )
 from .models.tournament_participant import TournamentParticipantID
-from .models.tournament_seed import TournamentSeed
 from .models.tournament_team import TournamentTeamID
 from .models.tournament_status import TournamentStatus
 from .signals import (
@@ -54,6 +59,7 @@ from .signals import (
 )
 from .models.contestant_type import ContestantType
 from .tournament_domain_service import (
+    FFA_CUT_REQUIRED_MSGID,
     contestant_id,
     compute_ffa_cumulative_standings,
     derive_contestant_type,
@@ -61,15 +67,60 @@ from .tournament_domain_service import (
     generate_round_robin_schedule,
     map_placement_to_points,
     snake_seed_groups,
+    elimination_mode_for_phase,
+    game_format_for_phase,
 )
 from .tournament_log_service import create_log_entry
+from .models.seeding import SeedingFormat
+from .tournament_seeding_domain_service import (
+    derive_layout,
+    group_sizes as seeding_group_sizes,
+)
 
 logger = logging.getLogger(__name__)
+
+WINNER_SCOPE = 'winner'
 
 
 MAX_MATCH_SCORE = 999_999_999
 
 # Keep this a static msgid; the views translate it.
+QUALIFICATION_TIE_ERROR = (
+    'Qualification cannot be determined automatically because of a tie. '
+    'An orga decision is required.'
+)
+
+# Keep this a static msgid; the views translate it.
+PLAYOFF_ROUNDS_FROM_DRAFT_ERROR = (
+    'Playoff rounds are generated from the seeding draft.'
+)
+
+FFA_GRAND_FINAL_ERROR = 'The grand final is next. Generate it instead.'
+FFA_ROUND_LOCKED_ERROR = (
+    'A match of this round already has a result. Its seeding is locked.'
+)
+
+FFA_UNTAGGED_WB_ERROR = (
+    'This winners round was not made from a seeding. Its seeding is locked.'
+)
+
+# Keep this a static msgid; the views translate it without parameters.
+FFA_LOBBY_BELOW_MINIMUM_ERROR = (
+    'A lobby has fewer contestants than the minimum group size.'
+)
+FFA_TEAM_LIMIT_BELOW_LOBBY_MIN_ERROR = (
+    'The maximum number of teams is below the minimum lobby size.'
+)
+
+# Keep this a static msgid; the views translate it without parameters.
+FFA_LONE_SURVIVOR_ERROR = (
+    'Only one contestant is left in the losers pool. They get a bye and'
+    ' join the next losers round.'
+)
+
+# The seeding codec stores the lobby size in one byte.
+_FFA_LOBBY_PARAM_MAX = 255
+
 MAX_MATCH_SCORE_ERROR = 'Score cannot exceed 999,999,999.'
 
 # A STATIC msgid, for the same reason as MAX_MATCH_SCORE_ERROR above.
@@ -84,8 +135,13 @@ PLACEMENT_FORMAT_CORRECTION_ERROR = (
 )
 
 
-def _decided_by_placements(tournament: Tournament) -> bool:
+def _decided_by_placements(
+    tournament: Tournament, match: TournamentMatch | None = None
+) -> bool:
     """Return `True` if the tournament's matches are decided by placement.
+
+    With a *match* of a playoff tournament the answer is that phase's
+    game format, so a phase-2 lobby of a highscore tournament counts.
 
     The predicate the views spell as ``is_ffa_tournament``. It lives
     here too because the format split has to be enforced in the
@@ -103,10 +159,92 @@ def _decided_by_placements(tournament: Tournament) -> bool:
     the source of truth for what "decided by placements" means --
     this only refuses to answer for something that is not one.
     """
-    return (
-        isinstance(tournament.game_format, GameFormat)
-        and tournament.game_format.uses_placements
+    game_format = tournament.game_format
+    if match is not None and _has_playoffs(tournament):
+        game_format = game_format_for_phase(tournament, match.phase)
+    return isinstance(game_format, GameFormat) and game_format.uses_placements
+
+
+def _has_playoffs(tournament: Tournament) -> bool:
+    """Return `True` if the tournament has a playoff phase.
+
+    The identity test keeps Mock tournaments (truthy attributes) on
+    the phase-less path, as `_decided_by_placements` does.
+    """
+    return tournament.has_playoffs is True
+
+
+def _ffa_phase(tournament: Tournament) -> int | None:
+    """Return the phase that runs free-for-all lobbies, or `None`.
+
+    1 for a free-for-all tournament, 2 for a highscore tournament whose
+    playoffs are free-for-all. Phase 1 of the latter is the leaderboard.
+    """
+    if tournament.game_format == GameFormat.FREE_FOR_ALL:
+        return 1
+    if (
+        _has_playoffs(tournament)
+        and tournament.game_format == GameFormat.HIGHSCORE
+        and tournament.playoff_game_format == GameFormat.FREE_FOR_ALL
+    ):
+        return 2
+    return None
+
+
+def _ffa_elimination_mode(tournament: Tournament) -> EliminationMode | None:
+    """Return the elimination mode of the phase that runs the lobbies."""
+    phase = _ffa_phase(tournament)
+    if phase is None:
+        return None
+    return elimination_mode_for_phase(tournament, phase)
+
+
+PHASE1_LOCKED_ERROR = (
+    'The playoffs are released. Group results are locked. '
+    'Take the release back first.'
+)
+
+
+def _refuse_phase1_change_after_release(
+    tournament: Tournament, match: TournamentMatch
+) -> Result[None, str]:
+    """Refuse a change to a phase-1 match once the playoffs are released."""
+    if (
+        _has_playoffs(tournament)
+        and tournament.playoff_released_at is not None
+        and match.phase == 1
+    ):
+        return Err(PHASE1_LOCKED_ERROR)
+    return Ok(None)
+
+
+def _try_auto_release(
+    tournament_id: TournamentID, triggered_by: UserID
+) -> None:
+    """Release the playoffs if the committed change made that due.
+
+    A direct call after the commit, not a signal handler. A refusal
+    leaves the tournament as it is: the qualification panel shows why.
+    `triggered_by` is the user whose change may have made it due.
+    """
+    tournament = tournament_repository.get_tournament(tournament_id)
+    if not _has_playoffs(tournament):
+        return
+
+    from . import tournament_qualification_service
+
+    tournament_qualification_service.try_auto_release(
+        tournament_id, triggered_by=triggered_by
     )
+
+
+def _elimination_mode_of(
+    tournament: Tournament, match: TournamentMatch
+) -> EliminationMode | None:
+    """Return the elimination mode that governs the match's phase."""
+    if _has_playoffs(tournament) and match.phase == 2:
+        return elimination_mode_for_phase(tournament, 2)
+    return tournament.elimination_mode
 
 
 class DefwinResult(NamedTuple):
@@ -115,120 +253,6 @@ class DefwinResult(NamedTuple):
     advanced: list[ContestantAdvancedEvent]
     confirmed: list[MatchConfirmedEvent]
     completed: list[TournamentCompletedEvent]
-
-
-def set_seed(
-    seed_list: list[TournamentSeed],
-    tournament_id: TournamentID,
-) -> Result[None, str]:
-    """Set seeding for a tournament."""
-    from uuid import UUID
-
-    from byceps.util.uuid import generate_uuid7
-
-    from . import signals
-    from .events import MatchCreatedEvent
-    from .models.contestant_type import ContestantType
-
-    # Get tournament to check contestant type. A legacy row can still
-    # have a NULL contestant type; derive it from team size in memory
-    # rather than persisting it here (no lock is held in this path).
-    tournament = tournament_repository.get_tournament(tournament_id)
-    contestant_type = derive_contestant_type(
-        tournament.contestant_type,
-        tournament.max_players_in_team,
-        tournament.min_players_in_team,
-    )
-
-    is_team_tournament = contestant_type == ContestantType.TEAM
-
-    now = datetime.now(UTC)
-
-    match_events: list[MatchCreatedEvent] = []
-
-    # Create matches and contestants for each seed
-    for seed in seed_list:
-        # Create the match
-        match_id = TournamentMatchID(generate_uuid7())
-        match = TournamentMatch(
-            id=match_id,
-            tournament_id=tournament_id,
-            group_order=None,
-            match_order=seed.match_order,
-            round=seed.round,
-            next_match_id=None,
-            confirmed_by=None,
-            created_at=now,
-        )
-        tournament_repository.create_match(match)
-
-        match_event = MatchCreatedEvent(
-            occurred_at=now,
-            initiator=None,
-            tournament_id=tournament_id,
-            match_id=match_id,
-        )
-        match_events.append(match_event)
-
-        # Create contestants for entry_a and entry_b
-        # Skip if entry is "DEFWIN"
-        if seed.entry_a.upper() != 'DEFWIN':
-            contestant_a_id = TournamentMatchToContestantID(generate_uuid7())
-            if is_team_tournament:
-                contestant_a = TournamentMatchToContestant(
-                    id=contestant_a_id,
-                    tournament_match_id=match_id,
-                    team_id=TournamentTeamID(UUID(seed.entry_a)),
-                    participant_id=None,
-                    score=None,
-                    created_at=now,
-                )
-            else:
-                contestant_a = TournamentMatchToContestant(
-                    id=contestant_a_id,
-                    tournament_match_id=match_id,
-                    team_id=None,
-                    participant_id=TournamentParticipantID(UUID(seed.entry_a)),
-                    score=None,
-                    created_at=now,
-                )
-            tournament_repository.create_match_contestant(contestant_a)
-
-        if seed.entry_b.upper() != 'DEFWIN':
-            contestant_b_id = TournamentMatchToContestantID(generate_uuid7())
-            if is_team_tournament:
-                contestant_b = TournamentMatchToContestant(
-                    id=contestant_b_id,
-                    tournament_match_id=match_id,
-                    team_id=TournamentTeamID(UUID(seed.entry_b)),
-                    participant_id=None,
-                    score=None,
-                    created_at=now,
-                )
-            else:
-                contestant_b = TournamentMatchToContestant(
-                    id=contestant_b_id,
-                    tournament_match_id=match_id,
-                    team_id=None,
-                    participant_id=TournamentParticipantID(UUID(seed.entry_b)),
-                    score=None,
-                    created_at=now,
-                )
-            tournament_repository.create_match_contestant(contestant_b)
-
-    # Commit entire seeding as a single transaction
-    tournament_repository.commit_session()
-
-    # Dispatch events after successful commit
-    for match_event in match_events:
-        signals.match_created.send(None, event=match_event)
-
-    seeded_match_ids = {e.match_id for e in match_events}
-    ready_events = _collect_ready_match_events(seeded_match_ids, tournament_id, now)
-    for event in ready_events:
-        match_ready.send(None, event=event)
-
-    return Ok(None)
 
 
 def has_matches(tournament_id: TournamentID) -> bool:
@@ -240,10 +264,17 @@ def has_matches(tournament_id: TournamentID) -> bool:
 def clear_bracket(
     tournament_id: TournamentID,
     *,
+    phase: int | None = None,
     initiator_id: UserID | None = None,
 ) -> list[MatchDeletedEvent]:
-    """Delete the bracket (flush only); return the events to dispatch."""
-    matches = tournament_repository.get_matches_for_tournament(tournament_id)
+    """Delete the bracket, or one *phase* of it (flush only).
+
+    Return the events to dispatch.
+    """
+    all_matches = tournament_repository.get_matches_for_tournament(
+        tournament_id
+    )
+    matches = [m for m in all_matches if phase is None or m.phase == phase]
     if not matches:
         return []
 
@@ -256,27 +287,33 @@ def clear_bracket(
     contestants_by_match_id = tournament_repository.get_contestants_for_matches(
         confirmed_ids
     )
+    log_data: dict[str, object] = {
+        'match_count': len(matches),
+        'confirmed_results': {
+            str(match_id): _snapshot_contestant_scores(
+                match_id,
+                contestants=contestants_by_match_id.get(match_id, []),
+            )
+            for match_id in confirmed_ids
+        },
+    }
+    if phase is not None:
+        log_data['phase'] = phase
     create_log_entry(
         'bracket-cleared',
         tournament_id,
         initiator_id,
-        data={
-            'match_count': len(matches),
-            'confirmed_results': {
-                str(match_id): _snapshot_contestant_scores(
-                    match_id,
-                    contestants=contestants_by_match_id.get(match_id, []),
-                )
-                for match_id in confirmed_ids
-            },
-        },
+        data=log_data,
         commit=False,
     )
 
     # NULL out self-referential FKs first to avoid IntegrityError
     # on PostgreSQL (next_match_id / loser_next_match_id point to
-    # sibling rows in the same table).
-    tournament_repository.null_self_referential_fks(tournament_id)
+    # sibling rows in the same table). Phase 1 of a playoff
+    # tournament holds no links, so clearing it must not null the
+    # links of the phase 2 matches that remain.
+    if phase != 1 or len(matches) == len(all_matches):
+        tournament_repository.null_self_referential_fks(tournament_id)
 
     # Delete children (comments, contestants) then matches.
     for match_id in match_ids:
@@ -301,6 +338,8 @@ def _prepare_bracket_generation(
     *,
     initiator_id: UserID | None = None,
     check: Callable[[Tournament, list[str]], Result[None, str]] | None = None,
+    phase: int = 1,
+    roster: Sequence[str] | None = None,
 ) -> Result[tuple[Tournament, list[str], list[MatchDeletedEvent]], str]:
     """Shared preamble for bracket generation functions.
 
@@ -308,6 +347,9 @@ def _prepare_bracket_generation(
     contestant IDs, checks minimum count and the generator's own
     *check*, and only then clears existing matches when
     *force_regenerate* is set (flush only).
+
+    Phase 2 generates for the given *roster* (the qualifiers) and
+    only ever sees and clears phase-2 matches.
 
     Returns ``Ok((tournament, contestant_ids, deleted_events))``
     on success or ``Err(reason)`` on failure.
@@ -318,7 +360,15 @@ def _prepare_bracket_generation(
     tournament_repository.lock_tournament_for_update(tournament_id)
 
     # Check if matches already exist (atomic with lock).
-    had_matches = has_matches(tournament_id)
+    if phase == 2:
+        had_matches = any(
+            m.phase == 2
+            for m in tournament_repository.get_matches_for_tournament(
+                tournament_id
+            )
+        )
+    else:
+        had_matches = has_matches(tournament_id)
     if had_matches and not force_regenerate:
         return Err(
             'Tournament already has matches.'
@@ -341,7 +391,9 @@ def _prepare_bracket_generation(
     )
 
     # Get contestants (participants or teams).
-    if tournament.contestant_type == ContestantType.TEAM:
+    if roster is not None:
+        contestant_ids = list(roster)
+    elif tournament.contestant_type == ContestantType.TEAM:
         teams = tournament_repository.get_teams_for_tournament(tournament_id)
         member_counts = tournament_repository.get_team_member_counts(tournament_id)
         empty_teams = [t for t in teams if member_counts.get(t.id, 0) == 0]
@@ -369,7 +421,11 @@ def _prepare_bracket_generation(
     # Clear last, so a refused regeneration keeps the old bracket.
     deleted_events: list[MatchDeletedEvent] = []
     if force_regenerate and had_matches:
-        deleted_events = clear_bracket(tournament_id, initiator_id=initiator_id)
+        deleted_events = clear_bracket(
+            tournament_id,
+            phase=2 if phase == 2 else None,
+            initiator_id=initiator_id,
+        )
 
     return Ok((tournament, contestant_ids, deleted_events))
 
@@ -377,6 +433,7 @@ def _prepare_bracket_generation(
 def _check_double_elimination(
     tournament: Tournament,
     contestant_ids: list[str],
+    phase: int = 1,
 ) -> Result[None, str]:
     """Check the preconditions a double-elimination bracket adds."""
     if len(contestant_ids) < 4:
@@ -384,10 +441,82 @@ def _check_double_elimination(
             'Need at least 4 contestants for double-elimination bracket.'
         )
 
-    if tournament.elimination_mode != EliminationMode.DOUBLE_ELIMINATION:
+    mode = (
+        elimination_mode_for_phase(tournament, 2)
+        if phase == 2
+        else tournament.elimination_mode
+    )
+    if mode != EliminationMode.DOUBLE_ELIMINATION:
         return Err('Tournament elimination mode must be DOUBLE_ELIMINATION.')
 
     return Ok(None)
+
+
+LAYOUT_ROSTER_ERROR = 'The seeding does not match the roster.'
+
+
+@dataclass(frozen=True)
+class GenerationOutcome:
+    """What a flush-only generator created, for post-commit dispatch.
+
+    `unchanged`: nothing was generated, the matches already follow the code.
+    """
+
+    count: int
+    created_events: list[MatchCreatedEvent]
+    deleted_events: list[MatchDeletedEvent]
+    ready_match_ids: frozenset[TournamentMatchID]
+    occurred_at: datetime
+    completed_event: TournamentCompletedEvent | None = None
+    unchanged: bool = False
+
+
+def dispatch_generation_events(
+    tournament_id: TournamentID, outcome: GenerationOutcome
+) -> None:
+    """Send deleted, created and ready signals; call only after the commit."""
+    from . import signals
+
+    for deleted in outcome.deleted_events:
+        signals.match_deleted.send(None, event=deleted)
+    for created in outcome.created_events:
+        signals.match_created.send(None, event=created)
+
+    ready_events = _collect_ready_match_events(
+        set(outcome.ready_match_ids), tournament_id, outcome.occurred_at
+    )
+    for ready in ready_events:
+        match_ready.send(None, event=ready)
+    if outcome.completed_event is not None:
+        tournament_completed.send(None, event=outcome.completed_event)
+
+
+def _check_elimination_layout(
+    layout: Sequence[str | None],
+    also: Callable[[Tournament, list[str]], Result[None, str]] | None = None,
+) -> Callable[[Tournament, list[str]], Result[None, str]]:
+    """Return a preamble check that the layout fits the bracket and roster."""
+    import math
+
+    def check(
+        tournament: Tournament, contestant_ids: list[str]
+    ) -> Result[None, str]:
+        if also is not None:
+            also_result = also(tournament, contestant_ids)
+            if also_result.is_err():
+                return also_result
+
+        bracket_size = 2 ** math.ceil(math.log2(len(contestant_ids)))
+        placed = [cid for cid in layout if cid is not None]
+        if (
+            len(layout) != bracket_size
+            or len(placed) != len(set(placed))
+            or set(placed) != set(contestant_ids)
+        ):
+            return Err(LAYOUT_ROSTER_ERROR)
+        return Ok(None)
+
+    return check
 
 
 def generate_single_elimination_bracket(
@@ -397,20 +526,54 @@ def generate_single_elimination_bracket(
     initiator_id: UserID | None = None,
 ) -> Result[int, str]:
     """Generate single elimination bracket with all rounds."""
+    result = _generate_single_elimination_impl(
+        tournament_id, force_regenerate, initiator_id=initiator_id
+    )
+    if result.is_err():
+        return Err(result.unwrap_err())
+
+    outcome = result.unwrap()
+    tournament_repository.commit_session()
+    dispatch_generation_events(tournament_id, outcome)
+    return Ok(outcome.count)
+
+
+def _generate_single_elimination_impl(
+    tournament_id: TournamentID,
+    force_regenerate: bool = False,
+    *,
+    layout: Sequence[str | None] | None = None,
+    initiator_id: UserID | None = None,
+    phase: int = 1,
+    roster: Sequence[str] | None = None,
+    seeding_target: str | None = None,
+) -> Result[GenerationOutcome, str]:
+    """Generate single elimination bracket without committing.
+
+    *layout* lists the contestant (or `None` for a bye) of every
+    first-round slot; by default it is derived from the standard
+    seed order over the roster. *phase* 2 builds the playoffs for
+    the qualifiers in *roster*. The caller owns commit and dispatch.
+    """
     import math
     from uuid import UUID
 
     from byceps.util.uuid import generate_uuid7
 
-    from . import signals
-    from .events import MatchCreatedEvent
     from .models.bracket import Bracket
     from .models.contestant_type import ContestantType
     from .tournament_domain_service import _standard_seed_order
 
     # Shared preamble: lock, validate, fetch contestants.
     prep_result = _prepare_bracket_generation(
-        tournament_id, force_regenerate, initiator_id=initiator_id
+        tournament_id,
+        force_regenerate,
+        initiator_id=initiator_id,
+        check=(
+            _check_elimination_layout(layout) if layout is not None else None
+        ),
+        phase=phase,
+        roster=roster,
     )
     if prep_result.is_err():
         return Err(prep_result.unwrap_err())
@@ -444,6 +607,8 @@ def generate_single_elimination_bracket(
             loser_next_match_id=None,
             confirmed_by=None,
             created_at=now,
+            phase=phase,
+            seeding_target=seeding_target,
         )
         tournament_repository.create_match(p3_match)
         match_events.append(
@@ -487,6 +652,8 @@ def generate_single_elimination_bracket(
                 loser_next_match_id=loser_target,
                 confirmed_by=None,
                 created_at=now,
+                phase=phase,
+                seeding_target=seeding_target,
             )
             tournament_repository.create_match(match)
             rounds_matches[r].append(match_id)
@@ -500,19 +667,17 @@ def generate_single_elimination_bracket(
                 )
             )
 
-    # Seed round 0 using standard seed order
-    seed_order = _standard_seed_order(bracket_size)
-
-    # Pad contestant list with None for DEFWINs
-    padded: list[str | None] = list(contestant_ids) + [None] * (
-        bracket_size - num_contestants
-    )
+    if layout is None:
+        # Seed round 0 using standard seed order, padded with None for DEFWINs.
+        padded: list[str | None] = list(contestant_ids) + [None] * (
+            bracket_size - num_contestants
+        )
+        layout = [padded[s] for s in _standard_seed_order(bracket_size)]
 
     # Place contestants into round 0 matches
-    for slot_idx, seed_pos in enumerate(seed_order):
+    for slot_idx, cid in enumerate(layout):
         match_idx = slot_idx // 2
         match_id = rounds_matches[0][match_idx]
-        cid = padded[seed_pos]
 
         if cid is None:
             continue  # DEFWIN — no contestant to place
@@ -562,28 +727,24 @@ def generate_single_elimination_bracket(
                     match_id, initiator_id
                 )
 
-    # Single transaction commit
-    tournament_repository.commit_session()
-
-    # Dispatch events after successful commit
-    for event in deleted_events:
-        signals.match_deleted.send(None, event=event)
-    for event in match_events:
-        signals.match_created.send(None, event=event)
-
-    all_match_ids = set()
+    all_match_ids: set[TournamentMatchID] = set()
     for round_matches in rounds_matches:
         all_match_ids.update(round_matches)
     if p3_id is not None:
         all_match_ids.add(p3_id)
-    ready_events = _collect_ready_match_events(all_match_ids, tournament_id, now)
-    for event in ready_events:
-        match_ready.send(None, event=event)
 
     total_matches = bracket_size - 1
     if p3_id is not None:
         total_matches += 1
-    return Ok(total_matches)
+    return Ok(
+        GenerationOutcome(
+            count=total_matches,
+            created_events=match_events,
+            deleted_events=deleted_events,
+            ready_match_ids=frozenset(all_match_ids),
+            occurred_at=now,
+        )
+    )
 
 
 def generate_double_elimination_bracket(
@@ -595,21 +756,59 @@ def generate_double_elimination_bracket(
     """Generate double elimination bracket with WB, LB, and
     GF.  The Grand Final is the terminal match.
     """
+    result = _generate_double_elimination_impl(
+        tournament_id, force_regenerate, initiator_id=initiator_id
+    )
+    if result.is_err():
+        return Err(result.unwrap_err())
+
+    outcome = result.unwrap()
+    tournament_repository.commit_session()
+    dispatch_generation_events(tournament_id, outcome)
+    return Ok(outcome.count)
+
+
+def _generate_double_elimination_impl(
+    tournament_id: TournamentID,
+    force_regenerate: bool = False,
+    *,
+    layout: Sequence[str | None] | None = None,
+    initiator_id: UserID | None = None,
+    phase: int = 1,
+    roster: Sequence[str] | None = None,
+    seeding_target: str | None = None,
+) -> Result[GenerationOutcome, str]:
+    """Generate double elimination bracket without committing.
+
+    *layout*, *phase* and *roster* are as for
+    `_generate_single_elimination_impl`, the layout for the first
+    winners-bracket round. The caller owns commit and dispatch.
+    """
     import math
     from uuid import UUID
 
-    from . import signals
-    from .events import MatchCreatedEvent
     from .models.bracket import Bracket
     from .models.contestant_type import ContestantType
     from .tournament_domain_service import _standard_seed_order
+
+    check_de = (
+        _check_double_elimination
+        if phase == 1
+        else partial(_check_double_elimination, phase=phase)
+    )
 
     # Shared preamble: lock, validate, fetch contestants.
     prep_result = _prepare_bracket_generation(
         tournament_id,
         force_regenerate,
         initiator_id=initiator_id,
-        check=_check_double_elimination,
+        check=(
+            _check_elimination_layout(layout, also=check_de)
+            if layout is not None
+            else check_de
+        ),
+        phase=phase,
+        roster=roster,
     )
     if prep_result.is_err():
         return Err(prep_result.unwrap_err())
@@ -689,6 +888,8 @@ def generate_double_elimination_bracket(
         loser_next_match_id=None,
         confirmed_by=None,
         created_at=now,
+        phase=phase,
+        seeding_target=seeding_target,
     )
     tournament_repository.create_match(gf_match)
     match_events.append(
@@ -719,6 +920,8 @@ def generate_double_elimination_bracket(
                 loser_next_match_id=None,
                 confirmed_by=None,
                 created_at=now,
+                phase=phase,
+                seeding_target=seeding_target,
             )
             tournament_repository.create_match(match)
 
@@ -756,6 +959,8 @@ def generate_double_elimination_bracket(
                 loser_next_match_id=loser_mid,
                 confirmed_by=None,
                 created_at=now,
+                phase=phase,
+                seeding_target=seeding_target,
             )
             tournament_repository.create_match(match)
 
@@ -769,15 +974,15 @@ def generate_double_elimination_bracket(
             )
 
     # ---- Seed WBR0 ----
-    seed_order = _standard_seed_order(bracket_size)
-    padded: list[str | None] = list(contestant_ids) + [None] * (
-        bracket_size - num_contestants
-    )
+    if layout is None:
+        padded: list[str | None] = list(contestant_ids) + [None] * (
+            bracket_size - num_contestants
+        )
+        layout = [padded[s] for s in _standard_seed_order(bracket_size)]
 
-    for slot_idx, seed_pos in enumerate(seed_order):
+    for slot_idx, cid in enumerate(layout):
         match_idx = slot_idx // 2
         match_id = wb_ids[0][match_idx]
-        cid = padded[seed_pos]
 
         if cid is None:
             continue  # DEFWIN slot
@@ -841,27 +1046,23 @@ def generate_double_elimination_bracket(
     # expect phantom feeders.
     _propagate_dead_lb_matches(lb_ids, lb_rounds)
 
-    # Single transaction commit.
-    tournament_repository.commit_session()
-
-    # Dispatch events after successful commit.
-    for event in deleted_events:
-        signals.match_deleted.send(None, event=event)
-    for event in match_events:
-        signals.match_created.send(None, event=event)
-
-    all_match_ids = set()
+    all_match_ids: set[TournamentMatchID] = set()
     for round_matches in wb_ids:
         all_match_ids.update(round_matches)
     for round_matches in lb_ids:
         all_match_ids.update(round_matches)
     if gf_id:
         all_match_ids.add(gf_id)
-    ready_events = _collect_ready_match_events(all_match_ids, tournament_id, now)
-    for event in ready_events:
-        match_ready.send(None, event=event)
 
-    return Ok(len(match_events))
+    return Ok(
+        GenerationOutcome(
+            count=len(match_events),
+            created_events=match_events,
+            deleted_events=deleted_events,
+            ready_match_ids=frozenset(all_match_ids),
+            occurred_at=now,
+        )
+    )
 
 
 def _propagate_dead_lb_matches(
@@ -899,11 +1100,19 @@ def validate_bracket_for_start(
     if tournament is None:
         tournament = tournament_repository.get_tournament(tournament_id)
 
+    if tournament.game_format == GameFormat.FREE_FOR_ALL:
+        # FFA generates its rounds on the fly, but round 1 must exist.
+        if not tournament_repository.get_matches_for_tournament_ordered(
+            tournament_id
+        ):
+            return ['no matches generated']
+        return []
+
     if not (
         tournament.game_format
         and tournament.game_format.requires_bracket_generation
     ):
-        # FFA / HIGHSCORE bypass bracket generation.
+        # HIGHSCORE bypasses bracket generation.
         return []
 
     matches = tournament_repository.get_matches_for_tournament_ordered(
@@ -918,8 +1127,10 @@ def validate_bracket_for_start(
     if tournament.elimination_mode == EliminationMode.DOUBLE_ELIMINATION:
         return _validate_de_bracket(matches, contestants_by_match)
     if tournament.elimination_mode == EliminationMode.ROUND_ROBIN:
+        phase_one = [m for m in matches if m.phase == 1]
         return _validate_round_robin_bracket(
-            matches, contestants_by_match
+            phase_one,
+            {m.id: contestants_by_match.get(m.id, []) for m in phase_one},
         )
 
     # An unset or invalid elimination mode must not pass as valid.
@@ -1116,10 +1327,16 @@ def _validate_round_robin_bracket(
         TournamentMatchID, list[TournamentMatchToContestant]
     ],
 ) -> list[str]:
-    """Validate a round-robin bracket against itself, not the roster."""
+    """Validate a round-robin bracket against itself, not the roster.
+
+    Matches that carry a `group_order` are checked per group.
+    """
     violations = []
     if not matches:
         return ['no matches generated']
+
+    if any(m.group_order is not None for m in matches):
+        return _validate_round_robin_groups(matches, contestants_by_match)
 
     contestant_count = _distinct_contestant_count(contestants_by_match)
     if contestant_count < 2:
@@ -1137,6 +1354,41 @@ def _validate_round_robin_bracket(
     return violations
 
 
+def _validate_round_robin_groups(
+    matches: list[TournamentMatch],
+    contestants_by_match: dict[
+        TournamentMatchID, list[TournamentMatchToContestant]
+    ],
+) -> list[str]:
+    """Return the violations of each round-robin group, k(k-1)/2 apiece."""
+    violations = []
+    group_orders = sorted(
+        {m.group_order for m in matches if m.group_order is not None}
+    )
+    if any(m.group_order is None for m in matches):
+        violations.append('round-robin match without a group')
+
+    for group_order in group_orders:
+        group_matches = [m for m in matches if m.group_order == group_order]
+        group_contestants = {
+            m.id: contestants_by_match.get(m.id, []) for m in group_matches
+        }
+        count = _distinct_contestant_count(group_contestants)
+        if count < 2:
+            violations.append(
+                f'group {group_order}: expected at least 2 contestants, '
+                f'found {count}'
+            )
+        expected = count * (count - 1) // 2
+        if len(group_matches) != expected:
+            violations.append(
+                f'group {group_order}: expected {expected} round-robin '
+                f'matches, found {len(group_matches)}'
+            )
+
+    return violations
+
+
 def generate_round_robin_bracket(
     tournament_id: TournamentID,
     force_regenerate: bool = False,
@@ -1144,94 +1396,175 @@ def generate_round_robin_bracket(
     initiator_id: UserID | None = None,
 ) -> Result[int, str]:
     """Generate round-robin bracket with all pairings."""
+    result = _generate_round_robin_impl(
+        tournament_id, force_regenerate, initiator_id=initiator_id
+    )
+    if result.is_err():
+        return Err(result.unwrap_err())
+
+    outcome = result.unwrap()
+    tournament_repository.commit_session()
+    dispatch_generation_events(tournament_id, outcome)
+    return Ok(outcome.count)
+
+
+def _check_round_robin_groups(
+    seed_list: Sequence[str], group_sizes: Sequence[int]
+) -> Callable[[Tournament, list[str]], Result[None, str]]:
+    """Return a preamble check that the groups partition the roster."""
+
+    def check(
+        tournament: Tournament, contestant_ids: list[str]
+    ) -> Result[None, str]:
+        if (
+            sum(group_sizes) != len(seed_list)
+            or min(group_sizes, default=0) < 2
+            or len(set(seed_list)) != len(seed_list)
+            or set(seed_list) != set(contestant_ids)
+        ):
+            return Err(LAYOUT_ROSTER_ERROR)
+        return Ok(None)
+
+    return check
+
+
+def _generate_round_robin_impl(
+    tournament_id: TournamentID,
+    force_regenerate: bool = False,
+    *,
+    seed_list: Sequence[str] | None = None,
+    group_sizes: Sequence[int] | None = None,
+    initiator_id: UserID | None = None,
+    seeding_target: str | None = None,
+) -> Result[GenerationOutcome, str]:
+    """Generate round-robin pairings without committing.
+
+    *seed_list* is cut into consecutive groups of *group_sizes*; each
+    group plays its own schedule and its matches carry the group index
+    as `group_order`. Without them, the whole roster is one group with
+    no `group_order`. The caller owns commit and dispatch.
+    """
     from uuid import UUID
 
     from byceps.util.uuid import generate_uuid7
 
-    from . import signals
-    from .events import MatchCreatedEvent
     from .models.contestant_type import ContestantType
+
+    if (seed_list is None) != (group_sizes is None):
+        raise ValueError('seed_list and group_sizes go together')
 
     # Shared preamble: lock, validate, fetch contestants.
     prep_result = _prepare_bracket_generation(
-        tournament_id, force_regenerate, initiator_id=initiator_id
+        tournament_id,
+        force_regenerate,
+        initiator_id=initiator_id,
+        check=(
+            _check_round_robin_groups(seed_list, group_sizes)
+            if seed_list is not None and group_sizes is not None
+            else None
+        ),
     )
     if prep_result.is_err():
         return Err(prep_result.unwrap_err())
 
     tournament, contestant_ids, deleted_events = prep_result.unwrap()
 
-    # Generate round-robin schedule via domain service.
-    schedule = generate_round_robin_schedule(contestant_ids)
+    if seed_list is None and tournament.playoff_group_count:
+        # Playoff tournaments always play in groups: snake-seed the roster.
+        group_sizes = seeding_group_sizes(
+            SeedingFormat.ROUND_ROBIN,
+            len(contestant_ids),
+            tournament.playoff_group_count,
+        )
+        seed_list = [
+            cid
+            for cid in derive_layout(
+                SeedingFormat.ROUND_ROBIN,
+                contestant_ids,
+                tournament.playoff_group_count,
+            )
+            if cid is not None
+        ]
+
+    groups: list[list[str]] = []
+    if seed_list is not None and group_sizes is not None:
+        start = 0
+        for size in group_sizes:
+            groups.append(list(seed_list[start : start + size]))
+            start += size
+    else:
+        groups.append(list(contestant_ids))
+    has_groups = group_sizes is not None
 
     is_team = tournament.contestant_type == ContestantType.TEAM
     now = datetime.now(UTC)
     match_events: list[MatchCreatedEvent] = []
     total_matches = 0
 
-    for round_num, round_pairings in enumerate(schedule):
-        for match_idx, (p1, p2) in enumerate(round_pairings):
-            match_id = TournamentMatchID(generate_uuid7())
-            match = TournamentMatch(
-                id=match_id,
-                tournament_id=tournament_id,
-                group_order=None,
-                match_order=match_idx,
-                round=round_num,
-                next_match_id=None,
-                confirmed_by=None,
-                created_at=now,
-            )
-            tournament_repository.create_match(match)
+    for group_idx, group in enumerate(groups):
+        # Generate round-robin schedule via domain service.
+        schedule = generate_round_robin_schedule(sorted(group))
 
-            # Create contestants for both sides.
-            for cid in (p1, p2):
-                c_id = TournamentMatchToContestantID(generate_uuid7())
-                if is_team:
-                    contestant = TournamentMatchToContestant(
-                        id=c_id,
-                        tournament_match_id=match_id,
-                        team_id=TournamentTeamID(UUID(cid)),
-                        participant_id=None,
-                        score=None,
-                        created_at=now,
-                    )
-                else:
-                    contestant = TournamentMatchToContestant(
-                        id=c_id,
-                        tournament_match_id=match_id,
-                        team_id=None,
-                        participant_id=(TournamentParticipantID(UUID(cid))),
-                        score=None,
-                        created_at=now,
-                    )
-                tournament_repository.create_match_contestant(contestant)
-
-            match_events.append(
-                MatchCreatedEvent(
-                    occurred_at=now,
-                    initiator=None,
+        for round_num, round_pairings in enumerate(schedule):
+            for match_idx, (p1, p2) in enumerate(round_pairings):
+                match_id = TournamentMatchID(generate_uuid7())
+                match = TournamentMatch(
+                    id=match_id,
                     tournament_id=tournament_id,
-                    match_id=match_id,
+                    group_order=group_idx if has_groups else None,
+                    match_order=match_idx,
+                    round=round_num,
+                    next_match_id=None,
+                    confirmed_by=None,
+                    created_at=now,
+                    seeding_target=seeding_target,
                 )
-            )
-            total_matches += 1
+                tournament_repository.create_match(match)
 
-    # Single transaction commit.
-    tournament_repository.commit_session()
+                # Create contestants for both sides.
+                for cid in (p1, p2):
+                    c_id = TournamentMatchToContestantID(generate_uuid7())
+                    if is_team:
+                        contestant = TournamentMatchToContestant(
+                            id=c_id,
+                            tournament_match_id=match_id,
+                            team_id=TournamentTeamID(UUID(cid)),
+                            participant_id=None,
+                            score=None,
+                            created_at=now,
+                        )
+                    else:
+                        contestant = TournamentMatchToContestant(
+                            id=c_id,
+                            tournament_match_id=match_id,
+                            team_id=None,
+                            participant_id=(
+                                TournamentParticipantID(UUID(cid))
+                            ),
+                            score=None,
+                            created_at=now,
+                        )
+                    tournament_repository.create_match_contestant(contestant)
 
-    # Dispatch events after successful commit.
-    for event in deleted_events:
-        signals.match_deleted.send(None, event=event)
-    for event in match_events:
-        signals.match_created.send(None, event=event)
+                match_events.append(
+                    MatchCreatedEvent(
+                        occurred_at=now,
+                        initiator=None,
+                        tournament_id=tournament_id,
+                        match_id=match_id,
+                    )
+                )
+                total_matches += 1
 
-    rr_match_ids = {e.match_id for e in match_events}
-    ready_events = _collect_ready_match_events(rr_match_ids, tournament_id, now)
-    for event in ready_events:
-        match_ready.send(None, event=event)
-
-    return Ok(total_matches)
+    return Ok(
+        GenerationOutcome(
+            count=total_matches,
+            created_events=match_events,
+            deleted_events=deleted_events,
+            ready_match_ids=frozenset(e.match_id for e in match_events),
+            occurred_at=now,
+        )
+    )
 
 
 def get_match(
@@ -1467,6 +1800,20 @@ def _process_defwin_entries(
                             winner_participant_id=sole.participant_id,
                         )
                     )
+                elif not completed_events:
+                    plain = try_complete_plain_round_robin(tournament)
+                    if plain.is_err():
+                        logger.warning(
+                            'Auto-complete failed for tournament %s '
+                            'after defwin on match %s: %s',
+                            tournament_id,
+                            match.id,
+                            plain.unwrap_err(),
+                        )
+                    else:
+                        plain_event = plain.unwrap()
+                        if plain_event is not None:
+                            completed_events.append(plain_event)
 
     return DefwinResult(advanced_events, confirmed_events, completed_events)
 
@@ -1629,6 +1976,12 @@ def set_match_scores(
     if match is None:
         tournament_repository.rollback_session()
         raise ValueError(f'Unknown match ID "{match_id}"')
+
+    locked = _refuse_phase1_change_after_release(
+        tournament_repository.get_tournament(match.tournament_id), match
+    )
+    if locked.is_err():
+        return _reject(locked.unwrap_err())
 
     validation = _validate_score_submission(
         match,
@@ -1828,7 +2181,7 @@ def _validate_match_scores(
     # Draws are only accepted in round-robin tournaments.
     match = tournament_repository.get_match(match_id)
     tournament = tournament_repository.get_tournament(match.tournament_id)
-    if tournament.elimination_mode != EliminationMode.ROUND_ROBIN:
+    if _elimination_mode_of(tournament, match) != EliminationMode.ROUND_ROBIN:
         winner_result = determine_match_winner(proposed_contestants)
         if winner_result.is_ok() and winner_result.unwrap() is None:
             return Err(
@@ -1876,7 +2229,10 @@ def _admin_set_and_confirm_match_impl(
     # reporting the format mismatch at the point the scores are
     # rejected keeps the flash accurate about what was refused.
     tournament = tournament_repository.get_tournament(match.tournament_id)
-    if _decided_by_placements(tournament):
+    locked = _refuse_phase1_change_after_release(tournament, match)
+    if locked.is_err():
+        return Err(locked.unwrap_err())
+    if _decided_by_placements(tournament, match):
         return Err(PLACEMENT_FORMAT_CONFIRM_ERROR)
 
     validation = _validate_match_scores(match_id, scores)
@@ -1949,6 +2305,7 @@ def admin_set_and_confirm_match(
         match_created.send(None, event=event)
     for event in ready_events:
         match_ready.send(None, event=event)
+    _try_auto_release(confirmed_event.tournament_id, admin_id)
     return Ok(None)
 
 
@@ -1997,7 +2354,7 @@ def _confirm_draw_impl(
 
     Flush only; the caller commits and dispatches the events.
     """
-    if tournament.elimination_mode != EliminationMode.ROUND_ROBIN:
+    if _elimination_mode_of(tournament, match) != EliminationMode.ROUND_ROBIN:
         return Err(
             'Match is a draw; a winner is required '
             'in this tournament mode.'
@@ -2006,6 +2363,10 @@ def _confirm_draw_impl(
     tournament_repository.confirm_match(
         match_id, initiator_id,
     )
+
+    completed = try_complete_plain_round_robin(tournament)
+    if completed.is_err():
+        return Err(completed.unwrap_err())
 
     now = datetime.now(UTC)
     confirmed_event = MatchConfirmedEvent(
@@ -2016,7 +2377,7 @@ def _confirm_draw_impl(
         winner_team_id=None,
         winner_participant_id=None,
     )
-    return Ok((confirmed_event, None, [], [], []))
+    return Ok((confirmed_event, completed.unwrap(), [], [], []))
 
 
 def _collect_ready_match_events(
@@ -2259,6 +2620,7 @@ def _create_bracket_reset(
         loser_next_match_id=None,
         confirmed_by=None,
         created_at=now,
+        phase=match.phase,
     )
     tournament_repository.create_match(gf_m2)
 
@@ -2313,20 +2675,34 @@ def is_deciding_match(
     if match.bracket == Bracket.THIRD_PLACE:
         return False
 
-    if tournament.elimination_mode not in (
+    if _has_playoffs(tournament):
+        # Phase 1 only seeds the playoffs; phase 2 decides.
+        if match.phase != 2:
+            return False
+        game_format = game_format_for_phase(tournament, 2)
+        elimination_mode = elimination_mode_for_phase(tournament, 2)
+    else:
+        game_format = tournament.game_format
+        elimination_mode = tournament.elimination_mode
+
+    if elimination_mode not in (
         EliminationMode.SINGLE_ELIMINATION,
         EliminationMode.DOUBLE_ELIMINATION,
     ):
         return False
 
     # FFA matches never have a next match, so that test cannot apply.
-    if tournament.game_format == GameFormat.FREE_FOR_ALL:
-        if tournament.elimination_mode == EliminationMode.DOUBLE_ELIMINATION:
+    if game_format == GameFormat.FREE_FOR_ALL:
+        if elimination_mode == EliminationMode.DOUBLE_ELIMINATION:
             return match.bracket == Bracket.GRAND_FINAL
         round_matches = tournament_repository.get_matches_for_round(
             tournament.id, match.round, bracket=None,
         )
-        return len(round_matches) == 1
+        if _has_playoffs(tournament):
+            round_matches = [m for m in round_matches if m.phase == 2]
+        return len(round_matches) == 1 or (
+            _single_survivor_source_plan(match, tournament) is not None
+        )
 
     return match.next_match_id is None
 
@@ -2336,9 +2712,52 @@ def retraction_reverts_completion(
     tournament: Tournament,
 ) -> bool:
     """Return `True` if retracting the match reopens the tournament."""
-    return (
-        tournament.tournament_status == TournamentStatus.COMPLETED
-        and is_deciding_match(match, tournament)
+    return tournament.tournament_status == TournamentStatus.COMPLETED and (
+        is_deciding_match(match, tournament)
+        or is_plain_round_robin(tournament)
+    )
+
+
+def _single_survivor_source_plan(
+    match: TournamentMatch,
+    tournament: Tournament,
+) -> 'FfaAdvancePlan | None':
+    """Recognize the fully confirmed source of a no-lobby SE completion."""
+    phase = _ffa_phase(tournament)
+    if (
+        phase is None or match.phase != phase or match.bracket is not None
+        or _ffa_elimination_mode(tournament) is not EliminationMode.SINGLE_ELIMINATION
+        or (_has_playoffs(tournament) and tournament.playoff_released_at is None)
+        or tournament.advancement_count is None or tournament.advancement_count < 1
+    ):
+        return None
+    phase_matches = [
+        m for m in tournament_repository.get_matches_for_tournament(tournament.id)
+        if m.phase == phase and m.bracket is None
+    ]
+    if not phase_matches or match.round is None:
+        return None
+    source = max(m.round for m in phase_matches if m.round is not None)
+    round_matches = [m for m in phase_matches if m.round == source]
+    if (
+        match.round != source or match.id not in {m.id for m in round_matches}
+        or len(round_matches) < 2
+        or any(m.confirmed_by is None for m in round_matches)
+    ):
+        return None
+    ranked = _round_standings(
+        round_matches, tournament.advancement_count, ffa_decisions(tournament.id)
+    )
+    if ranked.is_err():
+        return None
+    survivors = _order_by_standing(ranked.unwrap())
+    if len(survivors) != 1:
+        return None
+    return FfaAdvancePlan(
+        pool=None, round_number=source + 1,
+        survivors=tuple(s.contestant_id for s in survivors),
+        bands={s.contestant_id: s.band for s in survivors},
+        grand_final_eligible=False,
     )
 
 
@@ -2347,7 +2766,7 @@ def ffa_round_already_advanced(
     tournament: Tournament,
 ) -> bool:
     """Return `True` if a later FFA round was built from the match's round."""
-    if tournament.game_format != GameFormat.FREE_FOR_ALL:
+    if _ffa_phase(tournament) is None:
         return False
 
     if match.bracket == Bracket.GRAND_FINAL:
@@ -2361,9 +2780,29 @@ def ffa_round_already_advanced(
     ):
         return True
 
+    # A waiting winners advance builds only the merged losers round,
+    # which carries the next winners round's target.
+    if match.bracket is Bracket.WINNERS and match.round is not None:
+        merged = ffa_round_seeding_target(Bracket.WINNERS, match.round + 1)
+        if any(
+            m.bracket is Bracket.LOSERS and m.seeding_target == merged
+            for m in matches
+        ):
+            return True
+
     return any(
         m.bracket == match.bracket and (m.round or 0) > (match.round or 0)
         for m in matches
+    )
+
+
+def ffa_round_consumed(match: TournamentMatch, tournament: Tournament) -> bool:
+    """Return `True` if the match's round fed a later round or decided
+    the tournament.
+    """
+    return ffa_round_already_advanced(match, tournament) or (
+        tournament.tournament_status is TournamentStatus.COMPLETED
+        and _single_survivor_source_plan(match, tournament) is not None
     )
 
 
@@ -2397,6 +2836,166 @@ def _try_auto_complete_tournament(
         return Err(status_set.unwrap_err())
 
     return Ok(True)
+
+
+def is_plain_round_robin(tournament: Tournament) -> bool:
+    """Return `True` for a round robin without a playoff phase."""
+    return (
+        not _has_playoffs(tournament)
+        and tournament.elimination_mode == EliminationMode.ROUND_ROBIN
+    )
+
+
+def active_contestant_ids(tournament_id: TournamentID) -> set[str]:
+    """Return the IDs of the participants and teams still in the tournament."""
+    return {
+        str(p.id)
+        for p in tournament_repository.get_participants_for_tournament(
+            tournament_id
+        )
+    } | {
+        str(t.id)
+        for t in tournament_repository.get_teams_for_tournament(tournament_id)
+    }
+
+
+class PlainRoundRobinStanding(NamedTuple):
+    ranking: qualification_domain.Ranking
+    open_match_count: int
+    total_match_count: int
+    contestants: dict[str, TournamentMatchToContestant]
+
+
+def plain_round_robin_standing(
+    tournament: Tournament,
+) -> PlainRoundRobinStanding:
+    """Rank a plain round robin for its winner, with the stored decision.
+
+    Removed contestants are not ranked; their results still count for
+    their opponents.
+    """
+    matches = tournament_repository.get_matches_for_tournament_ordered_fresh(
+        tournament.id
+    )
+    by_match = tournament_repository.get_contestants_for_tournament(
+        tournament.id
+    )
+    decision = tournament_qualification_repository.find_decision(
+        tournament.id, WINNER_SCOPE
+    )
+
+    members: list[str] = []
+    by_id: dict[str, TournamentMatchToContestant] = {}
+    results = []
+    for match in matches:
+        entries = by_match.get(match.id, [])
+        ids = [contestant_id(c) for c in entries]
+        for cid, entry in zip(ids, entries, strict=True):
+            if cid not in by_id:
+                members.append(cid)
+                by_id[cid] = entry
+        if len(entries) != 2:
+            continue
+        results.append(
+            qualification_domain.MatchResult(
+                a=ids[0],
+                b=ids[1],
+                score_a=entries[0].score or 0,
+                score_b=entries[1].score or 0,
+                confirmed=match.confirmed_by is not None,
+            )
+        )
+
+    ranking = qualification_domain.classify_ties(
+        qualification_domain.rank_round_robin(
+            WINNER_SCOPE,
+            members,
+            results,
+            decision.orders if decision else (),
+            active_ids=active_contestant_ids(tournament.id),
+        ),
+        cut=None,
+        plain_winner=True,
+    )
+    return PlainRoundRobinStanding(
+        ranking=ranking,
+        open_match_count=sum(1 for m in matches if m.confirmed_by is None),
+        total_match_count=len(matches),
+        contestants=by_id,
+    )
+
+
+def try_complete_plain_round_robin(
+    tournament: Tournament,
+) -> Result[TournamentCompletedEvent | None, str]:
+    """Complete a plain round robin that has a winner (flush only).
+
+    Every match must be confirmed, and the first place must be clear or
+    decided by an orga. Otherwise the tournament stays as it is and the
+    result is `Ok(None)`. The caller commits and dispatches the event.
+    Only an ongoing tournament completes; a change into ONGOING checks
+    again.
+    """
+    if not is_plain_round_robin(tournament):
+        return Ok(None)
+    if tournament.tournament_status is not TournamentStatus.ONGOING:
+        return Ok(None)
+
+    standing = plain_round_robin_standing(tournament)
+    if (
+        standing.total_match_count == 0
+        or standing.open_match_count
+        or not standing.ranking.entries
+    ):
+        return Ok(None)
+
+    winner_id = qualification_domain.plain_round_robin_winner(
+        standing.ranking
+    )
+    if winner_id.is_err():
+        return Ok(None)
+    winner = standing.contestants[winner_id.unwrap()]
+
+    winner_set = tournament_repository.set_tournament_winner(
+        tournament.id,
+        winner_team_id=winner.team_id,
+        winner_participant_id=winner.participant_id,
+    )
+    if winner_set.is_err():
+        return Err(winner_set.unwrap_err())
+    status_set = tournament_repository.set_tournament_status_flush(
+        tournament.id,
+        TournamentStatus.COMPLETED,
+    )
+    if status_set.is_err():
+        return Err(status_set.unwrap_err())
+
+    return Ok(
+        TournamentCompletedEvent(
+            occurred_at=datetime.now(UTC),
+            initiator=None,
+            tournament_id=tournament.id,
+            winner_team_id=winner.team_id,
+            winner_participant_id=winner.participant_id,
+        )
+    )
+
+
+def complete_settled_plain_round_robin(tournament_id: TournamentID) -> None:
+    """Complete a plain round robin settled while it was not running.
+
+    Call it after the commit of a change into ONGOING; it commits on its
+    own.
+    """
+    tournament_repository.lock_tournament_for_update(tournament_id)
+    tournament = tournament_repository.get_tournament(tournament_id)
+    completed = try_complete_plain_round_robin(tournament)
+    event = completed.unwrap() if completed.is_ok() else None
+    if event is None:
+        tournament_repository.rollback_session()
+        return
+    tournament_repository.commit_session()
+    tournament_completed.send(None, event=event)
 
 
 def _confirm_match_impl(
@@ -2453,7 +3052,7 @@ def _confirm_match_impl(
     # admin_set_and_confirm_match, and correct_match_result's score
     # re-application -- so the rule is enforced once, here, for
     # direct POSTs as well.
-    if _decided_by_placements(tournament):
+    if _decided_by_placements(tournament, match):
         return Err(PLACEMENT_FORMAT_CONFIRM_ERROR)
 
     winner_result = determine_match_winner(contestants)
@@ -2485,7 +3084,8 @@ def _confirm_match_impl(
         match.bracket == Bracket.GRAND_FINAL
         and match.match_order == 0  # GF M1
         and match.next_match_id is None  # still terminal (no existing GF M2)
-        and tournament.elimination_mode == EliminationMode.DOUBLE_ELIMINATION
+        and _elimination_mode_of(tournament, match)
+        == EliminationMode.DOUBLE_ELIMINATION
         and tournament.use_bracket_reset
         and _is_lb_champion_winner(match, winner)
     ):
@@ -2501,6 +3101,12 @@ def _confirm_match_impl(
     if comp.is_err():
         return comp
     tournament_was_completed = comp.unwrap()
+    plain_completed = None
+    if not tournament_was_completed:
+        plain = try_complete_plain_round_robin(tournament)
+        if plain.is_err():
+            return Err(plain.unwrap_err())
+        plain_completed = plain.unwrap()
     tid = match.tournament_id
 
     confirmed_event = MatchConfirmedEvent(
@@ -2517,6 +3123,8 @@ def _confirm_match_impl(
             winner_team_id=winner.team_id,
             winner_participant_id=winner.participant_id,
         )
+    elif plain_completed is not None:
+        completed_event = plain_completed
 
     destination_match_ids: set[TournamentMatchID] = set()
     for event in adv_events:
@@ -2572,6 +3180,7 @@ def confirm_match(
         match_created.send(None, event=event)
     for event in ready_events:
         match_ready.send(None, event=event)
+    _try_auto_release(confirmed_event.tournament_id, initiator_id)
     return Ok(None)
 
 
@@ -2840,6 +3449,9 @@ def _unconfirm_match_flush(
     match = tournament_repository.get_match_for_update(match_id)
 
     tournament = tournament_repository.get_tournament(match.tournament_id)
+    locked = _refuse_phase1_change_after_release(tournament, match)
+    if locked.is_err():
+        return Err(locked.unwrap_err())
     if ffa_round_already_advanced(match, tournament):
         return Err(
             'A later round has already been built from this result, so it '
@@ -2950,6 +3562,7 @@ def unconfirm_match(
             ),
         )
 
+    _try_auto_release(tournament_id, initiator_id)
     return Ok(None)
 
 
@@ -3189,11 +3802,19 @@ def correct_match_result(
     # audit trail. Checked before _lock_reachable_matches so the
     # refusal takes no locks.
     tournament = tournament_repository.get_tournament(subject.tournament_id)
-    if _decided_by_placements(tournament):
+    if _decided_by_placements(tournament, subject):
         return Err(PLACEMENT_FORMAT_CORRECTION_ERROR)
 
     # Lock before classifying, or the acknowledgement gate may be stale.
     _lock_reachable_matches(match_id)
+
+    # Read the release under the lock, not from the pre-lock read above.
+    locked = _refuse_phase1_change_after_release(
+        tournament_repository.get_tournament(subject.tournament_id), subject
+    )
+    if locked.is_err():
+        tournament_repository.rollback_session()
+        return Err(locked.unwrap_err())
 
     # From here on, every early return must roll back to release the
     # locks.
@@ -3390,6 +4011,8 @@ def correct_match_result(
     for event in ready_events:
         match_ready.send(None, event=event)
 
+    _try_auto_release(tournament_id, initiator_id)
+
     return Ok((case, scores_applied))
 
 
@@ -3401,6 +4024,26 @@ def set_score(
     """Set the score for a contestant in a match."""
     if score < 0:
         return Err('Score cannot be negative.')
+
+    match = tournament_repository.find_match(match_id)
+    holds_lock = False
+    if match is not None:
+        tournament = tournament_repository.get_tournament(match.tournament_id)
+        if _has_playoffs(tournament) and match.phase == 1:
+            # Re-read the release under the tournament lock, or a release
+            # can commit between the check and the score write.
+            tournament_repository.lock_tournament_for_update(
+                match.tournament_id
+            )
+            tournament = tournament_repository.get_tournament(
+                match.tournament_id
+            )
+            holds_lock = True
+        locked = _refuse_phase1_change_after_release(tournament, match)
+        if locked.is_err():
+            if holds_lock:
+                tournament_repository.rollback_session()
+            return locked
 
     # Find the contestant entry for this match.
     # Try as participant first, then as team.
@@ -3414,6 +4057,8 @@ def set_score(
             team_id=contestant_id,  # type: ignore[arg-type]
         )
     if contestant is None:
+        if holds_lock:
+            tournament_repository.rollback_session()
         return Err(
             f'Contestant "{contestant_id}" not found in match "{match_id}"'
         )
@@ -3565,6 +4210,9 @@ def generate_ffa_round(
 
     Returns ``Ok(match_count)`` on success.  Commits the session.
     """
+    tournament = tournament_repository.get_tournament(tournament_id)
+    if _ffa_phase(tournament) == 2:
+        return Err(PLAYOFF_ROUNDS_FROM_DRAFT_ERROR)
     result = _generate_ffa_round_impl(
         tournament_id, round_number, contestant_ids,
         bracket=bracket, initiator_id=initiator_id,
@@ -3581,11 +4229,20 @@ def _generate_ffa_round_impl(
     *,
     bracket: Bracket | None = None,
     initiator_id: UserID | None = None,
+    groups: Sequence[Sequence[str]] | None = None,
+    seeding_target: str | None = None,
+    allow_undersized: bool = False,
 ) -> Result[int, str]:
     """Internal: generate FFA round matches without committing.
 
     When *round_number* is ``None`` the next round number is determined
     automatically (after the lock is held).
+    When *groups* is given, it replaces the snake seeding; it must
+    partition the roster and respect the minimum group size, unless
+    *allow_undersized* says the advance plan permits the shortfall.
+
+    The matches of a highscore tournament's playoffs are phase 2 and
+    need the *contestant_ids* (the qualifiers) from the caller.
 
     Returns ``Ok(match_count)`` on success.
     Caller is responsible for committing the session.
@@ -3599,8 +4256,11 @@ def _generate_ffa_round_impl(
     tournament = tournament_repository.get_tournament(tournament_id)
 
     # Validate game format.
-    if tournament.game_format != GameFormat.FREE_FOR_ALL:
+    phase = _ffa_phase(tournament)
+    if phase is None:
         return Err('Tournament game format is not FREE_FOR_ALL.')
+    if phase == 2 and contestant_ids is None:
+        return Err(PLAYOFF_ROUNDS_FROM_DRAFT_ERROR)
 
     # Auto-determine round number under the lock to prevent TOCTOU races.
     if round_number is None:
@@ -3621,14 +4281,10 @@ def _generate_ffa_round_impl(
 
     # Reject team tournaments where group cannot be formed.
     if is_team:
-        max_teams = tournament.max_teams or 0
         group_min = tournament.group_size_min or 2
-        if max_teams < group_min:
-            return Err(
-                f'Team tournament has max_teams={max_teams} which is '
-                f'less than group_size_min={group_min}. '
-                'Cannot form valid FFA groups.'
-            )
+        max_teams = tournament.max_teams
+        if max_teams is not None and max_teams < group_min:
+            return Err(FFA_TEAM_LIMIT_BELOW_LOBBY_MIN_ERROR)
 
     # Fetch contestant IDs when not supplied.
     if contestant_ids is None:
@@ -3651,12 +4307,39 @@ def _generate_ffa_round_impl(
     # Distribute into groups via snake seeding.
     group_size_min = tournament.group_size_min or 2
     group_size_max = tournament.group_size_max or len(contestant_ids)
-    groups_result = snake_seed_groups(
-        contestant_ids, group_size_min, group_size_max,
-    )
-    if groups_result.is_err():
-        return Err(groups_result.unwrap_err())
-    groups = groups_result.unwrap()
+    if groups is None:
+        groups_result = snake_seed_groups(
+            contestant_ids, group_size_min, group_size_max,
+        )
+        if groups_result.is_err():
+            return Err(groups_result.unwrap_err())
+        groups = groups_result.unwrap()
+    else:
+        placed = [cid for group in groups for cid in group]
+        if len(placed) != len(set(placed)) or set(placed) != set(
+            contestant_ids
+        ):
+            return Err(LAYOUT_ROSTER_ERROR)
+        if not allow_undersized and any(
+            len(group) < group_size_min for group in groups
+        ):
+            return Err(FFA_LOBBY_BELOW_MINIMUM_ERROR)
+
+    # A lone contestant never makes a lobby, whatever the minimum.
+    if any(len(group) < 2 for group in groups):
+        return Err(FFA_LOBBY_BELOW_MINIMUM_ERROR)
+
+    if (
+        tournament.advancement_count is None
+        and round_number == 0
+        and bracket != Bracket.LOSERS
+        and (
+            _ffa_elimination_mode(tournament)
+            == EliminationMode.DOUBLE_ELIMINATION
+            or len(groups) > 1
+        )
+    ):
+        return Err(FFA_CUT_REQUIRED_MSGID)
 
     now = datetime.now(UTC)
     match_count = 0
@@ -3673,12 +4356,14 @@ def _generate_ffa_round_impl(
             confirmed_by=None,
             created_at=now,
             bracket=bracket,
+            phase=phase,
+            seeding_target=seeding_target,
         )
         tournament_repository.create_match(match)
         match_count += 1
 
         # Create contestant entries for each group member.
-        for cid in group:
+        for cid in sorted(group):
             contestant_rec_id = TournamentMatchToContestantID(
                 generate_uuid7()
             )
@@ -3703,6 +4388,85 @@ def _generate_ffa_round_impl(
             tournament_repository.create_match_contestant(contestant)
 
     return Ok(match_count)
+
+
+def _generate_ffa_initial_impl(
+    tournament_id: TournamentID,
+    force_regenerate: bool = False,
+    *,
+    groups: Sequence[Sequence[str]] | None = None,
+    initiator_id: UserID | None = None,
+    roster: Sequence[str] | None = None,
+    seeding_target: str | None = None,
+) -> Result[GenerationOutcome, str]:
+    """Generate the first FFA round without committing.
+
+    Replaces an existing bracket when *force_regenerate* is set. On Err
+    the caller must roll back, as the old bracket is already cleared.
+    The playoffs of a highscore tournament are built for the *roster*
+    of qualifiers. The caller owns commit and dispatch.
+    """
+    tournament_repository.lock_tournament_for_update(tournament_id)
+    existing = tournament_repository.get_matches_for_tournament(tournament_id)
+    if existing and not force_regenerate:
+        return Err(
+            'Tournament already has matches.'
+            ' Use force regenerate to clear'
+            ' and rebuild.'
+        )
+
+    tournament = tournament_repository.get_tournament(tournament_id)
+    bracket = (
+        Bracket.WINNERS
+        if _ffa_elimination_mode(tournament)
+        == EliminationMode.DOUBLE_ELIMINATION
+        else None
+    )
+
+    deleted_events: list[MatchDeletedEvent] = []
+    if existing:
+        deleted_events = clear_bracket(tournament_id, initiator_id=initiator_id)
+
+    # A release with fewer qualifiers than configured plays smaller lobbies.
+    short_release = (
+        roster is not None
+        and _ffa_phase(tournament) == 2
+        and len(roster) < (tournament.playoff_qualifier_count or 0)
+    )
+
+    result = _generate_ffa_round_impl(
+        tournament_id,
+        0,
+        list(roster) if roster is not None else None,
+        bracket=bracket,
+        initiator_id=initiator_id,
+        groups=groups,
+        seeding_target=seeding_target,
+        allow_undersized=short_release,
+    )
+    if result.is_err():
+        return Err(result.unwrap_err())
+
+    now = datetime.now(UTC)
+    created = tournament_repository.get_matches_for_tournament(tournament_id)
+    created_ids = [m.id for m in created]
+    return Ok(
+        GenerationOutcome(
+            count=result.unwrap(),
+            created_events=[
+                MatchCreatedEvent(
+                    occurred_at=now,
+                    initiator=None,
+                    tournament_id=tournament_id,
+                    match_id=match_id,
+                )
+                for match_id in created_ids
+            ],
+            deleted_events=deleted_events,
+            ready_match_ids=frozenset(created_ids),
+            occurred_at=now,
+        )
+    )
 
 
 def set_ffa_placements(
@@ -3736,7 +4500,10 @@ def set_ffa_placements(
     # properly. Both site routes already refuse this; the admin ones
     # did not, so enforce it here for both.
     tournament = tournament_repository.get_tournament(match.tournament_id)
-    if not _decided_by_placements(tournament):
+    locked = _refuse_phase1_change_after_release(tournament, match)
+    if locked.is_err():
+        return locked
+    if not _decided_by_placements(tournament, match):
         return Err('Placements apply only to free-for-all matches.')
 
     contestants = tournament_repository.get_contestants_for_match(match_id)
@@ -3812,7 +4579,10 @@ def confirm_ffa_match(
     # would be marked confirmed, never feed its next_match_id, and be
     # refused by the normal confirm path from then on.
     tournament = tournament_repository.get_tournament(match.tournament_id)
-    if not _decided_by_placements(tournament):
+    locked = _refuse_phase1_change_after_release(tournament, match)
+    if locked.is_err():
+        return locked
+    if not _decided_by_placements(tournament, match):
         return Err('Placements apply only to free-for-all matches.')
 
     contestants = tournament_repository.get_contestants_for_match(match_id)
@@ -3830,14 +4600,34 @@ def confirm_ffa_match(
     tournament_was_completed = False
     winner = None
 
+    single_survivor_event = None
+
+    # Phase 1 of a playoff tournament never completes it.
+    if _has_playoffs(tournament):
+        completion_phase = 2 if match.phase == 2 else None
+    else:
+        completion_phase = 1
+    elimination_mode = (
+        elimination_mode_for_phase(tournament, completion_phase)
+        if completion_phase is not None
+        else None
+    )
+    game_format = (
+        game_format_for_phase(tournament, completion_phase)
+        if completion_phase is not None
+        else None
+    )
+
     # Check for FFA+SE auto-complete.
     if (
-        tournament.elimination_mode == EliminationMode.SINGLE_ELIMINATION
-        and tournament.game_format == GameFormat.FREE_FOR_ALL
+        elimination_mode == EliminationMode.SINGLE_ELIMINATION
+        and game_format == GameFormat.FREE_FOR_ALL
     ):
         round_matches = tournament_repository.get_matches_for_round(
             tournament.id, match.round, bracket=None,
         )
+        if _has_playoffs(tournament):
+            round_matches = [m for m in round_matches if m.phase == 2]
         # Auto-complete when exactly 1 group in the round (final round).
         if len(round_matches) == 1:
             first_place = [
@@ -3850,10 +4640,19 @@ def confirm_ffa_match(
                     return comp
                 tournament_was_completed = comp.unwrap()
 
+        elif tournament.tournament_status is TournamentStatus.ONGOING:
+            plan = _single_survivor_source_plan(match, tournament)
+            if plan is not None:
+                completed = complete_ffa_single_survivor(tournament, plan, initiator_id)
+                if completed.is_err():
+                    tournament_repository.rollback_session()
+                    return Err(completed.unwrap_err())
+                single_survivor_event = completed.unwrap()
+
     # Check for FFA+DE Grand Final completion.
     if (
-        tournament.elimination_mode == EliminationMode.DOUBLE_ELIMINATION
-        and tournament.game_format == GameFormat.FREE_FOR_ALL
+        elimination_mode == EliminationMode.DOUBLE_ELIMINATION
+        and game_format == GameFormat.FREE_FOR_ALL
         and match.bracket == Bracket.GRAND_FINAL
     ):
         # Check if all GF matches are confirmed.
@@ -3911,7 +4710,492 @@ def confirm_ffa_match(
                 winner_participant_id=winner.participant_id,
             ))
 
+    if single_survivor_event is not None:
+        tournament_completed.send(None, event=single_survivor_event)
+
+    _try_auto_release(match.tournament_id, initiator_id)
     return Ok(None)
+
+
+@dataclass(frozen=True)
+class _Standing:
+    """One contestant's place after an FFA lobby."""
+
+    contestant_id: str
+    band: int
+    points: int
+    lobby: int
+    place: int
+
+
+@dataclass(frozen=True)
+class FfaAdvancePlan:
+    """The FFA round(s) an advance creates, before anything is written.
+
+    `survivors` play `round_number` of `pool`, ordered by standing, and
+    `bands` gives each one's rank band (0 = lobby winners). In the winners
+    bracket, `lb_pool` is the pool of the losers round that goes with it.
+    """
+
+    pool: Bracket | None
+    round_number: int
+    survivors: tuple[str, ...]
+    bands: Mapping[str, int]
+    grand_final_eligible: bool
+    lb_pool: tuple[str, ...] = ()
+    lb_round_number: int | None = None
+
+
+@dataclass(frozen=True)
+class UndersizedPool:
+    """A pool permitted below the minimum, with its shortfall reason."""
+
+    pool: Bracket | None
+    round_number: int
+    count: int
+    lobbies: tuple[int, ...]
+    minimum: int
+    natural_shortfall: bool = False
+
+
+@dataclass(frozen=True)
+class LobbyBye:
+    """A lone contestant of a pool, who gets no lobby and carries over."""
+
+    pool: Bracket | None
+    round_number: int
+    contestant_id: str
+
+
+def ffa_lobby_byes(plan: FfaAdvancePlan) -> tuple[LobbyBye, ...]:
+    """Return the byes of a plan: a losers pool of one has no lobby."""
+    if len(plan.lb_pool) == 1 and plan.lb_round_number is not None:
+        return (
+            LobbyBye(Bracket.LOSERS, plan.lb_round_number, plan.lb_pool[0]),
+        )
+    return ()
+
+
+def is_lone_losers_round(plan: FfaAdvancePlan) -> bool:
+    """Tell whether the plan's own round is a losers round of one."""
+    return plan.pool is Bracket.LOSERS and len(plan.survivors) == 1
+
+
+FFA_WINNERS_FINISHED_ERROR = (
+    'The winners bracket is finished. Continue the losers bracket.'
+)
+FFA_LOSERS_UNCONFIRMED_ERROR = 'Losers bracket matches are not confirmed.'
+FFA_GRAND_FINAL_TARGET = 'ffa:GF'
+FFA_GRAND_FINAL_NOT_ELIGIBLE_ERROR = (
+    'The Grand Final is not eligible yet. Continue the bracket rounds.'
+)
+
+
+def is_waiting_winners_round(plan: FfaAdvancePlan) -> bool:
+    """Tell whether the WB winner waits while the merged LB pool plays."""
+    return plan.pool is Bracket.WINNERS and len(plan.survivors) == 1
+
+
+def is_single_survivor(plan: FfaAdvancePlan) -> bool:
+    """Tell whether a single-track plan has only its winner left."""
+    return plan.pool is None and len(plan.survivors) == 1
+
+
+def ffa_draft_survivors(plan: FfaAdvancePlan) -> tuple[str, ...]:
+    """Return the contestants who actually play the draft's lobbies."""
+    return plan.lb_pool if is_waiting_winners_round(plan) else plan.survivors
+
+
+def complete_ffa_single_survivor(
+    tournament: Tournament,
+    plan: FfaAdvancePlan,
+    initiator_id: UserID | None,
+) -> Result[TournamentCompletedEvent, str]:
+    """Persist the sole single-track survivor as winner without committing."""
+    if (
+        not is_single_survivor(plan)
+        or tournament.tournament_status is not TournamentStatus.ONGOING
+        or _ffa_phase(tournament) is None
+        or _ffa_elimination_mode(tournament) == EliminationMode.DOUBLE_ELIMINATION
+    ):
+        return Err('The tournament must be ongoing to advance an FFA round.')
+    cid = plan.survivors[0]
+    if cid not in active_contestant_ids(tournament.id):
+        return Err(LAYOUT_ROSTER_ERROR)
+    team_id = (
+        TournamentTeamID(UUID(cid))
+        if tournament.contestant_type is ContestantType.TEAM else None
+    )
+    participant_id = (
+        TournamentParticipantID(UUID(cid)) if team_id is None else None
+    )
+    winner_set = tournament_repository.set_tournament_winner(
+        tournament.id,
+        winner_team_id=team_id,
+        winner_participant_id=participant_id,
+    )
+    if winner_set.is_err():
+        return Err(winner_set.unwrap_err())
+    status_set = tournament_repository.set_tournament_status_flush(
+        tournament.id, TournamentStatus.COMPLETED
+    )
+    if status_set.is_err():
+        return Err(status_set.unwrap_err())
+    create_log_entry(
+        'bracket-single-survivor',
+        tournament.id,
+        initiator_id,
+        data={'pool': 'SE', 'round': plan.round_number, 'contestant': cid},
+        commit=False,
+    )
+    return Ok(
+        TournamentCompletedEvent(
+            occurred_at=datetime.now(UTC),
+            initiator=None,
+            tournament_id=tournament.id,
+            winner_team_id=team_id,
+            winner_participant_id=participant_id,
+        )
+    )
+
+
+def ffa_pool_token(bracket: Bracket | None) -> str:
+    """Return the pool token of a bracket in targets and scopes."""
+    if bracket is Bracket.WINNERS:
+        return 'WB'
+    if bracket is Bracket.LOSERS:
+        return 'LB'
+    return 'SE'
+
+
+def ffa_lobby_scope(match: TournamentMatch) -> str:
+    """Return the decision scope of an FFA lobby."""
+    return (
+        f'ffa:{ffa_pool_token(match.bracket)}:{match.round}'
+        f':{match.group_order or 0}'
+    )
+
+
+def ffa_decisions(
+    tournament_id: TournamentID,
+) -> dict[str, tuple[tuple[str, ...], ...]]:
+    """Return the stored FFA tie decision orders, by scope."""
+    return {
+        scope: decision.orders
+        for scope, decision in (
+            tournament_qualification_repository.get_decisions_for_tournament(
+                tournament_id
+            ).items()
+        )
+        if scope.startswith('ffa:')
+    }
+
+
+def rank_ffa_lobby(
+    match: TournamentMatch,
+    contestants: list[TournamentMatchToContestant],
+    cut: int,
+    decisions: qualification_domain.DecisionOrders,
+    active_ids: Collection[str] | None = None,
+) -> qualification_domain.Ranking:
+    """Rank one lobby by points, honouring the orga decision for its scope.
+
+    Removed contestants keep their entry, but are not ranked: they take
+    no slot at the cut. *active_ids* defaults to the tournament's own.
+    """
+    if active_ids is None:
+        active_ids = active_contestant_ids(match.tournament_id)
+    scope = ffa_lobby_scope(match)
+    # A tie keeps its input order: fix it by placement, then ID.
+    in_order = sorted(
+        contestants,
+        key=lambda c: (
+            c.placement is None,
+            c.placement or 0,
+            contestant_id(c),
+        ),
+    )
+    ranking = qualification_domain.rank_by_value(
+        scope,
+        {
+            contestant_id(c): c.points or 0
+            for c in in_order
+            if contestant_id(c) in active_ids
+        },
+        higher_is_better=True,
+        orders=decisions.get(scope, ()),
+    )
+    return qualification_domain.classify_ties(
+        ranking, cut=cut, plain_winner=False
+    )
+
+
+def _open_cut_tie(ranking: qualification_domain.Ranking) -> list[str]:
+    """Return the contestants of the undecided ties across the cut."""
+    return [
+        cid
+        for tie in ranking.ties
+        if tie.kind is qualification_domain.TieKind.CUT and not tie.decided
+        for cid in tie.contestant_ids
+    ]
+
+
+def _split_ffa_lobby(
+    match: TournamentMatch,
+    contestants: list[TournamentMatchToContestant],
+    cut: int,
+    decisions: qualification_domain.DecisionOrders,
+) -> Result[tuple[list[_Standing], list[_Standing]], list[str]]:
+    """Split a lobby into advancing and dropped contestants.
+
+    Returns ``Err(tied_ids)`` on an undecided tie across the cut. The
+    band of a contestant counts the distinct ranks above it among those
+    on its side of the cut.
+    """
+    ranking = rank_ffa_lobby(match, contestants, cut, decisions)
+    tied = _open_cut_tie(ranking)
+    if tied:
+        return Err(tied)
+
+    lobby = match.group_order or 0
+    placed = list(enumerate(ranking.entries))
+
+    def standings(part: list) -> list[_Standing]:
+        ranks = sorted({entry.rank for _place, entry in part})
+        return [
+            _Standing(
+                contestant_id=entry.contestant_id,
+                band=ranks.index(entry.rank),
+                points=entry.value or 0,
+                lobby=lobby,
+                place=place,
+            )
+            for place, entry in part
+        ]
+
+    return Ok((standings(placed[:cut]), standings(placed[cut:])))
+
+
+def _order_by_standing(standings: Iterable[_Standing]) -> list[_Standing]:
+    """Order by rank band, then points, then lobby and place."""
+    return sorted(
+        standings, key=lambda s: (s.band, -s.points, s.lobby, s.place)
+    )
+
+
+def _ffa_lobbies(
+    tournament: Tournament, ordered_ids: Sequence[str]
+) -> list[list[str]]:
+    """Cut contestants ordered by standing into balanced lobbies."""
+    count = len(ordered_ids)
+    param = min(tournament.group_size_max or count, _FFA_LOBBY_PARAM_MAX)
+    layout = derive_layout(SeedingFormat.FREE_FOR_ALL, ordered_ids, param)
+    lobbies: list[list[str]] = []
+    start = 0
+    for size in seeding_group_sizes(SeedingFormat.FREE_FOR_ALL, count, param):
+        lobbies.append([cid for cid in layout[start : start + size] if cid])
+        start += size
+    return lobbies
+
+
+def _ffa_lobby_sizes(tournament: Tournament, count: int) -> tuple[int, ...]:
+    """Return the lobby sizes `count` contestants are cut into."""
+    param = min(tournament.group_size_max or count, _FFA_LOBBY_PARAM_MAX)
+    return tuple(
+        seeding_group_sizes(SeedingFormat.FREE_FOR_ALL, count, param)
+    )
+
+
+@dataclass(frozen=True)
+class RemovedInRace:
+    """The removed contestants who were still in the race.
+
+    *winners* were still in the single track or the winners bracket,
+    *racing* in either pool.
+    """
+
+    winners: frozenset[str] = frozenset()
+    racing: frozenset[str] = frozenset()
+
+    def count_for(self, pool: Bracket | None) -> int:
+        """Return how many removed contestants the pool lost."""
+        if pool is Bracket.LOSERS:
+            return len(self.racing)
+        return len(self.winners)
+
+
+def _round_zero_seeding_target(
+    matches: Iterable[TournamentMatch],
+) -> str | None:
+    """Return the seeding target the first round of the phase was made from."""
+    first = [
+        m
+        for m in matches
+        if m.bracket not in (Bracket.LOSERS, Bracket.GRAND_FINAL)
+    ]
+    if not first:
+        return None
+    start = min(m.round or 0 for m in first)
+    return next(
+        (m.seeding_target for m in first if (m.round or 0) == start), None
+    )
+
+
+def removed_in_race(tournament: Tournament) -> RemovedInRace:
+    """Return the removed contestants who were still in the race."""
+    phase = _ffa_phase(tournament)
+    if phase is None:
+        return RemovedInRace()
+    removed = (
+        tournament_repository.get_contestant_ids_removed_since_phase_start(
+            tournament.id,
+            phase,
+            teams=tournament.contestant_type == ContestantType.TEAM,
+        )
+    )
+    if not removed:
+        return RemovedInRace()
+    matches = [
+        m
+        for m in tournament_repository.get_matches_for_tournament(tournament.id)
+        if m.phase == phase
+    ]
+    entries_of = tournament_repository.get_contestants_for_matches(
+        [m.id for m in matches]
+    )
+    decisions = ffa_decisions(tournament.id)
+    cut = tournament.advancement_count or 1
+    seen: set[str] = set()
+    out_of_winners: set[str] = set()
+    out_of_race: set[str] = set()
+    for match in matches:
+        entries = entries_of.get(match.id, [])
+        leavers = [c for c in entries if contestant_id(c) in removed]
+        if not leavers:
+            continue
+        below_cut: set[str] = set()
+        grand_final = match.bracket is Bracket.GRAND_FINAL
+        if match.confirmed_by is not None and not grand_final:
+            # Rank every entrant, so a stored block still applies to a
+            # leaver. A tie across the cut that is undecided cut nobody.
+            ranking = rank_ffa_lobby(
+                match,
+                entries,
+                cut,
+                decisions,
+                active_ids={contestant_id(c) for c in entries},
+            )
+            undecided = set(_open_cut_tie(ranking))
+            below_cut = {
+                entry.contestant_id
+                for place, entry in enumerate(ranking.entries)
+                if place >= cut and entry.contestant_id not in undecided
+            }
+        for entry in leavers:
+            cid = contestant_id(entry)
+            seen.add(cid)
+            if grand_final:
+                out_of_race.add(cid)
+                out_of_winners.add(cid)
+                continue
+            if match.bracket is Bracket.LOSERS:
+                out_of_winners.add(cid)
+            if cid in below_cut:
+                out_of_winners.add(cid)
+                if match.bracket is not Bracket.WINNERS:
+                    out_of_race.add(cid)
+    counted = set(seen)
+    unseen = set(removed) - seen
+    if unseen:
+        target = _round_zero_seeding_target(matches)
+        seeding = (
+            tournament_seeding_repository.find_seeding(tournament.id, target)
+            if target is not None
+            else None
+        )
+        if seeding is None or seeding.generated_seed_code is None:
+            counted |= unseen
+        else:
+            seeded = {entry.id for entry in seeding.roster_snapshot}
+            counted |= unseen & seeded
+    return RemovedInRace(
+        frozenset(counted - out_of_winners), frozenset(counted - out_of_race)
+    )
+
+
+def is_natural_shortfall(
+    tournament: Tournament,
+    pool: Bracket | None,
+    round_number: int,
+    sizes: Sequence[int],
+    removed: Callable[[], int],
+) -> bool:
+    """Tell whether the pool is short without its own removals.
+
+    The pool is a winners pool, or the one lobby of the single track's
+    final. The shortfall stays with the pool's removals added back.
+    """
+    minimum = tournament.group_size_min or 2
+    if round_number <= 0 or not 2 <= min(sizes) < minimum:
+        return False
+    if pool is not Bracket.WINNERS and not (pool is None and len(sizes) == 1):
+        return False
+    return min(_ffa_lobby_sizes(tournament, sum(sizes) + removed())) < minimum
+
+
+def _undersized_pool(
+    tournament: Tournament,
+    pool: Bracket | None,
+    round_number: int,
+    count: int,
+    removed: Callable[[], int],
+) -> UndersizedPool | None:
+    """Permit a shortfall that stays with the pool's removals back.
+
+    The other permitted shortfall is one the removals alone cause. A lone
+    contestant never makes a lobby.
+    """
+    minimum = tournament.group_size_min or 2
+    if count < 2:
+        return None
+    sizes = _ffa_lobby_sizes(tournament, count)
+    if min(sizes) >= minimum or min(sizes) < 2:
+        return None
+    if is_natural_shortfall(tournament, pool, round_number, sizes, removed):
+        return UndersizedPool(
+            pool, round_number, count, sizes, minimum, natural_shortfall=True
+        )
+    left = removed()
+    if left and min(_ffa_lobby_sizes(tournament, count + left)) >= minimum:
+        return UndersizedPool(pool, round_number, count, sizes, minimum)
+    return None
+
+
+def ffa_undersized_pools(
+    tournament: Tournament, plan: FfaAdvancePlan
+) -> tuple[UndersizedPool, ...]:
+    """Return pools permitted below minimum by removals or natural WB shrinkage."""
+    in_race = cache(lambda: removed_in_race(tournament))
+    pools = [
+        _undersized_pool(
+            tournament,
+            plan.pool,
+            plan.round_number,
+            len(plan.survivors),
+            lambda: in_race().count_for(plan.pool),
+        )
+    ]
+    if plan.lb_pool and plan.lb_round_number is not None:
+        pools.append(
+            _undersized_pool(
+                tournament,
+                Bracket.LOSERS,
+                plan.lb_round_number,
+                len(plan.lb_pool),
+                lambda: in_race().count_for(Bracket.LOSERS),
+            )
+        )
+    return tuple(p for p in pools if p is not None)
 
 
 def advance_ffa_round(
@@ -3920,10 +5204,16 @@ def advance_ffa_round(
     pool: Bracket | None = None,
     initiator_id: UserID | None = None,
 ) -> Result[int | str, str]:
-    """Advance an FFA tournament to the next round.
+    """Advance an FFA tournament to the next round in one call.
 
-    For single-track (``pool=None``): selects top
-    ``advancement_count`` from each group, bottom eliminated.
+    Each lobby is ranked by points. A tie across the cut returns
+    ``Err(QUALIFICATION_TIE_ERROR)`` until an orga decision for that
+    lobby's scope exists. The survivors, ordered by standing, fill the
+    next round's lobbies in a balanced snake. The routes go through
+    ``tournament_seeding_service.prepare_ffa_round_draft`` instead.
+
+    For single-track (``pool=None``): the top ``advancement_count`` of
+    each lobby advance, the rest are eliminated.
 
     For double elimination (``pool=Bracket.WINNERS`` or
     ``pool=Bracket.LOSERS``): routes players between WB/LB pools.
@@ -3932,19 +5222,79 @@ def advance_ffa_round(
     ``Ok('advanced_wb')``, ``Ok('advanced_lb')``, or
     ``Ok('grand_final_eligible')`` for DE pools,
     or ``Err(reason)`` on failure.
+
+    A losers pool of one contestant gets no lobby: the contestant has a
+    bye and carries over to the next losers round, or to the Grand
+    Final. A winners advance that leaves one behind in the losers pool
+    still creates the winners round, and logs ``bracket-lobby-bye``. A
+    losers advance with one survivor creates nothing and returns
+    ``Err(FFA_LONE_SURVIVOR_ERROR)``, so repeating it changes nothing.
     """
     # Lock tournament.
     tournament_repository.lock_tournament_for_update(tournament_id)
     tournament = tournament_repository.get_tournament(tournament_id)
 
-    if tournament.game_format != GameFormat.FREE_FOR_ALL:
-        return Err('Tournament game format is not FREE_FOR_ALL.')
+    plan_result = plan_ffa_advance(tournament, pool)
+    if plan_result.is_err():
+        return Err(plan_result.unwrap_err())
+    plan = plan_result.unwrap()
 
-    advancement_count = tournament.advancement_count
-    if advancement_count is None or advancement_count < 1:
+    if plan.grand_final_eligible:
+        # Signal GF eligibility; the admin generates the Grand Final.
+        return Ok('grand_final_eligible')
+    if is_lone_losers_round(plan):
+        return Err(FFA_LONE_SURVIVOR_ERROR)
+
+    if is_single_survivor(plan):
+        completed = complete_ffa_single_survivor(tournament, plan, initiator_id)
+        if completed.is_err():
+            tournament_repository.rollback_session()
+            return Err(completed.unwrap_err())
+        tournament_repository.commit_session()
+        tournament_completed.send(None, event=completed.unwrap())
+        return Ok('completed')
+
+    # Use _impl (no commit) so WB + LB rounds are created atomically.
+    created = _create_planned_ffa_rounds(
+        tournament, plan, initiator_id=initiator_id,
+        seeding_target=(
+            ffa_round_seeding_target(pool, plan.round_number)
+            if is_waiting_winners_round(plan) else None
+        ),
+    )
+    if created.is_err():
+        tournament_repository.rollback_session()
+        return Err(created.unwrap_err())
+
+    tournament_repository.commit_session()
+    if pool is None:
+        return Ok(created.unwrap())
+    return Ok('advanced_wb' if pool is Bracket.WINNERS else 'advanced_lb')
+
+
+def plan_ffa_advance(
+    tournament: Tournament,
+    pool: Bracket | None,
+    *,
+    next_round: int | None = None,
+) -> Result[FfaAdvancePlan, str]:
+    """Plan the round that follows a confirmed FFA round, writing nothing.
+
+    The source is the latest round of the pool, or the one before
+    *next_round* when that is given. The caller holds the tournament lock.
+    """
+    if _ffa_phase(tournament) is None:
+        return Err('Tournament game format is not FREE_FOR_ALL.')
+    if tournament.tournament_status is not TournamentStatus.ONGOING:
+        return Err('The tournament must be ongoing to advance an FFA round.')
+
+    cut = tournament.advancement_count
+    if cut is None or cut < 1:
         return Err('Tournament advancement_count is not configured.')
 
-    is_de = tournament.elimination_mode == EliminationMode.DOUBLE_ELIMINATION
+    is_de = (
+        _ffa_elimination_mode(tournament) == EliminationMode.DOUBLE_ELIMINATION
+    )
 
     # DE requires an explicit pool parameter.
     if is_de and pool is None:
@@ -3957,351 +5307,496 @@ def advance_ffa_round(
     if not is_de and pool is not None:
         return Err('Single-track FFA does not use pool parameter.')
 
-    if is_de:
-        return _advance_ffa_round_de(
-            tournament, pool, advancement_count, initiator_id,
-        )
-    else:
-        return _advance_ffa_round_single(
-            tournament, advancement_count, initiator_id,
-        )
-
-
-def _advance_ffa_round_single(
-    tournament: Tournament,
-    advancement_count: int,
-    initiator_id: UserID | None,
-) -> Result[int | str, str]:
-    """Single-track FFA advancement: bottom eliminated, top advance."""
-    tournament_id = tournament.id
-
-    # Find the latest round with matches.
     all_matches = tournament_repository.get_matches_for_tournament_ordered(
-        tournament_id
+        tournament.id
     )
     if not all_matches:
         return Err('Tournament has no matches.')
 
-    latest_round = max(m.round for m in all_matches if m.round is not None)
+    decisions = ffa_decisions(tournament.id)
+    if pool == Bracket.WINNERS:
+        return _plan_ffa_wb(tournament, all_matches, cut, decisions, next_round)
+    if pool == Bracket.LOSERS:
+        return _plan_ffa_lb(tournament, all_matches, cut, decisions, next_round)
+    if pool is not None:
+        return Err(f'Invalid pool for DE advancement: {pool}')
+    return _plan_ffa_single(tournament, all_matches, cut, decisions, next_round)
 
+
+def _source_round(rounds: Iterable[int | None], next_round: int | None) -> int:
+    """Return the round whose survivors play *next_round*."""
+    if next_round is not None:
+        return next_round - 1
+    return max(r for r in rounds if r is not None)
+
+
+def _plan_ffa_single(
+    tournament: Tournament,
+    all_matches: list[TournamentMatch],
+    cut: int,
+    decisions: qualification_domain.DecisionOrders,
+    next_round: int | None,
+) -> Result[FfaAdvancePlan, str]:
+    """Single-track FFA advancement: bottom eliminated, top advance."""
+    source = _source_round((m.round for m in all_matches), next_round)
     round_matches = tournament_repository.get_matches_for_round(
-        tournament_id, latest_round,
+        tournament.id,
+        source,
     )
+    if not round_matches:
+        return Err('Tournament has no matches.')
 
     # Validate all matches in the round are confirmed.
     unconfirmed = [m for m in round_matches if m.confirmed_by is None]
     if unconfirmed:
         return Err(
-            f'{len(unconfirmed)} match(es) in round {latest_round} '
-            f'are not confirmed.'
+            f'{len(unconfirmed)} match(es) in round {source} are not confirmed.'
         )
 
-    advancing_ids, err = _select_top_n_from_round(
-        round_matches, advancement_count,
-    )
-    if err is not None:
-        return Err(err)
-
-    if not advancing_ids:
+    survivors_result = _round_standings(round_matches, cut, decisions)
+    if survivors_result.is_err():
+        return Err(QUALIFICATION_TIE_ERROR)
+    survivors = _order_by_standing(survivors_result.unwrap())
+    if not survivors:
         return Err('No contestants qualified for advancement.')
 
-    # Generate the next round with advancing contestants.
     # When survivors fit in a single group this becomes the final round
-    # (single group = winner-takes-all).  No special signal needed —
+    # (single group = winner-takes-all).  No special signal needed --
     # auto-complete fires when the single-group final is confirmed.
-    next_round = latest_round + 1
-    gen_result = _generate_ffa_round_impl(
-        tournament_id,
-        next_round,
-        advancing_ids,
-        initiator_id=initiator_id,
-    )
-    if gen_result.is_err():
-        return Err(gen_result.unwrap_err())
-
-    tournament_repository.commit_session()
-    return Ok(gen_result.unwrap())
-
-
-def _advance_ffa_round_de(
-    tournament: Tournament,
-    pool: Bracket | None,
-    advancement_count: int,
-    initiator_id: UserID | None,
-) -> Result[int | str, str]:
-    """Double elimination FFA advancement with WB/LB pool routing."""
-    tournament_id = tournament.id
-
-    all_matches = tournament_repository.get_matches_for_tournament_ordered(
-        tournament_id
-    )
-    if not all_matches:
-        return Err('Tournament has no matches.')
-
-    if pool == Bracket.WINNERS:
-        return _advance_ffa_wb(
-            tournament, all_matches, advancement_count, initiator_id,
+    return Ok(
+        FfaAdvancePlan(
+            pool=None,
+            round_number=source + 1,
+            survivors=tuple(s.contestant_id for s in survivors),
+            bands={s.contestant_id: s.band for s in survivors},
+            grand_final_eligible=False,
         )
-    elif pool == Bracket.LOSERS:
-        return _advance_ffa_lb(
-            tournament, all_matches, advancement_count, initiator_id,
-        )
-    else:
-        return Err(f'Invalid pool for DE advancement: {pool}')
+    )
 
 
-def _advance_ffa_wb(
+def _plan_ffa_wb(
     tournament: Tournament,
     all_matches: list[TournamentMatch],
-    advancement_count: int,
-    initiator_id: UserID | None,
-) -> Result[int | str, str]:
+    cut: int,
+    decisions: qualification_domain.DecisionOrders,
+    next_round: int | None,
+) -> Result[FfaAdvancePlan, str]:
     """Winners bracket advancement: top stay in WB, bottom drop to LB."""
-    tournament_id = tournament.id
-
-    # Find latest WB round.
-    wb_matches = [
-        m for m in all_matches if m.bracket == Bracket.WINNERS
-    ]
+    if next_round is not None:
+        target = ffa_round_seeding_target(Bracket.WINNERS, next_round)
+        all_matches = [m for m in all_matches if m.seeding_target != target]
+    wb_matches = [m for m in all_matches if m.bracket == Bracket.WINNERS]
     if not wb_matches:
         return Err('No Winners bracket matches found.')
 
-    latest_wb_round = max(
-        m.round for m in wb_matches if m.round is not None
-    )
-
+    source = _source_round((m.round for m in wb_matches), next_round)
     wb_round_matches = tournament_repository.get_matches_for_round(
-        tournament_id, latest_wb_round, bracket=Bracket.WINNERS,
+        tournament.id,
+        source,
+        bracket=Bracket.WINNERS,
     )
+    if not wb_round_matches:
+        return Err('No Winners bracket matches found.')
 
     # Validate all WB round matches confirmed.
     unconfirmed = [m for m in wb_round_matches if m.confirmed_by is None]
     if unconfirmed:
         return Err(
-            f'{len(unconfirmed)} WB match(es) in round {latest_wb_round} '
+            f'{len(unconfirmed)} WB match(es) in round {source} '
             f'are not confirmed.'
         )
 
     # Select top N from each WB group; remainder drops to LB.
-    wb_advancing: list[str] = []
-    wb_dropped: list[str] = []
+    wb_advancing: list[_Standing] = []
+    wb_dropped: list[_Standing] = []
 
     for match in wb_round_matches:
-        contestants = tournament_repository.get_contestants_for_match(
-            match.id
-        )
-        sorted_contestants = sorted(
-            contestants,
-            key=lambda c: c.points if c.points is not None else 0,
-            reverse=True,
-        )
-
-        if len(sorted_contestants) <= advancement_count:
-            for c in sorted_contestants:
-                wb_advancing.append(contestant_id(c))
-            continue
-
-        # Tie check at cutoff.
-        cutoff_points = sorted_contestants[advancement_count - 1].points or 0
-        next_points = sorted_contestants[advancement_count].points or 0
-        if cutoff_points == next_points:
-            tied = [
-                contestant_id(c)
-                for c in sorted_contestants
-                if (c.points or 0) == cutoff_points
-            ]
-            return Err(
-                f'Tie at WB advancement cutoff in match {match.id}. '
-                f'Tied contestants: {", ".join(tied)}'
-            )
-
-        for c in sorted_contestants[:advancement_count]:
-            wb_advancing.append(contestant_id(c))
-        for c in sorted_contestants[advancement_count:]:
-            wb_dropped.append(contestant_id(c))
+        contestants = tournament_repository.get_contestants_for_match(match.id)
+        split = _split_ffa_lobby(match, contestants, cut, decisions)
+        if split.is_err():
+            return Err(QUALIFICATION_TIE_ERROR)
+        advancing, dropped = split.unwrap()
+        wb_advancing.extend(advancing)
+        wb_dropped.extend(dropped)
 
     if not wb_advancing:
         return Err('No WB contestants qualified for advancement.')
 
+    lb_matches = [m for m in all_matches if m.bracket is Bracket.LOSERS]
+    if len(wb_advancing) == 1:
+        waiting_target = ffa_round_seeding_target(Bracket.WINNERS, source + 1)
+        if next_round is None and any(
+            m.seeding_target == waiting_target for m in lb_matches
+        ):
+            return Err(FFA_WINNERS_FINISHED_ERROR)
+
+    # Every winners advance merges the latest losers round, so it must be in.
+    if lb_matches:
+        latest = max(m.round for m in lb_matches if m.round is not None)
+        if any(
+            m.confirmed_by is None for m in lb_matches if m.round == latest
+        ):
+            return Err(FFA_LOSERS_UNCONFIRMED_ERROR)
+
     # Collect existing LB survivors (top N from latest LB round).
-    lb_survivors = _collect_lb_survivors(tournament, all_matches)
+    lb_result = _collect_lb_standings(tournament, all_matches, decisions)
+    if lb_result.is_err():
+        return Err(QUALIFICATION_TIE_ERROR)
+    lb_survivors = lb_result.unwrap()
+
+    # Players of earlier winners rounds who got a bye are still waiting.
+    carried = _wb_dropped_pending_standings(
+        tournament, all_matches, decisions, before_round=source
+    )
+    if carried.is_err():
+        return Err(QUALIFICATION_TIE_ERROR)
 
     # Check GF trigger: total survivors <= group_size_max.
-    total_survivors = len(wb_advancing) + len(lb_survivors) + len(wb_dropped)
-    if _check_grand_final_trigger(tournament, total_survivors):
-        # Signal GF eligibility — admin decides whether to generate
-        # Grand Final or run another round.  Do NOT generate new
-        # WB/LB rounds; the admin will call generate_ffa_grand_final()
-        # or run advance again after choosing.
-        return Ok('grand_final_eligible')
-
-    # Generate next WB round for WB survivors.
-    # Use _impl (no commit) so WB + LB rounds are created atomically.
-    next_wb_round = latest_wb_round + 1
-    gen_wb = _generate_ffa_round_impl(
-        tournament_id,
-        next_wb_round,
-        wb_advancing,
-        bracket=Bracket.WINNERS,
-        initiator_id=initiator_id,
+    total_survivors = (
+        len(wb_advancing)
+        + len(lb_survivors)
+        + len(wb_dropped)
+        + len(carried.unwrap())
     )
-    if gen_wb.is_err():
-        return Err(gen_wb.unwrap_err())
+    eligible = _check_grand_final_trigger(tournament, total_survivors)
 
     # Merge dropped players with existing LB survivors for next LB round.
-    lb_pool = wb_dropped + lb_survivors
-    if lb_pool:
-        lb_round_num = _next_lb_round_number(all_matches)
-        gen_lb = _generate_ffa_round_impl(
-            tournament_id,
-            lb_round_num,
-            lb_pool,
-            bracket=Bracket.LOSERS,
-            initiator_id=initiator_id,
+    lb_pool = _order_by_standing(
+        [*wb_dropped, *lb_survivors, *carried.unwrap()]
+    )
+    wb_ordered = _order_by_standing(wb_advancing)
+    return Ok(
+        FfaAdvancePlan(
+            pool=Bracket.WINNERS,
+            round_number=source + 1,
+            survivors=tuple(s.contestant_id for s in wb_ordered),
+            bands={s.contestant_id: s.band for s in (*wb_ordered, *lb_pool)},
+            grand_final_eligible=eligible,
+            lb_pool=tuple(s.contestant_id for s in lb_pool),
+            lb_round_number=(
+                _next_lb_round_number(all_matches) if lb_pool else None
+            ),
         )
-        if gen_lb.is_err():
-            return Err(gen_lb.unwrap_err())
-
-    tournament_repository.commit_session()
-    return Ok('advanced_wb')
+    )
 
 
-def _advance_ffa_lb(
+def _plan_ffa_lb(
     tournament: Tournament,
     all_matches: list[TournamentMatch],
-    advancement_count: int,
-    initiator_id: UserID | None,
-) -> Result[int | str, str]:
+    cut: int,
+    decisions: qualification_domain.DecisionOrders,
+    next_round: int | None,
+) -> Result[FfaAdvancePlan, str]:
     """Losers bracket advancement: top survive, bottom eliminated."""
-    tournament_id = tournament.id
-
-    lb_matches = [
-        m for m in all_matches if m.bracket == Bracket.LOSERS
-    ]
+    lb_matches = [m for m in all_matches if m.bracket == Bracket.LOSERS]
     if not lb_matches:
         return Err('No Losers bracket matches found.')
 
-    latest_lb_round = max(
-        m.round for m in lb_matches if m.round is not None
-    )
-
+    source = _source_round((m.round for m in lb_matches), next_round)
     lb_round_matches = tournament_repository.get_matches_for_round(
-        tournament_id, latest_lb_round, bracket=Bracket.LOSERS,
+        tournament.id,
+        source,
+        bracket=Bracket.LOSERS,
     )
+    if not lb_round_matches:
+        return Err('No Losers bracket matches found.')
 
     # Validate all LB round matches confirmed.
     unconfirmed = [m for m in lb_round_matches if m.confirmed_by is None]
     if unconfirmed:
         return Err(
-            f'{len(unconfirmed)} LB match(es) in round {latest_lb_round} '
+            f'{len(unconfirmed)} LB match(es) in round {source} '
             f'are not confirmed.'
         )
 
     # Select top N from each LB group; bottom eliminated entirely.
-    lb_advancing: list[str] = []
-
+    lb_advancing: list[_Standing] = []
     for match in lb_round_matches:
-        contestants = tournament_repository.get_contestants_for_match(
-            match.id
-        )
-        sorted_contestants = sorted(
-            contestants,
-            key=lambda c: c.points if c.points is not None else 0,
-            reverse=True,
-        )
-
-        if len(sorted_contestants) <= advancement_count:
-            for c in sorted_contestants:
-                lb_advancing.append(contestant_id(c))
-            continue
-
-        # Tie check at cutoff.
-        cutoff_points = sorted_contestants[advancement_count - 1].points or 0
-        next_points = sorted_contestants[advancement_count].points or 0
-        if cutoff_points == next_points:
-            tied = [
-                contestant_id(c)
-                for c in sorted_contestants
-                if (c.points or 0) == cutoff_points
-            ]
-            return Err(
-                f'Tie at LB advancement cutoff in match {match.id}. '
-                f'Tied contestants: {", ".join(tied)}'
-            )
-
-        for c in sorted_contestants[:advancement_count]:
-            lb_advancing.append(contestant_id(c))
+        contestants = tournament_repository.get_contestants_for_match(match.id)
+        split = _split_ffa_lobby(match, contestants, cut, decisions)
+        if split.is_err():
+            return Err(QUALIFICATION_TIE_ERROR)
+        lb_advancing.extend(split.unwrap()[0])
 
     if not lb_advancing:
         return Err('No LB contestants qualified for advancement.')
 
-    # Collect WB survivors for GF trigger check.
-    wb_survivors = _collect_wb_survivors(tournament, all_matches)
-
-    # Check GF trigger.
-    total_survivors = len(wb_survivors) + len(lb_advancing)
-    if _check_grand_final_trigger(tournament, total_survivors):
-        return Ok('grand_final_eligible')
-
-    # Generate next LB round.
-    next_lb_round = latest_lb_round + 1
-    gen_result = _generate_ffa_round_impl(
-        tournament_id,
-        next_lb_round,
-        lb_advancing,
-        bracket=Bracket.LOSERS,
-        initiator_id=initiator_id,
+    # Count what a Grand Final would hold: WB survivors, WB players
+    # dropped but not yet in the LB, and these LB survivors.
+    wb_survivors_result = _collect_wb_survivors(
+        tournament, all_matches, decisions
     )
-    if gen_result.is_err():
-        return Err(gen_result.unwrap_err())
+    wb_dropped_result = _collect_wb_dropped_pending(
+        tournament, all_matches, decisions
+    )
+    if wb_survivors_result.is_err() or wb_dropped_result.is_err():
+        return Err(QUALIFICATION_TIE_ERROR)
 
-    tournament_repository.commit_session()
-    return Ok('advanced_lb')
+    total_survivors = (
+        len(wb_survivors_result.unwrap())
+        + len(wb_dropped_result.unwrap())
+        + len(lb_advancing)
+    )
+    ordered = _order_by_standing(lb_advancing)
+    return Ok(
+        FfaAdvancePlan(
+            pool=Bracket.LOSERS,
+            round_number=source + 1,
+            survivors=tuple(s.contestant_id for s in ordered),
+            bands={s.contestant_id: s.band for s in ordered},
+            grand_final_eligible=_check_grand_final_trigger(
+                tournament, total_survivors
+            ),
+        )
+    )
 
 
-def _select_top_n_from_round(
-    round_matches: list[TournamentMatch],
-    advancement_count: int,
-) -> tuple[list[str], str | None]:
-    """Select top N contestants from each match in a round.
+def _create_planned_ffa_rounds(
+    tournament: Tournament,
+    plan: FfaAdvancePlan,
+    *,
+    groups: Sequence[Sequence[str]] | None = None,
+    initiator_id: UserID | None = None,
+    seeding_target: str | None = None,
+    log_waiting: bool = True,
+    log_natural_shortfall: bool = True,
+) -> Result[int, str]:
+    """Create the round of a plan, and its losers round, without committing.
 
-    Returns ``(advancing_ids, None)`` on success or
-    ``([], error_message)`` on failure (tie at cutoff).
+    *groups* are the lobbies of the plan's own round; without them they
+    derive from the standing order. The losers round always derives and
+    carries the same *seeding_target*. A losers pool of one has no round:
+    it is logged as ``bracket-lobby-bye`` and the contestant carries over.
     """
-    advancing_ids: list[str] = []
+    if is_lone_losers_round(plan):
+        return Err(FFA_LONE_SURVIVOR_ERROR)
+    if groups is None:
+        groups = _ffa_lobbies(tournament, ffa_draft_survivors(plan))
+    undersized = {
+        (p.pool, p.round_number): p
+        for p in ffa_undersized_pools(tournament, plan)
+    }
+    short = undersized.get((plan.pool, plan.round_number))
+    if (
+        short and short.natural_shortfall
+        and any(len(group) < 2 for group in groups)
+    ):
+        return Err(FFA_LOBBY_BELOW_MINIMUM_ERROR)
+    waiting = is_waiting_winners_round(plan)
+    created = Ok(0) if waiting else _generate_ffa_round_impl(
+        tournament.id,
+        plan.round_number,
+        list(plan.survivors),
+        bracket=plan.pool,
+        initiator_id=initiator_id,
+        groups=groups,
+        seeding_target=seeding_target,
+        allow_undersized=(plan.pool, plan.round_number) in undersized,
+    )
+    if created.is_err():
+        return created
+    count = created.unwrap()
 
-    for match in round_matches:
-        contestants = tournament_repository.get_contestants_for_match(
-            match.id
+    byes = ffa_lobby_byes(plan)
+    if plan.lb_pool and plan.lb_round_number is not None and not byes:
+        created_lb = _generate_ffa_round_impl(
+            tournament.id,
+            plan.lb_round_number,
+            list(plan.lb_pool),
+            bracket=Bracket.LOSERS,
+            initiator_id=initiator_id,
+            groups=groups if waiting else _ffa_lobbies(tournament, plan.lb_pool),
+            seeding_target=seeding_target,
+            allow_undersized=(Bracket.LOSERS, plan.lb_round_number)
+            in undersized,
         )
-        sorted_contestants = sorted(
-            contestants,
-            key=lambda c: c.points if c.points is not None else 0,
-            reverse=True,
+        if created_lb.is_err():
+            return created_lb
+        count += created_lb.unwrap()
+    waiting_byes = (
+        (LobbyBye(Bracket.WINNERS, plan.round_number, plan.survivors[0]),)
+        if waiting and log_waiting else ()
+    )
+    for bye in (*byes, *waiting_byes):
+        create_log_entry(
+            'bracket-lobby-bye',
+            tournament.id,
+            initiator_id,
+            data={
+                'pool': ffa_pool_token(bye.pool),
+                'round': bye.round_number,
+                'contestant': bye.contestant_id,
+            },
+            commit=False,
         )
-
-        if len(sorted_contestants) <= advancement_count:
-            for c in sorted_contestants:
-                advancing_ids.append(contestant_id(c))
+    for short in undersized.values():
+        if short.natural_shortfall and not log_natural_shortfall:
             continue
+        create_log_entry(
+            'bracket-lobby-undersized',
+            tournament.id,
+            initiator_id,
+            data={
+                'pool': ffa_pool_token(short.pool),
+                'round': short.round_number,
+                'count': short.count,
+                'lobbies': list(short.lobbies),
+                'minimum': short.minimum,
+                **(
+                    {'reason': 'natural_shortfall'}
+                    if short.natural_shortfall else {}
+                ),
+            },
+            commit=False,
+        )
+    return Ok(count)
 
-        cutoff_points = sorted_contestants[advancement_count - 1].points or 0
-        next_points = sorted_contestants[advancement_count].points or 0
-        if cutoff_points == next_points:
-            tied = [
-                contestant_id(c)
-                for c in sorted_contestants
-                if (c.points or 0) == cutoff_points
-            ]
-            return [], (
-                f'Tie at advancement cutoff in match {match.id}. '
-                f'Tied contestants: {", ".join(tied)}'
+
+def is_untagged_winners_round(
+    pool: Bracket | None, matches: Iterable[TournamentMatch]
+) -> bool:
+    """Tell whether a winners round was made without a draft.
+
+    Its losers round carries no marker either, so it cannot be replaced.
+    """
+    return pool is Bracket.WINNERS and any(
+        m.seeding_target is None for m in matches
+    )
+
+
+def ffa_round_seeding_target(pool: Bracket | None, round_number: int) -> str:
+    """Return the seeding target of an FFA round, e.g. `ffa:WB:1`."""
+    return f'ffa:{ffa_pool_token(pool)}:{round_number}'
+
+
+def has_ffa_round(
+    tournament_id: TournamentID, pool: Bracket | None, round_number: int
+) -> bool:
+    """Tell whether the pool already has matches in that round."""
+    return bool(
+        tournament_repository.get_matches_for_round(
+            tournament_id, round_number, bracket=pool
+        )
+    )
+
+
+def _generate_ffa_advance_impl(
+    tournament_id: TournamentID,
+    pool: Bracket | None,
+    round_number: int,
+    *,
+    groups: Sequence[Sequence[str]],
+    initiator_id: UserID | None = None,
+) -> Result[GenerationOutcome, str]:
+    """Generate one later FFA round from a draft without committing.
+
+    Replaces the round, and the losers round a winners round came with,
+    while none of them has a confirmed result; the survivors must still
+    be the ones it was made for. Every created match carries the
+    round's seeding target. The caller owns commit and dispatch.
+    """
+    tournament_repository.lock_tournament_for_update(tournament_id)
+    tournament = tournament_repository.get_tournament(tournament_id)
+
+    target = ffa_round_seeding_target(pool, round_number)
+    existing = tournament_repository.get_matches_for_round(
+        tournament_id, round_number, bracket=pool
+    )
+    to_delete = {m.id: m for m in existing}
+    for m in tournament_repository.get_matches_for_seeding_target(
+        tournament_id, target
+    ):
+        to_delete[m.id] = m
+    if is_untagged_winners_round(pool, existing):
+        return Err(FFA_UNTAGGED_WB_ERROR)
+    if any(m.confirmed_by is not None for m in to_delete.values()):
+        return Err(FFA_ROUND_LOCKED_ERROR)
+
+    placed = {
+        contestant_id(c)
+        for m in existing
+        for c in tournament_repository.get_contestants_for_match(m.id)
+    }
+    # The plan reads the matches, so the round goes before it is planned.
+    deleted_events = _delete_matches_flush(
+        tournament_id, list(to_delete.values())
+    )
+
+    plan_result = plan_ffa_advance(tournament, pool, next_round=round_number)
+    if plan_result.is_err():
+        return Err(plan_result.unwrap_err())
+    plan = plan_result.unwrap()
+    if plan.grand_final_eligible:
+        return Err(FFA_GRAND_FINAL_ERROR)
+    if existing and placed != set(plan.survivors):
+        return Err(LAYOUT_ROSTER_ERROR)
+
+    created = _create_planned_ffa_rounds(
+        tournament,
+        plan,
+        groups=groups,
+        initiator_id=initiator_id,
+        seeding_target=target,
+        log_waiting=not (
+            pool is Bracket.WINNERS and not existing and to_delete
+        ),
+        log_natural_shortfall=not bool(to_delete),
+    )
+    if created.is_err():
+        return Err(created.unwrap_err())
+
+    now = datetime.now(UTC)
+    created_ids = [
+        m.id
+        for m in tournament_repository.get_matches_for_round(
+            tournament_id, round_number, bracket=pool
+        )
+    ]
+    if plan.lb_round_number is not None and plan.lb_pool:
+        created_ids.extend(
+            m.id
+            for m in tournament_repository.get_matches_for_round(
+                tournament_id, plan.lb_round_number, bracket=Bracket.LOSERS
             )
+        )
+    return Ok(
+        GenerationOutcome(
+            count=created.unwrap(),
+            created_events=[
+                MatchCreatedEvent(
+                    occurred_at=now,
+                    initiator=None,
+                    tournament_id=tournament_id,
+                    match_id=match_id,
+                )
+                for match_id in created_ids
+            ],
+            deleted_events=deleted_events,
+            ready_match_ids=frozenset(created_ids),
+            occurred_at=now,
+        )
+    )
 
-        for c in sorted_contestants[:advancement_count]:
-            advancing_ids.append(contestant_id(c))
 
-    return advancing_ids, None
+def _delete_matches_flush(
+    tournament_id: TournamentID, matches: Iterable[TournamentMatch]
+) -> list[MatchDeletedEvent]:
+    """Delete matches without links, with their children (flush only)."""
+    now = datetime.now(UTC)
+    events = []
+    for match in matches:
+        tournament_repository.delete_comments_for_match_flush(match.id)
+        tournament_repository.delete_contestants_for_match_flush(match.id)
+        tournament_repository.delete_match_flush(match.id)
+        events.append(
+            MatchDeletedEvent(
+                occurred_at=now,
+                initiator=None,
+                tournament_id=tournament_id,
+                match_id=match.id,
+            )
+        )
+    return events
 
 
 def _check_grand_final_trigger(
@@ -4316,95 +5811,316 @@ def _check_grand_final_trigger(
 def _collect_lb_survivors(
     tournament: Tournament,
     all_matches: list[TournamentMatch],
-) -> list[str]:
+    decisions: qualification_domain.DecisionOrders | None = None,
+) -> Result[list[str], list[str]]:
     """Collect surviving contestant IDs from the latest LB round.
 
     Survivors = top ``advancement_count`` from each LB group.
-    Returns empty list when no LB rounds exist yet.
+    Returns an empty list when no LB rounds exist yet, and
+    ``Err(tied_ids)`` on an undecided tie at the cut of a confirmed match.
     """
-    lb_matches = [
-        m for m in all_matches if m.bracket == Bracket.LOSERS
-    ]
+    result = _collect_lb_standings(tournament, all_matches, decisions)
+    if result.is_err():
+        return Err(result.unwrap_err())
+    return Ok([s.contestant_id for s in result.unwrap()])
+
+
+def _collect_lb_standings(
+    tournament: Tournament,
+    all_matches: list[TournamentMatch],
+    decisions: qualification_domain.DecisionOrders | None = None,
+) -> Result[list[_Standing], list[str]]:
+    lb_matches = [m for m in all_matches if m.bracket == Bracket.LOSERS]
     if not lb_matches:
-        return []
+        return Ok([])
 
-    latest_lb_round = max(
-        m.round for m in lb_matches if m.round is not None
-    )
+    latest_lb_round = max(m.round for m in lb_matches if m.round is not None)
     lb_round_matches = tournament_repository.get_matches_for_round(
-        tournament.id, latest_lb_round, bracket=Bracket.LOSERS,
+        tournament.id,
+        latest_lb_round,
+        bracket=Bracket.LOSERS,
     )
 
-    advancement_count = tournament.advancement_count or 1
-    survivors: list[str] = []
+    return _round_standings(
+        lb_round_matches,
+        tournament.advancement_count or 1,
+        _decisions_or_stored(tournament, decisions),
+    )
 
-    for match in lb_round_matches:
-        # Only consider confirmed matches for survivor collection.
-        if match.confirmed_by is None:
-            # Unconfirmed LB match — all contestants are still "alive".
-            contestants = tournament_repository.get_contestants_for_match(
-                match.id
-            )
-            for c in contestants:
-                survivors.append(contestant_id(c))
-            continue
 
-        contestants = tournament_repository.get_contestants_for_match(
-            match.id
-        )
-        sorted_c = sorted(
-            contestants,
-            key=lambda c: c.points if c.points is not None else 0,
-            reverse=True,
-        )
-        for c in sorted_c[:advancement_count]:
-            survivors.append(contestant_id(c))
-
-    return survivors
+def _losers_entrant_ids(all_matches: Iterable[TournamentMatch]) -> set[str]:
+    """Return everyone with an entry in a losers lobby."""
+    return {
+        contestant_id(c)
+        for m in all_matches
+        if m.bracket == Bracket.LOSERS
+        for c in tournament_repository.get_contestants_for_match(m.id)
+    }
 
 
 def _collect_wb_survivors(
     tournament: Tournament,
     all_matches: list[TournamentMatch],
-) -> list[str]:
-    """Collect surviving contestant IDs from the latest WB round."""
-    wb_matches = [
-        m for m in all_matches if m.bracket == Bracket.WINNERS
-    ]
+    decisions: qualification_domain.DecisionOrders | None = None,
+) -> Result[list[str], list[str]]:
+    """Collect surviving contestant IDs from the latest WB round.
+
+    Returns ``Err(tied_ids)`` on an undecided tie at the cut of a
+    confirmed match.
+    """
+    wb_matches = [m for m in all_matches if m.bracket == Bracket.WINNERS]
     if not wb_matches:
-        return []
+        return Ok([])
 
-    latest_wb_round = max(
-        m.round for m in wb_matches if m.round is not None
-    )
+    latest_wb_round = max(m.round for m in wb_matches if m.round is not None)
     wb_round_matches = tournament_repository.get_matches_for_round(
-        tournament.id, latest_wb_round, bracket=Bracket.WINNERS,
+        tournament.id,
+        latest_wb_round,
+        bracket=Bracket.WINNERS,
     )
 
-    advancement_count = tournament.advancement_count or 1
-    survivors: list[str] = []
+    in_lb = _losers_entrant_ids(all_matches)
+    entries = {
+        m.id: tournament_repository.get_contestants_for_match(m.id)
+        for m in wb_round_matches
+    }
+    if any(contestant_id(c) in in_lb for es in entries.values() for c in es):
+        # The round's drops already play in the losers bracket: read its
+        # survivors from the entries, so a removal cannot re-rank it.
+        active = active_contestant_ids(tournament.id)
+        return Ok(
+            [
+                contestant_id(c)
+                for m in sorted(
+                    wb_round_matches, key=lambda m: m.group_order or 0
+                )
+                for c in sorted(
+                    entries[m.id],
+                    key=lambda c: (
+                        -(c.points or 0),
+                        c.placement is None,
+                        c.placement or 0,
+                        contestant_id(c),
+                    ),
+                )
+                if contestant_id(c) in active and contestant_id(c) not in in_lb
+            ]
+        )
 
-    for match in wb_round_matches:
+    return _collect_round_survivors(
+        wb_round_matches,
+        tournament.advancement_count or 1,
+        _decisions_or_stored(tournament, decisions),
+    )
+
+
+def _decisions_or_stored(
+    tournament: Tournament,
+    decisions: qualification_domain.DecisionOrders | None,
+) -> qualification_domain.DecisionOrders:
+    if decisions is not None:
+        return decisions
+    return ffa_decisions(tournament.id)
+
+
+def _collect_round_survivors(
+    round_matches: list[TournamentMatch],
+    advancement_count: int,
+    decisions: qualification_domain.DecisionOrders,
+) -> Result[list[str], list[str]]:
+    """Collect the contestants still alive after a round.
+
+    An unconfirmed match keeps all its contestants alive.
+    """
+    result = _round_standings(round_matches, advancement_count, decisions)
+    if result.is_err():
+        return Err(result.unwrap_err())
+    return Ok([s.contestant_id for s in result.unwrap()])
+
+
+def _round_standings(
+    round_matches: list[TournamentMatch],
+    cut: int,
+    decisions: qualification_domain.DecisionOrders,
+) -> Result[list[_Standing], list[str]]:
+    """Rank the contestants still alive after a round, lobby by lobby."""
+    alive: list[_Standing] = []
+
+    for match in round_matches:
+        contestants = tournament_repository.get_contestants_for_match(match.id)
         if match.confirmed_by is None:
-            contestants = tournament_repository.get_contestants_for_match(
-                match.id
+            alive.extend(
+                _Standing(
+                    contestant_id=contestant_id(c),
+                    band=0,
+                    points=0,
+                    lobby=match.group_order or 0,
+                    place=place,
+                )
+                for place, c in enumerate(contestants)
             )
-            for c in contestants:
-                survivors.append(contestant_id(c))
             continue
 
-        contestants = tournament_repository.get_contestants_for_match(
-            match.id
-        )
-        sorted_c = sorted(
-            contestants,
-            key=lambda c: c.points if c.points is not None else 0,
-            reverse=True,
-        )
-        for c in sorted_c[:advancement_count]:
-            survivors.append(contestant_id(c))
+        split = _split_ffa_lobby(match, contestants, cut, decisions)
+        if split.is_err():
+            return Err(split.unwrap_err())
+        alive.extend(split.unwrap()[0])
 
-    return survivors
+    return Ok(alive)
+
+
+def _collect_wb_dropped_pending(
+    tournament: Tournament,
+    all_matches: list[TournamentMatch],
+    decisions: qualification_domain.DecisionOrders | None = None,
+) -> Result[list[str], list[str]]:
+    """Collect WB players dropped in a confirmed WB round, not yet in the LB.
+
+    That is the players of the latest round whose losers round is not
+    made yet, and the players of any round who had a bye. Returns
+    ``Err(tied_ids)`` on an undecided tie at the cut of a confirmed match.
+    """
+    result = _wb_dropped_pending_standings(tournament, all_matches, decisions)
+    if result.is_err():
+        return Err(result.unwrap_err())
+    return Ok([s.contestant_id for s in result.unwrap()])
+
+
+def _wb_dropped_pending_standings(
+    tournament: Tournament,
+    all_matches: list[TournamentMatch],
+    decisions: qualification_domain.DecisionOrders | None = None,
+    *,
+    before_round: int | None = None,
+) -> Result[list[_Standing], list[str]]:
+    """Rank the active WB players dropped but in no LB match.
+
+    The latest round is judged by its ranking. In an earlier round, a
+    player who is in no later WB round and in no LB match had a bye; that
+    is read from the entries, so a later removal cannot re-rank the
+    round and lose the player. *before_round* treats every round before
+    it as earlier, and leaves out the rest.
+    """
+    wb_matches = [
+        m
+        for m in all_matches
+        if m.bracket == Bracket.WINNERS and m.round is not None
+    ]
+    if not wb_matches:
+        return Ok([])
+    latest = max(m.round for m in wb_matches if m.round is not None)
+    cutoff = latest if before_round is None else before_round
+
+    in_lb = _losers_entrant_ids(all_matches)
+
+    advancement_count = tournament.advancement_count or 1
+    stored = _decisions_or_stored(tournament, decisions)
+    contestants_of = {
+        m.id: tournament_repository.get_contestants_for_match(m.id)
+        for m in wb_matches
+    }
+    dropped: list[_Standing] = []
+
+    if before_round is None:
+        for match in wb_matches:
+            if match.round != latest or match.confirmed_by is None:
+                continue
+            if any(contestant_id(c) in in_lb for c in contestants_of[match.id]):
+                # Merged round: every drop plays in the losers bracket, so
+                # splitting it can only raise a tie nobody has to decide.
+                continue
+            split = _split_ffa_lobby(
+                match, contestants_of[match.id], advancement_count, stored
+            )
+            if split.is_err():
+                return Err(split.unwrap_err())
+            dropped.extend(
+                s for s in split.unwrap()[1] if s.contestant_id not in in_lb
+            )
+
+    earlier = [m for m in wb_matches if (m.round or 0) < cutoff]
+    if not earlier:
+        return Ok(dropped)
+
+    active = active_contestant_ids(tournament.id)
+    for match in earlier:
+        later = {
+            contestant_id(c)
+            for other in wb_matches
+            if (other.round or 0) > (match.round or 0)
+            for c in contestants_of[other.id]
+        }
+        left = [
+            c
+            for c in contestants_of[match.id]
+            if contestant_id(c) in active
+            and contestant_id(c) not in in_lb
+            and contestant_id(c) not in later
+        ]
+        if not left:
+            continue
+        split = _split_ffa_lobby(
+            match, contestants_of[match.id], advancement_count, stored
+        )
+        known = (
+            {s.contestant_id: s for part in split.unwrap() for s in part}
+            if split.is_ok()
+            else {}
+        )
+        dropped.extend(
+            known.get(contestant_id(c))
+            or _Standing(
+                contestant_id=contestant_id(c),
+                band=0,
+                points=c.points or 0,
+                lobby=match.group_order or 0,
+                place=c.placement or 0,
+            )
+            for c in left
+        )
+
+    return Ok(dropped)
+
+
+def _ranked_ids_with_points(
+    contestants: list[TournamentMatchToContestant],
+) -> list[tuple[str, int]]:
+    """Return contestant IDs with points, highest points first."""
+    return sorted(
+        ((contestant_id(c), c.points or 0) for c in contestants),
+        key=lambda entry: entry[1],
+        reverse=True,
+    )
+
+
+def split_at_cut(
+    sorted_ids_with_points: list[tuple[str, int]],
+    cut: int,
+) -> Result[tuple[list[str], list[str]], list[str]]:
+    """Split ranked entries into advancing and dropped at `cut`.
+
+    Returns ``Err(tied_ids)`` when the entries on both sides of the cut
+    have equal points.
+    """
+    if len(sorted_ids_with_points) <= cut:
+        return Ok(([cid for cid, _points in sorted_ids_with_points], []))
+
+    cut_points = sorted_ids_with_points[cut - 1][1]
+    if cut_points == sorted_ids_with_points[cut][1]:
+        return Err(
+            [
+                cid
+                for cid, points in sorted_ids_with_points
+                if points == cut_points
+            ]
+        )
+
+    return Ok(
+        (
+            [cid for cid, _points in sorted_ids_with_points[:cut]],
+            [cid for cid, _points in sorted_ids_with_points[cut:]],
+        )
+    )
 
 
 def _next_lb_round_number(
@@ -4419,6 +6135,106 @@ def _next_lb_round_number(
         return 0
     latest = max(m.round for m in lb_matches if m.round is not None)
     return latest + 1
+
+
+def _refuse_ffa_grand_final(reason: str) -> Result[int, str]:
+    """Release the generation transaction without producing a Grand Final."""
+    tournament_repository.rollback_session()
+    return Err(reason)
+
+
+@dataclass(frozen=True)
+class _FfaGrandFinalInputs:
+    tournament: Tournament
+    phase: int
+    all_matches: list[TournamentMatch]
+    wb_survivors: list[str]
+    wb_dropped: list[str]
+    lb_survivors: list[str]
+
+
+def _check_ffa_grand_final(
+    tournament_id: TournamentID,
+) -> Result[_FfaGrandFinalInputs, str]:
+    """Run every Grand Final refusal check; read-only, no lock, no writes."""
+    tournament = tournament_repository.get_tournament(tournament_id)
+
+    phase = _ffa_phase(tournament)
+    if phase is None:
+        return Err('Tournament game format is not FREE_FOR_ALL.')
+
+    if _ffa_elimination_mode(tournament) != EliminationMode.DOUBLE_ELIMINATION:
+        return Err('Grand Final is only for double elimination tournaments.')
+    if tournament.tournament_status is not TournamentStatus.ONGOING:
+        return Err('The tournament must be ongoing to advance an FFA round.')
+    if _has_playoffs(tournament) and tournament.playoff_released_at is None:
+        return Err('The playoffs are not released yet.')
+
+    all_matches = tournament_repository.get_matches_for_tournament_ordered(
+        tournament_id
+    )
+    all_matches = [m for m in all_matches if m.phase == phase]
+
+    # Reject if Grand Final already exists.
+    existing_gf = [
+        m for m in all_matches if m.bracket == Bracket.GRAND_FINAL
+    ]
+    if existing_gf:
+        return Err('Grand Final has already been generated.')
+    if any(
+        m.confirmed_by is None
+        for m in all_matches
+        if m.bracket in (Bracket.WINNERS, Bracket.LOSERS)
+    ):
+        return Err('Bracket matches are not confirmed.')
+
+    # Collect all survivors from both pools.
+    wb_survivors_result = _collect_wb_survivors(tournament, all_matches)
+    wb_dropped_result = _collect_wb_dropped_pending(tournament, all_matches)
+    lb_survivors_result = _collect_lb_survivors(tournament, all_matches)
+    if (
+        wb_survivors_result.is_err()
+        or wb_dropped_result.is_err()
+        or lb_survivors_result.is_err()
+    ):
+        return Err(QUALIFICATION_TIE_ERROR)
+
+    wb_survivors = wb_survivors_result.unwrap()
+    wb_dropped = wb_dropped_result.unwrap()
+    lb_survivors = lb_survivors_result.unwrap()
+    total = len(wb_survivors) + len(wb_dropped) + len(lb_survivors)
+
+    if total < 2:
+        return Err('Need at least 2 survivors for Grand Final.')
+    if not _check_grand_final_trigger(tournament, total):
+        return Err(FFA_GRAND_FINAL_NOT_ELIGIBLE_ERROR)
+
+    return Ok(
+        _FfaGrandFinalInputs(
+            tournament=tournament,
+            phase=phase,
+            all_matches=all_matches,
+            wb_survivors=wb_survivors,
+            wb_dropped=wb_dropped,
+            lb_survivors=lb_survivors,
+        )
+    )
+
+
+def ffa_grand_final_gate(tournament_id: TournamentID) -> Result[int, str]:
+    """Return the Grand Final size, or why it cannot be generated yet.
+
+    Read-only: takes no lock and writes nothing.
+    """
+    checked = _check_ffa_grand_final(tournament_id)
+    if checked.is_err():
+        return Err(checked.unwrap_err())
+    inputs = checked.unwrap()
+    return Ok(
+        len(inputs.wb_survivors)
+        + len(inputs.wb_dropped)
+        + len(inputs.lb_survivors)
+    )
 
 
 def generate_ffa_grand_final(
@@ -4439,35 +6255,18 @@ def generate_ffa_grand_final(
 
     # Lock tournament for atomic generation.
     tournament_repository.lock_tournament_for_update(tournament_id)
-    tournament = tournament_repository.get_tournament(tournament_id)
 
-    if tournament.game_format != GameFormat.FREE_FOR_ALL:
-        return Err('Tournament game format is not FREE_FOR_ALL.')
-
-    if tournament.elimination_mode != EliminationMode.DOUBLE_ELIMINATION:
-        return Err('Grand Final is only for double elimination tournaments.')
-
+    checked = _check_ffa_grand_final(tournament_id)
+    if checked.is_err():
+        return _refuse_ffa_grand_final(checked.unwrap_err())
+    inputs = checked.unwrap()
+    tournament = inputs.tournament
+    all_matches = inputs.all_matches
+    wb_survivors = inputs.wb_survivors
+    wb_dropped = inputs.wb_dropped
+    lb_survivors = inputs.lb_survivors
+    all_survivors = wb_survivors + wb_dropped + lb_survivors
     is_team = tournament.contestant_type == ContestantType.TEAM
-
-    all_matches = tournament_repository.get_matches_for_tournament_ordered(
-        tournament_id
-    )
-
-    # Reject if Grand Final already exists.
-    existing_gf = [
-        m for m in all_matches if m.bracket == Bracket.GRAND_FINAL
-    ]
-    if existing_gf:
-        return Err('Grand Final has already been generated.')
-
-    # Collect all survivors from both pools.
-    wb_survivors = _collect_wb_survivors(tournament, all_matches)
-    lb_survivors = _collect_lb_survivors(tournament, all_matches)
-
-    all_survivors = wb_survivors + lb_survivors
-
-    if len(all_survivors) < 2:
-        return Err('Need at least 2 survivors for Grand Final.')
 
     # Build per-bracket round groupings for standings computation.
     wb_round_matches: list[list[list[TournamentMatchToContestant]]] = []
@@ -4498,7 +6297,7 @@ def generate_ffa_grand_final(
             lb_round_matches.append(round_groups)
 
     # Seed GF participants respecting points_carry_to_losers flag.
-    wb_survivor_set = set(wb_survivors)
+    wb_survivor_set = set(wb_survivors) | set(wb_dropped)
     lb_survivor_set = set(lb_survivors)
     survivor_set = set(all_survivors)
 
@@ -4526,6 +6325,8 @@ def generate_ffa_grand_final(
             ordered_survivors.append(cid)
 
     # Create the GF match — single group, exempt from group_size_min.
+    # Members go in contestant-ID order, never in seed order.
+    member_ids = sorted(ordered_survivors)
     now = datetime.now(UTC)
     match_id = TournamentMatchID(generate_uuid7())
     gf_match = TournamentMatch(
@@ -4538,10 +6339,11 @@ def generate_ffa_grand_final(
         confirmed_by=None,
         created_at=now,
         bracket=Bracket.GRAND_FINAL,
+        phase=_ffa_phase(tournament) or 1,
     )
     tournament_repository.create_match(gf_match)
 
-    for cid in ordered_survivors:
+    for cid in member_ids:
         contestant_rec_id = TournamentMatchToContestantID(generate_uuid7())
         if is_team:
             contestant = TournamentMatchToContestant(
@@ -4563,5 +6365,29 @@ def generate_ffa_grand_final(
             )
         tournament_repository.create_match_contestant(contestant)
 
+    create_log_entry(
+        'bracket-generated',
+        tournament_id,
+        initiator_id,
+        data={'target': FFA_GRAND_FINAL_TARGET, 'contestants': member_ids},
+        commit=False,
+    )
     tournament_repository.commit_session()
+    dispatch_generation_events(
+        tournament_id,
+        GenerationOutcome(
+            count=1,
+            created_events=[
+                MatchCreatedEvent(
+                    occurred_at=now,
+                    initiator=None,
+                    tournament_id=tournament_id,
+                    match_id=match_id,
+                )
+            ],
+            deleted_events=[],
+            ready_match_ids=frozenset({match_id}),
+            occurred_at=now,
+        ),
+    )
     return Ok(1)

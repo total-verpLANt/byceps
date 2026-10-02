@@ -7,11 +7,13 @@ generate_ffa_round, set_ffa_placements, confirm_ffa_match,
 advance_ffa_round.
 """
 
+from dataclasses import replace
 from datetime import datetime, UTC
 from unittest.mock import Mock, patch
 
 import pytest
 
+from byceps.services.lan_tournament.models.bracket import Bracket
 from byceps.services.lan_tournament.models.contestant_type import (
     ContestantType,
 )
@@ -40,6 +42,10 @@ from byceps.services.lan_tournament.models.tournament_status import (
     TournamentStatus,
 )
 from byceps.services.lan_tournament import tournament_match_service
+from byceps.services.lan_tournament.tournament_match_service import (
+    QUALIFICATION_TIE_ERROR,
+    split_at_cut,
+)
 from byceps.services.party.models import PartyID
 from byceps.services.user.models import UserID
 
@@ -50,6 +56,27 @@ NOW = datetime(2025, 6, 15, 14, 0, 0, tzinfo=UTC)
 TOURNAMENT_ID = TournamentID(generate_uuid())
 PARTY_ID = PartyID('lan-2025')
 USER_ID = UserID(generate_uuid())
+
+
+class _Everyone:
+    """Contain every ID: nobody was removed."""
+
+    def __contains__(self, item):
+        return True
+
+
+@pytest.fixture(autouse=True)
+def _no_stored_decisions():
+    with patch(
+        'byceps.services.lan_tournament.tournament_match_service'
+        '.tournament_qualification_repository'
+    ) as repo, patch(
+        'byceps.services.lan_tournament.tournament_match_service'
+        '.active_contestant_ids',
+        return_value=_Everyone(),
+    ):
+        repo.get_decisions_for_tournament.return_value = {}
+        yield repo
 
 
 # -------------------------------------------------------------------- #
@@ -455,7 +482,7 @@ def test_advance_ffa_round_detects_tie(mock_repo):
     )
 
     assert result.is_err()
-    assert 'tie' in result.unwrap_err().lower()
+    assert result.unwrap_err() == QUALIFICATION_TIE_ERROR
 
 
 @patch(
@@ -478,6 +505,152 @@ def test_advance_ffa_round_rejects_unconfirmed(mock_repo):
 
     assert result.is_err()
     assert 'not confirmed' in result.unwrap_err().lower()
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_round_standings_cut_tie_returns_tied_ids(mock_repo):
+    match_id = TournamentMatchID(generate_uuid())
+    match = _create_match(match_id=match_id, confirmed_by=USER_ID, round=0)
+    pid_a = TournamentParticipantID(generate_uuid())
+    pid_b = TournamentParticipantID(generate_uuid())
+    mock_repo.get_contestants_for_match.return_value = [
+        _make_contestant(pid_a, match_id, placement=1, points=10),
+        _make_contestant(pid_b, match_id, placement=2, points=10),
+    ]
+
+    result = tournament_match_service._round_standings([match], 1, {})
+
+    assert sorted(result.unwrap_err()) == sorted([str(pid_a), str(pid_b)])
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_round_standings_orga_decision_breaks_cut_tie(mock_repo):
+    match_id = TournamentMatchID(generate_uuid())
+    match = _create_match(match_id=match_id, confirmed_by=USER_ID, round=0)
+    pid_a = TournamentParticipantID(generate_uuid())
+    pid_b = TournamentParticipantID(generate_uuid())
+    mock_repo.get_contestants_for_match.return_value = [
+        _make_contestant(pid_a, match_id, placement=1, points=10),
+        _make_contestant(pid_b, match_id, placement=2, points=10),
+    ]
+    scope = tournament_match_service.ffa_lobby_scope(match)
+
+    result = tournament_match_service._round_standings(
+        [match], 1, {scope: [[str(pid_b), str(pid_a)]]}
+    )
+
+    assert [s.contestant_id for s in result.unwrap()] == [str(pid_b)]
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_round_standings_ignores_decision_of_another_lobby(mock_repo):
+    match_id = TournamentMatchID(generate_uuid())
+    match = _create_match(match_id=match_id, confirmed_by=USER_ID, round=0)
+    pid_a = TournamentParticipantID(generate_uuid())
+    pid_b = TournamentParticipantID(generate_uuid())
+    mock_repo.get_contestants_for_match.return_value = [
+        _make_contestant(pid_a, match_id, placement=1, points=10),
+        _make_contestant(pid_b, match_id, placement=2, points=10),
+    ]
+
+    result = tournament_match_service._round_standings(
+        [match], 1, {'ffa:SE:0:1': [[str(pid_b), str(pid_a)]]}
+    )
+
+    assert result.is_err()
+
+
+@pytest.mark.parametrize(
+    ('bracket', 'round_number', 'group_order', 'expected'),
+    # fmt: off
+    [
+        (None,            0, None, 'ffa:SE:0:0'),
+        (None,            2, 1,    'ffa:SE:2:1'),
+        (Bracket.WINNERS, 1, 0,    'ffa:WB:1:0'),
+        (Bracket.LOSERS,  3, 2,    'ffa:LB:3:2'),
+    ],
+    # fmt: on
+)
+def test_ffa_lobby_scope(bracket, round_number, group_order, expected):
+    match = replace(
+        _create_match(round=round_number),
+        bracket=bracket,
+        group_order=group_order,
+    )
+
+    assert tournament_match_service.ffa_lobby_scope(match) == expected
+
+
+@patch(
+    'byceps.services.lan_tournament.tournament_match_service.tournament_repository'
+)
+def test_advance_ffa_round_honours_stored_decision(
+    mock_repo, _no_stored_decisions
+):
+    """An orga decision for the lobby's scope unblocks the advance."""
+    tournament = _create_ffa_tournament(
+        advancement_count=2, group_size_min=1, group_size_max=8
+    )
+    mock_repo.get_tournament.return_value = tournament
+    match_id = TournamentMatchID(generate_uuid())
+    match = _create_match(match_id=match_id, confirmed_by=USER_ID, round=0)
+    pids = [TournamentParticipantID(generate_uuid()) for _ in range(4)]
+    mock_repo.get_matches_for_tournament_ordered.return_value = [match]
+    mock_repo.get_matches_for_round.return_value = [match]
+    mock_repo.get_contestants_for_match.return_value = [
+        _make_contestant(pid, match_id, placement=i + 1, points=points)
+        for i, (pid, points) in enumerate(zip(pids, [10, 7, 7, 1], strict=True))
+    ]
+
+    blocked = tournament_match_service.advance_ffa_round(
+        TOURNAMENT_ID, initiator_id=USER_ID
+    )
+    assert blocked.unwrap_err() == QUALIFICATION_TIE_ERROR
+
+    decision = Mock(orders=((str(pids[2]), str(pids[1])),))
+    _no_stored_decisions.get_decisions_for_tournament.return_value = {
+        tournament_match_service.ffa_lobby_scope(match): decision
+    }
+    mock_repo.create_match_contestant.reset_mock()
+
+    advanced = tournament_match_service.advance_ffa_round(
+        TOURNAMENT_ID, initiator_id=USER_ID
+    )
+
+    assert advanced.is_ok(), advanced.unwrap_err()
+    placed = {
+        c.args[0].participant_id
+        for c in mock_repo.create_match_contestant.call_args_list
+    }
+    assert placed == {pids[0], pids[2]}
+
+
+def test_split_at_cut_no_tie():
+    ranked = [('a', 10), ('b', 7), ('c', 7), ('d', 1)]
+
+    result = split_at_cut(ranked, 3)
+
+    assert result.unwrap() == (['a', 'b', 'c'], ['d'])
+
+
+def test_split_at_cut_tie_returns_tied_ids():
+    ranked = [('a', 10), ('b', 7), ('c', 7), ('d', 1)]
+
+    result = split_at_cut(ranked, 2)
+
+    assert result.unwrap_err() == ['b', 'c']
+
+
+def test_split_at_cut_fewer_entries_than_cut_all_advance():
+    result = split_at_cut([('a', 3), ('b', 3)], 2)
+
+    assert result.unwrap() == (['a', 'b'], [])
 
 
 # -------------------------------------------------------------------- #

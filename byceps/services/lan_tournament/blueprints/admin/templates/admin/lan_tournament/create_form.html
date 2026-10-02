@@ -51,8 +51,8 @@
       description and optionally example (markup), examples (per game format),
       why (reason it can be unavailable). `mode_area` adds the empty hint and the
       fixed Highscore row that the script swaps in for the grid. -#}
-  {%- macro wiz_cards(field, options, required=False, intro=None, cols=2, legend=None, mode_area=False) %}
-    <fieldset class="lt-wiz-cards lt-wiz-cards--cols-{{ cols }}{% if field.errors %} invalid{% endif %}" id="{{ field.id }}" tabindex="-1" data-wiz-choice="{{ field.name }}" data-wiz-field="{{ field.name }}">
+  {%- macro wiz_cards(field, options, required=False, intro=None, cols=2, legend=None, mode_area=False, piece=None) %}
+    <fieldset class="lt-wiz-cards lt-wiz-cards--cols-{{ cols }}{% if field.errors %} invalid{% endif %}" id="{{ field.id }}" tabindex="-1" data-wiz-choice="{{ field.name }}" data-wiz-field="{{ field.name }}"{% if piece %} data-wiz-piece="{{ piece }}"{% endif %}>
       <legend class="form-label">{{ legend or field.label.text }}
         {%- if required %} <span class="req-mark" aria-hidden="true">*</span>{% endif %}</legend>
       {%- if intro %}
@@ -315,7 +315,8 @@
             ], required=True, cols=2, intro=_('Defines the order of the leaderboard.'), legend=_('Score sorting')) }}
           </div>
 
-          <div data-wiz-scope="ffa">
+          <div data-wiz-slot="ffa-points">
+          <div data-wiz-scope="ffa" data-wiz-piece="ffa-points">
             <div class="lt-wiz-nojs-legend">{{ _('4 · Only for Free-for-All') }}</div>
             <div class="form-control-block{% if form.point_table.errors %} invalid{% endif %}" data-wiz-field="point_table">
               <div data-wiz-js-only hidden>
@@ -349,12 +350,14 @@
               <div class="lt-wiz-row lt-wiz-row--three lt-wiz-row--keep">
                 {{ wiz_field(form.group_size_min, optional=True, caption=_('Smaller groups are not formed.'), placeholder='2', **numeric) }}
                 {{ wiz_field(form.group_size_max, required=True, caption=_('At most this many %(unit)s play at once.', unit=_('teams or players')), **numeric) }}
-                {{ wiz_field(form.advancement_count, optional=True, label=_('Advancing per group'), caption=_('The best of each group advance.'), placeholder='–', **numeric) }}
+                {{ wiz_field(form.advancement_count, label=_('Advancing per group'), caption=_('The best of each group advance.'), placeholder='–', **numeric) }}
               </div>
             </fieldset>
           </div>
+          </div>
 
-          <fieldset class="lt-wiz-scope" data-wiz-scope="ffa-de">
+          <div data-wiz-slot="ffa-carry">
+          <fieldset class="lt-wiz-scope" data-wiz-scope="ffa-de" data-wiz-piece="ffa-carry">
             <legend>{{ _('Only for Double Elimination') }}</legend>
             <div class="form-control-block{% if form.points_carry_to_losers.errors %} invalid{% endif %}" data-wiz-field="points_carry_to_losers">
               <label class="form-check-label">{{ form.points_carry_to_losers(**{'aria-describedby': form.points_carry_to_losers.id ~ '-cap'}) }} <span><strong>{{ _('Carry points into the losers bracket') }}</strong></span></label>
@@ -362,6 +365,7 @@
               <div data-wiz-err-for="points_carry_to_losers">{{ form_field_errors(form.points_carry_to_losers) }}</div>
             </div>
           </fieldset>
+          </div>
 
           <div class="lt-wiz-preview" data-wiz-preview data-wiz-scope="ffa-preview">
             <div class="data-label">{{ _('Preview') }}</div>
@@ -369,8 +373,78 @@
           </div>
         </fieldset>
 
-        <section class="lt-wiz-step box" data-wiz-step="4">
-          <h2 tabindex="-1" data-wiz-step-heading>5 · {{ _('Review and create') }}</h2>
+        <fieldset class="lt-wiz-step box" data-wiz-step="4">
+          <legend><h2 tabindex="-1" data-wiz-step-heading>5 · {{ _('Playoffs') }} <span class="tag outl lt-wiz-h2-tag" data-wiz-scope="playoff-none" hidden>{{ _('nothing to set') }}</span></h2></legend>
+
+          <div data-wiz-scope="playoff-none" hidden>
+            <div class="lt-wiz-fixed" data-wiz-fixed>
+              <span class="tag color-disabled">{{ _('Skipped') }}</span>
+              {%- set skipped_text = _('Playoffs exist only for 1v1 with "Everyone plays everyone" and for Highscore. Other formats have one phase and behave as before.') %}
+              <span data-wiz-playoff-skip data-wiz-default="{{ skipped_text }}">{{ skipped_text }}</span>
+            </div>
+          </div>
+
+          <div data-wiz-scope="playoff-intro-rr">
+            <p class="lt-wiz-intro">{{ _('Optional: a second phase after the group phase. Only for 1v1 with "Everyone plays everyone" and for Highscore.') }}</p>
+          </div>
+          <div data-wiz-scope="playoff-intro-hs">
+            <p class="lt-wiz-intro">{{ _('Optional: the best of the leaderboard play the playoffs in lobbies (Free-for-All).') }}</p>
+          </div>
+          <div class="notification color-info block" data-wiz-nojs-intro>{{ _('Without JavaScript: for Highscore playoffs, enter points and lobby sizes in step 4 (Free-for-All settings).') }}</div>
+
+          <div data-wiz-scope="playoff-toggle">
+            <div class="form-control-block{% if form.playoff_enabled.errors %} invalid{% endif %}" data-wiz-field="playoff_enabled">
+              <label class="form-check-label">{{ form.playoff_enabled(**{'aria-describedby': form.playoff_enabled.id ~ '-cap'}) }} <span><strong>{{ _('Add playoff phase') }}</strong></span></label>
+              <div class="form-caption lt-wiz-check-cap" id="{{ form.playoff_enabled.id }}-cap">{{ _('Off: one phase, as before.') }}</div>
+              <div data-wiz-err-for="playoff_enabled">{{ form_field_errors(form.playoff_enabled) }}</div>
+            </div>
+          </div>
+
+          <fieldset class="lt-wiz-scope" data-wiz-scope="playoff-rr">
+            <legend>{{ _('Group phase') }}</legend>
+            <div class="lt-wiz-row lt-wiz-row--keep">
+              {{ wiz_field(form.playoff_group_count, required=True, caption=_('At least 2; each group needs at least 2 players.'), **numeric) }}
+              {{ wiz_field(form.playoff_qualifiers_per_group, required=True, caption=_('Fewer than the smallest group. Groups × qualifiers: at least 2 (single knockout) or 4 (double knockout).'), **numeric) }}
+            </div>
+          </fieldset>
+
+          <div data-wiz-scope="playoff-rr-mode">
+            <div data-wiz-slot="playoff-mode">
+              {{ wiz_cards(form.playoff_elimination_mode, [
+                {'value': 'SINGLE_ELIMINATION', 'label': _('Single knockout'), 'examples': {'ONE_V_ONE': _('The loser is out.'), 'HIGHSCORE': _('Whoever does not advance is out.')}},
+                {'value': 'DOUBLE_ELIMINATION', 'label': _('Double knockout'), 'examples': {'ONE_V_ONE': _('The first defeat leads to the losers bracket.'), 'HIGHSCORE': _('Whoever does not advance keeps playing in the losers bracket.')}},
+              ], required=True, cols=2, legend=_('Playoff mode'), piece='playoff-mode') }}
+            </div>
+          </div>
+
+          <fieldset class="lt-wiz-scope" data-wiz-scope="playoff-hs">
+            <legend>{{ _('Qualification') }}</legend>
+            {{ wiz_field(form.playoff_qualifier_count, required=True, caption=_('At least 2 and at least the min. lobby size. The first phase ends with "Close qualification".'), **numeric) }}
+          </fieldset>
+
+          <fieldset class="lt-wiz-scope" data-wiz-scope="playoff-hs-ffa">
+            <legend>{{ _('Playoffs · Free-for-All') }}</legend>
+            <div data-wiz-slot="ffa-points-moved"></div>
+            <div data-wiz-slot="playoff-mode-moved"></div>
+            <div data-wiz-slot="ffa-carry-moved"></div>
+          </fieldset>
+
+          <div data-wiz-scope="playoff-on">
+            {{ wiz_cards(form.playoff_release_mode, [
+              {'value': 'AUTOMATIC', 'label': _('Automatic'), 'description': _('The playoffs start as soon as all results are final and no tie blocks.')},
+              {'value': 'MANUAL', 'label': _('Manual ("Release playoffs")'), 'description': _('The orga checks the prefilled draft and releases the playoffs.')},
+            ], required=True, cols=2, legend=_('Release mode')) }}
+
+            <div class="lt-wiz-preview" data-wiz-playoff-preview>
+              <div class="data-label">{{ _('Preview') }}</div>
+              <div class="notification color-info" role="status" data-wiz-playoff-preview-text hidden></div>
+              <div class="form-caption">{{ _('The final check with the real group sizes runs at generation and at release.') }}</div>
+            </div>
+          </div>
+        </fieldset>
+
+        <section class="lt-wiz-step box" data-wiz-step="5">
+          <h2 tabindex="-1" data-wiz-step-heading>6 · {{ _('Review and create') }}</h2>
           {%- set refusal = wizard.get('refusal') %}
           {%- if refusal %}
           <div class="notification color-danger block" role="alert" tabindex="-1" data-wiz-err-for="review" data-wiz-refusal>

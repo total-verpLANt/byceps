@@ -51,6 +51,15 @@ _SIGNALS = (
 # ------------------------------------------------------------------ #
 
 
+@pytest.fixture(autouse=True)
+def _locking():
+    with (
+        patch(f'{_REPO}.lock_tournament_for_update'),
+        patch(f'{_REPO}.rollback_session'),
+    ):
+        yield
+
+
 def _make_tournament(
     status: TournamentStatus = TournamentStatus.ONGOING,
 ) -> Tournament:
@@ -252,3 +261,40 @@ def test_update_multiple_locked_fields_lists_all():
     assert 'name' in err
     assert 'game' in err
     assert 'start_time' in err
+
+
+# ------------------------------------------------------------------ #
+# tests — locking
+# ------------------------------------------------------------------ #
+
+
+def test_update_locks_the_tournament_before_it_reads_it():
+    tournament = _make_tournament(TournamentStatus.REGISTRATION_OPEN)
+
+    with (
+        patch(_REPO) as repository,
+        patch(f'{_SIGNALS}.tournament_updated.send'),
+    ):
+        repository.get_tournament.return_value = tournament
+        result = _call_update(tournament)
+
+    assert result.is_ok(), result.unwrap_err()
+    repository.lock_tournament_for_update.assert_called_once_with(
+        tournament.id
+    )
+    names = [name for name, _, _ in repository.mock_calls]
+    assert names.index('lock_tournament_for_update') < names.index(
+        'get_tournament'
+    )
+
+
+def test_a_refused_update_rolls_back():
+    tournament = _make_tournament(TournamentStatus.ONGOING)
+
+    with patch(_REPO) as repository:
+        repository.get_tournament.return_value = tournament
+        result = _call_update(tournament, name='New Name')
+
+    assert result.is_err()
+    repository.rollback_session.assert_called_once_with()
+    repository.update_tournament.assert_not_called()

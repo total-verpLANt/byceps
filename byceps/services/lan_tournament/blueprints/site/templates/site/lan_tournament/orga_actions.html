@@ -11,18 +11,68 @@
 {% endmacro %}
 
 
-{% macro render_orga_tournament_status_actions(tournament, may_administrate) %}
+{% macro render_orga_tournament_status_actions(tournament, may_administrate, start_gate=none, grand_final=none, winner_tie=none) %}
 {%- if may_administrate and tournament.tournament_status %}
 {%- set _status = tournament.tournament_status.name %}
 {%- if _status in ('REGISTRATION_CLOSED', 'ONGOING', 'PAUSED') %}
 <div class="box block lt-orga-panel">
   <h2 class="title">{{ _('Orga Actions') }}</h2>
   <div class="button-row">
+    {%- if not (tournament.game_format is defined and tournament.game_format.name == 'HIGHSCORE') %}
+    <a class="button" href="{{ url_for('.orga_seeding', tournament_id=tournament.id) }}">{{ render_icon('clipboard') }} {{ _('Open seeding') }}</a>
+    {%- endif %}
+    {%- if (tournament.has_playoffs is defined and tournament.has_playoffs) or winner_tie %}
+    <a class="button" href="{{ url_for('.orga_qualification', tournament_id=tournament.id) }}">{{ render_icon('clipboard') }} {{ _('Qualification') }}</a>
+    {%- endif %}
     {%- if _status == 'REGISTRATION_CLOSED' %}
+    {%- if start_gate and start_gate.state == 'blocked' %}
+    <span class="lt-start-gate" data-lt-start-gate="blocked">
+      <button type="button" class="button color-success" disabled aria-describedby="start-gate-why">{{ render_icon('success') }} {{ _('Start tournament') }}</button>
+      <span class="lt-start-gate__why" id="start-gate-why">{{ _(start_gate.reason) }}
+        <a href="{{ url_for('.orga_seeding', tournament_id=tournament.id) }}">{{ _('Open seeding') }}</a></span>
+      {%- for text in (start_gate.notices if start_gate else ()) %}
+      <p class="lt-start-gate__why">{{ text }}</p>
+      {%- endfor %}
+    </span>
+    {%- elif start_gate and start_gate.state == 'confirm' %}
+    <form method="post" action="{{ url_for('.orga_change_tournament_status', tournament_id=tournament.id, action='start') }}" class="lt-start-gate" data-lt-start-gate="confirm">
+      <p class="lt-start-gate__why">{{ _('The seeding was changed after the bracket was generated. Starting uses the generated layout; later seeding changes are dropped.') }}
+        <a href="{{ url_for('.orga_seeding', tournament_id=tournament.id) }}">{{ _('Open seeding') }}</a></p>
+      {%- for text in (start_gate.notices if start_gate else ()) %}
+      <p class="lt-start-gate__why">{{ text }}</p>
+      {%- endfor %}
+      <label class="lt-start-gate__confirm"><input type="checkbox" name="confirm_generated_layout" value="1" required> {{ _('Start with the generated layout') }}</label>
+      <button type="submit" class="button color-success">{{ render_icon('success') }} {{ _('Start tournament') }}</button>
+    </form>
+    {%- else %}
+    {%- for text in (start_gate.notices if start_gate else ()) %}
+    <p class="lt-start-gate__why">{{ text }}</p>
+    {%- endfor %}
     <form method="post" action="{{ url_for('.orga_change_tournament_status', tournament_id=tournament.id, action='start') }}">
       <button type="submit" class="button color-success">{{ render_icon('success') }} {{ _('Start tournament') }}</button>
     </form>
+    {%- endif %}
     {%- elif _status == 'ONGOING' %}
+    {%- if tournament.game_format is defined and tournament.game_format and tournament.game_format.name == 'FREE_FOR_ALL' %}
+    {%- set _ffa_elimination = tournament.elimination_mode %}
+    {%- elif tournament.has_playoffs is defined and tournament.has_playoffs and tournament.playoff_released_at and tournament.playoff_game_format.name == 'FREE_FOR_ALL' %}
+    {%- set _ffa_elimination = tournament.playoff_elimination_mode %}
+    {%- else %}
+    {%- set _ffa_elimination = none %}
+    {%- endif %}
+    {%- set _gf_state = grand_final.state if grand_final else none %}
+    {%- if _ffa_elimination and _ffa_elimination.name == 'DOUBLE_ELIMINATION' and _gf_state not in ('exists', 'ready') %}
+    {%- for _pool, _pool_label in (('WB', _('Advance WB Round')), ('LB', _('Advance LB Round'))) %}
+    <form method="post" action="{{ url_for('.orga_advance_ffa_round', tournament_id=tournament.id) }}">
+      <input type="hidden" name="pool" value="{{ _pool }}">
+      <button type="submit" class="button">{{ render_icon('arrange') }} {{ _pool_label }}</button>
+    </form>
+    {%- endfor %}
+    {%- elif _ffa_elimination and _ffa_elimination.name != 'DOUBLE_ELIMINATION' %}
+    <form method="post" action="{{ url_for('.orga_advance_ffa_round', tournament_id=tournament.id) }}">
+      <button type="submit" class="button">{{ render_icon('arrange') }} {{ _('Advance Round') }}</button>
+    </form>
+    {%- endif %}
     <form method="post" action="{{ url_for('.orga_change_tournament_status', tournament_id=tournament.id, action='pause') }}">
       <button type="submit" class="button color-warning">{{ render_icon('warning') }} {{ _('Pause') }}</button>
     </form>
@@ -36,13 +86,33 @@
     </form>
     {%- endif %}
   </div>
+  {%- if _status == 'ONGOING' and grand_final %}
+  <section class="lt-orga-gf" data-lt-gf="{{ grand_final.state }}">
+    {%- if grand_final.state == 'ready' %}
+    <form method="post" action="{{ url_for('.orga_generate_ffa_grand_final', tournament_id=tournament.id) }}" class="lt-orga-gf__form">
+      <div class="lt-orga-gf__text">
+        <p class="lt-orga-gf__lead">{{ _('Grand Final is ready to be generated.') }}</p>
+        {%- if grand_final.count %}
+        <p class="lt-orga-gf__note">{{ _('%(n)s contestants play the Grand Final.', n=grand_final.count) }}</p>
+        {%- endif %}
+      </div>
+      <button type="submit" class="button color-success">{{ render_icon('trophy') }} {{ _('Generate Grand Final') }}</button>
+    </form>
+    {%- elif grand_final.state == 'exists' %}
+    <p class="lt-orga-gf__lead">{{ _('Grand Final') }}</p>
+    <a class="button" href="{{ url_for('.view_match', match_id=grand_final.match_id) }}">{{ render_icon('trophy') }} {{ _('Open Grand Final') }}</a>
+    {%- else %}
+    <p class="lt-orga-gf__note">{{ grand_final.reason }}</p>
+    {%- endif %}
+  </section>
+  {%- endif %}
 </div>
 {%- endif %}
 {%- endif %}
 {% endmacro %}
 
 
-{% macro render_orga_match_actions(match, tournament, contestants, teams_by_id, participants_by_id, may_administrate, max_match_score, correction_case, affected_downstream_matches, ack_match_ids, is_ffa, is_walkover, ffa_result_consumed, results_editable) %}
+{% macro render_orga_match_actions(match, tournament, contestants, teams_by_id, participants_by_id, may_administrate, max_match_score, correction_case, affected_downstream_matches, ack_match_ids, is_ffa, is_walkover, ffa_result_consumed, results_editable, phase_lock=none) %}
 {%- if may_administrate %}
 <div class="box block lt-orga-panel">
   <h2 class="title">{{ _('Orga Actions') }}</h2>
@@ -99,7 +169,22 @@
   </form>
   {%- endif %}
 
-  {%- if match.confirmed_by %}
+  {#- After the release, a group result is locked: the correction forms give way to a notice. #}
+  {%- set released_lock = (tournament.has_playoffs is defined and tournament.has_playoffs
+                           and tournament.playoff_released_at is defined and tournament.playoff_released_at is not none
+                           and match.phase is defined and match.phase == 1) %}
+  {%- set final_lock = released_lock and phase_lock == 'final' %}
+  {%- if match.confirmed_by and released_lock and not is_walkover %}
+  <div class="notification color-info" id="phase-lock">{{ render_icon('information') }}
+    {%- if final_lock %}
+    <b>{{ _('The playoffs are running. Group results are locked for good.') }}</b><br>
+    {{ _('A playoff result is confirmed, the release can no longer be undone. A correction of this result is no longer possible.') }}
+    {%- else %}
+    {{ _('The playoffs are released. Group results are locked. Take the release back first.') }}
+    {%- endif %}
+  </div>
+  <p><a href="{{ url_for('.orga_qualification', tournament_id=tournament.id) }}">{{ _('To qualification and release') }} →</a></p>
+  {%- elif match.confirmed_by %}
   {%- if is_ffa %}
   {%- if ffa_result_consumed %}
   <div class="notification color-info">{{ render_icon('information') }}

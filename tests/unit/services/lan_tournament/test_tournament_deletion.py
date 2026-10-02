@@ -26,6 +26,22 @@ from byceps.services.user.models import UserID
 from tests.helpers import generate_uuid
 
 
+@pytest.fixture(autouse=True)
+def mock_seeding_repository():
+    with patch(
+        'byceps.services.lan_tournament.tournament_service.tournament_seeding_repository'
+    ) as mock:
+        yield mock
+
+
+@pytest.fixture(autouse=True)
+def mock_qualification_repository():
+    with patch(
+        'byceps.services.lan_tournament.tournament_service.tournament_qualification_repository'
+    ) as mock:
+        yield mock
+
+
 @patch(
     'byceps.services.lan_tournament.tournament_service.tournament_request_repository'
 )
@@ -43,6 +59,8 @@ def test_delete_tournament_cascades_all_dependencies(
     mock_repository,
     mock_orga_repository,
     mock_request_repository,
+    mock_seeding_repository,
+    mock_qualification_repository,
 ):
     """Test that delete_tournament() deletes all dependent entities in correct order."""
     from byceps.services.lan_tournament import tournament_service
@@ -75,6 +93,14 @@ def test_delete_tournament_cascades_all_dependencies(
         call.delete_orgas_for_tournament(tournament_id, commit=False)
     ]
 
+    assert mock_seeding_repository.method_calls == [
+        call.delete_seedings_for_tournament(tournament_id)
+    ]
+
+    assert mock_qualification_repository.method_calls == [
+        call.delete_decisions_for_tournament(tournament_id)
+    ]
+
     # workspace-dim0.17: the request link is cleared as part of the
     # same cascade, before the tournament row itself is deleted.
     mock_request_repository.unlink_created_tournament_flush.assert_called_once_with(
@@ -105,16 +131,18 @@ def test_delete_tournament_removes_orgas_before_the_tournament_row(
     mock_repository,
     mock_orga_repository,
     mock_request_repository,
+    mock_seeding_repository,
 ):
     from byceps.services.lan_tournament import tournament_service
 
     tournament_id = TournamentID(generate_uuid())
     mock_request_repository.unlink_created_tournament_flush.return_value = []
 
-    # Attach both mocks to one parent to record their relative order.
+    # Attach the mocks to one parent to record their relative order.
     parent = MagicMock()
     parent.attach_mock(mock_repository, 'repo')
     parent.attach_mock(mock_orga_repository, 'orga_repo')
+    parent.attach_mock(mock_seeding_repository, 'seeding_repo')
 
     tournament_service.delete_tournament(tournament_id)
 
@@ -124,6 +152,10 @@ def test_delete_tournament_removes_orgas_before_the_tournament_row(
 
     assert orga_idx < tournament_idx, (
         'orga assignments must be deleted before the tournament row'
+    )
+    seeding_idx = call_names.index('seeding_repo.delete_seedings_for_tournament')
+    assert seeding_idx < tournament_idx, (
+        'seeding drafts must be deleted before the tournament row'
     )
 
     _, kwargs = mock_orga_repository.delete_orgas_for_tournament.call_args
