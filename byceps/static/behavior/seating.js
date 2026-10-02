@@ -7,7 +7,7 @@ function init_seat_tooltips() {
       seatContainer.addEventListener('mouseover', () => {
         const dataset = seatContainer.dataset;
 
-        let tooltipHTML = '<div class="seat-label">' + dataset.label + '</div>';
+        let tooltipHTML = '<div class="seat-label">' + escape_html(dataset.label) + '</div>';
 
         const ticketId = dataset.ticketId;
         if (ticketId !== undefined) {

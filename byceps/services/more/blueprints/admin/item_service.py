@@ -166,6 +166,12 @@ def get_brand_items(brand: Brand) -> list[MoreItem]:
 def get_party_items(party: Party) -> list[MoreItem]:
     return [
         MoreItem(
+            label=gettext('Seat management'),
+            icon='seating-area',
+            url=url_for('chair_optout_admin.index', party_id=party.id),
+            required_permission='seating.view',
+        ),
+        MoreItem(
             label=gettext('Export for LANpartyDB'),
             icon='download',
             url=url_for('party_admin.export_for_lanpartydb', party_id=party.id),

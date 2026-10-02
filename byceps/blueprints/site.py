@@ -43,6 +43,7 @@ def register_site_blueprints(
         ('services.orga_team.blueprints.site', '/orgas'),
         ('services.page.blueprints.site', None),
         ('services.party_history.blueprints.site', '/party_history'),
+        ('services.chair_optout.blueprints.site', '/chair_optout'),
         ('services.seating.blueprints.site', '/seating'),
         ('services.shop.order.blueprints.site', '/shop'),
         ('services.shop.orders.blueprints.site', '/shop/orders'),
@@ -70,7 +71,9 @@ def register_site_blueprints(
         ('services.user_profile.blueprints.site', '/users'),
     ]
 
-    if importlib_util.find_spec('byceps.services.lan_tournament.blueprints.site'):
+    if importlib_util.find_spec(
+        'byceps.services.lan_tournament.blueprints.site'
+    ):
         blueprints.append(
             ('services.lan_tournament.blueprints.site', '/lan-tournaments')
         )
@@ -80,10 +83,10 @@ def register_site_blueprints(
             'is not importable; skipping site blueprints for lan_tournament'
         )
 
-    if importlib_util.find_spec('byceps.services.pizza_delivery.blueprints.site'):
-        blueprints.append(
-            ('services.pizza_delivery.blueprints.site', '/pizza')
-        )
+    if importlib_util.find_spec(
+        'byceps.services.pizza_delivery.blueprints.site'
+    ):
+        blueprints.append(('services.pizza_delivery.blueprints.site', '/pizza'))
     else:
         log.warning(
             'Module byceps.services.pizza_delivery.blueprints.site '

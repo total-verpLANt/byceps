@@ -55,6 +55,7 @@ def register_admin_blueprints(
         ('services.orga_team.blueprints.admin', '/orga_teams'),
         ('services.page.blueprints.admin', '/pages'),
         ('services.party.blueprints.admin', '/parties'),
+        ('services.chair_optout.blueprints.admin', '/chair_optout'),
         ('services.seating.blueprints.admin', '/seating'),
         ('services.shop.blueprints.admin', None),
         (
@@ -92,7 +93,9 @@ def register_admin_blueprints(
     if metrics_enabled:
         blueprints.append(('services.metrics.blueprints.metrics', '/metrics'))
 
-    if importlib_util.find_spec('byceps.services.lan_tournament.blueprints.admin'):
+    if importlib_util.find_spec(
+        'byceps.services.lan_tournament.blueprints.admin'
+    ):
         blueprints.append(
             ('services.lan_tournament.blueprints.admin', '/lan-tournaments')
         )
@@ -102,7 +105,9 @@ def register_admin_blueprints(
             'is not importable; skipping admin blueprints for lan_tournament'
         )
 
-    if importlib_util.find_spec('byceps.services.pizza_delivery.blueprints.admin'):
+    if importlib_util.find_spec(
+        'byceps.services.pizza_delivery.blueprints.admin'
+    ):
         blueprints.append(
             ('services.pizza_delivery.blueprints.admin', '/pizza-deliveries')
         )

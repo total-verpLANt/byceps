@@ -14,7 +14,7 @@ USER byceps
 ENV PATH=/home/byceps/.local/bin:$PATH
 
 # Install uv.
-COPY --from=ghcr.io/astral-sh/uv:0.12.9 /uv /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.12.17 /uv /bin/
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_PYTHON_DOWNLOADS=never
@@ -29,7 +29,11 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --extra wsgiserver --frozen --no-editable --no-install-project
 
 # Copy the application into the image.
-COPY . .
+COPY --chown=byceps:byceps . .
+
+# Compile translations before installing the project so its package contains
+# the current catalog instead of the tracked, potentially outdated artifact.
+RUN uv run --no-sync pybabel compile -d byceps/translations
 
 # Sync the project.
 RUN --mount=type=cache,target=/root/.cache/uv \
