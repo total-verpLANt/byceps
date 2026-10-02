@@ -1,6 +1,7 @@
 from collections import Counter
 import dataclasses
 from datetime import datetime, UTC
+from enum import Enum
 from uuid import UUID, uuid4, uuid5
 
 from flask import abort, current_app, g, jsonify, request, url_for
@@ -36,15 +37,19 @@ from byceps.util.views import permission_required, redirect_to, respond_no_conte
 from byceps.services.lan_tournament import (
     tournament_domain_service,
     tournament_image_service,
+    tournament_log_service,
     tournament_maintenance_service,
     tournament_match_service,
     tournament_notification_service,
     tournament_orga_service,
     tournament_participant_service,
+    tournament_qualification_repository,
+    tournament_qualification_service,
     tournament_request_domain_service,
     tournament_request_repository,
     tournament_request_service,
     tournament_score_service,
+    tournament_seeding_service,
     tournament_service,
     tournament_stats_service,
     tournament_team_service,
@@ -88,6 +93,7 @@ from byceps.services.lan_tournament.models.game_format import (
     GameFormat,
     is_valid_combination,
 )
+from byceps.services.lan_tournament.models.playoff import PlayoffReleaseMode
 from byceps.services.lan_tournament.models.tournament_status import (
     TournamentStatus,
 )
@@ -105,6 +111,7 @@ from byceps.services.lan_tournament.tournament_service import (
 )
 from byceps.services.lan_tournament.lan_tournament_view_helpers import (
     build_contestant_name_lookups,
+    contestant_names,
     build_create_wizard_context,
     build_downstream_impact,
     build_hover_lookups,
@@ -117,11 +124,34 @@ from byceps.services.lan_tournament.lan_tournament_view_helpers import (
     first_error_step,
     format_file_size,
     get_timezone_detail_at,
-    is_ffa_tournament,
+    ffa_elimination_mode,
+    ffa_grand_final_offer,
+    ffa_grand_final_refusal,
+    ffa_phase,
     is_walkover_match,
+    match_uses_placements,
+    participant_rankings,
     parse_match_ids,
+    phase_match_labels,
     parse_submitted_contestant_scores,
+    parse_int,
+    parse_seeding_action,
     parse_submitted_ffa_placements,
+    playoff_waiting_reason,
+    ffa_cut_ties_payload,
+    qualification_js_strings,
+    qualification_strings,
+    is_seeding_audit_entry,
+    generation_flash,
+    seeding_audit_rows,
+    start_gate,
+    start_refusal,
+    seeding_board_payload,
+    leaderboard_submission_times,
+    seeding_error_status,
+    separation_message,
+    serialize_qualification,
+    wants_json,
 )
 from byceps.services.more.blueprints.admin import item_service
 from byceps.services.more.blueprints.admin.item_service import MoreItem
@@ -290,33 +320,23 @@ def view(tournament_id):
     # FFA-DE: compute pool status for overview display.
     ffa_de_pool_status = None
     ffa_gf_eligible = False
-    is_ffa_de = (
-        tournament.game_format == GameFormat.FREE_FOR_ALL
-        and tournament.elimination_mode
-        == EliminationMode.DOUBLE_ELIMINATION
-    )
+    ffa_mode = ffa_elimination_mode(tournament)
+    is_ffa_de = ffa_mode == EliminationMode.DOUBLE_ELIMINATION
     if is_ffa_de and has_bracket:
         pool_data = _build_ffa_de_pool_data(
             tournament.id,
             _build_ffa_match_data_list(tournament.id),
         )
-        gf_exists = pool_data.gf_exists
         ffa_de_pool_status = pool_data.pool_status
-        # GF eligible if both pools have confirmed latest rounds
-        # and no GF yet.
-        ffa_gf_eligible = (
-            pool_data.wb_all_confirmed
-            and pool_data.lb_all_confirmed
-            and not gf_exists
-            and pool_data.wb_latest_round is not None
-            and pool_data.lb_latest_round is not None
-        )
+        offer = ffa_grand_final_offer(tournament)
+        ffa_gf_eligible = offer is not None and offer['state'] == 'ready'
 
     return {
         'party': party,
         'tournament': tournament,
         'has_bracket': has_bracket,
         'requires_bracket': tournament.game_format.requires_bracket_generation if tournament.game_format else False,
+        'start_gate': start_gate(tournament),
         'is_team_tournament': is_team_tournament,
         'participant_count': participant_count,
         'team_count': team_count,
@@ -328,6 +348,8 @@ def view(tournament_id):
         'bronze_name': bronze_name,
         'ffa_de_pool_status': ffa_de_pool_status,
         'ffa_gf_eligible': ffa_gf_eligible,
+        'ffa_phase': ffa_phase(tournament),
+        'ffa_mode': ffa_mode,
         'start_time_zone': (
             f'{current_app.config["TIMEZONE"]}, '
             f'{get_timezone_detail_at(tournament.start_time)}'
@@ -593,6 +615,12 @@ def create(party_id):
         group_size_min=settings.group_size_min,
         group_size_max=settings.group_size_max,
         points_carry_to_losers=sub.points_carry_to_losers,
+        playoff_game_format=settings.playoff_game_format,
+        playoff_elimination_mode=settings.playoff_elimination_mode,
+        playoff_group_count=settings.playoff_group_count,
+        playoff_qualifiers_per_group=settings.playoff_qualifiers_per_group,
+        playoff_qualifier_count=settings.playoff_qualifier_count,
+        playoff_release_mode=settings.playoff_release_mode,
         created_from_request_id=(
             sub.source_request.id if sub.source_request else None
         ),
@@ -634,7 +662,7 @@ def create(party_id):
             _clear_stale_request_link(form)
             return create_form(party.id, form, refused_request=refused_request)
         else:
-            form.form_errors.append(gettext(error_message))
+            form.form_errors.append(_translate_error(error_message))
         return create_form(party.id, form)
 
     tournament, _event = result.unwrap()
@@ -749,6 +777,13 @@ def _add_field_error(field, message: str) -> None:
     field.errors = [*field.errors, message]
 
 
+def _translate_error(error: str | ValidationMessage) -> str:
+    """Translate a service error, formatting its placeholders after it."""
+    if isinstance(error, ValidationMessage):
+        return _translate_validation_message(error)
+    return gettext(error)
+
+
 def _translate_validation_message(message: ValidationMessage) -> str:
     params = dict(message.params)
     if 'other' in params:
@@ -772,6 +807,68 @@ def _apply_settings_errors(
             form.form_errors.append(translated)
         elif not field.errors:
             _add_field_error(field, translated)
+
+
+_PLAYOFF_KWARGS = (
+    'playoff_game_format',
+    'playoff_elimination_mode',
+    'playoff_group_count',
+    'playoff_qualifiers_per_group',
+    'playoff_qualifier_count',
+    'playoff_release_mode',
+)
+
+
+def _parse_playoff_config(
+    form, game_format, elimination_mode, on_invalid
+) -> dict:
+    """Return the six playoff kwargs a submission configures.
+
+    All are `None` unless the switch is on and the format has a playoff
+    phase, so stale values of a skipped step never reach the service.
+    """
+    config = dict.fromkeys(_PLAYOFF_KWARGS)
+
+    is_round_robin = (
+        game_format == GameFormat.ONE_V_ONE
+        and elimination_mode == EliminationMode.ROUND_ROBIN
+    )
+    is_highscore = game_format == GameFormat.HIGHSCORE
+    if not form.playoff_enabled.data or not (is_round_robin or is_highscore):
+        return config
+
+    if is_round_robin:
+        config['playoff_game_format'] = GameFormat.ONE_V_ONE
+        config['playoff_group_count'] = form.playoff_group_count.data
+        config['playoff_qualifiers_per_group'] = (
+            form.playoff_qualifiers_per_group.data
+        )
+    else:
+        config['playoff_game_format'] = GameFormat.FREE_FOR_ALL
+        config['playoff_qualifier_count'] = form.playoff_qualifier_count.data
+
+    if form.playoff_elimination_mode.data:
+        try:
+            config['playoff_elimination_mode'] = EliminationMode[
+                form.playoff_elimination_mode.data
+            ]
+        except KeyError:
+            on_invalid(
+                form.playoff_elimination_mode,
+                gettext('Invalid elimination mode selected.'),
+            )
+    if form.playoff_release_mode.data:
+        try:
+            config['playoff_release_mode'] = PlayoffReleaseMode[
+                form.playoff_release_mode.data
+            ]
+        except KeyError:
+            on_invalid(
+                form.playoff_release_mode,
+                gettext('Invalid release mode selected.'),
+            )
+
+    return config
 
 
 def _parse_create_submission(
@@ -852,13 +949,27 @@ def _parse_create_submission(
     if game_format != GameFormat.HIGHSCORE:
         score_ordering = None
 
-    # Parse FFA fields.
+    playoff = _parse_playoff_config(
+        form, game_format, elimination_mode, _add_field_error
+    )
+
+    # Parse FFA fields. A highscore playoff phase is a Free-for-All phase
+    # and carries its settings in the same fields.
     point_table = None
     advancement_count = None
     group_size_min = None
     group_size_max = None
     points_carry_to_losers = None
     if game_format == GameFormat.FREE_FOR_ALL:
+        ffa_mode = elimination_mode
+    elif playoff['playoff_game_format'] == GameFormat.FREE_FOR_ALL:
+        ffa_mode = playoff['playoff_elimination_mode']
+    else:
+        ffa_mode = None
+    if (
+        game_format == GameFormat.FREE_FOR_ALL
+        or playoff['playoff_game_format'] == GameFormat.FREE_FOR_ALL
+    ):
         point_table_raw = form.point_table.data
         if point_table_raw:
             try:
@@ -875,7 +986,7 @@ def _parse_create_submission(
         advancement_count = form.advancement_count.data
         group_size_min = form.group_size_min.data
         group_size_max = form.group_size_max.data
-        if elimination_mode == EliminationMode.DOUBLE_ELIMINATION:
+        if ffa_mode == EliminationMode.DOUBLE_ELIMINATION:
             points_carry_to_losers = form.points_carry_to_losers.data
 
     settings = tournament_domain_service.TournamentSettings(
@@ -893,6 +1004,7 @@ def _parse_create_submission(
         group_size_min=group_size_min,
         group_size_max=group_size_max,
         advancement_count=advancement_count,
+        **playoff,
     )
     match tournament_domain_service.validate_tournament_settings(
         settings, require_structure=True
@@ -1746,6 +1858,17 @@ def update_form(tournament_id, erroneous_form=None):
         data['points_carry_to_losers'] = (
             tournament.points_carry_to_losers or False
         )
+        data['playoff_enabled'] = tournament.has_playoffs
+        data['playoff_elimination_mode'] = (
+            tournament.playoff_elimination_mode.name
+            if tournament.playoff_elimination_mode
+            else ''
+        )
+        data['playoff_release_mode'] = (
+            tournament.playoff_release_mode.name
+            if tournament.playoff_release_mode
+            else ''
+        )
         form = TournamentUpdateForm(data=data)
 
     form.set_contestant_type_choices()
@@ -1753,11 +1876,19 @@ def update_form(tournament_id, erroneous_form=None):
     form.set_elimination_mode_choices()
     form.set_score_ordering_choices()
 
+    locked_playoff = tournament_service.locked_playoff_fields(tournament)
+    governed = tournament_service.playoff_fields(tournament)
     return {
         'party': party,
         'tournament': tournament,
         'form': form,
         'is_locked': is_locked,
+        'locked_playoff_fields': locked_playoff,
+        'ffa_locked': (
+            'point_table' in locked_playoff
+            if 'point_table' in governed
+            else is_locked
+        ),
     }
 
 
@@ -1841,6 +1972,37 @@ def discard_errors_on_unchanged_fields(form, tournament) -> None:
             field.errors = []
 
 
+_FFA_FORM_FIELDS = (
+    'point_table',
+    'group_size_min',
+    'group_size_max',
+    'advancement_count',
+    'points_carry_to_losers',
+)
+
+
+def _inject_stored_fields(formdata, tournament, names) -> None:
+    """Put the stored values of these fields into the form data."""
+    for field in names:
+        if field == 'playoff_game_format':
+            name, value = 'playoff_enabled', tournament.has_playoffs
+        else:
+            name, value = field, getattr(tournament, field)
+        if name in ('playoff_enabled', 'points_carry_to_losers'):
+            if value:
+                formdata[name] = 'y'
+            else:
+                formdata.pop(name, None)
+        elif name == 'point_table':
+            formdata[name] = (
+                ', '.join(str(v) for v in value) if value is not None else ''
+            )
+        elif isinstance(value, Enum):
+            formdata[name] = value.name
+        else:
+            formdata[name] = str(value) if value is not None else ''
+
+
 def _update_form_is_valid(form, tournament) -> bool:
     """Validate the edit form, ignoring unchanged stored values."""
     form.validate()
@@ -1855,11 +2017,15 @@ def update(tournament_id):
     tournament = _get_tournament_or_404(tournament_id)
 
     is_locked = tournament.tournament_status in EDIT_LOCKED_STATUSES
+    locked_playoff = tournament_service.locked_playoff_fields(tournament)
+    governed = tournament_service.playoff_fields(tournament)
 
     # Disabled fields are not submitted by browsers.  Inject the
     # stored values so WTForms validation passes normally.
+    formdata = (
+        request.form.copy() if is_locked or locked_playoff else request.form
+    )
     if is_locked:
-        formdata = request.form.copy()
         formdata['name'] = tournament.name
         formdata['game'] = tournament.game or ''
         formdata['contestant_type'] = (
@@ -1918,32 +2084,11 @@ def update(tournament_id):
             if tournament.max_players_in_team is not None
             else ''
         )
-        # Inject locked FFA fields.
-        if tournament.point_table is not None:
-            formdata['point_table'] = ', '.join(
-                str(v) for v in tournament.point_table
-            )
-        else:
-            formdata['point_table'] = ''
-        formdata['group_size_min'] = (
-            str(tournament.group_size_min)
-            if tournament.group_size_min is not None
-            else ''
-        )
-        formdata['group_size_max'] = (
-            str(tournament.group_size_max)
-            if tournament.group_size_max is not None
-            else ''
-        )
-        formdata['advancement_count'] = (
-            str(tournament.advancement_count)
-            if tournament.advancement_count is not None
-            else ''
-        )
-        if tournament.points_carry_to_losers:
-            formdata['points_carry_to_losers'] = 'y'
-    else:
-        formdata = request.form
+        # A highscore playoff phase takes its FFA fields from the
+        # playoff rules, which lock them only after the release.
+        if 'point_table' not in governed:
+            _inject_stored_fields(formdata, tournament, _FFA_FORM_FIELDS)
+    _inject_stored_fields(formdata, tournament, locked_playoff)
 
     form = TournamentUpdateForm(formdata)
     form.set_contestant_type_choices()
@@ -2042,13 +2187,33 @@ def update(tournament_id):
     if game_format != GameFormat.HIGHSCORE:
         score_ordering = None
 
-    # Parse FFA fields.
+    playoff_errors: list[str] = []
+    playoff = _parse_playoff_config(
+        form,
+        game_format,
+        elimination_mode,
+        lambda field, message: playoff_errors.append(message),
+    )
+    if playoff_errors:
+        for message in playoff_errors:
+            flash_error(message)
+        return update_form(tournament.id, form)
+
+    # Parse FFA fields. A highscore playoff phase is a Free-for-All phase
+    # and carries its settings in the same fields.
     point_table = None
     advancement_count = None
     group_size_min = None
     group_size_max = None
     points_carry_to_losers = None
     if game_format == GameFormat.FREE_FOR_ALL:
+        ffa_mode = elimination_mode
+    else:
+        ffa_mode = playoff['playoff_elimination_mode']
+    if (
+        game_format == GameFormat.FREE_FOR_ALL
+        or playoff['playoff_game_format'] == GameFormat.FREE_FOR_ALL
+    ):
         point_table_raw = form.point_table.data
         if point_table_raw:
             try:
@@ -2075,10 +2240,32 @@ def update(tournament_id):
         advancement_count = form.advancement_count.data
         group_size_min = form.group_size_min.data
         group_size_max = form.group_size_max.data
-        if (
-            elimination_mode == EliminationMode.DOUBLE_ELIMINATION
-        ):
+        if ffa_mode == EliminationMode.DOUBLE_ELIMINATION:
             points_carry_to_losers = form.points_carry_to_losers.data
+
+    playoff_settings = tournament_domain_service.TournamentSettings(
+        contestant_type=effective_contestant_type,
+        game_format=game_format,
+        elimination_mode=elimination_mode,
+        score_ordering=score_ordering,
+        min_players=min_players,
+        max_players=max_players,
+        min_teams=min_teams,
+        max_teams=max_teams,
+        min_players_in_team=min_players_in_team,
+        max_players_in_team=max_players_in_team,
+        point_table=point_table,
+        group_size_min=group_size_min,
+        group_size_max=group_size_max,
+        advancement_count=advancement_count,
+        **playoff,
+    )
+    match tournament_domain_service.validate_playoff_settings(playoff_settings):
+        case Err(playoff_errors_by_field):
+            _apply_settings_errors(form, playoff_errors_by_field)
+            for message in playoff_errors_by_field.values():
+                flash_error(_translate_validation_message(message))
+            return update_form(tournament.id, form)
 
     result = tournament_service.update_tournament(
         tournament.id,
@@ -2103,9 +2290,11 @@ def update(tournament_id):
         group_size_min=group_size_min,
         group_size_max=group_size_max,
         points_carry_to_losers=points_carry_to_losers,
+        **playoff,
+        initiator_id=g.user.id,
     )
     if result.is_err():
-        flash_error(gettext(result.unwrap_err()))
+        flash_error(_translate_error(result.unwrap_err()))
         return update_form(tournament.id, form)
 
     tournament = result.unwrap()
@@ -2155,7 +2344,12 @@ def close_registration(tournament_id):
 @blueprint.post('/tournaments/<tournament_id>/start')
 @permission_required('lan_tournament.administrate')
 def start(tournament_id):
-    """Start the tournament."""
+    """Start the tournament; a changed board needs a confirmation."""
+    tournament = _get_tournament_or_404(tournament_id)
+    refusal = start_refusal(tournament, request.form)
+    if refusal is not None:
+        flash_error(gettext(refusal))
+        return redirect_to('.view', tournament_id=tournament.id)
     return _change_status(tournament_id, TournamentStatus.ONGOING)
 
 
@@ -2226,83 +2420,447 @@ def _change_status(tournament_id, new_status: TournamentStatus):
 @blueprint.post('/tournaments/<tournament_id>/generate_bracket')
 @permission_required('lan_tournament.administrate')
 def generate_bracket(tournament_id):
-    """Generate bracket for the tournament."""
+    """Send the orga to the seeding; generate nothing."""
     tournament = _get_tournament_or_404(tournament_id)
 
-    allowed_statuses = (
-        TournamentStatus.REGISTRATION_CLOSED,
-        TournamentStatus.ONGOING,
+    return redirect_to('.seeding', tournament_id=tournament.id)
+
+
+@blueprint.get('/tournaments/<tournament_id>/seeding')
+@permission_required('lan_tournament.administrate')
+@templated('admin/lan_tournament/seeding')
+def seeding(tournament_id):
+    """Show the seeding board of the tournament."""
+    tournament = _get_tournament_or_404(tournament_id)
+    party = party_service.get_party(tournament.party_id)
+    target = request.args.get(
+        'target', tournament_seeding_service.INITIAL_TARGET
     )
-    if tournament.tournament_status not in allowed_statuses:
-        flash_error(
-            gettext(
-                'Bracket can only be generated when registration '
-                'is closed or tournament is ongoing.'
-            )
-        )
-        return redirect_to('.view', tournament_id=tournament.id)
 
-    # Check for force regenerate parameter
-    force_regenerate = request.form.get('force', 'false').lower() == 'true'
-
-    result: Ok[int] | Err[str] | None = None
-    match (tournament.game_format, tournament.elimination_mode):
-        case (GameFormat.ONE_V_ONE, EliminationMode.SINGLE_ELIMINATION):
-            result = (
-                tournament_match_service.generate_single_elimination_bracket(
-                    tournament.id,
-                    force_regenerate=force_regenerate,
-                    initiator_id=g.user.id,
-                )
-            )
-        case (GameFormat.ONE_V_ONE, EliminationMode.DOUBLE_ELIMINATION):
-            result = (
-                tournament_match_service.generate_double_elimination_bracket(
-                    tournament.id,
-                    force_regenerate=force_regenerate,
-                    initiator_id=g.user.id,
-                )
-            )
-        case (GameFormat.ONE_V_ONE, EliminationMode.ROUND_ROBIN):
-            result = tournament_match_service.generate_round_robin_bracket(
-                tournament.id,
-                force_regenerate=force_regenerate,
-                initiator_id=g.user.id,
-            )
-        case (GameFormat.FREE_FOR_ALL, _):
-            flash_error(
-                gettext(
-                    'Free-for-All tournaments generate rounds on demand.'
-                )
-            )
-            return redirect_to('.view', tournament_id=tournament.id)
-        case (GameFormat.HIGHSCORE, EliminationMode.NONE):
-            flash_error(gettext('Highscore tournaments do not use brackets.'))
-            return redirect_to('.view', tournament_id=tournament.id)
-        case _:
-            flash_error(gettext('Unknown game format or elimination mode.'))
-            return redirect_to('.view', tournament_id=tournament.id)
-
-    if result is None:
-        return redirect_to('.view', tournament_id=tournament.id)
-
-    match result:
-        case Ok(match_count):
-            flash_success(
-                gettext(
-                    'Bracket generated with %(count)d matches.',
-                    count=match_count,
-                )
-            )
+    match tournament_seeding_service.get_board(
+        tournament.id, target, initiator_id=g.user.id
+    ):
+        case Err(tournament_seeding_service.ERR_NOT_OPEN_YET) if (
+            target == tournament_seeding_service.INITIAL_TARGET
+        ):
+            board = None
         case Err(error_message):
-            flash_error(
-                gettext(
-                    'Bracket generation failed: %(error)s',
-                    error=error_message,
-                )
-            )
+            flash_error(gettext(error_message))
+            return redirect_to('.view', tournament_id=tournament.id)
+        case Ok(board):
+            pass
 
-    return redirect_to('.view', tournament_id=tournament.id)
+    entries = [
+        entry
+        for entry in tournament_log_service.get_entries_for_tournament(
+            tournament.id
+        )
+        if is_seeding_audit_entry(entry)
+    ]
+    entries.reverse()
+    users_by_id = user_service.get_users_indexed_by_id(
+        {entry.initiator_id for entry in entries if entry.initiator_id}
+    )
+
+    return {
+        'party': party,
+        'tournament': tournament,
+        'board': seeding_board_payload(board) if board is not None else None,
+        'audit_rows': seeding_audit_rows(
+            entries, users_by_id, contestant_names(tournament.id)
+        ),
+    }
+
+
+@blueprint.post('/tournaments/<tournament_id>/seeding/actions')
+@permission_required('lan_tournament.administrate')
+def seeding_action(tournament_id):
+    """Apply one seeding action; answer JSON or redirect."""
+    tournament = _get_tournament_or_404(tournament_id)
+    json_wanted = wants_json(request)
+    target = request.form.get(
+        'target', tournament_seeding_service.INITIAL_TARGET
+    )
+
+    parsed = parse_seeding_action(request.form)
+    if parsed is None:
+        return _seeding_error(
+            tournament,
+            target,
+            tournament_seeding_service.ERR_INVALID_CHANGE,
+            422,
+            json_wanted,
+        )
+    expected_version, action = parsed
+
+    match tournament_seeding_service.apply_action(
+        tournament.id,
+        target,
+        action,
+        expected_version=expected_version,
+        initiator_id=g.user.id,
+    ):
+        case Err(error_message):
+            return _seeding_error(
+                tournament,
+                target,
+                error_message,
+                seeding_error_status(error_message),
+                json_wanted,
+            )
+        case Ok(board):
+            if json_wanted:
+                return jsonify(board=seeding_board_payload(board))
+
+    return redirect_to('.seeding', tournament_id=tournament.id, target=target)
+
+
+@blueprint.post('/tournaments/<tournament_id>/seeding/generate')
+@permission_required('lan_tournament.administrate')
+def seeding_generate(tournament_id):
+    """Generate the bracket, groups or lobbies from the seeding."""
+    tournament = _get_tournament_or_404(tournament_id)
+    target = request.form.get(
+        'target', tournament_seeding_service.INITIAL_TARGET
+    )
+
+    version = parse_int(request.form.get('version'))
+    if version is None:
+        flash_error(gettext(tournament_seeding_service.ERR_INVALID_CHANGE))
+        return redirect_to(
+            '.seeding', tournament_id=tournament.id, target=target
+        )
+
+    match tournament_seeding_service.generate_from_seeding(
+        tournament.id,
+        target,
+        expected_version=version,
+        initiator_id=g.user.id,
+    ):
+        case Ok('completed'):
+            flash_success(gettext('The tournament is complete. The lone survivor wins.'))
+            return redirect_to('.bracket', tournament_id=tournament.id)
+        case Ok(tournament_seeding_service.GENERATION_UNCHANGED):
+            flash_notice(gettext(tournament_seeding_service.MSG_UNCHANGED))
+        case Ok(match_count):
+            flash_success(generation_flash(tournament, target, match_count))
+        case Err(error_message):
+            flash_error(gettext(error_message))
+
+    return redirect_to('.seeding', tournament_id=tournament.id, target=target)
+
+
+def _seeding_error(tournament, target, error_message, status, json_wanted):
+    message = gettext(error_message)
+    if json_wanted:
+        return _json_error(message, status)
+    flash_error(message)
+    return redirect_to('.seeding', tournament_id=tournament.id, target=target)
+
+
+def _qualification_payload(tournament, state):
+    decisions = tournament_qualification_repository.get_decisions_for_tournament(
+        tournament.id
+    )
+    user_ids = {b.decided_by for d in decisions.values() for b in d.blocks}
+    if state.released_by is not None:
+        user_ids.add(state.released_by)
+    return serialize_qualification(
+        state,
+        contestant_names(tournament.id),
+        qualification_strings(),
+        tournament=tournament,
+        decisions=decisions,
+        users=user_service.get_users_indexed_by_id(user_ids),
+        submitted_at=leaderboard_submission_times(tournament.id, state),
+    )
+
+
+def _playoff_draft_version(tournament, state):
+    """Return the version of the playoff draft the release would use."""
+    releasable = (
+        state.ready
+        and state.released_at is None
+        and state.source != tournament_qualification_service.SOURCE_WINNER
+        and tournament.tournament_status is TournamentStatus.ONGOING
+    )
+    if not releasable:
+        return None
+    match tournament_seeding_service.get_board(
+        tournament.id, tournament_seeding_service.PLAYOFF_TARGET
+    ):
+        case Ok(board):
+            return board.version
+        case Err(_):
+            return None
+
+
+def _playoff_draft_payload(state):
+    """Return the playoff draft board for the page, or None without one."""
+    if state.source not in (
+        tournament_qualification_service.SOURCE_GROUPS,
+        tournament_qualification_service.SOURCE_LEADERBOARD,
+    ):
+        return None
+    match tournament_seeding_service.get_board(
+        state.tournament_id, tournament_seeding_service.PLAYOFF_TARGET
+    ):
+        case Ok(board):
+            return seeding_board_payload(board)
+        case Err(_):
+            return None
+
+
+@blueprint.get('/tournaments/<tournament_id>/qualification')
+@permission_required('lan_tournament.administrate')
+@templated('admin/lan_tournament/qualification')
+def qualification(tournament_id):
+    """Show who qualifies for the playoffs, the ties and the release."""
+    tournament = _get_tournament_or_404(tournament_id)
+    party = party_service.get_party(tournament.party_id)
+
+    match tournament_qualification_service.get_qualification(tournament.id):
+        case Err(error_message):
+            flash_error(gettext(error_message))
+            return redirect_to('.view', tournament_id=tournament.id)
+        case Ok(state):
+            pass
+
+    entries = [
+        entry
+        for entry in tournament_log_service.get_entries_for_tournament(
+            tournament.id
+        )
+        if is_seeding_audit_entry(entry)
+    ]
+    entries.reverse()
+    users_by_id = user_service.get_users_indexed_by_id(
+        {entry.initiator_id for entry in entries if entry.initiator_id}
+    )
+
+    return {
+        'party': party,
+        'tournament': tournament,
+        'qualification': _qualification_payload(tournament, state),
+        'playoff_version': _playoff_draft_version(tournament, state),
+        'playoff_board': _playoff_draft_payload(state),
+        'audit_rows': seeding_audit_rows(
+            entries, users_by_id, contestant_names(tournament.id)
+        ),
+        'js_strings': qualification_js_strings(),
+    }
+
+
+@blueprint.post('/tournaments/<tournament_id>/qualification/draft')
+@permission_required('lan_tournament.administrate')
+def qualification_draft_action(tournament_id):
+    """Apply one seeding action to the playoff draft; answer JSON or redirect."""
+    tournament = _get_tournament_or_404(tournament_id)
+    json_wanted = wants_json(request)
+    target = tournament_seeding_service.PLAYOFF_TARGET
+
+    parsed = parse_seeding_action(request.form)
+    if parsed is None:
+        return _qualification_draft_error(
+            tournament,
+            tournament_seeding_service.ERR_INVALID_CHANGE,
+            422,
+            json_wanted,
+        )
+    expected_version, action = parsed
+
+    before = tournament_seeding_service.get_board(tournament.id, target)
+    match tournament_seeding_service.apply_action(
+        tournament.id,
+        target,
+        action,
+        expected_version=expected_version,
+        initiator_id=g.user.id,
+    ):
+        case Err(error_message):
+            return _qualification_draft_error(
+                tournament,
+                error_message,
+                seeding_error_status(error_message),
+                json_wanted,
+            )
+        case Ok(board):
+            if json_wanted:
+                return jsonify(board=seeding_board_payload(board))
+            if isinstance(action, tournament_seeding_service.Separate):
+                flash_success(
+                    separation_message(
+                        before.unwrap() if before.is_ok() else None, board
+                    )
+                )
+
+    return redirect_to('.qualification', tournament_id=tournament.id)
+
+
+def _qualification_draft_error(tournament, error_message, status, json_wanted):
+    message = gettext(error_message)
+    if json_wanted:
+        return _json_error(message, status)
+    flash_error(message)
+    return redirect_to('.qualification', tournament_id=tournament.id)
+
+
+def _qualification_outcome(
+    tournament, result, success_message, json_wanted, *, back='.qualification'
+):
+    """Answer a qualification action: JSON state, or flash and redirect."""
+    match result:
+        case Err(error_message):
+            status = seeding_error_status(error_message)
+            if json_wanted:
+                return _json_error(gettext(error_message), status)
+            flash_error(gettext(error_message))
+        case Ok(_):
+            if json_wanted:
+                state = tournament_qualification_service.get_qualification(
+                    tournament.id
+                )
+                payload = (
+                    _qualification_payload(
+                        _get_tournament_or_404(tournament.id), state.unwrap()
+                    )
+                    if state.is_ok()
+                    else None
+                )
+                return jsonify(qualification=payload)
+            flash_success(success_message)
+    return redirect_to(back, tournament_id=tournament.id)
+
+
+_FFA_DECISION_BACK_ENDPOINTS = {
+    'bracket': '.bracket',
+    'ffa_standings': '.ffa_standings',
+}
+
+
+def _qualification_back(scope, requested):
+    """Return the endpoint a decision returns to, from a whitelist."""
+    if not scope.startswith('ffa:'):
+        return '.qualification'
+    return _FFA_DECISION_BACK_ENDPOINTS.get(requested, '.bracket')
+
+
+@blueprint.post('/tournaments/<tournament_id>/qualification/decisions')
+@permission_required('lan_tournament.administrate')
+def qualification_decide(tournament_id):
+    """Save or withdraw an orga decision on a tie."""
+    tournament = _get_tournament_or_404(tournament_id)
+    json_wanted = wants_json(request)
+    scope = request.form.get('scope', '').strip()
+    action = request.form.get('action', '')
+    back = _qualification_back(scope, request.form.get('back', ''))
+
+    if action == 'save':
+        result = tournament_qualification_service.save_decision(
+            tournament.id,
+            scope,
+            request.form.getlist('order'),
+            reason=request.form.get('reason', ''),
+            initiator_id=g.user.id,
+        )
+        message = gettext('Orga decision saved.')
+    elif action == 'withdraw':
+        result = tournament_qualification_service.withdraw_decision(
+            tournament.id,
+            scope,
+            contestant_ids=request.form.getlist('order'),
+            reason=request.form.get('reason', ''),
+            initiator_id=g.user.id,
+        )
+        message = gettext('Decision withdrawn.')
+    else:
+        result = Err(tournament_seeding_service.ERR_INVALID_CHANGE)
+        message = ''
+
+    return _qualification_outcome(
+        tournament, result, message, json_wanted, back=back
+    )
+
+
+@blueprint.post('/tournaments/<tournament_id>/qualification/draft/create')
+@permission_required('lan_tournament.administrate')
+def qualification_draft_create(tournament_id):
+    """Create the playoff draft once the qualification is ready."""
+    tournament = _get_tournament_or_404(tournament_id)
+
+    result = tournament_seeding_service.ensure_playoff_draft(
+        tournament.id, g.user.id
+    )
+
+    return _qualification_outcome(
+        tournament,
+        result,
+        gettext('Playoff draft created.'),
+        wants_json(request),
+    )
+
+
+@blueprint.post('/tournaments/<tournament_id>/qualification/release')
+@permission_required('lan_tournament.administrate')
+def qualification_release(tournament_id):
+    """Release the playoffs from the playoff draft."""
+    tournament = _get_tournament_or_404(tournament_id)
+    json_wanted = wants_json(request)
+
+    version = parse_int(request.form.get('version'))
+    if version is None:
+        result = Err(tournament_seeding_service.ERR_INVALID_CHANGE)
+    else:
+        result = tournament_qualification_service.release_playoffs(
+            tournament.id, expected_version=version, initiator_id=g.user.id
+        )
+    if result.is_ok():
+        message = gettext(
+            'Playoffs released with %(count)d matches.',
+            count=result.unwrap(),
+        )
+    else:
+        message = ''
+
+    return _qualification_outcome(tournament, result, message, json_wanted)
+
+
+@blueprint.post('/tournaments/<tournament_id>/qualification/unrelease')
+@permission_required('lan_tournament.administrate')
+def qualification_unrelease(tournament_id):
+    """Take the release of the playoffs back, with a reason."""
+    tournament = _get_tournament_or_404(tournament_id)
+
+    result = tournament_qualification_service.unrelease_playoffs(
+        tournament.id,
+        reason=request.form.get('reason', ''),
+        initiator_id=g.user.id,
+    )
+
+    return _qualification_outcome(
+        tournament,
+        result,
+        gettext('Release undone.'),
+        wants_json(request),
+    )
+
+
+@blueprint.post('/tournaments/<tournament_id>/leaderboard/close')
+@permission_required('lan_tournament.administrate')
+def leaderboard_close(tournament_id):
+    """End the score phase of a highscore tournament."""
+    tournament = _get_tournament_or_404(tournament_id)
+
+    result = tournament_score_service.close_leaderboard(
+        tournament.id, initiator_id=g.user.id
+    )
+
+    return _qualification_outcome(
+        tournament,
+        result,
+        gettext('Qualification closed.'),
+        wants_json(request),
+    )
 
 
 @blueprint.post('/for_party/<party_id>/setup_email_templates')
@@ -2477,7 +3035,7 @@ def admin_remove_team_member(team_id, user_id):
         abort(404)
 
     result = tournament_team_service.remove_team_member(
-        team.id, member_user_id
+        team.id, member_user_id, initiator_id=g.user.id
     )
     match result:
         case Ok(_):
@@ -3423,10 +3981,17 @@ def matches_for_tournament(tournament_id):
         tournament, participants_by_id, teams_by_id, party.id
     )
 
+    match_labels = (
+        phase_match_labels(tournament, matches)
+        if tournament.has_playoffs
+        else {}
+    )
+
     return {
         'party': party,
         'tournament': tournament,
         'match_data': match_data,
+        'match_labels': match_labels,
         'only': only,
         'match_quantities': match_quantities,
         'teams_by_id': teams_by_id,
@@ -3450,7 +4015,7 @@ def view_match(match_id):
 
     # Classify a correction before the name lookups, so these also
     # resolve the downstream contestants.
-    is_ffa = is_ffa_tournament(tournament)
+    is_ffa = match_uses_placements(tournament, match)
     ffa_result_consumed = (
         is_ffa
         and match.confirmed_by is not None
@@ -3541,13 +4106,29 @@ def view_match(match_id):
         'team_members_by_team_id': team_members_by_team_id,
         'match_label': build_match_label(match),
         'is_walkover': is_walkover,
+        'is_ffa': is_ffa,
         'ffa_result_consumed': ffa_result_consumed,
         'correction_case': correction_case,
         'ack_match_ids': ack_match_ids,
         'correction_clears_winner': correction_clears_winner,
         'downstream_impact': downstream_impact,
         'max_match_score': tournament_match_service.MAX_MATCH_SCORE,
+        'can_unrelease': _playoff_release_can_be_undone(tournament, match),
     }
+
+
+def _playoff_release_can_be_undone(tournament, match):
+    """Tell whether the lock on a group result can still be lifted."""
+    if not (
+        tournament.has_playoffs is True
+        and tournament.playoff_released_at is not None
+        and match.phase == 1
+    ):
+        return True
+    progress = tournament_qualification_service.get_phase_two_progress(
+        tournament.id
+    )
+    return not progress.has_result
 
 
 @blueprint.post('/matches/<match_id>/correct_result')
@@ -3558,7 +4139,7 @@ def correct_match_result(match_id):
     tournament = _get_tournament_or_404(match.tournament_id)
 
     # FFA matches have no bracket cascade to correct.
-    if is_ffa_tournament(tournament):
+    if match_uses_placements(tournament, match):
         flash_error(
             gettext(
                 'Free-for-all matches are corrected by unconfirming '
@@ -3678,7 +4259,7 @@ def unconfirm_match(match_id):
 
     # Bracket matches must use the correction, which needs an
     # acknowledgement.
-    if not is_ffa_tournament(tournament):
+    if not match_uses_placements(tournament, match):
         flash_error(
             gettext(
                 'Bracket matches are retracted in the result '
@@ -3742,6 +4323,17 @@ def add_match_comment(match_id):
     return redirect_to('.view_match', match_id=match_id)
 
 
+def _ffa_cut_tie_context(tournament):
+    """Return the cut ties and script texts for the FFA pages, orgas only."""
+    may_decide = g.user.has_permission('lan_tournament.administrate')
+    return {
+        'ffa_cut_ties': (
+            ffa_cut_ties_payload(tournament.id) if may_decide else []
+        ),
+        'js_strings': qualification_js_strings(),
+    }
+
+
 @blueprint.get('/tournaments/<tournament_id>/bracket')
 @permission_required('lan_tournament.view')
 @templated
@@ -3788,10 +4380,41 @@ def bracket(tournament_id):
             and not m.confirmed_by
         )
 
+    # With a playoff phase the page shows phase 1 as ranking cards and
+    # draws phase 2 in its own format.
+    phases = None
+    bracket_match_data = match_data
+    if tournament.has_playoffs:
+        bracket_match_data = [e for e in match_data if e['match'].phase == 2]
+        match tournament_qualification_service.get_qualification(tournament.id):
+            case Ok(state) if state.source in (
+                tournament_qualification_service.SOURCE_GROUPS,
+                tournament_qualification_service.SOURCE_LEADERBOARD,
+            ):
+                phases = {
+                    'source': state.source,
+                    'rankings': participant_rankings(
+                        state,
+                        contestant_names(tournament.id),
+                        qualification_strings(),
+                        tournament,
+                    ),
+                    'waiting': playoff_waiting_reason(state, tournament),
+                }
+            case _:
+                pass
+
     # Round-robin: compute standings table.
     standings = None
-    if tournament.elimination_mode == EliminationMode.ROUND_ROBIN:
+    if tournament_match_service.is_plain_round_robin(tournament):
         standings = build_round_robin_standings(match_data)
+
+    ffa_mode = ffa_elimination_mode(tournament)
+    ffa_view = None
+    if ffa_mode is not None and not (phases and phases['waiting']):
+        ffa_view = (
+            'de' if ffa_mode == EliminationMode.DOUBLE_ELIMINATION else 'single'
+        )
 
     # FFA: compute cumulative and per-round standings.
     ffa_standings = None
@@ -3811,7 +4434,7 @@ def bracket(tournament_id):
     ffa_de_pool_status = None
     ffa_gf_exists = False
     ffa_gf_match_data = None
-    if tournament.game_format == GameFormat.FREE_FOR_ALL:
+    if ffa_view is not None:
         (
             ffa_standings,
             ffa_round_standings,
@@ -3822,14 +4445,8 @@ def bracket(tournament_id):
         ) = _build_ffa_round_data(tournament.id)
 
         # DE: compute per-pool standings and pool status.
-        is_ffa_de = (
-            tournament.elimination_mode
-            == EliminationMode.DOUBLE_ELIMINATION
-        )
-        if is_ffa_de:
-            pool_data = _build_ffa_de_pool_data(
-                tournament.id, _ffa_match_data
-            )
+        if ffa_view == 'de':
+            pool_data = _build_ffa_de_pool_data(tournament.id, _ffa_match_data)
             ffa_wb_standings = pool_data.wb_standings
             ffa_lb_standings = pool_data.lb_standings
             ffa_gf_standings = pool_data.gf_standings
@@ -3847,6 +4464,17 @@ def bracket(tournament_id):
         'party': party,
         'tournament': tournament,
         'match_data': match_data,
+        'bracket_match_data': bracket_match_data,
+        'bracket_mode': (
+            tournament_domain_service.elimination_mode_for_phase(tournament, 2)
+            if tournament.has_playoffs
+            else tournament.elimination_mode
+        ),
+        'phases': phases,
+        'ffa_view': ffa_view,
+        'ffa_gf_offer': (
+            ffa_grand_final_offer(tournament) if ffa_view == 'de' else None
+        ),
         'standings': standings,
         'ffa_standings': ffa_standings,
         'ffa_round_standings': ffa_round_standings,
@@ -3869,6 +4497,7 @@ def bracket(tournament_id):
         'seats_by_user_id': seats_by_user_id,
         'team_members_by_team_id': team_members_by_team_id,
         'active_tab': 'bracket',
+        **_ffa_cut_tie_context(tournament),
     }
 
 
@@ -4178,72 +4807,43 @@ def ffa_standings(tournament_id):
         'seats_by_user_id': seats_by_user_id,
         'team_members_by_team_id': team_members_by_team_id,
         'active_tab': 'bracket',
+        **_ffa_cut_tie_context(tournament),
     }
 
 
 @blueprint.post('/tournaments/<tournament_id>/generate_ffa_round')
 @permission_required('lan_tournament.administrate')
 def generate_ffa_round_action(tournament_id):
-    """Generate the next FFA round."""
+    """Send the orga to the seeding; generate nothing."""
     tournament = _get_tournament_or_404(tournament_id)
 
     if tournament.game_format != GameFormat.FREE_FOR_ALL:
         flash_error(gettext('This tournament is not a Free-for-All format.'))
         return redirect_to('.view', tournament_id=tournament.id)
 
-    # DE tournaments start in the Winners bracket.
-    bracket = None
-    if tournament.elimination_mode == EliminationMode.DOUBLE_ELIMINATION:
-        bracket = Bracket.WINNERS
-
-    # Round number is determined inside the service under the
-    # tournament lock to avoid TOCTOU races.
-    result = tournament_match_service.generate_ffa_round(
-        tournament.id,
-        bracket=bracket,
-        initiator_id=g.user.id,
-    )
-
-    match result:
-        case Ok(match_count):
-            flash_success(
-                gettext(
-                    'FFA round generated with %(count)d group(s).',
-                    count=match_count,
-                )
-            )
-        case Err(error_message):
-            flash_error(
-                gettext(
-                    'FFA round generation failed: %(error)s',
-                    error=error_message,
-                )
-            )
-
-    return redirect_to('.bracket', tournament_id=tournament.id)
+    # Rounds come from the seeding, never from this route.
+    return redirect_to('.seeding', tournament_id=tournament.id)
 
 
 @blueprint.post('/tournaments/<tournament_id>/advance_ffa_round')
 @permission_required('lan_tournament.administrate')
 def advance_ffa_round_action(tournament_id):
-    """Advance FFA tournament to the next round.
+    """Draft the next FFA round and send the orga to its seeding.
 
     For DE tournaments, the ``pool`` POST parameter selects which pool
-    to advance (``WB`` or ``LB``).
+    to advance (``WB`` or ``LB``). The lobbies are generated from the
+    draft, never here.
     """
     tournament = _get_tournament_or_404(tournament_id)
 
-    if tournament.game_format != GameFormat.FREE_FOR_ALL:
+    elimination_mode = ffa_elimination_mode(tournament)
+    if elimination_mode is None:
         flash_error(gettext('This tournament is not a Free-for-All format.'))
         return redirect_to('.view', tournament_id=tournament.id)
 
     # DE: read pool parameter from form POST data.
     pool = None
-    is_de = (
-        tournament.elimination_mode
-        == EliminationMode.DOUBLE_ELIMINATION
-    )
-    if is_de:
+    if elimination_mode == EliminationMode.DOUBLE_ELIMINATION:
         pool_value = request.form.get('pool', '').strip()
         if pool_value == 'WB':
             pool = Bracket.WINNERS
@@ -4257,46 +4857,18 @@ def advance_ffa_round_action(tournament_id):
             )
             return redirect_to('.bracket', tournament_id=tournament.id)
 
-    result = tournament_match_service.advance_ffa_round(
-        tournament.id,
-        pool=pool,
-        initiator_id=g.user.id,
-    )
-
-    match result:
-        case Ok(value):
-            if isinstance(value, str):
-                # Signal values: 'grand_final_eligible',
-                # 'advanced_wb', 'advanced_lb'
-                if value == 'grand_final_eligible':
-                    flash_success(
-                        gettext(
-                            'Grand Final conditions met. Generate the '
-                            'Grand Final round.'
-                        )
-                    )
-                else:
-                    flash_success(
-                        gettext(
-                            'Round advanced: %(signal)s',
-                            signal=value,
-                        )
-                    )
-            else:
-                flash_success(
-                    gettext(
-                        'Advanced to next round. %(count)d group(s) '
-                        'generated.',
-                        count=value,
-                    )
-                )
-        case Err(error_message):
-            flash_error(
-                gettext(
-                    'Round advancement failed: %(error)s',
-                    error=error_message,
-                )
+    match tournament_seeding_service.prepare_ffa_round_draft(
+        tournament.id, pool=pool, initiator_id=g.user.id
+    ):
+        case Ok('completed'):
+            flash_success(gettext('The tournament is complete. The lone survivor wins.'))
+            return redirect_to('.bracket', tournament_id=tournament.id)
+        case Ok(target):
+            return redirect_to(
+                '.seeding', tournament_id=tournament.id, target=target
             )
+        case Err(error_message):
+            flash_error(gettext(error_message))
 
     return redirect_to('.bracket', tournament_id=tournament.id)
 
@@ -4357,7 +4929,7 @@ def confirm_ffa_match_action(match_id):
             flash_error(
                 gettext(
                     'Error confirming FFA match: %(error)s',
-                    error=error_message,
+                    error=gettext(error_message),
                 )
             )
 
@@ -4370,14 +4942,9 @@ def generate_ffa_grand_final_action(tournament_id):
     """Generate the Grand Final round for an FFA-DE tournament."""
     tournament = _get_tournament_or_404(tournament_id)
 
-    if tournament.game_format != GameFormat.FREE_FOR_ALL:
-        flash_error(gettext('This tournament is not a Free-for-All format.'))
-        return redirect_to('.view', tournament_id=tournament.id)
-
-    if tournament.elimination_mode != EliminationMode.DOUBLE_ELIMINATION:
-        flash_error(
-            gettext('Grand Final is only for double elimination tournaments.')
-        )
+    refusal = ffa_grand_final_refusal(tournament)
+    if refusal is not None:
+        flash_error(gettext(refusal))
         return redirect_to('.view', tournament_id=tournament.id)
 
     result = tournament_match_service.generate_ffa_grand_final(
@@ -4397,7 +4964,7 @@ def generate_ffa_grand_final_action(tournament_id):
             flash_error(
                 gettext(
                     'Grand Final generation failed: %(error)s',
-                    error=error_message,
+                    error=gettext(error_message),
                 )
             )
 

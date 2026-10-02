@@ -6,7 +6,11 @@
 {% set current_tab = 'tournaments' %}
 {% set page_title = [_('FFA Standings'), tournament.name, party.title] %}
 
-{% block head %}{{ super() }}{{ hover_card_styles() }}{{ bracket_all_styles(bracket_id='ffa-' ~ tournament.id) }}{% endblock %}
+{% block head %}{{ super() }}{{ hover_card_styles() }}{{ bracket_all_styles(bracket_id='ffa-' ~ tournament.id) }}
+{%- if ffa_cut_ties %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_seeding.css') }}">
+{%- endif %}
+{% endblock %}
 
 {% block before_body %}
 {{ render_backlink(url_for('.view', tournament_id=tournament.id),
@@ -16,6 +20,8 @@
 {% block body %}
 
   <h1 class='title'>{{ _('FFA Standings') }}</h1>
+
+  {%- with cut_ties_back = 'ffa_standings' %}{% include 'admin/lan_tournament/_ffa_cut_ties.html' %}{% endwith %}
 
   {%- if standings %}
     {{ render_ffa_standings(standings, round_standings=round_standings, teams_by_id=teams_by_id, participants_by_id=participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id, profile_url_endpoint='user_admin.view') }}
@@ -58,3 +64,10 @@
   </div>
 
 {%- endblock %}
+
+{% block scripts %}
+{%- if ffa_cut_ties %}
+<script src="{{ url_for('static', filename='behavior/sortable.min.js') }}"></script>
+<script src="{{ url_for('static', filename='behavior/lan_tournament_seeding.js') }}"></script>
+{%- endif %}
+{% endblock %}

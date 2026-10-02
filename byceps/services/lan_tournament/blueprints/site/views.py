@@ -1,20 +1,25 @@
 from datetime import datetime, UTC
 import re
 import uuid
-from flask import abort, g, request
+from flask import abort, g, jsonify, request
 from flask_babel import gettext, to_user_timezone, to_utc
 
 from byceps.services.lan_tournament import (
     tournament_domain_service,
+    tournament_log_service,
     tournament_match_service,
     tournament_orga_service,
     tournament_participant_service,
+    tournament_qualification_repository,
+    tournament_qualification_service,
     tournament_request_domain_service,
     tournament_request_service,
     tournament_score_service,
+    tournament_seeding_service,
     tournament_service,
     tournament_team_service,
 )
+from byceps.services.lan_tournament.models.bracket import Bracket
 from byceps.services.lan_tournament.models.tournament import (
     Tournament,
     TournamentID,
@@ -34,18 +39,45 @@ from byceps.services.lan_tournament.models.tournament_request import (
     TournamentRequestStatus,
 )
 from byceps.services.lan_tournament.lan_tournament_view_helpers import (
+    _resolve_contestant_name,
     build_contestant_name_lookups,
     build_ffa_standings,
     build_hover_lookups,
     build_round_robin_standings,
     build_seat_lookup,
     compute_feed_counts,
-    is_ffa_tournament,
+    contestant_names,
+    ffa_elimination_mode,
+    ffa_grand_final_offer,
+    ffa_grand_final_refusal,
+    ffa_phase,
     is_walkover_match,
+    match_uses_placements,
     parse_match_ids,
+    parse_int,
+    parse_seeding_action,
     parse_submitted_contestant_scores,
     parse_submitted_ffa_placements,
+    participant_rankings,
+    phase_match_labels,
+    plain_round_robin_winner_tie,
+    playoff_origin_labels,
+    playoff_waiting_reason,
+    ffa_cut_ties_payload,
+    qualification_js_strings,
+    qualification_strings,
+    is_seeding_audit_entry,
+    generation_flash,
+    seeding_audit_rows,
+    start_gate,
+    start_refusal,
+    seeding_board_payload,
+    leaderboard_submission_times,
+    seeding_error_status,
+    separation_message,
     serialize_bracket_json,
+    serialize_qualification,
+    wants_json,
 )
 from byceps.services.lan_tournament.tournament_match_service import (
     acknowledgement_match_ids,
@@ -64,7 +96,11 @@ from byceps.services.ticketing import ticket_service
 from byceps.services.user import user_service
 from byceps.services.user.models import UserID
 from byceps.util.framework.blueprint import create_blueprint
-from byceps.util.framework.flash import flash_error, flash_success
+from byceps.util.framework.flash import (
+    flash_error,
+    flash_notice,
+    flash_success,
+)
 from byceps.util.framework.templating import templated
 from byceps.util.result import Err, Ok
 from byceps.util.views import login_required, redirect_to
@@ -211,7 +247,21 @@ def view(tournament_id):
         'runner_up_name': runner_up_name,
         'bronze_name': bronze_name,
         'may_administrate': may_administrate,
+        'start_gate': (
+            start_gate(tournament) if may_administrate else None
+        ),
+        'grand_final': (
+            ffa_grand_final_offer(tournament) if may_administrate else None
+        ),
+        'winner_tie': (
+            plain_round_robin_winner_tie(tournament)
+            if may_administrate
+            and tournament.tournament_status
+            in (TournamentStatus.ONGOING, TournamentStatus.PAUSED)
+            else None
+        ),
         'orgas': orgas,
+        'ffa_phase': ffa_phase(tournament),
         'elimination_mode_label': (
             request_mode_label(tournament.elimination_mode)
             if tournament.elimination_mode
@@ -812,7 +862,9 @@ def site_remove_member(tournament_id, team_id):
         flash_error(gettext('Cannot remove the team captain.'))
         return redirect_to('.view_team', team_id=team.id)
 
-    match tournament_team_service.remove_team_member(team.id, user_id):
+    match tournament_team_service.remove_team_member(
+        team.id, user_id, initiator_id=g.user.id
+    ):
         case Ok(_event):
             flash_success(
                 gettext('Member has been removed from the team.')
@@ -821,7 +873,7 @@ def site_remove_member(tournament_id, team_id):
             flash_error(
                 gettext(
                     'Could not remove member: %(error)s',
-                    error=error_message,
+                    error=gettext(error_message),
                 )
             )
 
@@ -1082,7 +1134,7 @@ def view_match(match_id):
 
     may_administrate = may_administrate_tournament(g.user, tournament.id)
     results_editable = _orga_results_editable(tournament)
-    is_ffa = is_ffa_tournament(tournament)
+    is_ffa = match_uses_placements(tournament, match)
     is_walkover = is_walkover_match(contestants)
     ffa_result_consumed = (
         is_ffa
@@ -1135,9 +1187,21 @@ def view_match(match_id):
         else []
     )
 
+    match_label = (
+        phase_match_labels(
+            tournament,
+            tournament_match_service.get_matches_for_tournament_ordered(
+                tournament.id
+            ),
+        ).get(str(match.id))
+        if tournament.has_playoffs
+        else None
+    )
+
     return {
         'tournament': tournament,
         'match': match,
+        'match_label': match_label,
         'contestants': contestants,
         'comments': comments,
         'teams_by_id': teams_by_id,
@@ -1153,6 +1217,7 @@ def view_match(match_id):
         'comment_form': comment_form,
         'may_administrate': may_administrate,
         'results_editable': results_editable,
+        'phase_lock': _phase_lock_of(tournament, match),
         'is_ffa': is_ffa,
         'is_walkover': is_walkover,
         'ffa_result_consumed': ffa_result_consumed,
@@ -1284,6 +1349,20 @@ def _get_orga_match_and_tournament_or_404(match_id):
     return match, tournament
 
 
+def _phase_lock_of(tournament, match):
+    """Return `'final'` once a playoff result ends the release's undo."""
+    if not (
+        tournament.has_playoffs is True
+        and tournament.playoff_released_at is not None
+        and match.phase == 1
+    ):
+        return None
+    progress = tournament_qualification_service.get_phase_two_progress(
+        tournament.id
+    )
+    return 'final' if progress.has_result else 'released'
+
+
 def _orga_results_editable(tournament: Tournament) -> bool:
     """Return `True` if an orga may change match results now."""
     return tournament.tournament_status == TournamentStatus.ONGOING
@@ -1342,7 +1421,7 @@ def orga_unconfirm_match(match_id):
         flash_error(gettext('Tournament is not in progress.'))
         return redirect_to('.view_match', match_id=match.id)
 
-    if not is_ffa_tournament(tournament):
+    if not match_uses_placements(tournament, match):
         flash_error(
             gettext(
                 'Bracket matches are retracted in the result '
@@ -1389,7 +1468,7 @@ def orga_correct_match_result(match_id):
         flash_error(gettext('Tournament is not in progress.'))
         return redirect_to('.view_match', match_id=match.id)
 
-    if is_ffa_tournament(tournament):
+    if match_uses_placements(tournament, match):
         flash_error(
             gettext(
                 'Free-for-all matches are corrected by unconfirming '
@@ -1478,7 +1557,7 @@ def orga_submit_ffa_result(match_id):
         flash_error(gettext('Tournament is not in progress.'))
         return redirect_to('.view_match', match_id=match.id)
 
-    if not is_ffa_tournament(tournament):
+    if not match_uses_placements(tournament, match):
         flash_error(gettext('Placements apply only to free-for-all matches.'))
         return redirect_to('.view_match', match_id=match.id)
 
@@ -1576,6 +1655,12 @@ def orga_change_tournament_status(tournament_id, action):
         )
         return redirect_to('.view', tournament_id=tournament.id)
 
+    if action == 'start':
+        refusal = start_refusal(tournament, request.form)
+        if refusal is not None:
+            flash_error(gettext(refusal))
+            return redirect_to('.view', tournament_id=tournament.id)
+
     match tournament_service.change_status(
         tournament.id, new_status, g.user.id
     ):
@@ -1597,6 +1682,537 @@ def orga_change_tournament_status(tournament_id, action):
     return redirect_to('.view', tournament_id=tournament.id)
 
 
+@blueprint.get('/orga/tournaments/<tournament_id>/seeding')
+@login_required
+@scoped_orga_required
+@templated('site/lan_tournament/seeding')
+def orga_seeding(tournament_id):
+    """Show the seeding board of the tournament to its orgas."""
+    tournament = _get_tournament_or_404(tournament_id)
+    target = request.args.get(
+        'target', tournament_seeding_service.INITIAL_TARGET
+    )
+
+    match tournament_seeding_service.get_board(
+        tournament.id, target, initiator_id=g.user.id
+    ):
+        case Err(tournament_seeding_service.ERR_NOT_OPEN_YET) if (
+            target == tournament_seeding_service.INITIAL_TARGET
+        ):
+            board = None
+        case Err(error_message):
+            flash_error(gettext(error_message))
+            return redirect_to('.view', tournament_id=tournament.id)
+        case Ok(board):
+            pass
+
+    entries = [
+        entry
+        for entry in tournament_log_service.get_entries_for_tournament(
+            tournament.id
+        )
+        if is_seeding_audit_entry(entry)
+    ]
+    entries.reverse()
+    users_by_id = user_service.get_users_indexed_by_id(
+        {entry.initiator_id for entry in entries if entry.initiator_id}
+    )
+
+    return {
+        'tournament': tournament,
+        'board': seeding_board_payload(board) if board is not None else None,
+        'audit_rows': seeding_audit_rows(
+            entries, users_by_id, contestant_names(tournament.id)
+        ),
+    }
+
+
+@blueprint.post('/orga/tournaments/<tournament_id>/seeding/actions')
+@login_required
+@scoped_orga_required
+def orga_seeding_action(tournament_id):
+    """Apply one seeding action; answer JSON or redirect."""
+    tournament = _get_tournament_or_404(tournament_id)
+    json_wanted = wants_json(request)
+    target = request.form.get(
+        'target', tournament_seeding_service.INITIAL_TARGET
+    )
+
+    parsed = parse_seeding_action(request.form)
+    if parsed is None:
+        return _seeding_error(
+            tournament,
+            target,
+            tournament_seeding_service.ERR_INVALID_CHANGE,
+            422,
+            json_wanted,
+        )
+    expected_version, action = parsed
+
+    match tournament_seeding_service.apply_action(
+        tournament.id,
+        target,
+        action,
+        expected_version=expected_version,
+        initiator_id=g.user.id,
+    ):
+        case Err(error_message):
+            return _seeding_error(
+                tournament,
+                target,
+                error_message,
+                seeding_error_status(error_message),
+                json_wanted,
+            )
+        case Ok(board):
+            if json_wanted:
+                return jsonify(board=seeding_board_payload(board))
+
+    return redirect_to(
+        '.orga_seeding', tournament_id=tournament.id, target=target
+    )
+
+
+@blueprint.post('/orga/tournaments/<tournament_id>/seeding/generate')
+@login_required
+@scoped_orga_required
+def orga_seeding_generate(tournament_id):
+    """Generate the bracket, groups or lobbies from the seeding."""
+    tournament = _get_tournament_or_404(tournament_id)
+    target = request.form.get(
+        'target', tournament_seeding_service.INITIAL_TARGET
+    )
+
+    version = parse_int(request.form.get('version'))
+    if version is None:
+        flash_error(gettext(tournament_seeding_service.ERR_INVALID_CHANGE))
+        return redirect_to(
+            '.orga_seeding', tournament_id=tournament.id, target=target
+        )
+
+    match tournament_seeding_service.generate_from_seeding(
+        tournament.id,
+        target,
+        expected_version=version,
+        initiator_id=g.user.id,
+    ):
+        case Ok('completed'):
+            flash_success(gettext('The tournament is complete. The lone survivor wins.'))
+            return redirect_to('.bracket', tournament_id=tournament.id)
+        case Ok(tournament_seeding_service.GENERATION_UNCHANGED):
+            flash_notice(gettext(tournament_seeding_service.MSG_UNCHANGED))
+        case Ok(match_count):
+            flash_success(generation_flash(tournament, target, match_count))
+        case Err(error_message):
+            flash_error(gettext(error_message))
+
+    return redirect_to(
+        '.orga_seeding', tournament_id=tournament.id, target=target
+    )
+
+
+def _seeding_error(tournament, target, error_message, status, json_wanted):
+    message = gettext(error_message)
+    if json_wanted:
+        return jsonify(error=message), status
+    flash_error(message)
+    return redirect_to(
+        '.orga_seeding', tournament_id=tournament.id, target=target
+    )
+
+
+def _orga_qualification_payload(tournament, state):
+    decisions = (
+        tournament_qualification_repository.get_decisions_for_tournament(
+            tournament.id
+        )
+    )
+    user_ids = {b.decided_by for d in decisions.values() for b in d.blocks}
+    if state.released_by is not None:
+        user_ids.add(state.released_by)
+    return serialize_qualification(
+        state,
+        contestant_names(tournament.id),
+        qualification_strings(),
+        tournament=tournament,
+        decisions=decisions,
+        users=user_service.get_users_indexed_by_id(user_ids),
+        submitted_at=leaderboard_submission_times(tournament.id, state),
+    )
+
+
+def _playoff_release_open(tournament, state):
+    return (
+        state.ready
+        and state.released_at is None
+        and state.source != tournament_qualification_service.SOURCE_WINNER
+        and tournament.tournament_status is TournamentStatus.ONGOING
+    )
+
+
+def _stored_playoff_draft_version(tournament):
+    """Return the version of the stored playoff draft, or `None`.
+
+    Read only: a missing draft is not created here.
+    """
+    match tournament_seeding_service.get_board(tournament.id, 'playoff'):
+        case Ok(board):
+            return board.version
+        case Err(_):
+            return None
+
+
+@blueprint.get('/orga/tournaments/<tournament_id>/qualification')
+@login_required
+@scoped_orga_required
+@templated('site/lan_tournament/qualification')
+def orga_qualification(tournament_id):
+    """Show who qualifies for the playoffs, the ties and the release."""
+    tournament = _get_tournament_or_404(tournament_id)
+
+    match tournament_qualification_service.get_qualification(tournament.id):
+        case Err(error_message):
+            flash_error(gettext(error_message))
+            return redirect_to('.view', tournament_id=tournament.id)
+        case Ok(state):
+            pass
+
+    entries = [
+        entry
+        for entry in tournament_log_service.get_entries_for_tournament(
+            tournament.id
+        )
+        if is_seeding_audit_entry(entry)
+    ]
+    entries.reverse()
+    users_by_id = user_service.get_users_indexed_by_id(
+        {entry.initiator_id for entry in entries if entry.initiator_id}
+    )
+    playoff_version = (
+        _stored_playoff_draft_version(tournament)
+        if _playoff_release_open(tournament, state)
+        else None
+    )
+
+    return {
+        'tournament': tournament,
+        'qualification': _orga_qualification_payload(tournament, state),
+        'playoff_version': playoff_version,
+        'playoff_release_open': _playoff_release_open(tournament, state),
+        'playoff_board': _playoff_draft_payload(state),
+        'audit_rows': seeding_audit_rows(
+            entries, users_by_id, contestant_names(tournament.id)
+        ),
+        'js_strings': qualification_js_strings(),
+    }
+
+
+@blueprint.post('/orga/tournaments/<tournament_id>/qualification/draft')
+@login_required
+@scoped_orga_required
+def orga_qualification_draft_action(tournament_id):
+    """Apply one seeding action to the playoff draft; answer JSON or redirect."""
+    tournament = _get_tournament_or_404(tournament_id)
+    json_wanted = wants_json(request)
+    target = tournament_seeding_service.PLAYOFF_TARGET
+
+    parsed = parse_seeding_action(request.form)
+    if parsed is None:
+        return _qualification_draft_error(
+            tournament,
+            tournament_seeding_service.ERR_INVALID_CHANGE,
+            422,
+            json_wanted,
+        )
+    expected_version, action = parsed
+
+    before = tournament_seeding_service.get_board(tournament.id, target)
+    match tournament_seeding_service.apply_action(
+        tournament.id,
+        target,
+        action,
+        expected_version=expected_version,
+        initiator_id=g.user.id,
+    ):
+        case Err(error_message):
+            return _qualification_draft_error(
+                tournament,
+                error_message,
+                seeding_error_status(error_message),
+                json_wanted,
+            )
+        case Ok(board):
+            if json_wanted:
+                return jsonify(board=seeding_board_payload(board))
+            if isinstance(action, tournament_seeding_service.Separate):
+                flash_success(
+                    separation_message(
+                        before.unwrap() if before.is_ok() else None, board
+                    )
+                )
+
+    return redirect_to('.orga_qualification', tournament_id=tournament.id)
+
+
+def _qualification_draft_error(tournament, error_message, status, json_wanted):
+    message = gettext(error_message)
+    if json_wanted:
+        return jsonify(error=message), status
+    flash_error(message)
+    return redirect_to('.orga_qualification', tournament_id=tournament.id)
+
+
+def _playoff_draft_payload(state):
+    """Return the playoff draft board for the page, or None without one."""
+    if state.source not in (
+        tournament_qualification_service.SOURCE_GROUPS,
+        tournament_qualification_service.SOURCE_LEADERBOARD,
+    ):
+        return None
+    match tournament_seeding_service.get_board(
+        state.tournament_id, tournament_seeding_service.PLAYOFF_TARGET
+    ):
+        case Ok(board):
+            return seeding_board_payload(board)
+        case Err(_):
+            return None
+
+
+def _orga_qualification_outcome(
+    tournament,
+    result,
+    success_message,
+    json_wanted,
+    *,
+    back='.orga_qualification',
+):
+    """Answer a qualification action: JSON state, or flash and redirect."""
+    match result:
+        case Err(error_message):
+            status = seeding_error_status(error_message)
+            if json_wanted:
+                return jsonify(error=gettext(error_message)), status
+            flash_error(gettext(error_message))
+        case Ok(_):
+            if json_wanted:
+                state = tournament_qualification_service.get_qualification(
+                    tournament.id
+                )
+                payload = (
+                    _orga_qualification_payload(
+                        _get_tournament_or_404(tournament.id), state.unwrap()
+                    )
+                    if state.is_ok()
+                    else None
+                )
+                return jsonify(qualification=payload)
+            flash_success(success_message)
+    return redirect_to(back, tournament_id=tournament.id)
+
+
+@blueprint.post('/orga/tournaments/<tournament_id>/qualification/decisions')
+@login_required
+@scoped_orga_required
+def orga_qualification_decide(tournament_id):
+    """Save or withdraw an orga decision on a tie."""
+    tournament = _get_tournament_or_404(tournament_id)
+    json_wanted = wants_json(request)
+    scope = request.form.get('scope', '').strip()
+    action = request.form.get('action', '')
+    back = '.bracket' if scope.startswith('ffa:') else '.orga_qualification'
+
+    if action == 'save':
+        result = tournament_qualification_service.save_decision(
+            tournament.id,
+            scope,
+            request.form.getlist('order'),
+            reason=request.form.get('reason', ''),
+            initiator_id=g.user.id,
+        )
+        message = gettext('Orga decision saved.')
+    elif action == 'withdraw':
+        result = tournament_qualification_service.withdraw_decision(
+            tournament.id,
+            scope,
+            contestant_ids=request.form.getlist('order'),
+            reason=request.form.get('reason', ''),
+            initiator_id=g.user.id,
+        )
+        message = gettext('Decision withdrawn.')
+    else:
+        result = Err(tournament_seeding_service.ERR_INVALID_CHANGE)
+        message = ''
+
+    return _orga_qualification_outcome(
+        tournament, result, message, json_wanted, back=back
+    )
+
+
+@blueprint.post(
+    '/orga/tournaments/<tournament_id>/qualification/draft/create'
+)
+@login_required
+@scoped_orga_required
+def orga_qualification_draft_create(tournament_id):
+    """Create the playoff draft once the qualification is ready."""
+    tournament = _get_tournament_or_404(tournament_id)
+
+    result = tournament_seeding_service.ensure_playoff_draft(
+        tournament.id, g.user.id
+    )
+
+    return _orga_qualification_outcome(
+        tournament,
+        result,
+        gettext('Playoff draft created.'),
+        wants_json(request),
+    )
+
+
+@blueprint.post('/orga/tournaments/<tournament_id>/qualification/release')
+@login_required
+@scoped_orga_required
+def orga_qualification_release(tournament_id):
+    """Release the playoffs from the playoff draft."""
+    tournament = _get_tournament_or_404(tournament_id)
+    json_wanted = wants_json(request)
+
+    version = parse_int(request.form.get('version'))
+    if version is None:
+        result = Err(tournament_seeding_service.ERR_INVALID_CHANGE)
+    else:
+        result = tournament_qualification_service.release_playoffs(
+            tournament.id, expected_version=version, initiator_id=g.user.id
+        )
+    if result.is_ok():
+        message = gettext(
+            'Playoffs released with %(count)d matches.',
+            count=result.unwrap(),
+        )
+    else:
+        message = ''
+
+    return _orga_qualification_outcome(tournament, result, message, json_wanted)
+
+
+@blueprint.post('/orga/tournaments/<tournament_id>/qualification/unrelease')
+@login_required
+@scoped_orga_required
+def orga_qualification_unrelease(tournament_id):
+    """Take the release of the playoffs back, with a reason."""
+    tournament = _get_tournament_or_404(tournament_id)
+
+    result = tournament_qualification_service.unrelease_playoffs(
+        tournament.id,
+        reason=request.form.get('reason', ''),
+        initiator_id=g.user.id,
+    )
+
+    return _orga_qualification_outcome(
+        tournament,
+        result,
+        gettext('Release undone.'),
+        wants_json(request),
+    )
+
+
+@blueprint.post('/orga/tournaments/<tournament_id>/leaderboard/close')
+@login_required
+@scoped_orga_required
+def orga_leaderboard_close(tournament_id):
+    """End the score phase of a highscore tournament."""
+    tournament = _get_tournament_or_404(tournament_id)
+
+    result = tournament_score_service.close_leaderboard(
+        tournament.id, initiator_id=g.user.id
+    )
+
+    return _orga_qualification_outcome(
+        tournament,
+        result,
+        gettext('Qualification closed.'),
+        wants_json(request),
+    )
+
+
+@blueprint.post('/orga/tournaments/<tournament_id>/advance_ffa_round')
+@login_required
+@scoped_orga_required
+def orga_advance_ffa_round(tournament_id):
+    """Draft the next FFA round and send the orga to its seeding.
+
+    For double elimination, the ``pool`` form field selects the pool to
+    advance (``WB`` or ``LB``). The lobbies are generated from the draft,
+    never here.
+    """
+    tournament = _get_tournament_or_404(tournament_id)
+
+    elimination_mode = ffa_elimination_mode(tournament)
+    if elimination_mode is None:
+        flash_error(gettext('This tournament is not a Free-for-All format.'))
+        return redirect_to('.view', tournament_id=tournament.id)
+
+    pool = None
+    if elimination_mode == EliminationMode.DOUBLE_ELIMINATION:
+        pool_value = request.form.get('pool', '').strip()
+        if pool_value == 'WB':
+            pool = Bracket.WINNERS
+        elif pool_value == 'LB':
+            pool = Bracket.LOSERS
+        else:
+            flash_error(gettext('Invalid pool parameter. Use WB or LB.'))
+            return redirect_to('.bracket', tournament_id=tournament.id)
+
+    match tournament_seeding_service.prepare_ffa_round_draft(
+        tournament.id, pool=pool, initiator_id=g.user.id
+    ):
+        case Ok('completed'):
+            flash_success(gettext('The tournament is complete. The lone survivor wins.'))
+            return redirect_to('.bracket', tournament_id=tournament.id)
+        case Ok(target):
+            return redirect_to(
+                '.orga_seeding', tournament_id=tournament.id, target=target
+            )
+        case Err(error_message):
+            flash_error(gettext(error_message))
+
+    return redirect_to('.bracket', tournament_id=tournament.id)
+
+
+@blueprint.post('/orga/tournaments/<tournament_id>/generate_ffa_grand_final')
+@login_required
+@scoped_orga_required
+def orga_generate_ffa_grand_final(tournament_id):
+    """Generate the grand final of a double-elimination FFA phase."""
+    tournament = _get_tournament_or_404(tournament_id)
+
+    refusal = ffa_grand_final_refusal(tournament)
+    if refusal is not None:
+        flash_error(gettext(refusal))
+        return redirect_to('.view', tournament_id=tournament.id)
+
+    match tournament_match_service.generate_ffa_grand_final(
+        tournament.id, initiator_id=g.user.id
+    ):
+        case Ok(match_count):
+            flash_success(
+                gettext(
+                    'Grand Final generated with %(count)d group(s).',
+                    count=match_count,
+                )
+            )
+            return redirect_to('.bracket', tournament_id=tournament.id)
+        case Err(error_message):
+            flash_error(
+                gettext(
+                    'Grand Final generation failed: %(error)s',
+                    error=gettext(error_message),
+                )
+            )
+
+    return redirect_to('.view', tournament_id=tournament.id)
+
+
 @blueprint.get('/<tournament_id>/bracket')
 @templated
 def bracket(tournament_id):
@@ -1609,6 +2225,8 @@ def bracket(tournament_id):
         and tournament.tournament_status == TournamentStatus.DRAFT
     ):
         abort(404)
+
+    may_administrate = may_administrate_tournament(g.user, tournament.id)
 
     matches = tournament_match_service.get_matches_for_tournament_ordered(
         tournament.id
@@ -1661,9 +2279,66 @@ def bracket(tournament_id):
             and not m.confirmed_by
         )
 
+    # Playoff tournaments: the phase switch, group tables and waiting
+    # state. Only what a participant may see goes into this context.
+    phase_view = None
+    waiting_reason = None
+    rankings = None
+    origin_labels: dict[str, str] = {}
+    playoff_match_data = []
+    playoff_matches = []
+    playoff_lobby_rounds = []
+    if tournament.has_playoffs:
+        match tournament_qualification_service.get_qualification(tournament.id):
+            case Ok(state) if state.source in ('groups', 'leaderboard'):
+                rankings = participant_rankings(
+                    state,
+                    contestant_names(tournament.id),
+                    qualification_strings(),
+                    tournament,
+                )
+                waiting_reason = playoff_waiting_reason(state, tournament)
+                origin_labels = playoff_origin_labels(state)
+                released = state.released_at is not None
+                phase_view = {'1': 1, '2': 2}.get(
+                    request.args.get('phase', ''), 2 if released else 1
+                )
+                playoff_match_data = [
+                    entry for entry in match_data if entry['match'].phase == 2
+                ]
+            case _:
+                pass
+
     # Bracket serialization for client-side rendering (SE/DE only).
     bracket_json = None
-    if tournament.elimination_mode in (
+    if phase_view is not None:
+        playoff_elimination_mode = tournament.playoff_elimination_mode
+        if (
+            playoff_match_data
+            and tournament.playoff_game_format != GameFormat.FREE_FOR_ALL
+            and playoff_elimination_mode
+            in (
+                EliminationMode.SINGLE_ELIMINATION,
+                EliminationMode.DOUBLE_ELIMINATION,
+            )
+        ):
+            from flask import url_for as flask_url_for
+
+            bracket_json = serialize_bracket_json(
+                tournament,
+                playoff_match_data,
+                teams_by_id,
+                participants_by_id,
+                seats_by_user_id,
+                team_members_by_team_id,
+                url_builder=lambda m: flask_url_for(
+                    '.view_match',
+                    tournament_id=tournament.id,
+                    match_id=m.id,
+                ),
+                origin_labels=origin_labels,
+            )
+    elif tournament.elimination_mode in (
         EliminationMode.SINGLE_ELIMINATION,
         EliminationMode.DOUBLE_ELIMINATION,
     ):
@@ -1685,13 +2360,41 @@ def bracket(tournament_id):
 
     # Round-robin: compute standings table.
     standings = None
-    if tournament.elimination_mode == EliminationMode.ROUND_ROBIN:
+    if (
+        phase_view is None
+        and tournament.elimination_mode == EliminationMode.ROUND_ROBIN
+    ):
         standings = build_round_robin_standings(match_data)
 
     # FFA: compute cumulative standings with per-round breakdown.
     ffa_standings = None
-    if tournament.game_format == GameFormat.FREE_FOR_ALL:
+    if phase_view is None and tournament.game_format == GameFormat.FREE_FOR_ALL:
         ffa_standings = build_ffa_standings(match_data)
+    elif (
+        phase_view == 2
+        and tournament.playoff_game_format == GameFormat.FREE_FOR_ALL
+    ):
+        ffa_standings = build_ffa_standings(playoff_match_data)
+        playoff_lobby_rounds = _playoff_lobby_rounds(
+            playoff_match_data, teams_by_id, participants_by_id
+        )
+
+    if phase_view == 2 and bracket_json is not None:
+        labels = phase_match_labels(
+            tournament, [e['match'] for e in match_data]
+        )
+        playoff_matches = _playoff_match_rows(
+            sorted(
+                match_data,
+                key=lambda e: (
+                    e['match'].phase != 2,
+                    e['match'].group_order or 0,
+                ),
+            ),
+            labels,
+            teams_by_id,
+            participants_by_id,
+        )
 
     return {
         'tournament': tournament,
@@ -1703,8 +2406,121 @@ def bracket(tournament_id):
         'participants_by_id': participants_by_id,
         'seats_by_user_id': seats_by_user_id,
         'team_members_by_team_id': team_members_by_team_id,
+        'phase_view': phase_view,
+        'waiting_reason': waiting_reason,
+        'rankings': rankings,
+        'playoff_matches': playoff_matches,
+        'playoff_lobby_rounds': playoff_lobby_rounds,
         'active_tab': 'bracket',
+        'ffa_cut_ties': (
+            ffa_cut_ties_payload(tournament.id) if may_administrate else []
+        ),
+        'winner_tie': (
+            plain_round_robin_winner_tie(tournament)
+            if may_administrate
+            and phase_view is None
+            and tournament.tournament_status is TournamentStatus.ONGOING
+            else None
+        ),
+        'js_strings': qualification_js_strings(),
     }
+
+
+def _contestant_names_of(contestants, teams_by_id, participants_by_id):
+    return sorted(
+        (
+            _resolve_contestant_name(c, teams_by_id, participants_by_id)
+            for c in contestants
+            if c.team_id or c.participant_id
+        ),
+        key=str.casefold,
+    )
+
+
+_LOBBY_POOL_ORDER = {'WB': 0, 'LB': 1, 'GF': 2}
+
+
+def _playoff_lobby_rounds(match_data, teams_by_id, participants_by_id):
+    """Return the phase-2 FFA lobbies by pool and round, members by name.
+
+    Names are sorted, so the order of a lobby never tells a seed. A
+    double-elimination tournament has a section per pool and round; the
+    grand final has no round number.
+    """
+
+    def pool_of(match):
+        return match.bracket.value if match.bracket else None
+
+    groups: dict[tuple[str | None, int], list[dict]] = {}
+    for entry in sorted(
+        match_data,
+        key=lambda e: (
+            _LOBBY_POOL_ORDER.get(pool_of(e['match']), 0),
+            e['match'].round or 0,
+            e['match'].group_order or 0,
+        ),
+    ):
+        match = entry['match']
+        groups.setdefault((pool_of(match), match.round or 0), []).append(
+            {
+                'names': _contestant_names_of(
+                    entry['contestants'], teams_by_id, participants_by_id
+                ),
+                'confirmed': match.confirmed_by is not None,
+                'match_id': match.id,
+            }
+        )
+
+    pool_labels = {
+        'WB': gettext('Winners Pool'),
+        'LB': gettext('Losers Pool'),
+        'GF': gettext('Grand Final'),
+    }
+    rounds_seen: dict[str | None, int] = {}
+    sections = []
+    for (pool, _round), lobbies in groups.items():
+        rounds_seen[pool] = rounds_seen.get(pool, 0) + 1
+        sections.append(
+            {
+                'pool': pool_labels.get(pool),
+                'number': None if pool == 'GF' else rounds_seen[pool],
+                'lobbies': lobbies,
+            }
+        )
+    return sections
+
+
+def _playoff_match_rows(match_data, labels, teams_by_id, participants_by_id):
+    """Return one row per match with its phase label, for the list."""
+    rows = []
+    for entry in match_data:
+        match = entry['match']
+        contestants = entry['contestants']
+        real = [c for c in contestants if c.team_id or c.participant_id]
+        confirmed = match.confirmed_by is not None
+        rows.append(
+            {
+                'label': labels.get(str(match.id), ''),
+                'names': [
+                    _resolve_contestant_name(c, teams_by_id, participants_by_id)
+                    for c in real
+                ],
+                'score': (
+                    ':'.join(str(c.score) for c in real)
+                    if confirmed and len(real) == 2
+                    else None
+                ),
+                'status': (
+                    'confirmed'
+                    if confirmed
+                    else 'ready'
+                    if len(real) >= 2
+                    else 'pending'
+                ),
+                'match_id': match.id,
+            }
+        )
+    return rows
 
 
 # -------------------------------------------------------------------- #
@@ -1759,6 +2575,26 @@ def highscore(tournament_id, erroneous_form=None):
             if p.user_id in users_by_id and p.removed_at is None
         }
 
+    rankings = None
+    playoff_lobby_rounds = []
+    if tournament.has_playoffs:
+        match tournament_qualification_service.get_qualification(tournament.id):
+            case Ok(state) if state.source in ('groups', 'leaderboard'):
+                rankings = participant_rankings(
+                    state,
+                    contestant_names(tournament.id),
+                    qualification_strings(),
+                    tournament,
+                )
+                if (
+                    state.released_at is not None
+                    and tournament.playoff_game_format
+                    == GameFormat.FREE_FOR_ALL
+                ):
+                    playoff_lobby_rounds = _released_lobby_rounds(tournament)
+            case _:
+                pass
+
     form = erroneous_form if erroneous_form else HighscoreSubmitForm()
 
     return {
@@ -1767,9 +2603,34 @@ def highscore(tournament_id, erroneous_form=None):
         'leaderboard': leaderboard,
         'participants_by_id': participants_by_id,
         'teams_by_id': teams_by_id,
+        'rankings': rankings,
+        'playoff_lobby_rounds': playoff_lobby_rounds,
+        'can_submit': g.user.authenticated
+        and tournament_score_service.can_submit_score(tournament, g.user.id),
         'active_tab': 'highscore',
         'form': form,
     }
+
+
+def _released_lobby_rounds(tournament):
+    """Return the phase-2 FFA lobbies of a released tournament."""
+    matches = tournament_match_service.get_matches_for_tournament_ordered(
+        tournament.id
+    )
+    contestants_by_match = (
+        tournament_match_service.get_contestants_for_tournament(tournament.id)
+    )
+    playoff_match_data = [
+        {'match': m, 'contestants': contestants_by_match.get(m.id, [])}
+        for m in matches
+        if m.phase == 2
+    ]
+    teams_by_id, participants_by_id = build_contestant_name_lookups(
+        tournament.id, [e['contestants'] for e in playoff_match_data]
+    )
+    return _playoff_lobby_rounds(
+        playoff_match_data, teams_by_id, participants_by_id
+    )
 
 
 @blueprint.post('/<tournament_id>/highscore/submit')

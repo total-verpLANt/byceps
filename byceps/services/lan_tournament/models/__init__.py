@@ -29,7 +29,6 @@ from .tournament_participant import (
 from .tournament_participant import (
     TournamentParticipantID as TournamentParticipantID,
 )
-from .tournament_seed import TournamentSeed as TournamentSeed
 from .tournament_status import (
     TournamentStatus as TournamentStatus,
 )

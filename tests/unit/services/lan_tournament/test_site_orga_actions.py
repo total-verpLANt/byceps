@@ -587,6 +587,18 @@ def test_scoped_orga_cannot_trigger_random_defwin():
         'orga_submit_ffa_result',
         'orga_add_match_comment',
         'orga_change_tournament_status',
+        'orga_seeding',
+        'orga_seeding_action',
+        'orga_seeding_generate',
+        'orga_qualification',
+        'orga_qualification_decide',
+        'orga_qualification_release',
+        'orga_qualification_unrelease',
+        'orga_qualification_draft_action',
+        'orga_qualification_draft_create',
+        'orga_leaderboard_close',
+        'orga_advance_ffa_round',
+        'orga_generate_ffa_grand_final',
     }
     assert not any('defwin' in endpoint for endpoint in orga_endpoints)
 

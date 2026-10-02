@@ -22,6 +22,7 @@ from byceps.services.lan_tournament.models.tournament_participant import (
     TournamentParticipantID,
 )
 from byceps.services.lan_tournament.tournament_domain_service import (
+    GROUP_BELOW_MINIMUM_ERROR,
     compute_ffa_cumulative_standings,
     compute_ffa_round_standings,
     map_placement_to_points,
@@ -96,7 +97,8 @@ def test_snake_seed_groups_respects_min_size():
     result = snake_seed_groups(ids, group_size_min=3, group_size_max=3)
 
     assert result.is_err()
-    assert 'below the minimum' in result.unwrap_err()
+    assert result.unwrap_err() == GROUP_BELOW_MINIMUM_ERROR
+    assert '%' not in result.unwrap_err()
 
 
 def test_snake_seed_groups_empty_input():

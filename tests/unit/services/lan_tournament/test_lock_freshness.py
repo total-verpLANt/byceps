@@ -31,6 +31,8 @@ _MATCH_ATTRS = (
     'loser_next_match_id',
     'confirmed_by',
     'created_at',
+    'phase',
+    'seeding_target',
 )
 
 _REPO_DB = 'byceps.services.lan_tournament.tournament_repository.db'
@@ -47,6 +49,8 @@ def _row(**kw) -> SimpleNamespace:
         loser_next_match_id=None,
         confirmed_by=None,
         created_at=None,
+        phase=1,
+        seeding_target=None,
     )
     for key, value in kw.items():
         setattr(row, key, value)

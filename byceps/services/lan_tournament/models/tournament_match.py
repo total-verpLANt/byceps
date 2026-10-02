@@ -37,6 +37,8 @@ class TournamentMatch:
     created_at: datetime
     bracket: Bracket | None = None
     loser_next_match_id: TournamentMatchID | None = None
+    phase: int = 1
+    seeding_target: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)

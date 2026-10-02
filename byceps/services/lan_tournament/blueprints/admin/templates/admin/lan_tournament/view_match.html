@@ -6,9 +6,9 @@
 {% set current_page_party = party %}
 {% set current_tab = 'tournaments' %}
 {% set page_title = [_('Match'), tournament.name, party.title] %}
-{% set is_ffa = tournament.game_format and tournament.game_format.uses_placements %}
 
 {% block head %}{{ super() }}{{ hover_card_styles() }}
+  <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_seeding.css') }}">
   {%- if is_ffa %}
   <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_ffa_admin.css') }}">
   {%- endif %}
@@ -323,6 +323,29 @@
     {%- endif %}
   </div>
 
+  {#- After the release, a group result is locked: the correction forms give way to a notice. #}
+  {%- set phase1_locked = tournament.has_playoffs and tournament.playoff_released_at is not none and match.phase == 1 %}
+  {%- if phase1_locked and match.confirmed_by and not is_walkover and
+         g.user.has_permission('lan_tournament.administrate') %}
+  <div class='block' id='phase-lock'>
+    <div class='lt-seed-nt nt-info' role='status'>
+      {%- if can_unrelease is defined and not can_unrelease %}
+      <p class='lt-seed-nth'><i aria-hidden='true'>i</i><span>{{ _('The playoffs are running. Group results are locked for good.') }}</span></p>
+      <div class='lt-seed-ntb'>
+        <p>{{ _('A playoff result is confirmed, the release can no longer be undone. A correction of this result is no longer possible.') }}</p>
+        <p><b><a href='{{ url_for('.qualification', tournament_id=tournament.id) }}'>{{ _('To qualification and release') }} →</a></b></p>
+        <p>{{ _('This is where "Correct Result" and "Unconfirm Match" used to be.') }}</p>
+      </div>
+      {%- else %}
+      <p class='lt-seed-nth'><i aria-hidden='true'>i</i><span>{{ _('The playoffs are released. Group results are locked. Take the release back first.') }}</span></p>
+      <div class='lt-seed-ntb'>
+        <p><b><a href='{{ url_for('.qualification', tournament_id=tournament.id, _anchor='unrelease') }}'>{{ _('To qualification and release') }} →</a></b></p>
+        <p>{{ _('This is where "Correct Result" and "Unconfirm Match" used to be.') }}</p>
+      </div>
+      {%- endif %}
+    </div>
+  </div>
+  {%- else %}
   {%- if match.confirmed_by and is_walkover and
          g.user.has_permission('lan_tournament.administrate') %}
   <div class='block'>
@@ -464,7 +487,8 @@
       </button>
     </form>
   </div>
-  {%- endif %}
+  {%- endif %}{# end of the walkover/correction chain #}
+  {%- endif %}{# end of the phase lock #}
 
   {%- endif %}{# end is_ffa/standard branch #}
 

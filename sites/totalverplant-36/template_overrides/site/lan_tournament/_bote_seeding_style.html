@@ -1,0 +1,153 @@
+<style>
+  /* ============================================================
+     SETZLISTE -- "Setzerei / Turnierbuero" treatment.
+
+     Used by site/lan_tournament/seeding.html, the orga-only seeding
+     board. The stock board renders under the module layout, whose
+     body carries the lt-dark class, so this page extends the site's
+     layout base directly instead. The board markup, its classes and
+     its script are the module's own (lt-seed-*), shared with the
+     admin page; the module stylesheet draws the structure.
+
+     This partial only does two things:
+       1. SLIP    -- the paper sheet, breadcrumbs and page header, in
+                     the same reading-slip treatment as the tournament
+                     request pages.
+       2. TOKENS  -- it re-points the module stylesheet's --ls-*
+                     variables to the theme tokens and sets the type
+                     sizes, so the board takes the Rentenbote look.
+
+     Every colour is a theme token, so Spaetausgabe (dark) is
+     automatic. Everything is scoped under .seeding-page.
+     ============================================================ */
+
+  /* ---------------------------------------------------------- */
+  /* 1. SLIP                                                      */
+  /* ---------------------------------------------------------- */
+
+  .tournament-page.seeding-page {
+    max-width: 76rem;
+    margin: clamp(14px, 2vw, 28px) auto;
+    padding: 28px 40px 44px;
+    box-shadow:
+      0 0 0 1px var(--paperDark),
+      0 18px 32px -16px rgba(26, 24, 18, 0.18),
+      10px 10px 0 -1px var(--paperDark),
+      10px 10px 0 0 var(--inkMute),
+      10px 28px 32px -16px rgba(26, 24, 18, 0.18);
+  }
+  @media (max-width: 720px) {
+    .tournament-page.seeding-page {
+      max-width: none; margin: 0; padding: 16px 14px 30px; box-shadow: none;
+    }
+  }
+  @media (prefers-reduced-transparency: reduce), (forced-colors: active) {
+    .tournament-page.seeding-page { box-shadow: 10px 10px 0 0 var(--inkMute); }
+  }
+
+  .seeding-page .crumbs {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--inkMute); margin-bottom: 0;
+  }
+  .seeding-page .crumbs a { color: var(--redDeep); text-decoration: none; }
+  .seeding-page .crumbs a:hover { color: var(--ink); text-decoration: underline; }
+
+  .seeding-page .head {
+    font-family: var(--body); font-size: 16px; font-weight: 600; letter-spacing: normal;
+    line-height: normal;
+    display: flex; justify-content: space-between; align-items: flex-end; gap: 20px;
+    padding: 26px 0 16px; border-bottom: 3px double var(--ink); margin-bottom: 22px;
+  }
+  .seeding-page .head .kick {
+    font-family: var(--mono); font-size: 10.5px; font-weight: 700; letter-spacing: .22em;
+    text-transform: uppercase; color: var(--redDeep); margin-bottom: 8px;
+  }
+  .seeding-page .head h1 {
+    font: 900 52px/.98 var(--display); letter-spacing: -.02em; margin: 0;
+    text-wrap: balance; color: var(--ink);
+  }
+  @media (max-width: 47rem) {
+    .seeding-page .head { padding: 18px 0 12px; margin-bottom: 18px; }
+    .seeding-page .head h1 { font-size: 34px; }
+  }
+
+  /* ---------------------------------------------------------- */
+  /* 2. TOKENS                                                    */
+  /* ---------------------------------------------------------- */
+
+  .seeding-page .lt-seed-site {
+    --ls-ink: var(--ink);
+    --ls-soft: var(--inkSoft);
+    --ls-mute: var(--inkMute);
+    --ls-paper: var(--paper);
+    --ls-lite: var(--paperLite);
+    --ls-solid: var(--paper);
+    --ls-fill: var(--paperDark);
+    --ls-accent: var(--redDeep);
+    --ls-ok: var(--green);
+    --ls-info: var(--blue);
+    --ls-warn: var(--bote-amber, #8a6a0e);
+    --ls-err: var(--red);
+    --ls-inv-bg: var(--ink);
+    --ls-inv-fg: var(--paper);
+    --ls-display: var(--display);
+    --ls-body: var(--body);
+    --ls-mono: var(--mono);
+    --ls-fs: 18px;
+    --ls-fs-sm: 15.5px;
+    font-size: 18px;
+    line-height: 1.4;
+  }
+
+  .seeding-page .lt-seed-site code {
+    font-family: var(--mono);
+  }
+
+  /* reset the theme's link and button furniture inside the board */
+  .seeding-page .lt-seed-site a { text-decoration: underline; }
+  .seeding-page .lt-seed-site .button {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    font: 700 11px var(--mono); letter-spacing: .14em; text-transform: uppercase;
+    padding: 11px 16px; min-height: 44px; border: 1.5px solid var(--ink);
+    background: var(--paperLite); color: var(--ink); text-align: center; border-radius: 0;
+    line-height: 1.3;
+  }
+  .seeding-page .lt-seed-site .button:hover { background: var(--ink); color: var(--paper); }
+  .seeding-page .lt-seed-site .button.is-compact { padding: 8px 12px; font-size: 10.5px; }
+  .seeding-page .lt-seed-site .button.color-primary { background: var(--ink); color: var(--paper); }
+  .seeding-page .lt-seed-site .button.color-primary:hover { background: var(--redDeep); border-color: var(--redDeep); }
+  .seeding-page .lt-seed-site .button[disabled],
+  .seeding-page .lt-seed-site .button:disabled {
+    opacity: .5; cursor: not-allowed; background: transparent; color: var(--inkSoft);
+    border-style: dashed;
+  }
+  .seeding-page .lt-seed-site .lt-seed-hintbar .button {
+    background: var(--paper); color: var(--ink); border-color: var(--paper);
+  }
+  .seeding-page .lt-seed-site .lt-seed-strip .button { letter-spacing: .08em; }
+
+  .seeding-page .lt-seed-site .lt-seed-panel > p,
+  .seeding-page .lt-seed-site .lt-seed-panel dd { font-size: 18px; }
+
+  @media (max-width: 560px) {
+    .seeding-page .lt-seed-site { --ls-fs: 17px; font-size: 17px; }
+  }
+
+  /* subnav re-set as ruled tabs */
+  .seeding-page .subnav {
+    display: flex; flex-wrap: wrap; gap: clamp(16px, 3vw, 30px);
+    border-bottom: 1px solid var(--ink); margin: 16px 0 0;
+  }
+  .seeding-page .subnav .button,
+  .seeding-page .subnav .button.secondary {
+    font-family: var(--mono); font-size: 12px; font-weight: 700; letter-spacing: .2em;
+    text-transform: uppercase; color: var(--inkMute); background: none; border: 0;
+    border-bottom: 3px solid transparent; border-radius: 0; box-shadow: none;
+    padding: 10px 0 9px; margin-bottom: -1px; text-decoration: none;
+  }
+  .seeding-page .subnav .button:hover { color: var(--ink); }
+  .seeding-page .subnav .button--current {
+    color: var(--ink); border-bottom-color: var(--redDeep); box-shadow: none;
+  }
+</style>

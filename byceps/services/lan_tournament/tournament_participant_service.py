@@ -1,3 +1,4 @@
+from collections.abc import Collection
 from datetime import datetime, UTC
 
 from sqlalchemy import select
@@ -12,6 +13,7 @@ from byceps.util.uuid import generate_uuid7
 from . import (
     signals,
     tournament_domain_service,
+    tournament_log_service,
     tournament_match_service,
     tournament_repository,
 )
@@ -25,6 +27,7 @@ from .events import (
     TournamentCompletedEvent,
 )
 from .models.contestant_type import ContestantType
+from .models.tournament_match import TournamentMatchID
 from .models.tournament_participant import (
     TournamentParticipant,
     TournamentParticipantID,
@@ -180,26 +183,82 @@ def admin_add_participant(
     return Ok((participant, event))
 
 
+def _stage_participant_log_entry(
+    event_type: str,
+    tournament_id: TournamentID,
+    participant: TournamentParticipant,
+    initiator_id: UserID | None,
+    *,
+    roster_before: int,
+    roster_after: int,
+) -> None:
+    """Stage an audit entry for a departed participant (no commit).
+
+    The roster is the number of active participants.
+    """
+    tournament_log_service.create_log_entry(
+        event_type,
+        tournament_id,
+        initiator_id,
+        data={
+            'participant_id': str(participant.id),
+            'user_id': str(participant.user_id),
+            'team_id': (
+                str(participant.team_id)
+                if participant.team_id is not None
+                else None
+            ),
+            'roster_before': roster_before,
+            'roster_after': roster_after,
+        },
+        commit=False,
+    )
+
+
 def leave_tournament(
     tournament_id: TournamentID,
     participant_id: TournamentParticipantID,
 ) -> Result[ParticipantLeftEvent, str]:
     """Remove a participant from a tournament."""
+    tournament_repository.lock_tournament_for_update(tournament_id)
+
     participant = tournament_repository.find_participant(participant_id)
     if participant is None:
+        tournament_repository.rollback_session()
         return Err('Participant not found.')
 
     if participant.tournament_id != tournament_id:
+        tournament_repository.rollback_session()
         return Err('Participant does not belong to this tournament.')
 
     tournament = tournament_repository.get_tournament(tournament_id)
     if tournament.tournament_status != TournamentStatus.REGISTRATION_OPEN:
+        tournament_repository.rollback_session()
         return Err(
             'You can only leave during the registration period. '
             'Contact an admin to be removed.'
         )
 
-    tournament_repository.delete_participant(participant_id)
+    try:
+        roster_before = tournament_repository.get_participant_count(
+            tournament_id
+        )
+        tournament_repository.delete_participants_by_ids({participant_id})
+        roster_after = tournament_repository.get_participant_count(
+            tournament_id
+        )
+        _stage_participant_log_entry(
+            'participant-left',
+            tournament_id,
+            participant,
+            participant.user_id,
+            roster_before=roster_before,
+            roster_after=roster_after,
+        )
+        tournament_repository.commit_session()
+    except BaseException:
+        tournament_repository.rollback_session()
+        raise
 
     now = datetime.now(UTC)
     event = ParticipantLeftEvent(
@@ -211,6 +270,48 @@ def leave_tournament(
     signals.participant_left.send(None, event=event)
 
     return Ok(event)
+
+
+def _delete_unplayed_entries(
+    tournament_id: TournamentID,
+    *,
+    participant_ids: Collection[TournamentParticipantID] = (),
+    team_ids: Collection[TournamentTeamID] = (),
+) -> None:
+    """Delete these contestants' entries from the unconfirmed matches.
+
+    A generated layout that was not started holds entries that reference
+    the contestants; the rows cannot go while they exist. The tournament
+    row must be locked by the caller, the matches are locked here in ID
+    order. Nothing is decided: the roster then differs from the layout.
+    """
+    by_participant: list[tuple[TournamentMatchID, TournamentParticipantID]] = []
+    for participant_id in participant_ids:
+        found = tournament_repository.find_contestant_entries_for_participant_in_tournament(
+            tournament_id, participant_id
+        )
+        by_participant.extend(
+            (match.id, participant_id) for _contestant, match in found
+        )
+    by_team: list[tuple[TournamentMatchID, TournamentTeamID]] = []
+    for team_id in team_ids:
+        found = tournament_repository.find_contestant_entries_for_team_in_tournament(
+            tournament_id, team_id
+        )
+        by_team.extend((match.id, team_id) for _contestant, match in found)
+
+    match_ids: set[TournamentMatchID] = {m for m, _ in by_participant}
+    match_ids.update(m for m, _ in by_team)
+    tournament_repository.lock_matches_for_update(sorted(match_ids))
+
+    for match_id, participant_id in by_participant:
+        tournament_repository.delete_contestant_from_match(
+            match_id, participant_id=participant_id
+        )
+    for match_id, team_id in by_team:
+        tournament_repository.delete_contestant_from_match(
+            match_id, team_id=team_id
+        )
 
 
 def _remove_single_participant_bracket_aware(
@@ -242,6 +343,9 @@ def _remove_single_participant_bracket_aware(
             {participant.id}, now
         )
     else:
+        _delete_unplayed_entries(
+            tournament.id, participant_ids=[participant.id]
+        )
         tournament_repository.clear_winner_participant_reference_flush(participant.id)
         tournament_repository.delete_participants_by_ids({participant.id})
 
@@ -282,6 +386,32 @@ def _remove_single_participant_bracket_aware(
     return defwin, deleted_team_id
 
 
+def _try_auto_release_after_defwin(
+    tournament_id: TournamentID,
+    defwin: tournament_match_service.DefwinResult,
+    initiator_id: UserID | None,
+) -> None:
+    """Release the playoffs if the committed removal made that due.
+
+    Call it after the commit. A defwin that confirmed a match can settle
+    the last group match, and a removal alone can dissolve a blocking
+    tie; nothing else would stage the draft or release then. Without an
+    initiator there is nobody to confirm the byes, so nothing happens.
+    """
+    if initiator_id is None:
+        return
+
+    tournament = tournament_repository.get_tournament(tournament_id)
+    if not tournament.has_playoffs:
+        return
+
+    from . import tournament_qualification_service
+
+    tournament_qualification_service.try_auto_release(
+        tournament_id, triggered_by=initiator_id
+    )
+
+
 def admin_remove_participant(
     tournament_id: TournamentID,
     participant_id: TournamentParticipantID,
@@ -305,9 +435,18 @@ def admin_remove_participant(
     tournament = tournament_repository.get_tournament_for_update(tournament_id)
 
     now = datetime.now(UTC)
+    roster_before = tournament_repository.get_participant_count(tournament_id)
     defwin, deleted_team_id = _remove_single_participant_bracket_aware(
         tournament, participant, now,
         initiator_id=initiator.id if initiator is not None else None,
+    )
+    _stage_participant_log_entry(
+        'participant-removed',
+        tournament_id,
+        participant,
+        initiator.id if initiator is not None else None,
+        roster_before=roster_before,
+        roster_after=tournament_repository.get_participant_count(tournament_id),
     )
     tournament_repository.commit_session()
 
@@ -317,6 +456,12 @@ def admin_remove_participant(
         signals.match_confirmed.send(None, event=event)
     for event in defwin.completed:
         signals.tournament_completed.send(None, event=event)
+
+    _try_auto_release_after_defwin(
+        tournament_id,
+        defwin,
+        initiator.id if initiator is not None else None,
+    )
 
     if team_id is not None:
         signals.team_member_left.send(
@@ -427,7 +572,12 @@ def remove_participants_without_tickets(
                 ids_to_remove, now
             )
         else:
-            # Hard-delete: no match history to preserve
+            # Hard-delete: only unplayed entries of a generated layout
+            _delete_unplayed_entries(
+                tournament_id,
+                participant_ids=sorted(ids_to_remove),
+                team_ids=teams_to_delete,
+            )
             tournament_repository.delete_participants_by_ids(ids_to_remove)
 
         # Clean up empty teams (defwin + soft/hard delete)
@@ -446,6 +596,19 @@ def remove_participants_without_tickets(
             else:
                 tournament_repository.delete_team_flush(team_id)
 
+    # One entry per removal, counted as if removed one by one.
+    roster = len(participants)
+    for p in ticketless:
+        _stage_participant_log_entry(
+            'participant-removed',
+            tournament_id,
+            p,
+            initiator_id,
+            roster_before=roster,
+            roster_after=roster - 1,
+        )
+        roster -= 1
+
     # Single atomic commit
     tournament_repository.commit_session()
 
@@ -460,6 +623,8 @@ def remove_participants_without_tickets(
         signals.match_confirmed.send(None, event=event)
     for event in defwin.completed:
         signals.tournament_completed.send(None, event=event)
+
+    _try_auto_release_after_defwin(tournament_id, defwin, initiator_id)
 
     for p in ticketless:
         if is_team_tournament and p.team_id is not None:

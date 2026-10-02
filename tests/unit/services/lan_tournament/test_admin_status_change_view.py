@@ -14,6 +14,9 @@ from byceps.services.lan_tournament.models.tournament import TournamentID
 from byceps.services.lan_tournament.models.tournament_status import (
     TournamentStatus,
 )
+from byceps.services.lan_tournament.models.validation_message import (
+    ValidationMessage,
+)
 from byceps.util.result import Err
 
 from tests.helpers import generate_uuid
@@ -148,3 +151,21 @@ def test_invalid_transition_reports_a_static_catalogued_msgid():
         f'{message!r} is not a msgid in {po_path}'
     )
     assert entry.string, f'{message!r} has no German translation'
+
+
+def test_a_parameterised_service_error_is_formatted_after_gettext(app):
+    from byceps.services.lan_tournament.blueprints.admin import views
+
+    catalogue = {'At most %(max)s places.': 'Höchstens %(max)s Plätze.'}
+
+    def translate(msg, **kw):
+        translated = catalogue.get(msg, msg)
+        return translated % kw if kw else translated
+
+    with app.test_request_context('/'):
+        with patch(f'{_V}.gettext', side_effect=translate):
+            translated = views._translate_error(
+                ValidationMessage('At most %(max)s places.', (('max', 64),))
+            )
+
+    assert translated == 'Höchstens 64 Plätze.'

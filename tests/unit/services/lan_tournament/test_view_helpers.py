@@ -231,3 +231,28 @@ def test_build_round_robin_standings_multiple_confirmed():
     assert standings[1].points == 3
     assert standings[2].contestant_id == str(pid_c)
     assert standings[2].points == 0
+
+
+def test_separation_message_names_a_bye_that_changed_places(monkeypatch):
+    from types import SimpleNamespace
+
+    from byceps.services.lan_tournament import lan_tournament_view_helpers
+
+    monkeypatch.setattr(
+        lan_tournament_view_helpers,
+        'gettext',
+        lambda message, **params: message % params if params else message,
+    )
+
+    def board(layout):
+        return SimpleNamespace(
+            state=SimpleNamespace(layout=layout),
+            labels={'a': 'Alice', 'b': 'Bob'},
+        )
+
+    message = lan_tournament_view_helpers.separation_message(
+        board(['a', None, 'b']), board([None, 'a', 'b'])
+    )
+
+    assert 'None' not in message
+    assert message == 'Separated: Alice ↔ Bye.'

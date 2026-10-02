@@ -339,6 +339,95 @@ FK, the three `lan_tournaments` columns, the images index, then the table --
 irreversible: all image rows and every tournament's image link, alt text and
 creation token are lost; the files under `data/` stay on disk)
 
+### 019_add_tournament_seedings.sql
+
+Creates the `lan_tournament_seedings` table, the server-held seeding draft of a
+LAN tournament (PRD F-10), one row per `(tournament_id, target)`:
+
+1. **`id UUID`** primary key -- application-generated uuid7
+2. **`tournament_id UUID NOT NULL`** -- FK `fk_lan_tournament_seedings_tournament_id`
+   to `lan_tournaments.id`
+3. **`target VARCHAR(40) NOT NULL`** -- `initial`, `playoff` or
+   `ffa:<SE|WB|LB>:<round>`, enforced by `ck_lan_tournament_seedings_target`
+4. **`seed_code TEXT NOT NULL`** -- the self-contained seed code the orga edits
+5. **`version INTEGER NOT NULL DEFAULT 1`** -- optimistic-locking counter;
+   `ck_lan_tournament_seedings_version` requires at least 1
+6. **`generated_seed_code TEXT NULL`**, **`generated_at TIMESTAMP NULL`** --
+   the code the bracket or lobbies were last generated from
+7. **`updated_by UUID NULL`** -- FK `fk_lan_tournament_seedings_updated_by` to
+   `users.id`
+8. **`roster_snapshot JSONB NOT NULL DEFAULT '[]'`** -- `{"id", "label",
+   "joined_late"}` entries of the roster the code was built for;
+   `joined_late` is optional (absent means false) and marks an entrant a
+   re-seed appended, until the next generation; `[]` is valid (legacy drafts)
+9. **`created_at` / `updated_at TIMESTAMP NOT NULL`** -- naive, as in the dbmodel
+
+`uq_lan_tournament_seedings_tournament_target` (`tournament_id, target`) backs
+every lookup by tournament; there is no further index. No CASCADE behaviors
+(BYCEPS convention).
+
+Note: no other `prd/*` branch holds 019 (checked with `git ls-tree` on
+2026-09-30). The next migration of this epic is `020_add_playoff_phase.sql`.
+If a sibling branch merged first takes 019, renumber this migration, its
+rollback and its README entry before merging.
+
+**Rollback:** `rollback_019.sql` (drops the table -- irreversible: all seeding
+drafts, generated codes and roster snapshots are lost; brackets already
+generated stay untouched)
+
+### 020_add_playoff_phase.sql
+
+Adds the optional playoff phase of a LAN tournament (PRD F-10).
+
+On `lan_tournaments`:
+
+- **`playoff_game_format`, `playoff_elimination_mode`,
+  `playoff_release_mode TEXT NULL`** and **`playoff_group_count`,
+  `playoff_qualifiers_per_group`, `playoff_qualifier_count INTEGER NULL`** --
+  the playoff configuration, all NULL or one complete shape, enforced by
+  `ck_lan_tournaments_playoff_config` (round robin groups into a bracket, or
+  highscore into FFA lobbies)
+- **`playoff_auto_release_suspended BOOLEAN NOT NULL DEFAULT FALSE`**,
+  **`playoff_released_at TIMESTAMP NULL`**, **`playoff_released_by UUID NULL`**
+  (FK `fk_lan_tournaments_playoff_released_by` to `users.id`) -- release state
+- **`leaderboard_closed_at TIMESTAMP NULL`** -- backs "close qualification"
+
+On `lan_tournament_matches`:
+
+- **`phase SMALLINT NOT NULL DEFAULT 1`** -- 1 main phase, 2 playoffs
+  (`ck_lan_tournament_matches_phase`); existing rows become phase 1.
+  `ix_lan_tournament_matches_tournament_phase` (`tournament_id, phase`)
+- **`seeding_target VARCHAR(40) NULL`** -- the seeding draft that generated the
+  match (`initial`, `playoff`, `ffa:<pool>:<round>`; the losers round a
+  winners round comes with carries the winners target); NULL for matches made
+  without a draft. `ix_lan_tournament_matches_tournament_seeding_target`
+  (`tournament_id, seeding_target`) backs the delete-by-target of a
+  regeneration
+
+New table **`lan_tournament_qualification_decisions`**: an orga's ordering of a
+tie, one row per `(tournament_id, scope)`
+(`uq_lan_tournament_qualification_decisions_scope`). `ordered_contestant_ids`
+is a JSON array string; `ck_lan_tournament_qualification_decisions_reason`
+rejects a reason that is empty after trimming spaces, tabs and line breaks.
+FKs `fk_lan_tournament_qualification_decisions_tournament_id` and
+`..._decided_by`. No CASCADE behaviors (BYCEPS convention).
+
+Every added constraint is guarded by a `pg_constraint` lookup, so a re-run is
+a no-op.
+
+Note: the branch `prd/f12-substitutes` also uses 020
+(`020_add_team_membership_history.sql`). This collision is a deliberate,
+accepted decision (policy: next number actually up) -- whichever of the two
+branches is merged second must renumber its migration, its rollback and its
+README entry before merging.
+
+**Rollback:** `rollback_020.sql` (drops the decisions table, the seeding target
+index and column, the phase index, check and column, then the playoff
+check, FK and ten columns -- irreversible: all decisions, playoff configuration and release state are lost, and once
+playoffs ran the phase-2 matches lose their marker and become
+indistinguishable from phase-1 matches; do not run it after playoffs were
+generated)
+
 ## Pre-Application Checklist
 
 Before applying any migration, complete these steps:

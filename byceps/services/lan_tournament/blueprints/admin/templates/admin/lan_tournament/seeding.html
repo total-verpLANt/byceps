@@ -1,0 +1,29 @@
+{% extends 'layout/admin/lan_tournament.html' %}
+{% from 'admin/lan_tournament/_subnav.html' import render_admin_subnav %}
+{% set current_page_party = party %}
+{% set current_tab = 'tournaments' %}
+{% set page_title = [_('LAN'), party.title, _('Tournaments'), tournament.name, _('Seeding')] %}
+
+{% block head %}{{ super() }}
+  <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_seeding.css') }}">
+{%- endblock %}
+
+{% block body %}
+  <nav class="breadcrumbs">
+    <ol>
+      <li><a href="{{ url_for('.index', party_id=party.id) }}">{{ party.title }}</a></li>
+      <li><a href="{{ url_for('.view', tournament_id=tournament.id) }}">{{ tournament.name }}</a></li>
+    </ol>
+  </nav>
+
+  <h1 class="title lt-seed-title">{{ _('Seeding') }} <small>{{ tournament.name }}</small></h1>
+
+  {{ render_admin_subnav(tournament, 'seeding') }}
+
+{% include 'admin/lan_tournament/_seeding_board.html' %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='behavior/sortable.min.js') }}"></script>
+<script src="{{ url_for('static', filename='behavior/lan_tournament_seeding.js') }}"></script>
+{% endblock %}

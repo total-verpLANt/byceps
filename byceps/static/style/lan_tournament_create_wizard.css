@@ -266,7 +266,7 @@
 .lt-wiz-stepper__list {
   display: grid;
   gap: 0.25rem;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   list-style: none;
   margin: 0;
   padding: 0;
@@ -443,7 +443,7 @@
 .lt-wiz-stepper__bars {
   display: grid;
   gap: 3px;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   margin-top: 0.5rem;
 }
 
@@ -660,6 +660,19 @@
 
 .lt-wiz-note {
   margin-top: 0.75rem;
+}
+
+.lt-wiz-h2-tag {
+  font-size: 0.6875rem;
+  vertical-align: 0.2rem;
+}
+
+[data-wiz-playoff-preview-text] {
+  margin-bottom: 0.5rem;
+}
+
+[data-wiz-playoff-preview] {
+  margin-top: 1.125rem;
 }
 
 .lt-wiz-layout .empty-hint {
@@ -1729,7 +1742,8 @@ main:has(.lt-wiz-layout:not(.is-enhanced)) .lt-wiz-head > .title:not(:last-child
 }
 
 .lt-wiz-layout:not(.is-enhanced) .lt-wiz-step:is(
-    [data-wiz-step='2'], [data-wiz-step='3'], [data-wiz-step='4']
+    [data-wiz-step='2'], [data-wiz-step='3'], [data-wiz-step='4'],
+    [data-wiz-step='5']
   ) {
   background: none;
   border: 0;
@@ -1738,16 +1752,17 @@ main:has(.lt-wiz-layout:not(.is-enhanced)) .lt-wiz-head > .title:not(:last-child
 }
 
 .lt-wiz-layout:not(.is-enhanced) .lt-wiz-step:is(
-    [data-wiz-step='2'], [data-wiz-step='3'], [data-wiz-step='4']
+    [data-wiz-step='2'], [data-wiz-step='3'], [data-wiz-step='4'],
+    [data-wiz-step='5']
   ):not(:last-child) {
   margin-bottom: 0;
 }
 
 /* Their titles stay for screen readers; the scopes carry the numbering. */
 .lt-wiz-layout:not(.is-enhanced) .lt-wiz-step:is(
-    [data-wiz-step='2'], [data-wiz-step='3']
+    [data-wiz-step='2'], [data-wiz-step='3'], [data-wiz-step='4']
   ) > legend,
-.lt-wiz-layout:not(.is-enhanced) .lt-wiz-step[data-wiz-step='4'] > h2 {
+.lt-wiz-layout:not(.is-enhanced) .lt-wiz-step[data-wiz-step='5'] > h2 {
   border: 0;
   clip: rect(0, 0, 0, 0);
   height: 1px;

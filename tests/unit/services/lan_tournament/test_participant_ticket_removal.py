@@ -1,6 +1,8 @@
 from datetime import UTC, datetime
 from unittest.mock import patch
 
+import pytest
+
 from byceps.services.lan_tournament import (
     tournament_participant_service,
 )
@@ -35,6 +37,21 @@ from tests.helpers import generate_uuid
 NOW = datetime(2025, 6, 15, 14, 0, 0, tzinfo=UTC)
 TOURNAMENT_ID = TournamentID(generate_uuid())
 PARTY_ID = PartyID('lan-2025')
+
+
+@pytest.fixture(autouse=True)
+def audit_log():
+    with patch(
+        'byceps.services.lan_tournament.tournament_participant_service.tournament_log_service'
+    ) as mock_log:
+        yield mock_log.create_log_entry
+
+
+def _assert_removals_staged(audit_log, count):
+    assert audit_log.call_count == count
+    for call in audit_log.call_args_list:
+        assert call.args[0] == 'participant-removed'
+        assert call.kwargs['commit'] is False
 
 
 # -------------------------------------------------------------------- #
@@ -116,7 +133,7 @@ def test_join_tournament_with_ticket_succeeds(
     'byceps.services.lan_tournament.tournament_participant_service.tournament_repository'
 )
 def test_remove_ticketless_solo_returns_count(
-    mock_repo, mock_ticket, mock_match_svc, mock_signals
+    mock_repo, mock_ticket, mock_match_svc, mock_signals, audit_log
 ):
     """Removes ticketless participants and returns their count."""
     tournament = _create_tournament(
@@ -141,6 +158,7 @@ def test_remove_ticketless_solo_returns_count(
     assert result.unwrap() == 1
     mock_repo.delete_participants_by_ids.assert_called_once_with({p2.id})
     mock_repo.commit_session.assert_called_once()
+    _assert_removals_staged(audit_log, result.unwrap())
 
 
 @patch('byceps.services.lan_tournament.tournament_participant_service.signals')
@@ -237,7 +255,7 @@ def test_remove_ticketless_wrong_status_fails(mock_repo):
     'byceps.services.lan_tournament.tournament_participant_service.tournament_repository'
 )
 def test_remove_ticketless_ongoing_triggers_defwins(
-    mock_repo, mock_ticket, mock_match_svc, mock_signals
+    mock_repo, mock_ticket, mock_match_svc, mock_signals, audit_log
 ):
     """In an ONGOING solo tournament, defwin logic is triggered
     for each removed participant and soft-delete is used."""
@@ -265,6 +283,7 @@ def test_remove_ticketless_ongoing_triggers_defwins(
     # Soft-delete, not hard-delete
     mock_repo.soft_delete_participants_by_ids.assert_called_once()
     mock_repo.delete_participants_by_ids.assert_not_called()
+    _assert_removals_staged(audit_log, result.unwrap())
 
 
 # -------------------------------------------------------------------- #
@@ -283,7 +302,7 @@ def test_remove_ticketless_ongoing_triggers_defwins(
     'byceps.services.lan_tournament.tournament_participant_service.tournament_repository'
 )
 def test_remove_ticketless_team_transfers_captain(
-    mock_repo, mock_ticket, mock_match_svc, mock_signals
+    mock_repo, mock_ticket, mock_match_svc, mock_signals, audit_log
 ):
     """When the team captain is ticketless but other members remain,
     captain is transferred to the oldest remaining member."""
@@ -317,6 +336,7 @@ def test_remove_ticketless_team_transfers_captain(
     mock_repo.update_team_captain.assert_called_once_with(
         team_id, member_user_id
     )
+    _assert_removals_staged(audit_log, result.unwrap())
 
 
 @patch('byceps.services.lan_tournament.tournament_participant_service.signals')
@@ -330,7 +350,7 @@ def test_remove_ticketless_team_transfers_captain(
     'byceps.services.lan_tournament.tournament_participant_service.tournament_repository'
 )
 def test_remove_ticketless_team_all_members_ticketless_deletes_team(
-    mock_repo, mock_ticket, mock_match_svc, mock_signals
+    mock_repo, mock_ticket, mock_match_svc, mock_signals, audit_log
 ):
     """When all team members are ticketless, the team is deleted."""
     team_id = TournamentTeamID(generate_uuid())
@@ -356,6 +376,7 @@ def test_remove_ticketless_team_all_members_ticketless_deletes_team(
     assert result.unwrap() == 1
     mock_repo.delete_team_flush.assert_called_once_with(team_id)
     mock_repo.soft_delete_team_flush.assert_not_called()
+    _assert_removals_staged(audit_log, result.unwrap())
 
 
 @patch('byceps.services.lan_tournament.tournament_participant_service.signals')
@@ -369,7 +390,7 @@ def test_remove_ticketless_team_all_members_ticketless_deletes_team(
     'byceps.services.lan_tournament.tournament_participant_service.tournament_repository'
 )
 def test_remove_ticketless_team_ongoing_soft_deletes(
-    mock_repo, mock_ticket, mock_match_svc, mock_signals
+    mock_repo, mock_ticket, mock_match_svc, mock_signals, audit_log
 ):
     """When all team members are ticketless during ONGOING,
     the team is soft-deleted."""
@@ -400,6 +421,7 @@ def test_remove_ticketless_team_ongoing_soft_deletes(
     # Participants are also soft-deleted (not hard-deleted)
     mock_repo.soft_delete_participants_by_ids.assert_called_once()
     mock_repo.delete_participants_by_ids.assert_not_called()
+    _assert_removals_staged(audit_log, result.unwrap())
 
 
 # -------------------------------------------------------------------- #
@@ -472,7 +494,7 @@ def test_get_ticket_status_empty_tournament(mock_repo, mock_ticket):
     'byceps.services.lan_tournament.tournament_participant_service.tournament_repository'
 )
 def test_team_captain_not_removed_no_transfer(
-    mock_repo, mock_ticket, mock_match_svc, mock_signals
+    mock_repo, mock_ticket, mock_match_svc, mock_signals, audit_log
 ):
     """When a non-captain member is ticketless, captain stays."""
     team_id = TournamentTeamID(generate_uuid())
@@ -506,6 +528,7 @@ def test_team_captain_not_removed_no_transfer(
     mock_repo.update_team_captain.assert_not_called()
     # Team is not empty so no deletion
     mock_repo.delete_team_flush.assert_not_called()
+    _assert_removals_staged(audit_log, result.unwrap())
 
 
 # -------------------------------------------------------------------- #

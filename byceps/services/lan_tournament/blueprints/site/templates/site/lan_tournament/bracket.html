@@ -1,6 +1,16 @@
 {% extends 'layout/site/lan_tournament.html' %}
+{% from 'macros/misc.html' import render_tag %}
 {% from 'macros/lan_tournament.html' import render_bracket, render_de_bracket, render_hover_name, render_round_robin_standings, render_tournament_subnav %}
+{% from 'site/lan_tournament/_standings.html' import render_group_standings, render_phase_match_list, render_phase_switch, render_playoff_lobbies, render_playoffs_waiting %}
 {% set page_title = [_('Bracket'), tournament.name] %}
+
+{% block head %}{{ super() }}
+  <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_standings.css') }}">
+  {%- if ffa_cut_ties %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_seeding.css') }}">
+  {%- endif %}
+  {% include 'site/lan_tournament/_bote_tournament_style.html' ignore missing %}
+{%- endblock %}
 
 {#- ── FFA standings macro (inline) ──────────────────────────────── -#}
 {% macro render_ffa_standings(
@@ -90,9 +100,48 @@
 
   {{ render_tournament_subnav(tournament, active_tab) }}
 
-  {% if tournament.game_format and tournament.game_format.name == 'FREE_FOR_ALL' %}
+  <header class='head'>
+    <h1 class='title'>{{ tournament.name }}</h1>
+    <div class='dimmed'>{% if tournament.game %}{{ tournament.game }} · {% endif %}{{ _('Bracket') }}</div>
+    {%- set stamp = {
+      'REGISTRATION_OPEN': (_('Registration open'), 'color-info'),
+      'REGISTRATION_CLOSED': (_('Registration closed'), 'color-warning'),
+      'ONGOING': (_('Ongoing'), 'color-success'),
+      'PAUSED': (_('Paused'), 'color-warning'),
+      'COMPLETED': (_('Completed'), 'color-success'),
+      'CANCELLED': (_('Cancelled'), 'color-danger'),
+    }.get(tournament.tournament_status.name if tournament.tournament_status else '') %}
+    {%- if stamp %}
+    {{ render_tag(stamp[0], class=stamp[1]) }}
+    {%- endif %}
+  </header>
+
+  {%- if winner_tie == 'open' %}
+  <div class="notification color-warning" data-lt-winner-tie>{{ _('Tie for the tournament win. The orga sets the order.') }}
+    <a href="{{ url_for('.orga_qualification', tournament_id=tournament.id) }}">{{ _('Qualification') }}</a></div>
+  {%- endif %}
+
+  {% include 'site/lan_tournament/_ffa_cut_ties.html' %}
+
+  {% if phase_view %}
+    {{ render_phase_switch(tournament, phase_view) }}
+  {% endif %}
+
+  {% if phase_view == 1 %}
+    {{ render_group_standings(rankings) }}
+    {% if waiting_reason == 'release' %}
+      {{ render_playoffs_waiting(waiting_reason) }}
+    {% endif %}
+  {% elif phase_view == 2 and waiting_reason %}
+    {{ render_playoffs_waiting(waiting_reason) }}
+  {% elif phase_view == 2 and playoff_lobby_rounds %}
+    {{ render_playoff_lobbies(playoff_lobby_rounds) }}
     {{ render_ffa_standings(ffa_standings, tournament, teams_by_id=teams_by_id, participants_by_id=participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id) }}
-  {% elif tournament.elimination_mode and tournament.elimination_mode.name == 'ROUND_ROBIN' %}
+  {% elif phase_view == 2 and not bracket_json %}
+    <p class='dimmed'>{{ _('No matches have been created yet.') }}</p>
+  {% elif tournament.game_format and tournament.game_format.name == 'FREE_FOR_ALL' and not phase_view %}
+    {{ render_ffa_standings(ffa_standings, tournament, teams_by_id=teams_by_id, participants_by_id=participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id) }}
+  {% elif tournament.elimination_mode and tournament.elimination_mode.name == 'ROUND_ROBIN' and not phase_view %}
     {{ render_round_robin_standings(standings, tournament, teams_by_id=teams_by_id, participants_by_id=participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id) }}
   {% else %}
     {# Client-side rendered bracket — responsive at all viewport sizes.
@@ -100,6 +149,7 @@
        via getBaseDims(). The bracket-desktop/bracket-mobile split is only
        used in the admin template where there is no JS bracket renderer. #}
     <div id='bracket-app'>
+      {% if not phase_view %}
       <noscript>
         {# Fallback: server-rendered bracket if JS disabled #}
         {% if tournament.elimination_mode and tournament.elimination_mode.name == 'DOUBLE_ELIMINATION' %}
@@ -108,11 +158,16 @@
           {{ render_bracket(match_data, tournament, teams_by_id, participants_by_id, seats_by_user_id=seats_by_user_id, team_members_by_team_id=team_members_by_team_id) }}
         {% endif %}
       </noscript>
+      {% endif %}
     </div>
 
     {# Bracket data for client-side renderer #}
     {% if bracket_json %}
       <script type='application/json' id='bracket-data'>{{ bracket_json|tojson }}</script>
+    {% endif %}
+
+    {% if phase_view == 2 %}
+      {{ render_phase_match_list(playoff_matches) }}
     {% endif %}
   {% endif %}
 
@@ -124,3 +179,12 @@
   </div>
 
 {%- endblock %}
+
+
+{% block scripts %}
+{{ super() }}
+{%- if ffa_cut_ties %}
+<script src="{{ url_for('static', filename='behavior/sortable.min.js') }}"></script>
+<script src="{{ url_for('static', filename='behavior/lan_tournament_seeding.js') }}"></script>
+{%- endif %}
+{% endblock %}

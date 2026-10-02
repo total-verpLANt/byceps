@@ -1,0 +1,660 @@
+{%- macro hidden_fields(board, action) %}
+<input type="hidden" name="target" value="{{ board.target }}">
+<input type="hidden" name="version" value="{{ board.version }}">
+<input type="hidden" name="action" value="{{ action }}">
+{%- endmacro %}
+
+{%- macro glyph(kind) %}{{ {'ok': '✓', 'warn': '▲', 'err': '✕', 'info': 'i'}[kind] }}{% endmacro %}
+
+{%- macro tier_letter(letter) %}<span class="lt-seed-tl t{{ letter }}" aria-hidden="true">{{ letter }}</span>{% endmacro %}
+
+{#- Body and actions of a notice come from the caller block. #}
+{%- macro notice(kind, title) %}
+<div class="lt-seed-nt nt-{{ kind }}" role="{{ 'alert' if kind == 'err' else 'status' }}">
+  <p class="lt-seed-nth"><i aria-hidden="true">{{ glyph(kind) }}</i><span>{{ title }}</span></p>
+  {%- if caller is defined %}{{ caller() }}{% endif %}
+</div>
+{%- endmacro %}
+
+{%- macro slot_options(board, selected=none) %}
+{%- if board.layout.kind == 'bracket' %}
+{%- for match in board.layout.matches %}{% for slot in match.slots %}
+<option value="{{ slot.index }}"{% if slot.index == selected %} selected{% endif %}>{{ slot.index + 1 }}: {% if slot.bye %}{{ board.strings.bye }}{% else %}{{ slot.name }}{% endif %}</option>
+{%- endfor %}{% endfor %}
+{%- else %}
+{%- for group in board.layout.groups %}{% for slot in group.slots %}
+<option value="{{ slot.index }}"{% if slot.index == selected %} selected{% endif %}>{{ slot.index + 1 }}: {{ slot.name }}</option>
+{%- endfor %}{% endfor %}
+{%- endif %}
+{%- endmacro %}
+
+{%- macro chip(board, slot, where, locked) %}
+{%- set name = board.strings.bye if slot.bye else slot.name %}
+<div class="lt-seed-chip{% if slot.bye %} is-bye{% endif %}{% if locked %} is-lock{% endif %}" data-i="{{ slot.index }}">
+  {%- if not locked %}
+  <span class="lt-seed-hd" aria-hidden="true" title="{{ _('Drag') }}">⋮⋮</span>
+  {%- endif %}
+  <button type="button" class="lt-seed-cb" data-slot="{{ slot.index }}" aria-pressed="false"{% if locked %} aria-disabled="true"{% endif %} aria-label="{{ name }}, {{ where }}{% if slot.get('origin') %}, {{ _('Qualified as %(origin)s', origin=slot.origin) }}{% endif %}{% if slot.tier %}, {{ _('Tier %(letter)s', letter=slot.tier) }}{% endif %}{% if locked %}. {{ _('Locked: %(reason)s', reason=board.locked_reason) }}{% endif %}">
+    {%- if slot.tier %}{{ tier_letter(slot.tier) }}{% endif %}
+    <span class="lt-seed-nm">{{ name }}</span>
+    {%- if slot.left %}<span class="lt-seed-neu is-left">{{ _('dropped out') }}</span>{% endif %}
+    {%- if slot.get('new') %}<span class="lt-seed-neu">{{ _('new') }}</span>{% endif %}
+    {%- if slot.get('origin') %}
+    <span class="lt-seed-org">{{ slot.origin }}</span><span class="lt-seed-seed">#{{ slot.seed }}</span>
+    {%- elif slot.seed_position %}
+    <span class="lt-seed-pos" title="{{ _('Seed position') }}">{{ slot.seed_position }}</span>
+    {%- elif slot.seed %}
+    <span class="lt-seed-seed">#{{ slot.seed }}</span>
+    {%- endif %}
+  </button>
+</div>
+{%- endmacro %}
+
+{%- macro tier_chip(board, tier, contestant, position, count, locked) %}
+<li class="lt-seed-tchip{% if locked %} is-lock{% endif %}" data-id="{{ contestant.id }}">
+  {%- if not locked %}
+  <span class="lt-seed-hd" aria-hidden="true" title="{{ _('Drag') }}">⋮⋮</span>
+  {%- endif %}
+  <button type="button" class="lt-seed-cb" data-contestant="{{ contestant.id }}" aria-pressed="false"{% if locked %} aria-disabled="true"{% endif %} aria-label="{{ contestant.name }}, {{ _('Tier %(letter)s', letter=tier.letter) }}, {{ _('Seed %(n)s', n=contestant.seed) }}{% if locked %}. {{ _('Locked: %(reason)s', reason=board.locked_reason) }}{% endif %}">
+    {{ tier_letter(tier.letter) }}
+    <span class="lt-seed-nm">{{ contestant.name }}</span>
+    {%- if contestant.left %}<span class="lt-seed-neu is-left">{{ _('dropped out') }}</span>{% endif %}
+    {%- if contestant.get('new') %}<span class="lt-seed-neu">{{ _('new') }}</span>{% endif %}
+    <span class="lt-seed-seed">#{{ contestant.seed }}</span>
+  </button>
+  {%- if not locked %}
+  <span class="lt-seed-ud">
+    <button type="button" class="lt-seed-mv" data-move="up" aria-label="{{ contestant.name }}: {{ _('Move higher') }}" title="{{ _('Move higher') }}"{% if position == 0 %} disabled{% endif %}>↑</button>
+    <button type="button" class="lt-seed-mv" data-move="down" aria-label="{{ contestant.name }}: {{ _('Move lower') }}" title="{{ _('Move lower') }}"{% if position == count - 1 %} disabled{% endif %}>↓</button>
+  </span>
+  {%- endif %}
+</li>
+{%- endmacro %}
+
+{%- if board is none %}
+<div class="lt-seed lt-seed-site">
+  <div class="lt-seed-tgt">
+    <div class="lt-seed-tgtl">
+      <span class="lt-seed-lbl">{{ _('Seeding target') }}</span>
+      <b>{{ _('Initial placement (round 1)') }}</b>
+    </div>
+    <div class="lt-seed-tags">
+      {%- if tournament.tournament_status and tournament.tournament_status.name == 'DRAFT' %}<span class="lt-seed-tag t-mute">{{ _('Draft') }}</span>
+      {%- else %}<span class="lt-seed-tag t-info">{{ _('Registration open') }}</span>
+      {%- endif %}
+      <span class="lt-seed-orga">{{ _('Visible to orgas only') }}</span>
+    </div>
+  </div>
+
+  {% call notice('info', _('The seeding opens once registration is closed.')) %}
+  <div class="lt-seed-ntb"><p>{{ _('While registration is open, the roster still changes. The first draw is made here once registration is closed.') }}</p></div>
+  {% endcall %}
+</div>
+{%- else %}
+{%- set locked = board.generation == 'locked' %}
+{%- set is_ffa = board.format == 'FFA' %}
+{%- set is_team = tournament.contestant_type.name == 'TEAM' %}
+{%- set unit = _('Teams') if is_team else _('Players') %}
+{%- set action_url = seed_action_url if seed_action_url is defined else url_for('.orga_seeding_action', tournament_id=tournament.id) %}
+{%- set status_name = tournament.tournament_status.name %}
+{%- set invalid = board.problems|length > 0 %}
+{%- set no_code = board.code is none %}
+{%- set gen = namespace(row=none) %}
+{%- if audit_rows is defined %}
+{%- for row in audit_rows if gen.row is none and row.get('event_type') in ('bracket-generated', 'bracket-regenerated') and row.get('target') == board.target and row.get('seed_code') == board.generated_code %}{% set gen.row = row %}{% endfor %}
+{%- endif %}
+{%- set clashes = board.layout.matches|selectattr('same_group')|list if board.layout.kind == 'bracket' else [] %}
+
+<div class="lt-seed lt-seed-site" data-lt-seed-root
+     data-action-url="{{ action_url }}"
+     data-page-url="{{ seed_page_url if seed_page_url is defined else url_for('.orga_seeding', tournament_id=tournament.id, target=board.target) }}">
+  <script type="application/json" data-lt-seed-board>{{ board|tojson }}</script>
+
+{%- if clashes and not locked and not board.stale %}
+{% call notice('warn', (_('M%(n)s: %(a)s (%(la)s) and %(b)s (%(lb)s) are both from group %(group)s.', n=clashes[0].number, group=clashes[0].same_group_info.group, a=clashes[0].same_group_info.a.name, la=clashes[0].same_group_info.a.origin, b=clashes[0].same_group_info.b.name, lb=clashes[0].same_group_info.b.origin) if clashes|length == 1 else ngettext('%(n)s first-round match pairs players from one group.', '%(n)s first-round matches pair players from one group.', clashes|length, n=clashes|length))) %}
+<div class="lt-seed-ntb">
+  {%- if clashes|length > 1 %}
+  <ul>
+    {%- for match in clashes %}
+    <li>{{ _('M%(n)s: %(a)s (%(la)s) and %(b)s (%(lb)s) are both from group %(group)s.', n=match.number, group=match.same_group_info.group, a=match.same_group_info.a.name, la=match.same_group_info.a.origin, b=match.same_group_info.b.name, lb=match.same_group_info.b.origin) }}</li>
+    {%- endfor %}
+  </ul>
+  {%- endif %}
+  {%- if board.generation == 'not_generated' %}
+  <p>{{ ngettext('A round 1 pairing from the same group. The release is still possible.', 'Round 1 pairings from the same group. The release is still possible.', clashes|length, n=clashes|length) }}</p>
+  {%- endif %}
+</div>
+<div class="lt-seed-row">
+  <form action="{{ action_url }}" method="post" class="lt-seed-inline">
+    {{ hidden_fields(board, 'separate') }}
+    <button type="submit" class="button color-primary is-compact">{{ _('Separate same-group pairings') }}</button>
+  </form>
+</div>
+{% endcall %}
+{%- endif %}
+
+  <div class="lt-seed-tgt">
+    <div class="lt-seed-tgtl">
+      <span class="lt-seed-lbl">{{ _('Seeding target') }}</span>
+      <b>{{ board.target_label }}</b>
+    </div>
+    <div class="lt-seed-tags">
+      {%- if status_name == 'DRAFT' %}<span class="lt-seed-tag t-mute">{{ _('Draft') }}</span>
+      {%- elif status_name == 'REGISTRATION_OPEN' %}<span class="lt-seed-tag t-info">{{ _('Registration open') }}</span>
+      {%- elif status_name == 'REGISTRATION_CLOSED' %}<span class="lt-seed-tag t-info">{{ _('Registration closed') }}</span>
+      {%- elif status_name == 'ONGOING' %}<span class="lt-seed-tag t-ok">{{ _('Running') }}</span>
+      {%- elif status_name == 'PAUSED' %}<span class="lt-seed-tag t-mute">{{ _('Paused') }}</span>
+      {%- elif status_name == 'COMPLETED' %}<span class="lt-seed-tag t-ok">{{ _('Completed') }}</span>
+      {%- elif status_name == 'CANCELLED' %}<span class="lt-seed-tag t-mute">{{ _('Cancelled') }}</span>
+      {%- endif %}
+      {%- if board.target == 'playoff' and board.generation == 'not_generated' %}<span class="lt-seed-tag t-mute">{{ _('Seeding draft') }}</span>
+      {%- elif board.target == 'playoff' and board.generation in ('matches', 'differs') %}
+      {%- if gen.row and not gen.row.who %}<span class="lt-seed-tag t-ok">{{ _('Generated by System') }}</span><span class="lt-seed-tag t-mute">{{ _('Editable until the first result') }}</span>
+      {%- else %}<span class="lt-seed-tag t-ok">{{ _('Generated') }}</span>{% endif %}
+      {%- if board.generation == 'differs' %}<span class="lt-seed-tag t-warn">{{ _('Board differs') }}</span>{% endif %}
+      {%- elif board.generation == 'matches' %}<span class="lt-seed-tag t-ok">{{ _('Generated') }}</span>
+      {%- elif board.generation == 'differs' %}<span class="lt-seed-tag t-ok">{{ _('Generated') }}</span><span class="lt-seed-tag t-warn">{{ _('Board differs') }}</span>
+      {%- elif board.generation == 'not_generated' %}<span class="lt-seed-tag t-mute">{{ _('Not generated') }}</span>
+      {%- elif board.generation == 'locked' %}<span class="lt-seed-tag t-mute">{{ _('Locked') }}</span>
+      {%- endif %}
+      {%- if board.stale %}<span class="lt-seed-tag t-err">{{ _('Seed code outdated') }}</span>{% endif %}
+      <span class="lt-seed-orga">{{ _('Visible to orgas only') }}</span>
+    </div>
+  </div>
+
+  <div data-lt-seed-banners>
+    {%- if board.stale %}
+    {% call notice('err', (_('The qualification ranks changed after this draft was made. Generating is blocked until you re-prefill it.') if board.get('stale_ranks') else _('The tournament structure changed since the seeding was drawn. The board shows a new draw for the current structure. Re-seed to adopt it.') if board.get('stale_structure') else (_('No longer taking part: %(names)s. Generating is blocked until you re-seed.', names=board.stale_leavers|join(', ')) if board.stale_leavers else _('The roster changed since the seed code was made. Re-seed first.')))) %}
+    <div class="lt-seed-ntb">
+      {%- if board.stale_joiners %}
+      <p>{{ _('New') }}: {{ board.stale_joiners|join(', ') }}</p>
+      {%- endif %}
+      {%- if board.code_meta %}
+      <p>{{ _('Fingerprint in the code %(code)s, current roster %(current)s.', code=board.code_meta.fingerprint, current=board.code_meta.current_fingerprint) }}{% if board.generated_code %} {{ _('Starting the tournament is blocked as well.') }}{% endif %}</p>
+      {%- endif %}
+    </div>
+    {%- if not locked %}
+    <div class="lt-seed-row">
+      <form action="{{ action_url }}" method="post" class="lt-seed-inline">
+        {{ hidden_fields(board, 'reseed_keep_tiers') }}
+        <button type="submit" class="button{% if not board.get('stale_ranks') %} color-primary{% endif %}">{{ _('Re-seed, keep tiers') }}</button>
+      </form>
+      {%- if board.target == 'playoff' %}
+      <form action="{{ action_url }}" method="post" class="lt-seed-inline">
+        {{ hidden_fields(board, 'reprefill') }}
+        <button type="submit" class="button{% if board.get('stale_ranks') %} color-primary{% endif %}">{{ _('Re-prefill from qualification') }}</button>
+      </form>
+      {%- endif %}
+    </div>
+    {%- endif %}
+    {% endcall %}
+    {%- endif %}
+
+    {%- for text in board.get('notices', []) %}
+    {{ notice('warn', text) }}
+    {%- endfor %}
+
+    {%- for text in board.get('undersized', []) %}
+    {{ notice('warn', text) }}
+    {%- endfor %}
+
+    {%- for text in board.get('lobby_byes', []) %}
+    {{ notice('info', text) }}
+    {%- endfor %}
+
+    {%- for text in board.get('waiting_winners', []) %}
+    {{ notice('info', text) }}
+    {%- endfor %}
+
+    {%- if locked %}
+    {%- set round_match = (board.target.split(':')[2]|int) + 1 if board.target.startswith('ffa:') else none %}
+    {% call notice('info', (_('Round %(n)s is running.', n=round_match) if round_match else _('The tournament has started.') if board.target == 'initial' else _('Placement locked'))) %}
+    <div class="lt-seed-ntb"><p>{{ board.locked_reason }}</p></div>
+    {% endcall %}
+    {%- endif %}
+
+
+    {%- if invalid and board.generation != 'not_available' %}
+    {% call notice('err', _('Layout invalid. Generating is blocked.')) %}
+    <div class="lt-seed-ntb">
+      <ul>
+        {%- for problem in board.problems %}
+        <li>{{ problem }}</li>
+        {%- endfor %}
+      </ul>
+    </div>
+    {% endcall %}
+    {%- endif %}
+  </div>
+
+  {%- if board.generation != 'not_available' %}
+  {%- if not locked %}
+  <div class="lt-seed-strip">
+    <div class="lt-seed-row">
+      <form action="{{ action_url }}" method="post" class="lt-seed-inline"
+            {%- if board.fix_count %} data-confirm-title="{{ ngettext('%(n)s layout fix will be lost.', '%(n)s layout fixes will be lost.', board.fix_count, n=board.fix_count) }}" data-confirm-ok="{% if is_ffa %}{{ _('Reshuffle within tiers') }}{% else %}{{ _('Draw again') }}{% endif %}"{% endif %}>
+        {{ hidden_fields(board, 'redraw') }}
+        <button type="submit" class="button">{% if is_ffa %}{{ _('Reshuffle within tiers') }}{% else %}{{ _('Draw again') }}{% endif %}</button>
+      </form>
+      <form action="{{ action_url }}" method="post" class="lt-seed-inline"
+            {%- if board.fix_count %} data-confirm-title="{{ ngettext('%(n)s layout fix will be lost.', '%(n)s layout fixes will be lost.', board.fix_count, n=board.fix_count) }}" data-confirm-ok="{{ _('Reset layout fixes') }}"{% endif %}>
+        {{ hidden_fields(board, 'reset_fixes') }}
+        <button type="submit" class="button"{% if board.fix_count == 0 %} disabled{% endif %}>{{ _('Reset layout fixes') }} ({{ board.fix_count }})</button>
+      </form>
+      {%- if is_ffa %}
+      <form action="{{ action_url }}" method="post" class="lt-seed-inline lt-seed-segw"
+            {%- if board.fix_count %} data-confirm-title="{{ ngettext('%(n)s layout fix will be lost.', '%(n)s layout fixes will be lost.', board.fix_count, n=board.fix_count) }}" data-confirm-ok="{{ _('Apply') }}"{% endif %}>
+        {{ hidden_fields(board, 'set_tier_count') }}
+        <span class="lt-seed-lbl" id="lt-seed-tier-count-label">{{ _('Tiers') }}</span>
+        <div class="lt-seed-seg" role="group" aria-labelledby="lt-seed-tier-count-label">
+          {%- for n in range(2, 5) %}
+          <button type="submit" name="n" value="{{ n }}" class="lt-seed-segb{% if n == board.tier_count %} is-on{% endif %}" aria-pressed="{{ 'true' if n == board.tier_count else 'false' }}">{{ n }} (A–{{ 'ABCD'[n - 1] }})</button>
+          {%- endfor %}
+        </div>
+      </form>
+      {%- endif %}
+    </div>
+    <span class="lt-seed-save s-ok" role="status" data-lt-seed-save><i aria-hidden="true">✓</i>{{ _('Saved') }}</span>
+  </div>
+  {%- endif %}
+
+  <div class="lt-seed-tabs" role="tablist" aria-label="{{ _('Board view') }}">
+    {%- if is_ffa %}
+    <button type="button" role="tab" class="lt-seed-tab" data-tab="tier" aria-selected="{{ 'true' if is_ffa else 'false' }}">{{ _('Tier board') }}</button>
+    {%- endif %}
+    <button type="button" role="tab" class="lt-seed-tab" data-tab="layout" aria-selected="{{ 'false' if is_ffa else 'true' }}">{{ _('Layout board') }} <span class="lt-seed-tabst ts-{{ board.tab_status.kind }}"><i aria-hidden="true">{{ glyph(board.tab_status.kind) }}</i>{{ board.tab_status.label }}</span></button>
+  </div>
+
+  {%- if is_ffa %}
+  <div class="lt-seed-boardp" role="tabpanel" data-panel="tier">
+    <h2 class="lt-seed-boardh">{{ _('Tier board') }}</h2>
+    {%- if board.target == 'initial' %}
+    <p class="lt-seed-src"><span class="lt-seed-lbl">{{ _('Origin of the tiers') }}</span>
+      {%- if board.pure_draw %}{{ _('From the draw (draw number %(draw)s), spread evenly over %(n)s tiers in draw order. Then order them by your own judgement.', draw=board.code_meta.draw_number if board.code_meta else '', n=board.tier_count) }}
+      {%- else %}{{ _('Set by hand, starting from the draw (draw number %(draw)s).', draw=board.code_meta.draw_number if board.code_meta else '') }}{% endif %}</p>
+    {%- elif board.get('tier_origin') %}
+    <p class="lt-seed-src"><span class="lt-seed-lbl">{{ _('Origin of the tiers') }}</span>{{ board.tier_origin }}</p>
+    {%- endif %}
+    <div class="lt-seed-tiers n{{ board.tiers|length }}">
+      {%- for tier in board.tiers %}
+      <section class="lt-seed-tier" data-tier="{{ tier.index }}" data-letter="{{ tier.letter }}">
+        <header class="lt-seed-tierh">{{ tier_letter(tier.letter) }}<b>{{ _('Tier %(letter)s', letter=tier.letter) }}</b><span>{{ tier.contestants|length }}</span></header>
+        <ol class="lt-seed-tlist">
+          {%- for contestant in tier.contestants %}
+          {{ tier_chip(board, tier, contestant, loop.index0, loop.length, locked) }}
+          {%- endfor %}
+        </ol>
+      </section>
+      {%- endfor %}
+    </div>
+  </div>
+  {%- endif %}
+
+  <div class="lt-seed-boardp" role="tabpanel" data-panel="layout">
+    <h2 class="lt-seed-boardh">{{ _('Layout board') }}</h2>
+    {%- if board.layout.kind == 'bracket' %}
+    <div class="lt-seed-br s{{ board.layout.sections|length }}">
+      {%- for section in board.layout.sections %}
+      <section class="lt-seed-sec">
+        <h4>
+          {%- if section.kind == 'quarter' %}{{ _('Quarter %(n)s', n=section.number) }}
+          {%- elif section.kind == 'half' %}{{ _('Half %(n)s', n=section.number) }}
+          {%- else %}{{ _('Final') }}{% endif -%}
+        </h4>
+        {%- for number in section.matches %}
+        {%- set match = board.layout.matches[number - 1] %}
+        <div class="lt-seed-match{% if match.problem %} is-inv{% elif match.get('same_group') %} is-same{% endif %}">
+          <span class="lt-seed-mno">M{{ match.number }}</span>
+          <div class="lt-seed-pair" data-swap-list>
+            {%- for slot in match.slots %}
+            {{ chip(board, slot, _('M%(n)s, position %(pos)s', n=match.number, pos=slot.seed_position), locked) }}
+            {%- if loop.first %}<span class="lt-seed-vs" aria-hidden="true">–</span>{% endif %}
+            {%- endfor %}
+          </div>
+          {%- if match.problem %}
+          <p class="lt-seed-mmsg"><i aria-hidden="true">✕</i>{{ match.problem }}</p>
+          {%- elif match.get('same_group') %}
+          {%- set clash = match.same_group_info %}
+          <p class="lt-seed-mmsg"><i aria-hidden="true">▲</i>{{ _('Both from group %(group)s: %(a)s (%(la)s) and %(b)s (%(lb)s).', group=clash.group, a=clash.a.name, la=clash.a.origin, b=clash.b.name, lb=clash.b.origin) }}</p>
+          {%- endif %}
+        </div>
+        {%- endfor %}
+      </section>
+      {%- endfor %}
+    </div>
+    {%- if board.format == 'DE' %}
+    <p class="lt-seed-note"><i aria-hidden="true">i</i>{{ _('Only winners round 1 is seeded here. Losers-bracket entry follows the fixed losers routing.') }}</p>
+    {%- endif %}
+    {%- else %}
+    <div class="lt-seed-cols c{{ board.layout.groups|length }}">
+      {%- for group in board.layout.groups %}
+      {%- set cluster = board.balance.clusters|selectattr('lobby', 'equalto', group.index + 1)|list if board.balance else [] %}
+      <section class="lt-seed-col{% if group.invalid %} is-inv{% elif cluster %} is-warn{% endif %}">
+        <header class="lt-seed-colh">
+          <b>{% if is_ffa %}{{ _('Lobby %(n)s', n=group.index + 1) }}{% else %}{{ _('Group %(letter)s', letter=group.letter) }}{% endif %}</b>
+          <span>{{ group.size }} {{ unit }}</span>
+          {%- if board.balance %}
+          <span class="lt-seed-mix" title="{{ _('Tier mix') }}">
+            {%- for count in board.balance.counts[group.index] %}{% if count %}{{ board.tiers[loop.index0].letter }}{{ count }}{% if not loop.last %} {% endif %}{% endif %}{% endfor -%}
+          </span>
+          {%- endif %}
+        </header>
+        <div class="lt-seed-colb" data-swap-list>
+          {%- for slot in group.slots %}
+          {{ chip(board, slot, (_('Lobby %(n)s', n=group.index + 1) if is_ffa else _('Group %(letter)s', letter=group.letter)), locked) }}
+          {%- endfor %}
+        </div>
+        {%- for flag in cluster %}
+        <p class="lt-seed-cflag"><i aria-hidden="true">▲</i>{{ _('%(count)s × tier %(letter)s (at most %(max)s)', count=flag.count, letter=flag.letter, max=flag.allowed) }}</p>
+        {%- endfor %}
+      </section>
+      {%- endfor %}
+    </div>
+    {%- if board.format == 'RR' and board.layout.groups|length == 1 %}
+    <p class="lt-seed-note"><i aria-hidden="true">i</i>{{ _('One group: the order only sets the schedule, not the pairings.') }}</p>
+    {%- endif %}
+    {%- endif %}
+  </div>
+
+  {%- if not locked %}
+  <details class="lt-seed-nojs" open>
+    <summary>{{ _('Change without dragging') }}</summary>
+    <form action="{{ action_url }}" method="post">
+      {{ hidden_fields(board, 'swap') }}
+      <label class="lt-seed-lbl" for="seeding-swap-p">{{ _('Slot') }}</label>
+      <select class="lt-seed-inp" id="seeding-swap-p" name="p">
+        {{ slot_options(board) }}
+      </select>
+      <label class="lt-seed-lbl" for="seeding-swap-q">{{ _('with slot') }}</label>
+      <select class="lt-seed-inp" id="seeding-swap-q" name="q">
+        {{ slot_options(board, 1) }}
+      </select>
+      <button type="submit" class="button">{{ _('Swap') }}</button>
+    </form>
+    {%- if is_ffa %}
+    <form action="{{ action_url }}" method="post">
+      {{ hidden_fields(board, 'move_tier') }}
+      <label class="lt-seed-lbl" for="seeding-tier-contestant">{{ _('Player') }}</label>
+      <select class="lt-seed-inp" id="seeding-tier-contestant" name="contestant_id">
+        {%- for tier in board.tiers %}{% for contestant in tier.contestants %}
+        <option value="{{ contestant.id }}">{{ contestant.name }} ({{ tier.letter }})</option>
+        {%- endfor %}{% endfor %}
+      </select>
+      <label class="lt-seed-lbl" for="seeding-tier-tier">{{ _('Tier') }}</label>
+      <select class="lt-seed-inp" id="seeding-tier-tier" name="tier">
+        {%- for tier in board.tiers %}
+        <option value="{{ tier.index }}">{{ tier.letter }}</option>
+        {%- endfor %}
+      </select>
+      <label class="lt-seed-lbl" for="seeding-tier-ref">{{ _('Position') }}</label>
+      <select class="lt-seed-inp" id="seeding-tier-ref" name="ref_id">
+        <option value="">{{ _('At the end of the tier') }}</option>
+        {%- for tier in board.tiers %}{% for contestant in tier.contestants %}
+        <option value="{{ contestant.id }}">{{ _('Before %(name)s', name=contestant.name) }}</option>
+        {%- endfor %}{% endfor %}
+      </select>
+      <button type="submit" class="button">{{ _('Move') }}</button>
+    </form>
+    {%- endif %}
+    <p class="lt-seed-small">{{ _('These forms work without a script and are the accessible alternative to dragging.') }}</p>
+  </details>
+  {%- endif %}
+
+  <div class="lt-seed-panels">
+    <div class="lt-seed-pcol">
+      {%- if board.balance %}
+      <section class="lt-seed-panel">
+        <div class="lt-seed-ph">
+          <h3>{{ _('Lobby balance') }}</h3>
+          {%- if invalid %}<span class="lt-seed-pill p-err"><i aria-hidden="true">✕</i>{{ _('Layout invalid') }}</span>
+          {%- elif board.balance.clusters %}<span class="lt-seed-pill p-warn"><i aria-hidden="true">▲</i>{{ ngettext('%(n)s cluster', '%(n)s clusters', board.balance.clusters|length, n=board.balance.clusters|length) }}</span>
+          {%- else %}<span class="lt-seed-pill p-ok"><i aria-hidden="true">✓</i>{{ _('Tiers evenly spread') }}</span>{% endif %}
+        </div>
+        <div class="lt-seed-scroll" tabindex="0" role="region" aria-label="{{ _('Tiers per lobby') }}">
+          <table class="lt-seed-mx">
+            <thead>
+              <tr>
+                <th scope="col">{{ _('Tier') }}</th>
+                <th scope="col">{{ _('Tier sum') }}</th>
+                {%- for group in board.layout.groups %}
+                <th scope="col">{{ _('Lobby %(n)s', n=group.index + 1) }}</th>
+                {%- endfor %}
+                <th scope="col">{{ _('Allowed') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {%- for tier in board.tiers %}
+              {%- set tier_index = loop.index0 %}
+              <tr>
+                <th scope="row">{{ tier_letter(tier.letter) }}{{ _('Tier %(letter)s', letter=tier.letter) }}</th>
+                <td>{{ tier.contestants|length }}</td>
+                {%- for row in board.balance.counts %}
+                {%- if row[tier_index] > board.balance.allowed[tier_index] %}
+                <td class="is-over"><i aria-hidden="true">▲</i>{{ row[tier_index] }}<span class="lt-seed-sr"> – {{ _('too many') }}</span></td>
+                {%- else %}
+                <td>{{ row[tier_index] }}</td>
+                {%- endif %}
+                {%- endfor %}
+                <td>≤ {{ board.balance.allowed[tier_index] }}</td>
+              </tr>
+              {%- endfor %}
+            </tbody>
+          </table>
+        </div>
+        {%- if board.balance.clusters %}
+        <ul class="lt-seed-flags">
+          {%- for flag in board.balance.clusters %}
+          <li><i aria-hidden="true">▲</i>{{ _('Lobby %(n)s: %(count)s players from tier %(letter)s (an even spread allows at most %(max)s).', n=flag.lobby, count=flag.count, letter=flag.letter, max=flag.allowed) }}</li>
+          {%- endfor %}
+        </ul>
+        {%- endif %}
+        <p class="lt-seed-small">{{ _('Allowed = tier size divided by the number of lobbies, rounded up.') }}</p>
+      </section>
+      {%- else %}
+      <section class="lt-seed-panel">
+        <div class="lt-seed-ph">
+          <h3>{{ _('Placement check') }}</h3>
+          {%- if invalid %}<span class="lt-seed-pill p-err"><i aria-hidden="true">✕</i>{{ _('Layout invalid') }}</span>
+          {%- else %}<span class="lt-seed-pill p-ok"><i aria-hidden="true">✓</i>{{ _('Layout valid') }}</span>{% endif %}
+        </div>
+        {%- if invalid %}
+        <ul class="lt-seed-flags is-err">
+          {%- for problem in board.problems %}
+          <li><i aria-hidden="true">✕</i>{{ problem }}</li>
+          {%- endfor %}
+        </ul>
+        {%- endif %}
+        {%- if clashes %}
+        <ul class="lt-seed-flags">
+          {%- for match in clashes %}
+          <li><i aria-hidden="true">▲</i>{{ _('M%(n)s: %(a)s and %(b)s come from group %(group)s.', n=match.number, a=match.same_group_info.a.name, b=match.same_group_info.b.name, group=match.same_group_info.group) }}</li>
+          {%- endfor %}
+        </ul>
+        {%- endif %}
+        {%- if board.layout.kind == 'bracket' %}
+        {%- if board.byes %}
+        {%- set ns = namespace(text='') %}
+        {%- for bye in board.byes %}
+        {%- set ns.text = ns.text ~ (', ' if not loop.first else '') ~ bye.name ~ ' (' ~ (_('Position %(n)s', n=bye.seed_position) if loop.first else bye.seed_position) ~ ')' %}
+        {%- endfor %}
+        <p>{{ _('Byes: %(list)s.', list=ns.text) }}</p>
+        {%- else %}
+        <p>{{ _('Byes: none.') }}</p>
+        {%- endif %}
+        {%- else %}
+        {%- set ns = namespace(text='') %}
+        {%- for group in board.layout.groups %}
+        {%- set ns.text = ns.text ~ (', ' if not loop.first else '') ~ group.letter ~ ' ' ~ group.size %}
+        {%- endfor %}
+        <p>{{ _('Group sizes: %(list)s.', list=ns.text) }}</p>
+        {%- endif %}
+        <p class="lt-seed-small">{{ _('No tiers in this mode. Only the placement is checked.') }}</p>
+      </section>
+      {%- endif %}
+    </div>
+
+    <div class="lt-seed-pcol">
+      <section class="lt-seed-panel">
+        <div class="lt-seed-ph"><h3>{{ _('Seed code') }}</h3></div>
+        {%- if invalid or no_code %}
+        <p class="lt-seed-nocode"><i aria-hidden="true">✕</i>{{ _('No code while the layout is invalid.') }}</p>
+        {%- else %}
+        <div class="lt-seed-codebox{% if board.stale %} is-stale{% endif %}">
+          <code class="lt-seed-code" id="lt-seed-code">{% if board.stale %}<s>{{ board.code }}</s>{% else %}{{ board.code }}{% endif %}</code>
+          {%- if board.stale %}<span class="lt-seed-stl">{{ _('outdated') }}</span>{% endif %}
+        </div>
+        <div class="lt-seed-row lt-seed-vc">
+          <button type="button" class="button is-compact" data-copy="#lt-seed-code" data-js-only hidden>{{ _('Copy code') }}</button>
+          <span class="lt-seed-small">{{ _('%(n)s characters · check character at the end', n=board.code_meta.length) }}</span>
+        </div>
+        {%- endif %}
+        <dl class="lt-seed-dl">
+          <dt>{{ _('Format') }}</dt>
+          <dd>
+            {%- if board.target == 'playoff' %}{{ _('Playoffs · %(label)s', label=board.format_name) }}{% else %}{{ board.format_name }}{% endif %} · {{ board.player_count }} {{ unit }}
+            {%- if is_ffa %} · {{ _('max. %(n)s per lobby', n=board.max_lobby) }} · {{ ngettext('%(n)s tier', '%(n)s tiers', board.tier_count, n=board.tier_count) }}
+            {%- elif board.layout.kind == 'groups' %} · {% if board.layout.groups|map(attribute='size')|unique|list|length == 1 %}{{ ngettext('%(n)s group of %(size)s', '%(n)s groups of %(size)s', board.layout.groups|length, n=board.layout.groups|length, size=board.layout.groups[0].size) }}{% else %}{{ ngettext('%(n)s group', '%(n)s groups', board.layout.groups|length, n=board.layout.groups|length) }}{% endif %} · {{ _('no tiers') }}
+            {%- else %} · {{ _('no tiers') }}{% endif -%}
+          </dd>
+          {%- if board.code_meta %}
+          <dt>{{ _('Roster fingerprint') }}</dt>
+          <dd><code>{{ board.code_meta.fingerprint }}</code></dd>
+          <dt>{{ _('Draw number') }}</dt>
+          <dd><code>{{ board.code_meta.draw_number }}</code></dd>
+          {%- endif %}
+          <dt>{{ _('Seed order') }}</dt>
+          <dd>{% if board.get('prefilled') %}{{ _('prefilled') }}{% elif board.pure_draw %}{{ _('pure draw') }}{% else %}{{ _('ordered by hand') }}{% endif %}</dd>
+          <dt>{{ _('Layout fixes') }}</dt>
+          <dd>{% if board.fix_count %}{{ ngettext('%(n)s swap', '%(n)s swaps', board.fix_count, n=board.fix_count) }}{% else %}{{ _('none') }}{% endif %}</dd>
+        </dl>
+        {%- if not locked %}
+        <form class="lt-seed-replay" action="{{ action_url }}" method="post" data-replay>
+          {{ hidden_fields(board, 'replay') }}
+          <label class="lt-seed-lbl" for="seeding-replay-code">{{ _('Paste seed code') }}</label>
+          <div class="lt-seed-row lt-seed-rpr">
+            <input type="text" class="lt-seed-inp lt-seed-mono" id="seeding-replay-code" name="code" autocomplete="off" spellcheck="false" required>
+            <button type="submit" class="button">{{ _('Replay') }}</button>
+          </div>
+          <p class="lt-seed-msg is-err" role="alert" data-replay-message hidden></p>
+          <p class="lt-seed-small">{{ _('Case, spaces and hyphens do not matter. O counts as 0, I and L as 1.') }}</p>
+        </form>
+        {%- endif %}
+      </section>
+
+      {%- set step = 2 if board.generation == 'locked' else (1 if board.generation in ('matches', 'differs') else 0) %}
+      {%- set what = _('Bracket') if board.layout.kind == 'bracket' else (_('Lobbies') if is_ffa else _('Groups')) %}
+      <section class="lt-seed-panel">
+        <div class="lt-seed-ph"><h3>{{ _('Generation') }}</h3></div>
+        <ol class="lt-seed-steps">
+          {%- for label in [_('Not generated'), _('Generated'), _('Locked')] %}
+          <li class="{% if loop.index0 < step %}is-done{% elif loop.index0 == step %}is-cur{% endif %}"{% if loop.index0 == step %} aria-current="step"{% endif %}><span class="lt-seed-sn">{% if loop.index0 < step %}✓{% else %}{{ loop.index }}{% endif %}</span>{{ label }}{% if loop.index0 == step %}<em>{{ _('current') }}</em>{% endif %}</li>
+          {%- endfor %}
+        </ol>
+        {%- if board.generation == 'not_generated' and seed_embedded is defined %}
+        <p class="lt-seed-small">{{ _('The release generates the playoffs from this draft.') }}</p>
+        {%- elif board.generation == 'not_generated' %}
+        {%- set why = (_('Layout invalid: %(problem)s', problem=board.problems[0]) if invalid else (_('The seed code is outdated. Re-seed first.') if board.stale else '')) %}
+        <form action="{{ url_for('.orga_seeding_generate', tournament_id=tournament.id) }}" method="post" class="lt-seed-inline">
+          <input type="hidden" name="target" value="{{ board.target }}">
+          <input type="hidden" name="version" value="{{ board.version }}">
+          <div class="lt-seed-row">
+            <span class="lt-seed-bw">
+              <button type="submit" class="button color-primary"{% if why %} disabled{% endif %}>
+                {%- if board.layout.kind == 'bracket' %}{{ _('Generate bracket from this code') }}
+                {%- elif is_ffa %}{{ _('Generate lobbies from this code') }}
+                {%- else %}{{ _('Generate groups from this code') }}{% endif -%}
+              </button>
+              {%- if why %}<span class="lt-seed-why">{{ why }}</span>{% endif %}
+            </span>
+          </div>
+        </form>
+        {%- if board.target == 'initial' %}
+        <p class="lt-seed-small">{{ _('Starting the tournament stays blocked until the initial placement is generated.') }}</p>
+        {%- endif %}
+        {%- elif board.generation == 'matches' %}
+        {%- if board.stale %}
+        {% call notice('err', _('Generating blocked: seed code outdated.')) %}
+        <div class="lt-seed-ntb"><p>{{ _('Re-seed first. Starting stays blocked until the board is generated again.') }}</p></div>
+        {% endcall %}
+        {%- else %}
+        {% call notice('ok', _('%(what)s generated from %(code)s.', what=what, code=board.code)) %}
+        <div class="lt-seed-ntb"><p>{% if gen.row %}{{ _('%(actor)s · %(time)s.', actor=gen.row.who or _('System'), time=gen.row.time_label) }} {% endif %}{{ _('The board matches the generated state.') }}</p></div>
+        {% endcall %}
+        {%- endif %}
+        {%- elif board.generation == 'differs' %}
+        {% call notice('warn', _('The board differs from the generated state.')) %}
+        <div class="lt-seed-ntb">
+          <p>{{ _('Generated') }}: <code>{{ board.generated_code_display }}</code><br>
+          {{ _('Seeding board') }}: {% if board.code %}<code>{{ board.code }}</code>{% else %}{{ _('no valid code') }}{% endif %}
+          {%- if board.target == 'initial' %}<br>{{ _('Starting the tournament uses the generated state.') }}{% endif %}</p>
+        </div>
+        {%- set why = (_('Layout invalid.') if no_code else (_('The seed code is outdated. Re-seed first.') if board.stale else '')) %}
+        <form action="{{ url_for('.orga_seeding_generate', tournament_id=tournament.id) }}" method="post" class="lt-seed-inline"
+              {%- if not why %} data-confirm-title="{{ _('Regenerate from this code?') }}" data-confirm-body="{{ _('The bracket is generated again from %(code)s. The previous code %(old)s stays in the audit trail. Until you regenerate, a start uses the generated state.', code=board.code_short, old=board.generated_code_short) }}" data-confirm-ok="{{ _('Regenerate') }}"{% endif %}>
+          <input type="hidden" name="target" value="{{ board.target }}">
+          <input type="hidden" name="version" value="{{ board.version }}">
+          <div class="lt-seed-row">
+            <span class="lt-seed-bw">
+              <button type="submit" class="button color-primary"{% if why %} disabled{% endif %}>{{ _('Regenerate from this code') }}</button>
+              {%- if why %}<span class="lt-seed-why">{{ why }}</span>{% endif %}
+            </span>
+          </div>
+        </form>
+        {% endcall %}
+        {%- elif board.generation == 'locked' %}
+        {% call notice('info', _('Locked')) %}
+        <div class="lt-seed-ntb"><p>{{ board.locked_reason }}</p></div>
+        {% endcall %}
+        {%- endif %}
+      </section>
+    </div>
+  </div>
+  {%- endif %}
+
+{%- if seed_embedded is not defined %}
+  <section class="lt-seed-panel lt-seed-auditp">
+    <div class="lt-seed-ph">
+      <h3>{{ _('Audit log') }}</h3>
+      <span class="lt-seed-small">{{ _('Seeding and qualification of this tournament · newest first') }}</span>
+    </div>
+    {%- if audit_rows %}
+    <div class="lt-seed-scroll" tabindex="0" role="region" aria-label="{{ _('Audit log') }}">
+      <table class="lt-seed-audit">
+        <thead>
+          <tr>
+            <th scope="col">{{ _('At') }}</th>
+            <th scope="col">{{ _('Who') }}</th>
+            <th scope="col">{{ _('Action') }}</th>
+            <th scope="col">{{ _('Details') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {%- for row in audit_rows %}
+          <tr data-event="{{ row.event_type }}">
+            <td>{{ row.time_label }}</td>
+            <td>{% if row.who %}{{ row.who }}{% else %}<span class="lt-seed-sys">{{ _('System') }}</span>{% endif %}</td>
+            <td>
+              {%- if row.children %}
+              <details>
+                <summary>{{ row.label }}</summary>
+                <ul class="lt-seed-subrows">
+                  {%- for child in row.children %}
+                  <li>{{ child.time_label }} · {{ child.label }}{% if child.details %} · {{ child.details }}{% endif %}</li>
+                  {%- endfor %}
+                </ul>
+              </details>
+              {%- else %}{{ row.label }}{% endif -%}
+            </td>
+            <td>{{ row.details }}</td>
+          </tr>
+          {%- endfor %}
+        </tbody>
+      </table>
+    </div>
+    {%- else %}
+    <p>{{ _('No entries yet.') }}</p>
+    {%- endif %}
+  </section>
+{%- endif %}
+</div>
+{%- endif %}

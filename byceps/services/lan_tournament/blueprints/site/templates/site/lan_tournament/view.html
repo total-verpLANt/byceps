@@ -54,10 +54,10 @@
   </div>
   {%- endif %}
 
-  {{ render_orga_tournament_status_actions(tournament, may_administrate) }}
+  {{ render_orga_tournament_status_actions(tournament, may_administrate, start_gate, grand_final=grand_final, winner_tie=winner_tie) }}
 
   {%- if tournament.tournament_status and tournament.tournament_status.name == 'COMPLETED' and winner_name %}
-  {%- set is_ffa = tournament.game_format and tournament.game_format.name == 'FREE_FOR_ALL' %}
+  {%- set is_ffa = ffa_phase is defined and ffa_phase is not none %}
   <div class="ffa-match-box">
     <div class="podium">
       <div class="podium__card podium__card--2nd">

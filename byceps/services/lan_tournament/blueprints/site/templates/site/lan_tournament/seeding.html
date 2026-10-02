@@ -1,0 +1,33 @@
+{% extends 'layout/site/lan_tournament.html' %}
+{% from 'macros/lan_tournament.html' import render_tournament_subnav %}
+{% set page_title = [_('Seeding'), tournament.name] %}
+
+{% block head %}{{ super() }}
+  <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_seeding.css') }}">
+{%- endblock %}
+
+
+{% block body %}
+
+  <nav class="breadcrumbs">
+    <ol>
+      <li><a href="{{ url_for('.index') }}">{{ _('Tournaments') }}</a></li>
+      <li><a href="{{ url_for('.view', tournament_id=tournament.id) }}">{{ tournament.name }}</a></li>
+    </ol>
+  </nav>
+
+  {{ render_tournament_subnav(tournament, '') }}
+
+  <header class="head">
+    <div class="dimmed">{{ _('Orga actions · %(name)s', name=tournament.name) }}</div>
+    <h1 class="title">{{ _('Seeding') }}</h1>
+  </header>
+
+{% include 'site/lan_tournament/_seeding_board.html' %}
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="{{ url_for('static', filename='behavior/sortable.min.js') }}"></script>
+<script src="{{ url_for('static', filename='behavior/lan_tournament_seeding.js') }}"></script>
+{% endblock %}

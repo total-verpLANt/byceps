@@ -1,7 +1,16 @@
 {% extends 'layout/site/lan_tournament.html' %}
 {% from 'macros/forms.html' import form_buttons, form_field %}
+{% from 'macros/misc.html' import render_tag %}
+{% from 'site/lan_tournament/_standings.html' import render_group_standings, render_playoff_lobbies %}
 {% from 'macros/lan_tournament.html' import render_highscore_leaderboard, render_tournament_subnav %}
 {% set page_title = [_('Highscore'), tournament.name] %}
+
+{% block head %}{{ super() }}
+  {%- if tournament.has_playoffs %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_standings.css') }}">
+  {% include 'site/lan_tournament/_bote_tournament_style.html' ignore missing %}
+  {%- endif %}
+{%- endblock %}
 
 {% block body %}
 
@@ -16,9 +25,41 @@
 
   {{ render_tournament_subnav(tournament, active_tab) }}
 
-  {{ render_highscore_leaderboard(leaderboard, tournament, teams_by_id=teams_by_id, participants_by_id=participants_by_id) }}
+  <header class='head'>
+    <h1 class='title'>{{ tournament.name }}</h1>
+    <div class='dimmed'>{% if tournament.game %}{{ tournament.game }} · {% endif %}{{ _('Highscore') }}</div>
+    {%- set stamp = {
+      'REGISTRATION_OPEN': (_('Registration open'), 'color-info'),
+      'REGISTRATION_CLOSED': (_('Registration closed'), 'color-warning'),
+      'ONGOING': (_('Ongoing'), 'color-success'),
+      'PAUSED': (_('Paused'), 'color-warning'),
+      'COMPLETED': (_('Completed'), 'color-success'),
+      'CANCELLED': (_('Cancelled'), 'color-danger'),
+    }.get(tournament.tournament_status.name if tournament.tournament_status else '') %}
+    {%- if stamp %}
+    {{ render_tag(stamp[0], class=stamp[1]) }}
+    {%- endif %}
+  </header>
 
-  {% if g.user.authenticated %}
+  {% if tournament.has_playoffs %}
+  <nav class='lt-phase' aria-label='{{ _("Phase") }}'>
+    <a class='lt-phase__link is-on' aria-current='page'
+       href='{{ url_for(".highscore", tournament_id=tournament.id) }}'>{{ _('Highscore') }}</a>
+    <a class='lt-phase__link'
+       href='{{ url_for(".bracket", tournament_id=tournament.id, phase=2) }}'>{{ _('Playoffs') }}</a>
+  </nav>
+  {% endif %}
+
+  {% if rankings %}
+    {{ render_group_standings(rankings) }}
+    {% if playoff_lobby_rounds %}
+    {{ render_playoff_lobbies(playoff_lobby_rounds) }}
+    {% endif %}
+  {% else %}
+    {{ render_highscore_leaderboard(leaderboard, tournament, teams_by_id=teams_by_id, participants_by_id=participants_by_id) }}
+  {% endif %}
+
+  {% if can_submit %}
   <div class='score-submit'>
     <h2>{{ _('Submit Your Score') }}</h2>
     <form method='post' action='{{ url_for('.highscore_submit', tournament_id=tournament.id) }}'>

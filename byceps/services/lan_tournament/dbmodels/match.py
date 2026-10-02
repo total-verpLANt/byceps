@@ -21,6 +21,21 @@ class DbTournamentMatch(db.Model):
     """A match in a LAN tournament."""
 
     __tablename__ = 'lan_tournament_matches'
+    __table_args__ = (
+        db.CheckConstraint(
+            'phase IN (1, 2)', name='ck_lan_tournament_matches_phase'
+        ),
+        db.Index(
+            'ix_lan_tournament_matches_tournament_phase',
+            'tournament_id',
+            'phase',
+        ),
+        db.Index(
+            'ix_lan_tournament_matches_tournament_seeding_target',
+            'tournament_id',
+            'seeding_target',
+        ),
+    )
 
     id: Mapped[TournamentMatchID] = mapped_column(
         db.Uuid, default=generate_uuid7, primary_key=True
@@ -53,6 +68,10 @@ class DbTournamentMatch(db.Model):
     )
     confirmed_by_user: Mapped[DbUser | None] = relationship(DbUser)
     created_at: Mapped[datetime]
+    phase: Mapped[int] = mapped_column(
+        db.SmallInteger, nullable=False, default=1, server_default='1'
+    )
+    seeding_target: Mapped[str | None] = mapped_column(db.String(40))
 
     def __init__(
         self,
@@ -67,6 +86,8 @@ class DbTournamentMatch(db.Model):
         bracket: str | None = None,
         loser_next_match_id: TournamentMatchID | None = None,
         confirmed_by: UserID | None = None,
+        phase: int = 1,
+        seeding_target: str | None = None,
     ) -> None:
         self.id = match_id
         self.tournament_id = tournament_id
@@ -78,6 +99,8 @@ class DbTournamentMatch(db.Model):
         self.bracket = bracket
         self.loser_next_match_id = loser_next_match_id
         self.confirmed_by = confirmed_by
+        self.phase = phase
+        self.seeding_target = seeding_target
 
     def __repr__(self) -> str:
         return (

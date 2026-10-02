@@ -813,13 +813,26 @@ def test_banner_not_shown_for_a_non_terminal_match(app):
     assert context['correction_clears_winner'] is False
 
 
-def test_banner_not_shown_for_round_robin(app):
-    """Round robin has no terminal match and no auto-complete."""
+def test_banner_shown_for_a_completed_plain_round_robin(app):
+    """A correction reopens a completed plain round robin."""
     context = _call_view_match_for(
         app,
         bracket=None,
         next_match_id=None,
         elimination_mode=EliminationMode.ROUND_ROBIN,
+    )
+
+    assert context['correction_clears_winner'] is True
+
+
+def test_banner_not_shown_for_an_ongoing_plain_round_robin(app):
+    """Nothing is decided yet, so the correction clears no winner."""
+    context = _call_view_match_for(
+        app,
+        bracket=None,
+        next_match_id=None,
+        elimination_mode=EliminationMode.ROUND_ROBIN,
+        tournament_status=TournamentStatus.ONGOING,
     )
 
     assert context['correction_clears_winner'] is False
