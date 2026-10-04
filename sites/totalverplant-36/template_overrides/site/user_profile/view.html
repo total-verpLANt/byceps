@@ -93,6 +93,19 @@
     font-family:var(--mono);font-size:8.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
     color:var(--paper);background:var(--redDeep);padding:2px 7px;white-space:nowrap;
   }
+  .profile-page .chair-info{margin-top:20px;padding-top:18px;border-top:1px dashed var(--inkSoft);}
+  .profile-page .chair-entry{
+    display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;
+    border:1.5px solid var(--ink);background:var(--paperLite);padding:14px 16px;
+    box-shadow:3px 3px 0 var(--ink);
+  }
+  .profile-page .chair-entry + .chair-entry{margin-top:12px;}
+  .profile-page .chair-entry-copy{display:flex;flex-direction:column;gap:5px;min-width:0;}
+  .profile-page .chair-ticket{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--inkSoft);}
+  .profile-page .chair-state{font-family:var(--body);font-size:18px;font-style:italic;color:var(--ink);}
+  .profile-page .chair-state.is-pending{color:var(--redDeep);}
+  .profile-page .chair-action{font-size:10px;padding:9px 12px;white-space:normal;}
+  .profile-page .chair-action:focus-visible{outline:3px solid var(--redDeep);outline-offset:3px;}
 
   /* --- badges --- */
   .profile-page .badges-block,
@@ -196,6 +209,25 @@
           {%- endfor %}
         </tbody>
       </table>
+      {%- if is_own_profile %}
+      <div class="chair-info">
+        <h4 class="cb-head">{{ _('Chair information') }}</h4>
+        {%- for ticket in current_party_tickets %}
+          {%- set brings_own_chair = chair_information_by_ticket_id[ticket.id] %}
+        <div class="chair-entry">
+          <div class="chair-entry-copy">
+            <span class="chair-ticket">{{ _('Ticket') }} {{ ticket.code }}</span>
+            <span class="chair-state{% if brings_own_chair is none %} is-pending{% endif %}">
+              {%- if brings_own_chair is sameas true %}{{ _('Brings own chair') }}
+              {%- elif brings_own_chair is sameas false %}{{ _('Needs a provided chair') }}
+              {%- else %}{{ _('Not specified yet') }}{% endif -%}
+            </span>
+          </div>
+          <a class="btn-news chair-action" href="{{ url_for('chair_optout.index', _anchor='ticket-' ~ ticket.id) }}">{{ render_icon('edit') }} <span>{{ _('Change selection') if brings_own_chair is not none else _('Make selection') }}</span></a>
+        </div>
+        {%- endfor %}
+      </div>
+      {%- endif %}
     </div>
     {%- endif %}
 

@@ -10,10 +10,12 @@ from datetime import datetime
 from typing import cast
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
 
 from byceps.database import db
 from byceps.services.party.models import PartyID
 from byceps.services.seating.dbmodels.seat import DbSeat
+from byceps.services.ticketing import ticket_service
 from byceps.services.ticketing.dbmodels.ticket import DbTicket
 from byceps.services.ticketing.models.ticket import TicketID
 from byceps.services.user.dbmodels import DbUser
@@ -60,21 +62,25 @@ def set_optout(
         raise ValueError('Ticket is not currently used by this user.')
 
     now = datetime.utcnow()
-    db_optout = _get_db_optout(party_id, ticket_id)
-
-    if db_optout is None:
-        db_optout = DbPartyTicketChairOptout(
-            party_id,
-            ticket_id,
-            user_id,
-            now,
+    db_optout = db.session.scalars(
+        insert(DbPartyTicketChairOptout)
+        .values(
+            party_id=party_id,
+            ticket_id=ticket_id,
+            user_id=user_id,
             brings_own_chair=brings_own_chair,
+            updated_at=now,
         )
-        db.session.add(db_optout)
-    else:
-        db_optout.user_id = user_id
-        db_optout.brings_own_chair = brings_own_chair
-        db_optout.updated_at = now
+        .on_conflict_do_update(
+            index_elements=['party_id', 'ticket_id'],
+            set_={
+                'user_id': user_id,
+                'brings_own_chair': brings_own_chair,
+                'updated_at': now,
+            },
+        )
+        .returning(DbPartyTicketChairOptout)
+    ).one()
 
     db.session.commit()
 
@@ -157,6 +163,23 @@ def list_optouts_for_user(
         .order_by(DbTicket.code)
     ).all()
     return list(get_current_optouts_for_tickets(tickets).values())
+
+
+def find_first_unanswered_ticket_id_for_user(
+    party_id: PartyID, user_id: UserID
+) -> TicketID | None:
+    """Find a current ticket for which the user has not specified a chair."""
+    tickets = ticket_service.get_tickets_used_by_user(user_id, party_id)
+    answered_ticket_ids = get_current_optouts_for_tickets(tickets)
+
+    return next(
+        (
+            ticket.id
+            for ticket in tickets
+            if ticket.id not in answered_ticket_ids
+        ),
+        None,
+    )
 
 
 def resolve_seat_label_for_ticket(ticket: DbTicket | None) -> str | None:

@@ -1,0 +1,37 @@
+{% from 'macros/icons.html' import render_icon %}
+<style>
+  .dashboard-chair-coupon{
+    display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:18px 28px;
+    margin:0 0 clamp(22px,3vw,32px);padding:clamp(18px,2.8vw,26px);
+    border:2px dashed var(--redDeep);
+    background:repeating-linear-gradient(135deg,transparent 0 11px,var(--stripe) 11px 12px),var(--paperLite);
+    box-shadow:6px 6px 0 var(--ink);
+  }
+  .dashboard-chair-coupon .chair-coupon-kicker{
+    display:block;margin-bottom:7px;font-family:var(--mono);font-size:10px;font-weight:700;
+    letter-spacing:.2em;text-transform:uppercase;color:var(--redDeep);
+  }
+  .dashboard-chair-coupon .chair-coupon-head{
+    margin:0;font-family:var(--display);font-size:clamp(23px,3vw,32px);
+    font-style:italic;line-height:1.1;color:var(--ink);
+  }
+  .dashboard-chair-coupon .chair-coupon-action{
+    display:inline-flex;align-items:center;justify-content:center;gap:10px;
+    padding:14px 22px;background:var(--ink);color:var(--paper);text-decoration:none;
+    font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;
+    box-shadow:4px 4px 0 var(--redDeep);
+  }
+  .dashboard-chair-coupon .chair-coupon-action:hover{
+    background:var(--redDeep);color:var(--paper);box-shadow:5px 5px 0 var(--ink);
+  }
+  .dashboard-chair-coupon .chair-coupon-action:focus-visible{outline:3px solid var(--redDeep);outline-offset:4px;}
+  @media (max-width:560px){.dashboard-chair-coupon .chair-coupon-action{width:100%;}}
+</style>
+
+<aside class="dashboard-chair-coupon" aria-label="{{ _('Chair information') }}">
+  <div>
+    <span class="chair-coupon-kicker">{{ _('Chair information') }}</span>
+    <h2 class="chair-coupon-head">{{ _('Not specified yet') }}</h2>
+  </div>
+  <a class="chair-coupon-action" href="{{ url_for('chair_optout.index', _anchor='ticket-' ~ pending_chair_ticket_id) }}">{{ render_icon('edit') }} <span>{{ _('Make selection') }}</span></a>
+</aside>

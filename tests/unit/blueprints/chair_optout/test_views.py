@@ -3,6 +3,7 @@
 """
 
 import csv
+from dataclasses import replace
 from io import StringIO
 from types import SimpleNamespace
 
@@ -17,6 +18,7 @@ from byceps.services.chair_optout.models import (
     ChairInformationSummary,
     ChairOptoutReportEntry,
 )
+from byceps.services.seating.blueprints.site import views as seating_views
 from byceps.util import views as util_views
 
 from tests.helpers import generate_uuid
@@ -141,6 +143,67 @@ def test_site_index_builds_independent_forms_for_current_tickets(
     assert second['ticket'] == provided_ticket
     assert second['brings_own_chair'] is None
     assert second['form'].choice.data is None
+
+
+@pytest.mark.parametrize(
+    ('admin_selected', 'uses_ticket'),
+    [(False, False), (True, False), (False, True)],
+)
+def test_seat_management_chair_link_requires_used_ticket(
+    app, monkeypatch, admin_selected, uses_ticket
+):
+    user_id = generate_uuid()
+    ticket_id = generate_uuid()
+
+    with app.test_request_context('/'):
+        g.user = StubUser(id=user_id)
+        g.party = SimpleNamespace(id='party-1')
+        monkeypatch.setattr(
+            seating_views, '_is_seat_management_enabled', lambda: True
+        )
+        monkeypatch.setattr(
+            seating_views,
+            '_is_current_user_seating_admin',
+            lambda: admin_selected,
+        )
+        monkeypatch.setattr(
+            seating_views,
+            '_get_selected_ticket',
+            lambda: SimpleNamespace(
+                id=ticket_id,
+                get_seat_manager=lambda: SimpleNamespace(id=generate_uuid()),
+            ),
+        )
+        monkeypatch.setattr(
+            seating_views.seating_area_service,
+            'find_area_for_party_by_slug',
+            lambda *_: SimpleNamespace(id='area-1'),
+        )
+        monkeypatch.setattr(
+            seating_views.seat_service, 'get_area_seats', lambda *_: []
+        )
+        monkeypatch.setattr(
+            seating_views.seat_service,
+            'get_seat_utilization',
+            lambda *_: None,
+        )
+        monkeypatch.setattr(
+            seating_views.seat_reservation_service,
+            'get_managed_tickets',
+            lambda *_: [SimpleNamespace(id=ticket_id)],
+        )
+        monkeypatch.setattr(
+            seating_views.ticket_service,
+            'uses_any_ticket_for_party',
+            lambda *_: uses_ticket,
+        )
+
+        context = _unwrap(seating_views.manage_seats_in_area)('hall')
+
+    assert context['can_view_chair_information'] is uses_ticket
+    assert context['selected_ticket_id'] == (
+        ticket_id if admin_selected else None
+    )
 
 
 @pytest.mark.parametrize(
@@ -488,3 +551,34 @@ def test_admin_export_contains_all_states_and_ticket_without_seat(
     assert rows[1][-1] == 'Brings own chair'
     assert rows[2][-1] == 'Needs a provided chair'
     assert rows[3][3:] == ['no seat', 'Not specified yet']
+
+
+@pytest.mark.parametrize('prefix', ['=', '+', '-', '@', '\t', '\r'])
+def test_admin_export_escapes_formula_cells(app, monkeypatch, prefix):
+    entry = _make_report_entry('T-100', True)
+    entry = replace(
+        entry,
+        full_name=f'{prefix}HYPERLINK("https://example.test", "x")',
+        screen_name=f'{prefix}nickname',
+        seat_label=f'{prefix}seat',
+    )
+
+    with app.test_request_context('/'):
+        g.user = StubUser(permissions=('seating.view',))
+        monkeypatch.setattr(
+            admin_views.party_service,
+            'find_party',
+            lambda *_: SimpleNamespace(id='party-1'),
+        )
+        monkeypatch.setattr(
+            admin_views.chair_optout_service,
+            'get_report_entries_for_party',
+            lambda *_: [entry],
+        )
+
+        response = admin_views.export_as_csv('party-1')
+
+    row = list(csv.reader(StringIO(response.get_data(as_text=True))))[1]
+    assert row[0] == f"'{entry.full_name}"
+    assert row[1] == f"'{entry.screen_name}"
+    assert row[3] == f"'{entry.seat_label}"

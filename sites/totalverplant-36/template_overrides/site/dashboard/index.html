@@ -71,8 +71,13 @@
     </p>
   </header>
 
-{#- Members without a ticket yet get the buy-CTA coupon at the top of the desk. #}
-{%- if not tickets %}
+{#- Show the outstanding chair choice only to ticket users. #}
+{%- if tickets %}
+  {%- set pending_chair_ticket_id = find_first_unanswered_chair_ticket_id() %}
+  {%- if pending_chair_ticket_id %}
+{% include 'site/dashboard/_chair_coupon.html' %}
+  {%- endif %}
+{%- else %}
 {% include 'site/dashboard/_ticket_coupon.html' %}
 {%- endif %}
 

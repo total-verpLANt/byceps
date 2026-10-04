@@ -18,14 +18,21 @@ from tests.helpers import generate_token, generate_uuid
 
 
 class DummySession:
-    def __init__(self) -> None:
-        self.added: list[object] = []
+    def __init__(self, db_optout: DbPartyTicketChairOptout) -> None:
+        self.db_optout = db_optout
+        self.statement = None
         self.commit_count = 0
 
-    def add(self, obj: object) -> None:
-        if getattr(obj, 'id', None) is None:
-            obj.id = ChairOptoutID(generate_uuid())
-        self.added.append(obj)
+    def scalars(self, statement):
+        self.statement = statement
+        return self
+
+    def one(self):
+        values = self.statement.compile().params
+        self.db_optout.user_id = values['user_id']
+        self.db_optout.brings_own_chair = values['brings_own_chair']
+        self.db_optout.updated_at = values['updated_at']
+        return self.db_optout
 
     def commit(self) -> None:
         self.commit_count += 1
@@ -60,7 +67,10 @@ def _prepare_set_optout(
     monkeypatch, existing_optout=None
 ) -> tuple[DummySession, PartyID, TicketID, UserID]:
     party_id, ticket_id, user_id = _make_ids()
-    session = DummySession()
+    db_optout = existing_optout or _make_db_optout(
+        party_id, ticket_id, user_id, False
+    )
+    session = DummySession(db_optout)
     monkeypatch.setattr(
         chair_optout_service, 'db', SimpleNamespace(session=session)
     )
@@ -68,11 +78,6 @@ def _prepare_set_optout(
         chair_optout_service,
         '_find_eligible_ticket',
         lambda *_: SimpleNamespace(id=ticket_id),
-    )
-    monkeypatch.setattr(
-        chair_optout_service,
-        '_get_db_optout',
-        lambda *_: existing_optout,
     )
     return session, party_id, ticket_id, user_id
 
@@ -86,7 +91,13 @@ def test_set_optout_creates_answer(monkeypatch, brings_own_chair):
     )
 
     assert session.commit_count == 1
-    assert len(session.added) == 1
+    assert 'ON CONFLICT (party_id, ticket_id) DO UPDATE' in str(
+        session.statement
+    )
+    assert (
+        session.statement.compile().params['brings_own_chair']
+        is brings_own_chair
+    )
     assert optout.party_id == party_id
     assert optout.ticket_id == ticket_id
     assert optout.user_id == user_id
@@ -106,7 +117,7 @@ def test_set_optout_changes_answer(monkeypatch, initial_value, new_value):
     )
 
     assert session.commit_count == 1
-    assert session.added == []
+    assert session.statement.compile().params['brings_own_chair'] is new_value
     assert optout.brings_own_chair is new_value
 
 
@@ -121,8 +132,8 @@ def test_set_optout_updates_user_after_reassignment(monkeypatch):
     )
 
     assert session.commit_count == 1
+    assert session.statement.compile().params['user_id'] == new_user_id
     assert optout.user_id == new_user_id
-    assert optout.brings_own_chair is False
 
 
 def test_set_optout_rejects_ineligible_ticket(monkeypatch):

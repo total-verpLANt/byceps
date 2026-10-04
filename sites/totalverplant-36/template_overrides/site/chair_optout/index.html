@@ -1,0 +1,100 @@
+{% extends 'layout/base.html' %}
+{% from 'macros/forms.html' import form_field_radio, form_form_errors %}
+{% from 'macros/icons.html' import render_icon %}
+{% set current_page = 'chair_optout' %}
+{% set page_title = _('Chair information') %}
+
+{% block head %}
+<style>
+  .chair-page .chair-ticket-card{
+    max-width:800px;margin:0 auto 20px;border:1.5px solid var(--ink);
+    background:var(--paperLite);box-shadow:5px 5px 0 var(--ink);
+    padding:clamp(18px,3vw,30px);scroll-margin-top:120px;
+  }
+  .chair-page .chair-ticket-head{
+    display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px 24px;
+    border-bottom:3px double var(--ink);padding-bottom:12px;margin-bottom:16px;
+  }
+  .chair-page .chair-ticket-head h2{
+    font-family:var(--display);font-size:clamp(24px,3vw,32px);font-style:italic;
+    color:var(--ink);margin:0;
+  }
+  .chair-page .chair-ticket-code{
+    font-family:var(--mono);font-size:13px;font-style:normal;letter-spacing:.1em;
+    color:var(--redDeep);white-space:nowrap;
+  }
+  .chair-page .chair-seat{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--inkSoft);}
+  .chair-page .chair-state{font-family:var(--body);font-size:18px;color:var(--ink);margin:0 0 18px;}
+  .chair-page .chair-state strong{font-weight:700;}
+  .chair-page .form-label{
+    display:block;font-family:var(--mono);font-size:10px;font-weight:700;
+    letter-spacing:.16em;text-transform:uppercase;color:var(--redDeep);margin-bottom:10px;
+  }
+  .chair-page .form-control-radios li + li{margin-top:8px;}
+  .chair-page .form-control-radios li{
+    display:flex;align-items:center;gap:12px;padding:12px 14px;
+    border:1.5px solid var(--inkSoft);background:var(--paper);
+    color:var(--ink);font-family:var(--body);font-size:18px;line-height:1.45;
+  }
+  .chair-page .form-control-radios label{flex:1;cursor:pointer;}
+  .chair-page .form-control-radios input[type="radio"]{
+    appearance:none;-webkit-appearance:none;flex:0 0 auto;width:21px;height:21px;margin:1px 0 0;
+    border:1.5px solid var(--ink);border-radius:0;background:var(--paper);cursor:pointer;
+    display:grid;place-content:center;
+  }
+  .chair-page .form-control-radios input[type="radio"]::after{
+    content:'✓';font-family:var(--mono);font-size:14px;line-height:1;color:var(--paper);
+    transform:scale(0);transition:transform .12s ease;
+  }
+  .chair-page .form-control-radios input[type="radio"]:checked{background:var(--green);border-color:transparent;}
+  .chair-page .form-control-radios input[type="radio"]:checked::after{transform:scale(1);}
+  .chair-page .form-control-radios input[type="radio"]:focus-visible{outline:2px solid var(--redDeep);outline-offset:2px;}
+  .chair-page .form-control-radios li:has(input:checked){border-color:var(--redDeep);box-shadow:inset 4px 0 0 var(--redDeep);}
+  .chair-page .chair-actions{margin-top:20px;}
+  .chair-page .chair-submit{
+    display:inline-flex;align-items:center;justify-content:center;gap:9px;
+    min-height:46px;padding:11px 22px;border:1.5px solid var(--ink);border-radius:0;
+    background:var(--ink);color:var(--paper);box-shadow:3px 3px 0 var(--redDeep);
+    font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;
+  }
+  .chair-page .chair-submit:hover{background:var(--redDeep);color:var(--paper);box-shadow:5px 5px 0 var(--ink);}
+  .chair-page .chair-submit:focus-visible{outline:3px solid var(--redDeep);outline-offset:4px;}
+  @media (max-width:520px){.chair-page .chair-submit{width:100%;}}
+</style>
+{%- endblock %}
+
+{% block body %}
+<div class="bote-page chair-page">
+  <div class="page-folio">
+    <span class="pf-ressort">{{ _('Chair information') }}</span>
+    <span>{{ _('Ticket') }} · {{ g.party.title }}</span>
+  </div>
+  <header class="page-head">
+    <h1 class="ph-title">{{ _('Chair information') }}</h1>
+  </header>
+
+  {%- for item in ticket_information|sort(attribute='ticket.code') %}
+  <section class="chair-ticket-card" id="ticket-{{ item.ticket.id }}">
+    <div class="chair-ticket-head">
+      <h2>{{ _('Ticket') }} <span class="chair-ticket-code">{{ item.ticket.code }}</span></h2>
+      <span class="chair-seat">
+        {%- if item.ticket.occupied_seat %}{{ _('Seat') }} {{ item.seat_label|fallback(_('unnamed')) }}
+        {%- else %}{{ _('no seat') }}{% endif -%}
+      </span>
+    </div>
+    <p class="chair-state"><strong>{{ _('Chair information') }}:</strong>
+      {%- if item.brings_own_chair is sameas true %} {{ _('Brings own chair') }}
+      {%- elif item.brings_own_chair is sameas false %} {{ _('Needs a provided chair') }}
+      {%- else %} {{ _('Not specified yet') }}{% endif %}
+    </p>
+    <form action="{{ url_for('.update', ticket_id=item.ticket.id) }}" method="post">
+      {{ form_form_errors(item.form) }}
+      {{ form_field_radio(item.form.choice) }}
+      <div class="chair-actions">
+        <button class="button chair-submit" type="submit">{{ render_icon('save') }} <span>{{ _('Save') }}</span></button>
+      </div>
+    </form>
+  </section>
+  {%- endfor %}
+</div>
+{% endblock %}

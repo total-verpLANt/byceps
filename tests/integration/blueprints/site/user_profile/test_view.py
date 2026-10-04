@@ -6,7 +6,9 @@
 from flask_babel import force_locale, gettext
 
 from byceps.services.chair_optout import chair_optout_service
+from byceps.services.site.models import SiteID
 from byceps.services.ticketing import ticket_creation_service
+from byceps.util.templating import create_site_template_loader
 
 from tests.helpers import generate_token, http_client, log_in_user
 
@@ -91,6 +93,52 @@ def test_other_profile_does_not_show_chair_edit_action(
     assert translate(site_app, 'Make selection') not in text
     assert translate(site_app, 'Change selection') not in text
     assert '/chair_optout/' not in text
+
+
+def test_gv36_theme_shows_chair_action_only_on_own_profile(
+    make_site_app, site, party, make_user, make_ticket_category
+):
+    app = make_site_app('www.acmecon.test', site.id)
+    app.jinja_loader = create_site_template_loader(SiteID('totalverplant-36'))
+
+    with app.app_context():
+        participant = make_user(generate_token())
+        visitor = make_user(generate_token())
+        category = make_ticket_category(party.id, generate_token())
+        ticket = ticket_creation_service.create_ticket(
+            category, participant, user=participant
+        )
+        log_in_user(participant.id)
+        log_in_user(visitor.id)
+
+        own_response = request_profile(
+            app, participant.id, current_user_id=participant.id
+        )
+        chair_optout_service.set_optout(
+            party.id, ticket.id, participant.id, True
+        )
+        answered_response = request_profile(
+            app, participant.id, current_user_id=participant.id
+        )
+        other_response = request_profile(
+            app, participant.id, current_user_id=visitor.id
+        )
+
+    own_html = own_response.get_data(as_text=True)
+    answered_html = answered_response.get_data(as_text=True)
+    other_html = other_response.get_data(as_text=True)
+    assert own_response.status_code == 200
+    assert 'class="chair-callout"' not in own_html
+    assert ticket.code in own_html
+    assert f'/chair_optout/#ticket-{ticket.id}' in own_html
+    assert 'class="btn-news chair-action"' in own_html
+    assert translate(app, 'Not specified yet') in own_html
+    assert answered_response.status_code == 200
+    assert 'class="chair-callout"' not in answered_html
+    assert translate(app, 'Brings own chair') in answered_html
+    assert other_response.status_code == 200
+    assert 'class="chair-callout"' not in other_html
+    assert '/chair_optout/' not in other_html
 
 
 # helpers

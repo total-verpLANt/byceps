@@ -117,9 +117,20 @@ def export_as_csv(party_id):
         for entry in report_entries
     ]
 
-    rows = [header_row] + data_rows
+    rows = [
+        tuple(_escape_csv_cell(value) for value in row)
+        for row in [header_row, *data_rows]
+    ]
 
     return serialize_tuples_to_csv(rows)
+
+
+def _escape_csv_cell(value: str) -> str:
+    return (
+        "'" + value
+        if value.startswith(('=', '+', '-', '@', '\t', '\r'))
+        else value
+    )
 
 
 def _get_status_label(brings_own_chair: bool | None) -> str:

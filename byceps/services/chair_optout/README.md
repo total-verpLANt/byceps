@@ -39,6 +39,11 @@ ticket. The row stores the participant ID that supplied the current answer.
 Reads treat a row as valid only while its `user_id` matches the ticket's current
 `used_by_id`.
 
+Before deploying the code that reads chair answers, apply
+`migrations/001_create_party_ticket_chair_optouts.sql` to the site database.
+Use `migrations/rollback_001.sql` only to undo that migration (it removes all
+stored chair answers).
+
 The three states are:
 
 - no valid row for the current participant: not specified yet;

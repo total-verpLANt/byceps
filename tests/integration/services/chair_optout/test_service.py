@@ -4,7 +4,11 @@
 
 import pytest
 
+from sqlalchemy import func, select
+
+from byceps.database import db
 from byceps.services.chair_optout import chair_optout_service
+from byceps.services.chair_optout.dbmodels import DbPartyTicketChairOptout
 from byceps.services.seating import seat_service, seating_area_service
 from byceps.services.ticketing import (
     ticket_creation_service,
@@ -30,6 +34,55 @@ def test_answer_without_seat_is_reported(
     entry = next(entry for entry in entries if entry.ticket_id == ticket.id)
     assert entry.has_seat is False
     assert entry.brings_own_chair is False
+
+
+def test_repeated_save_updates_same_row(
+    admin_app, party, user, make_ticket_category
+):
+    category = make_ticket_category(party.id, generate_token())
+    ticket = ticket_creation_service.create_ticket(category, user, user=user)
+
+    first = chair_optout_service.set_optout(party.id, ticket.id, user.id, True)
+    second = chair_optout_service.set_optout(
+        party.id, ticket.id, user.id, False
+    )
+
+    assert first.id == second.id
+    assert second.brings_own_chair is False
+    assert (
+        db.session.scalar(
+            select(func.count())
+            .select_from(DbPartyTicketChairOptout)
+            .filter_by(party_id=party.id, ticket_id=ticket.id)
+        )
+        == 1
+    )
+
+
+def test_unanswered_ticket_prompt_clears_after_answer(
+    admin_app, party, make_user, make_ticket_category
+):
+    participant = make_user(generate_token())
+    category = make_ticket_category(party.id, generate_token())
+    ticket = ticket_creation_service.create_ticket(
+        category, participant, user=participant
+    )
+
+    assert (
+        chair_optout_service.find_first_unanswered_ticket_id_for_user(
+            party.id, participant.id
+        )
+        == ticket.id
+    )
+
+    chair_optout_service.set_optout(party.id, ticket.id, participant.id, False)
+
+    assert (
+        chair_optout_service.find_first_unanswered_ticket_id_for_user(
+            party.id, participant.id
+        )
+        is None
+    )
 
 
 def test_seat_change_preserves_answer(

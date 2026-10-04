@@ -61,6 +61,32 @@
   .seating-page .seat-controls form .button:hover{transform:none;box-shadow:none;}
   .seating-page .button-row{display:flex;gap:12px;}
   .seating-page .button .icon{width:1em;height:1em;}
+  .seating-page .chair-information-link{
+    display:inline-flex;align-items:center;gap:9px;min-height:42px;padding:10px 16px;
+    border:1.5px solid var(--ink);border-radius:0;background:var(--ink);color:var(--paper);
+    font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+    text-decoration:none;box-shadow:3px 3px 0 var(--redDeep);
+  }
+  .seating-page .chair-information-link:hover{background:var(--paperLite);color:var(--ink);box-shadow:5px 5px 0 var(--ink);}
+  .seating-page .chair-information-link:focus-visible{outline:3px solid var(--redDeep);outline-offset:3px;}
+  .seating-page .chair-prompt{
+    display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px 24px;
+    margin:18px 0;padding:18px 20px;border:2px dashed var(--redDeep);
+    background:repeating-linear-gradient(135deg,transparent 0 11px,var(--stripe) 11px 12px),var(--paperLite);
+    box-shadow:5px 5px 0 var(--ink);
+  }
+  .seating-page .chair-prompt-kicker{
+    font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--redDeep);
+  }
+  .seating-page .chair-prompt-head{
+    flex:1 1 100%;margin:0;font-family:var(--display);font-size:clamp(20px,2.5vw,27px);
+    font-style:italic;line-height:1.1;color:var(--ink);
+  }
+  .seating-page .chair-prompt .chair-information-link{
+    background:var(--redDeep);color:var(--paper);border-color:var(--redDeep);box-shadow:3px 3px 0 var(--ink);
+  }
+  .seating-page .chair-prompt .chair-information-link:hover{background:var(--ink);color:var(--paper);}
 
   /* the plan, pinned like a hall map — the .area inside is untouched */
   .seating-page .seatplan-frame{
@@ -229,6 +255,7 @@
   </div>
 
   {%- if g.user.authenticated and seat_management_enabled and manage_mode %}
+    {%- set chair_pending_ticket_id = find_first_unanswered_chair_ticket_id() %}
 {% include 'site/seating/_ticket_selector.html' %}
   {%- endif %}
 

@@ -10,6 +10,7 @@ from flask_babel import gettext
 
 from byceps.services.chair_optout import chair_optout_service
 from byceps.services.ticketing import ticket_service
+from byceps.services.ticketing.models.ticket import TicketID
 from byceps.util.framework.blueprint import create_blueprint
 from byceps.util.framework.flash import flash_success
 from byceps.util.framework.templating import templated
@@ -19,6 +20,16 @@ from .forms import ChairInformationForm
 
 
 blueprint = create_blueprint('chair_optout', __name__)
+
+
+@blueprint.app_template_global()
+def find_first_unanswered_chair_ticket_id() -> TicketID | None:
+    if g.party is None or not g.user.authenticated:
+        return None
+
+    return chair_optout_service.find_first_unanswered_ticket_id_for_user(
+        g.party.id, g.user.id
+    )
 
 
 @blueprint.get('/')
