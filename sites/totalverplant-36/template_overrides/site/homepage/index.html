@@ -618,7 +618,8 @@ Heizdecke gibt es vor Ort.</pre>
       {'name': 'Freundeskreis Zwiesel', 'base': 'Freundeskreis_Zwiesel', 'href': 'https://freundeskreis-zwiesel.de/', 'line': 'Kristallklare Unterstützung aus dem Bayerischen Wald.'},
       {'name': 'HiScore',               'base': 'hiscore',               'href': 'https://hi-score.org/',            'line': 'Die Location für Arcade und Gaming Events.'},
       {'name': 'Inter-Tech',            'base': 'Inter-tech',            'href': 'https://www.inter-tech.de/',       'line': 'PC-Komponenten und Cases mit Charakter.'},
-      {'name': 'Senchii',               'base': 'senchii',               'href': 'https://senchii.de/',              'line': 'Gaming-Mauspads und Custom-Gear.'},
+      {'name': 'Landbäckerei zur Horst', 'base': 'horst',                 'href': 'https://torbenzurhorst.de/',       'line': 'Frische Brötchen für lange LAN-Nächte.', 'framed': true},
+      {'name': 'Senchii',               'base': 'senchii',               'href': 'https://senchii.de/',              'line': 'Gaming-Drinks für neue Energie und die nächste Runde.'},
       {'name': 'Thermal Grizzly',       'base': 'thermalgrizzly',        'href': 'https://www.thermal-grizzly.com/', 'line': 'Wärmeleitpasten von Roman „der8auer“ Hartung.'},
       {'name': 'Virtual Lounge',        'base': 'virtualounge',          'href': 'https://virtual-lounge.de/',       'line': 'VR- und Eventerlebnisse in Bremen.'},
       {'name': 'Volt Cola',             'base': 'voltcola',              'href': 'https://voltcola.de/',             'line': 'Brennstoff für lange LAN-Nächte.'},
@@ -628,8 +629,8 @@ Heizdecke gibt es vor Ort.</pre>
 
     <div class="sponsor-grid">
       {%- for s in sponsors %}
-      {%- set tag = 'div' if s.get('fake') else 'a' %}
-      <{{ tag }} class="sponsor-card{{ ' is-fake' if s.get('fake') }}"{% if not s.get('fake') %} href="{{ s.href }}" target="_blank" rel="noopener"{% endif %}>
+      {%- set tag = 'a' if s.get('href') and not s.get('fake') else 'div' %}
+      <{{ tag }} class="sponsor-card{{ ' is-fake' if s.get('fake') }}"{% if tag == 'a' %} href="{{ s.href }}" target="_blank" rel="noopener"{% endif %}>
         <div class="sc-kicker"><span>· Sponsorenanzeige ·</span><span class="sc-no">Nr. {{ '%02d'|format(loop.index) }}</span></div>
         {%- if s.get('fake') %}
         <div class="klischee is-empty">

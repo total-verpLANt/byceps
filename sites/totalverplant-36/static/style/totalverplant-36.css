@@ -862,8 +862,8 @@
     mix-blend-mode: multiply; opacity: 1;
   }
   /* press-proof: bloom to the real brand colour on hover */
-  a.sponsor-card:hover .klischee img { filter: none; opacity: 1; }
-  a.sponsor-card:hover .klischee.is-framed img { mix-blend-mode: normal; }
+  .sponsor-card:hover .klischee img { filter: none; opacity: 1; }
+  .sponsor-card:hover .klischee.is-framed img { mix-blend-mode: normal; }
   /* registration crop marks in the plate corners */
   .klischee::before, .klischee::after {
     content: ""; position: absolute; width: 7px; height: 7px;

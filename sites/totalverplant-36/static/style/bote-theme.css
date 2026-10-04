@@ -69,8 +69,8 @@ html[data-theme="dark"] .halftone .cap { background: rgba(20, 17, 13, 0.88); }
    Hover still blooms to the real brand colour (filter:none / normal blend). */
 html[data-theme="dark"] .klischee img            { filter: brightness(0) invert(1); opacity: 0.88; }
 html[data-theme="dark"] .klischee.is-framed img  { filter: grayscale(1) invert(1) contrast(1.18); mix-blend-mode: screen; opacity: 1; }
-html[data-theme="dark"] a.sponsor-card:hover .klischee img           { filter: none; opacity: 1; }
-html[data-theme="dark"] a.sponsor-card:hover .klischee.is-framed img { mix-blend-mode: normal; }
+html[data-theme="dark"] .sponsor-card:hover .klischee img           { filter: none; opacity: 1; }
+html[data-theme="dark"] .sponsor-card:hover .klischee.is-framed img { mix-blend-mode: normal; }
 html[data-theme="dark"] .mobile-cta    { box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.55); }
 
 /* ---------- Logged-in account dropdown (header override) ----------
