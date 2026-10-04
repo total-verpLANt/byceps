@@ -1,5 +1,7 @@
 from unittest.mock import patch
 
+from flask_babel import force_locale
+
 from byceps.services.more.blueprints.admin.item_service import MoreItem
 
 
@@ -38,7 +40,7 @@ class _FakeParty:
         self.id = 'test-party-2025'
 
 
-def test_patched_function_replaces_old_tourney_entry():
+def test_patched_function_replaces_old_tourney_entry(app):
     from byceps.services.lan_tournament.blueprints.admin.views import (
         _get_party_items_with_lan_tournaments,
     )
@@ -46,6 +48,8 @@ def test_patched_function_replaces_old_tourney_entry():
     party = _FakeParty()
 
     with (
+        app.app_context(),
+        force_locale('en'),
         patch(
             'byceps.services.lan_tournament.blueprints.admin.views'
             '._original_get_party_items',
@@ -65,11 +69,11 @@ def test_patched_function_replaces_old_tourney_entry():
         i for i in items if i.required_permission == 'lan_tournament.view'
     ]
     assert len(lan_tournament) == 1
-    assert 'LAN Tournaments' in lan_tournament[0].label
+    assert lan_tournament[0].label == 'LAN Tournaments'
     assert lan_tournament[0].icon == 'trophy'
 
 
-def test_patched_function_preserves_other_items():
+def test_patched_function_preserves_other_items(app):
     from byceps.services.lan_tournament.blueprints.admin.views import (
         _get_party_items_with_lan_tournaments,
     )
@@ -77,6 +81,8 @@ def test_patched_function_preserves_other_items():
     party = _FakeParty()
 
     with (
+        app.app_context(),
+        force_locale('en'),
         patch(
             'byceps.services.lan_tournament.blueprints.admin.views'
             '._original_get_party_items',

@@ -93,6 +93,19 @@
     font-family:var(--mono);font-size:8.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
     color:var(--paper);background:var(--redDeep);padding:2px 7px;white-space:nowrap;
   }
+  .profile-page .chair-info{margin-top:20px;padding-top:18px;border-top:1px dashed var(--inkSoft);}
+  .profile-page .chair-entry{
+    display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;
+    border:1.5px solid var(--ink);background:var(--paperLite);padding:14px 16px;
+    box-shadow:3px 3px 0 var(--ink);
+  }
+  .profile-page .chair-entry + .chair-entry{margin-top:12px;}
+  .profile-page .chair-entry-copy{display:flex;flex-direction:column;gap:5px;min-width:0;}
+  .profile-page .chair-ticket{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--inkSoft);}
+  .profile-page .chair-state{font-family:var(--body);font-size:18px;font-style:italic;color:var(--ink);}
+  .profile-page .chair-state.is-pending{color:var(--redDeep);}
+  .profile-page .chair-action{font-size:10px;padding:9px 12px;white-space:normal;}
+  .profile-page .chair-action:focus-visible{outline:3px solid var(--redDeep);outline-offset:3px;}
 
   /* --- badges --- */
   .profile-page .badges-block,
@@ -196,6 +209,9 @@
           {%- endfor %}
         </tbody>
       </table>
+      {%- if g.user.authenticated and g.user.id == user.id %}
+{% include 'site/user_profile/_chair_information.html' %}
+      {%- endif %}
     </div>
     {%- endif %}
 

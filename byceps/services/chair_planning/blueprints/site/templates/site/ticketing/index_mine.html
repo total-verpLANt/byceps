@@ -1,0 +1,238 @@
+{% extends 'layout/base.html' %}
+{% from 'macros/icons.html' import render_icon %}
+{% from 'macros/misc.html' import render_notification, render_tag %}
+{% from 'macros/seating.html' import render_seat_link %}
+{% from 'macros/user.html' import render_user_avatar, render_user_avatar_and_link, render_user_link %}
+{% set current_page = 'ticket' %}
+{% set page_title = _('Tickets') %}
+
+{% block body %}
+
+  <h1 class="title">{{ render_icon('ticket') }} {{ page_title }}</h1>
+
+{{ render_snippet('ticketing_intro', ignore_if_unknown=True)|safe }}
+
+  {%- if not current_user_uses_any_ticket %}
+{{ render_notification(_('You currently do not use a ticket.'), category='warning', icon='warning') }}
+  {%- endif %}
+
+  {%- if tickets %}
+  <div class="block">{{ _('These are the tickets for party <strong>%(party_title)s</strong> relevant to (i.e. owned, managed, and/or used by) you.', party_title=party_title) }}</div>
+  <div class="main-body-box">
+{{ render_tickets(tickets) }}
+  </div>
+  {%- else %}
+  <p>{{ _('You do not own, manage, or use any tickets for party <strong>%(party_title)s</strong>.', party_title=party_title) }}</p>
+  {%- endif %}
+
+{%- endblock %}
+
+{% block scripts %}
+    <script>
+      onDomReady(() => {
+        confirmed_delete_on_click_then_reload('[data-action="withdraw-user"]', '{{ _('Use this ticket yourself?') }}');
+        confirmed_delete_on_click_then_reload('[data-action="withdraw-user-manager"]', '{{ _('Take back user management?') }}');
+        confirmed_delete_on_click_then_reload('[data-action="withdraw-seat-manager"]', '{{ _('Take back seat management?') }}');
+        post_on_click_then_reload('[data-action="set-chair-source"]');
+      });
+    </script>
+{% endblock %}
+
+
+{% macro render_tickets(tickets) -%}
+  <ol class="ticket-grid">
+    {%- for ticket in tickets|sort(attribute='created_at') %}
+      {%- with seat_manager = ticket.get_seat_manager(),
+               user_manager = ticket.get_user_manager()
+       %}
+    <li id="ticket-{{ ticket.id }}">
+      <div class="ticket-card{% if ticket.used_by_id == g.user.id %} ticket-used-by-me{% endif %}">
+
+        {# icon, code #}
+        <div class="ticket-card-cell">
+
+          <div class="ticket-card-cell-block">
+            <div class="ticket-icon">{{ render_icon('ticket') }}</div>
+          </div>
+
+          <div class="ticket-card-cell-block">
+            <div class="row row--space-between">
+              <div>
+                <div class="data-label">{{ _('Code') }}</div>
+              </div>
+              <div>
+                {%- if ticket.user_checked_in %}
+                {{ render_tag(_('checked in')) }}
+                {%- else %}
+                <a class="button button--outline is-compact" href="{{ url_for('.view_printable_html', ticket_id=ticket.id) }}">{{ render_icon('print') }}</a>
+                {%- endif %}
+              </div>
+            </div>
+            <div class="data-value"><span class="ticket-code">{{ ticket.code }}</span></div>
+          </div>
+
+        </div>
+        {# /icon, code #}
+
+        {# category, order, owner #}
+        <div class="ticket-card-cell">
+
+          <div class="ticket-card-cell-block">
+            <div class="data-label">{{ _('Category') }}</div>
+            <div class="data-value">{{ ticket.category.title }}</div>
+          </div>
+
+          {%- if ticket.owned_by_id == g.user.id %}
+          <div class="ticket-card-cell-block">
+            <div class="data-label">{{ _('Order') }}</div>
+            <div class="data-value"><a href="{{ url_for('shop_orders.view', order_id=order_ids_by_order_number[ticket.order_number]) }}">{{ ticket.order_number }}</a></div>
+          </div>
+          {%- endif %}
+
+          <div class="ticket-card-cell-block">
+            <div class="data-label">{{ _('Buyer') }}</div>
+            <div class="data-value">{{ render_user_avatar_and_link(ticket.owned_by, size=16) }}</div>
+          </div>
+
+        </div>
+        {# /category, owner #}
+
+        {# user #}
+        <div class="ticket-card-cell">
+
+          <div class="ticket-card-cell-block">
+            <div class="row row--space-between">
+              <div>
+                <div class="data-label">{{ pgettext('ticket', 'User') }}</div>
+              </div>
+              {%- if ticket_management_enabled and (user_manager.id == g.user.id) and not ticket.user_checked_in %}
+              <div>
+                <div class="dropdown">
+                  <button class="dropdown-toggle button button--outline is-compact">{{ render_icon('chevron-down') -}}</button>
+                  <ol class="dropdown-menu dropdown-menu--right">
+                    <li><a class="dropdown-item" href="{{ url_for('.appoint_user_form', ticket_id=ticket.id) }}">{{ render_icon('arrow-right') }} {{ _('Appoint user') }}</a></li>
+                    {%- if ticket.used_by_id != g.user.id %}
+                      <li><a class="dropdown-item" href="{{ url_for('.withdraw_user', ticket_id=ticket.id, _method='DELETE') }}" data-action="withdraw-user">{{ render_icon('arrow-left') }} {{ _('Use yourself') }}</a></li>
+                    {%- endif %}
+                  </ol>
+                </div>
+              </div>
+              {%- endif %}
+            </div>
+
+            <div class="ticket-user">
+              {%- if ticket.used_by %}
+              <div>{{ render_user_avatar(ticket.used_by, size=48) }}</div>
+              {{ render_user_link(ticket.used_by) }}
+              {%- else %}
+              <div><div class="ticket-user-placeholder"></div></div>
+              {{ render_tag(_('available'), class='color-info') }}
+              {%- endif %}
+            </div>
+          </div>
+
+          <div class="ticket-card-cell-block">
+            <div class="row row--space-between">
+              <div>
+                <div class="data-label">{{ _('Manager') }}</div>
+              </div>
+              {%- if ticket_management_enabled and (ticket.owned_by_id == g.user.id) and not ticket.user_checked_in %}
+              <div>
+                <div class="dropdown">
+                  <button class="dropdown-toggle button button--outline is-compact">{{ render_icon('chevron-down') -}}</button>
+                  <ol class="dropdown-menu dropdown-menu--right">
+                    <li><a class="dropdown-item" href="{{ url_for('.appoint_user_manager_form', ticket_id=ticket.id) }}">{{ render_icon('arrow-right') }} {{ _('Transfer user management') }}</a></li>
+                    {%- if user_manager.id != g.user.id %}
+                    <li><a class="dropdown-item" href="{{ url_for('.withdraw_user_manager', ticket_id=ticket.id, _method='DELETE') }}" data-action="withdraw-user-manager">{{ render_icon('arrow-left') }} {{ _('Take back user management') }}</a></li>
+                    {%- endif %}
+                  </ol>
+                </div>
+              </div>
+              {%- endif %}
+            </div>
+            <div class="data-value">{{ render_user_avatar_and_link(user_manager, size=16) }}</div>
+          </div>
+
+        </div>
+        {# /user #}
+
+        {# seat #}
+        <div class="ticket-card-cell">
+
+          <div class="ticket-card-cell-block">
+            <div class="data-label">{{ _('Seat') }}</div>
+            <div class="data-value">
+              {%- if ticket.occupied_seat -%}
+              {{ render_seat_link(ticket.occupied_seat) }}
+              {%- else -%}
+              {{ render_tag(_('no seat'), class='color-info') }}
+              {%- endif -%}
+            </div>
+          </div>
+
+          <div class="ticket-card-cell-block">
+            <div class="row row--space-between">
+              <div>
+                <div class="data-label">{{ _('Manager') }}</div>
+              </div>
+              {%- if ticket_management_enabled and (ticket.owned_by_id == g.user.id) %}
+              <div>
+                <div class="dropdown">
+                  <button class="dropdown-toggle button button--outline is-compact">{{ render_icon('chevron-down') -}}</button>
+                  <ol class="dropdown-menu dropdown-menu--right">
+                    <li><a class="dropdown-item" href="{{ url_for('.appoint_seat_manager_form', ticket_id=ticket.id) }}">{{ render_icon('arrow-right') }} {{ _('Transfer seat management') }}</a></li>
+                    {%- if seat_manager.id != g.user.id %}
+                    <li><a class="dropdown-item" href="{{ url_for('.withdraw_seat_manager', ticket_id=ticket.id, _method='DELETE') }}" data-action="withdraw-seat-manager">{{ render_icon('arrow-left') }} {{ _('Take back seat management') }}</a></li>
+                    {%- endif %}
+                  </ol>
+                </div>
+              </div>
+              {%- endif %}
+            </div>
+            <div class="data-value">{{ render_user_avatar_and_link(seat_manager, size=16) }}</div>
+          </div>
+
+          <div class="ticket-card-cell-block">
+            <div class="row row--space-between">
+              <div>
+                <div class="data-label">{{ _('Chair') }}</div>
+              </div>
+              {%- if ticket_management_enabled and can_edit_chair_information(ticket) %}
+              <div>
+                <div class="dropdown">
+                  <button class="dropdown-toggle button button--outline is-compact">{{ render_icon('chevron-down') -}}</button>
+                  <ol class="dropdown-menu dropdown-menu--right">
+                    <li><a class="dropdown-item" href="{{ url_for('ticketing.set_chair_source', ticket_id=ticket.id, chair_source='venue') }}" data-action="set-chair-source">{{ _('venue-provided') }}</a></li>
+                    {%- if is_chair_rental_selection_enabled(ticket.party_id) %}
+                    <li><a class="dropdown-item" href="{{ url_for('ticketing.set_chair_source', ticket_id=ticket.id, chair_source='rental') }}" data-action="set-chair-source">{{ _('rented') }}</a></li>
+                    {%- endif %}
+                    <li><a class="dropdown-item" href="{{ url_for('ticketing.set_chair_source', ticket_id=ticket.id, chair_source='user') }}" data-action="set-chair-source">{{ _('user-provided') }}</a></li>
+                    <li class="dropdown-divider"></li>
+                    <li><a class="dropdown-item" href="{{ url_for('ticketing.set_chair_source', ticket_id=ticket.id, chair_source='unknown') }}" data-action="set-chair-source">{{ _('unknown') }}</a></li>
+                  </ol>
+                </div>
+              </div>
+              {%- endif %}
+            </div>
+            <div class="data-value">
+            {%- if ticket.chair_source.name == 'rental' -%}
+              {{ _('rented') }}
+            {%- elif ticket.chair_source.name == 'user' -%}
+              {{ _('user-provided') }}
+            {%- elif ticket.chair_source.name == 'venue' -%}
+              {{ _('venue-provided') }}
+            {%- else -%}
+              {{ _('unknown')|dim }}
+            {%- endif -%}
+            </div>
+          </div>
+
+        </div>
+        {# /seat #}
+
+      </div>
+    </li>
+      {%- endwith %}
+    {%- endfor %}
+  </ol>
+{%- endmacro %}
