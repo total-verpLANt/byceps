@@ -22,7 +22,7 @@ def test_view_party(more_admin_client, party):
     url = f'{BASE_URL}/more/parties/{party.id}'
     response = more_admin_client.get(url)
     assert response.status_code == 200
-    assert f'/chair_optout/for_party/{party.id}' in response.get_data(
+    assert f'/chair_planning/for_party/{party.id}' in response.get_data(
         as_text=True
     )
 

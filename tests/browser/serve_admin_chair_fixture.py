@@ -23,7 +23,7 @@ from byceps.database import db
 from byceps.services.authz import authz_service
 from byceps.services.authz.models import PermissionID, RoleID
 from byceps.services.brand import brand_service
-from byceps.services.chair_optout import chair_setting_service
+from byceps.services.chair_planning import chair_setting_service
 from byceps.services.party import party_setting_service
 from byceps.services.party.models import PartyID
 from byceps.services.seating import seat_service, seating_area_service

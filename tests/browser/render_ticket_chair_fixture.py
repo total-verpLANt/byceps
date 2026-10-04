@@ -1,7 +1,7 @@
 """Render real GV36 ticket markup for database-free browser regressions."""
 
-import json
 from datetime import datetime
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import UUID
@@ -10,7 +10,7 @@ from flask import Flask, g
 from flask_babel import Babel, gettext, ngettext, pgettext
 from jinja2 import ChoiceLoader, DictLoader, FileSystemLoader
 
-from byceps.services.chair_optout.blueprints.site import views as chair_views
+from byceps.services.chair_planning.blueprints.site import views as chair_views
 from byceps.services.ticketing.blueprints.site import views as ticketing_views
 from byceps.services.ticketing.models.ticket import ChairSource
 from byceps.util import templatefilters
@@ -49,7 +49,7 @@ def render_fixtures():
     )
     Babel(app, default_locale='de')
     app.register_blueprint(ticketing_views.blueprint, url_prefix='/tickets')
-    app.register_blueprint(chair_views.blueprint, url_prefix='/chair_optout')
+    app.register_blueprint(chair_views.blueprint, url_prefix='/chair_planning')
     app.add_url_rule('/users/<uuid:user_id>', endpoint='user_profile.view')
     app.jinja_loader = ChoiceLoader(
         [

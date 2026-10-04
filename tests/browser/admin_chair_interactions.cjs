@@ -7,7 +7,7 @@ const { chromium } = require('playwright');
 const fixturePath = process.argv[2];
 const fixture = JSON.parse(fs.readFileSync(fixturePath, 'utf8'));
 const output = path.dirname(fixturePath);
-const base = id => `${fixture.baseUrl}/chair_optout/for_party/${id}/chair_information`;
+const base = id => `${fixture.baseUrl}/chair_planning/for_party/${id}/chair_information`;
 const labels = fixture.labels;
 const confirmation = labels['Are you sure you want to enable this for the party?'];
 

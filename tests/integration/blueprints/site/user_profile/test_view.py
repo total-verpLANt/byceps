@@ -93,7 +93,7 @@ def test_other_profile_does_not_show_chair_edit_action(
     assert response.status_code == 200
     assert translate(site_app, 'Make selection') not in text
     assert translate(site_app, 'Change selection') not in text
-    assert '/chair_optout/' not in text
+    assert '/chair_planning/' not in text
 
 
 def test_gv36_theme_shows_chair_action_only_on_own_profile(

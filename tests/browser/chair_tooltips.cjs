@@ -1,5 +1,5 @@
 // Browser regression tests for the module-local chair plan tooltip.
-// Run from the repository root; see the chair_optout README for the container command.
+// Run from the repository root; see the chair_planning README for the container command.
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const { chromium } = require('playwright');
@@ -14,11 +14,11 @@ const { chromium } = require('playwright');
       + '<div class="seat-with-tooltip" style="left:40px;top:80px">'
       + '<div class="seat seat--occupied seat--own-chair"></div></div></div>');
     await page.addStyleTag({ path: path.resolve('byceps/static/style/seating.css') });
-    await page.addStyleTag({ path: path.resolve('byceps/services/chair_optout/blueprints/admin/static/style/chair_optout.css') });
+    await page.addStyleTag({ path: path.resolve('byceps/services/chair_planning/blueprints/admin/static/style/chair_planning.css') });
     assert.equal(await page.locator('.seat').evaluate(el => el.offsetWidth), 11);
     await page.addStyleTag({ path: path.resolve('sites/totalverplant-36/static/style/seating.css') });
     assert.equal(await page.locator('.seat').evaluate(el => el.offsetWidth), 26);
-    await page.addScriptTag({ path: path.resolve('byceps/services/chair_optout/blueprints/admin/static/behavior/chair_optout.js'), type: 'module' });
+    await page.addScriptTag({ path: path.resolve('byceps/services/chair_planning/blueprints/admin/static/behavior/chair_planning.js'), type: 'module' });
 
     // Flask integration tests cover rendering a None label as plain fallback
     // text. Here we cover the subsequent dataset -> tooltip DOM boundary.
