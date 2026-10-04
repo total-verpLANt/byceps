@@ -1,16 +1,16 @@
 {% extends 'layout/admin/base.html' %}
-{% from 'macros/admin/chair_optout.html' import render_chair_information_navigation %}
+{% from 'macros/admin/chair_optout.html' import render_chair_information_navigation, render_chair_information_filters with context %}
 {% set current_page = 'more_admin_party' %}
 {% set current_page_party = party %}
 {% set page_title = [_('Participant chair information'), party.title] %}
 
-{% macro render_area(area, seats, chair_information_by_ticket_id) -%}
+{% macro render_area(area, seats) -%}
   <div class="area" style="background-color: #111111; background-image: url(/data/parties/{{ area.party_id }}/seating/areas/{{ area.image_filename }}); height: {{ area.image_height }}px; width: {{ area.image_width }}px;">
     {%- for seat in seats|sort(attribute='coord_y')|sort(attribute='coord_x') %}
-      {%- set has_chair_information = seat.occupied and seat.occupied_by_ticket_id in chair_information_by_ticket_id %}
-      {%- set chair_information = chair_information_by_ticket_id.get(seat.occupied_by_ticket_id) %}
-      {%- set brings_own_chair = has_chair_information and chair_information is sameas true %}
-      <div id="seat-{{ seat.id }}" class="seat-with-tooltip" style="left: {{ seat.coord_x }}px; top: {{ seat.coord_y }}px;" data-seat-id="{{ seat.id }}" data-label="{{ seat.label|fallback(_('unnamed')) }}"
+      {%- set has_chair_information = seat.occupied and seat.occupied_by_ticket_id in chair_sources_by_ticket_id %}
+      {%- set chair_source = chair_sources_by_ticket_id.get(seat.occupied_by_ticket_id) %}
+      {%- set source_name = chair_source.name if chair_source else 'unknown' %}
+      <div id="seat-{{ seat.id }}" class="seat-with-tooltip" style="left: {{ seat.coord_x }}px; top: {{ seat.coord_y }}px;" data-seat-id="{{ seat.id }}" data-label="{{ seat.label or _('unnamed') }}"
         {%- if seat.occupied %}
         {{- ' ' }}data-ticket-id="{{ seat.occupied_by_ticket_id }}"
           {%- if seat.occupied_by_user %}
@@ -20,16 +20,10 @@
           {%- endif %}
         {%- endif %}
         {%- if has_chair_information %}
-          {%- if chair_information is sameas true %}
-        {{- ' ' }}data-tooltip-note="{{ _('Brings own chair') }}"
-          {%- elif chair_information is sameas false %}
-        {{- ' ' }}data-tooltip-note="{{ _('Needs a provided chair') }}"
-          {%- else %}
-        {{- ' ' }}data-tooltip-note="{{ _('Not specified yet') }}"
-          {%- endif %}
+        {{- ' ' }}data-chair-source="{{ source_name }}" data-tooltip-note="{{ _('Rental chair') if source_name == 'rental' else chair_source_label(chair_source) }}"
         {%- endif -%}
       >
-        <div class="seat{% if seat.type_ %} seat-type--{{ seat.type_ }}{% endif %}{% if seat.occupied %} seat--occupied{% endif %}{% if brings_own_chair %} seat--own-chair{% endif %}"{% if seat.rotation %} style="transform: rotate({{ seat.rotation }}deg);"{% endif %}></div>
+        <div class="seat{% if seat.type_ %} seat-type--{{ seat.type_ }}{% endif %}{% if seat.occupied %} seat--occupied{% endif %}{% if has_chair_information %}{% if source_name == 'user' %} seat--own-chair{% else %} seat--chair-{{ source_name }}{% endif %}{% endif %}{% if selected_filter != 'all' and seat.occupied_by_ticket_id not in matching_ticket_ids %} seat--filter-dimmed{% endif %}"{% if seat.rotation %} style="transform: rotate({{ seat.rotation }}deg);"{% endif %}></div>
       </div>
     {%- endfor %}
   </div>
@@ -51,24 +45,28 @@
     {{ render_chair_information_navigation(party, 'seating_plan', selected_filter) }}
   </div>
 
+  <div class="block">
+    {{ render_chair_information_filters(party, '.chair_information_seating_plan', selected_filter, show_rental_information, include_no_seat=false) }}
+  </div>
+
   {%- for area, seats in areas_with_seats|sort(attribute='0.title') %}
   <section class="block">
     <h2 class="title">{{ area.title }}</h2>
-    {{ render_area(area, seats, chair_information_by_ticket_id) }}
+    {{ render_area(area, seats) }}
   </section>
   {%- endfor %}
 
   <div class="block">
     <p class="chair-seats-legend"><span class="seat seat--occupied seat--own-chair" aria-hidden="true"></span> {{ _('Green outline and dot: Brings own chair') }}</p>
+    <p class="chair-seats-legend"><span class="seat seat--occupied seat--chair-venue" aria-hidden="true"></span> {{ _('Needs a provided chair') }}</p>
+    <p class="chair-seats-legend"><span class="seat seat--occupied seat--chair-unknown" aria-hidden="true"></span> {{ _('Not specified yet') }}</p>
+    {% if show_rental_information %}
+    <p class="chair-seats-legend"><span class="seat seat--occupied seat--chair-rental" aria-hidden="true"></span> {{ _('Rental chair') }}</p>
+    {% endif %}
   </div>
 
 {% endblock %}
 
 {% block scripts %}
-    <script src="{{ url_for('static', filename='behavior/seating.js') }}"></script>
-    <script>
-      onDomReady(() => {
-        init_seat_tooltips();
-      });
-    </script>
+    <script type="module" src="{{ url_for('.static', filename='behavior/chair_optout.js') }}"></script>
 {%- endblock %}

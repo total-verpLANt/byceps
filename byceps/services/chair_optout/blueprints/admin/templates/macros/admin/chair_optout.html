@@ -2,7 +2,24 @@
   <nav aria-label="{{ _('Participant chair information') }}">
     <ol class="tabs">
       <li><a class="tabs-tab{% if current_tab == 'participants' %} tabs-tab--current{% endif %}" href="{{ url_for('chair_optout_admin.chair_information', party_id=party.id, filter=selected_filter) }}">{{ _('Participant list') }}</a></li>
-      <li><a class="tabs-tab{% if current_tab == 'seating_plan' %} tabs-tab--current{% endif %}" href="{{ url_for('chair_optout_admin.chair_information_seating_plan', party_id=party.id, filter=selected_filter) }}">{{ _('Graphical seating plan') }}</a></li>
+      <li><a class="tabs-tab{% if current_tab == 'seating_plan' %} tabs-tab--current{% endif %}" href="{{ url_for('chair_optout_admin.chair_information_seating_plan', party_id=party.id, filter='all' if selected_filter == 'no_seat' else selected_filter) }}">{{ _('Graphical seating plan') }}</a></li>
+      <li><a class="tabs-tab{% if current_tab == 'rental_selection' %} tabs-tab--current{% endif %}" href="{{ url_for('chair_optout_admin.rental_selection', party_id=party.id, filter=selected_filter) }}">{{ _('Rental chair selection') }}</a></li>
     </ol>
   </nav>
+{%- endmacro %}
+
+{% macro render_chair_information_filters(party, endpoint, selected_filter, show_rental_information, include_no_seat=true) -%}
+  {% from 'macros/admin.html' import render_main_tabs %}
+  {% set navigation = Navigation()
+    .add_item(url_for(endpoint, party_id=party.id, filter='all'), _('All participants'), id='all')
+    .add_item(url_for(endpoint, party_id=party.id, filter='own_chair'), _('Brings own chair'), id='own_chair')
+    .add_item(url_for(endpoint, party_id=party.id, filter='provided_chair'), _('Needs a provided chair'), id='provided_chair') %}
+  {% if show_rental_information %}
+    {% set navigation = navigation.add_item(url_for(endpoint, party_id=party.id, filter='rented_chair'), _('Rental chair'), id='rented_chair') %}
+  {% endif %}
+  {% set navigation = navigation.add_item(url_for(endpoint, party_id=party.id, filter='not_specified'), _('Not specified yet'), id='not_specified') %}
+  {% if include_no_seat %}
+    {% set navigation = navigation.add_item(url_for(endpoint, party_id=party.id, filter='no_seat'), _('no seat'), id='no_seat') %}
+  {% endif %}
+  {{ render_main_tabs(navigation, selected_filter) }}
 {%- endmacro %}

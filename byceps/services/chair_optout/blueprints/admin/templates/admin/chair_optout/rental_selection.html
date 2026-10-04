@@ -1,0 +1,31 @@
+{% extends 'layout/admin/base.html' %}
+{% from 'macros/admin/chair_optout.html' import render_chair_information_navigation with context %}
+{% from 'macros/forms.html' import form_buttons, form_field %}
+{% set current_page = 'more_admin_party' %}
+{% set current_page_party = party %}
+{% set page_title = [_('Rental chair selection'), party.title] %}
+
+{% block body %}
+
+  <h1 class="title">{{ _('Participant chair information') }}</h1>
+
+  <div class="block">
+    {{ render_chair_information_navigation(party, 'rental_selection', selected_filter) }}
+  </div>
+
+  <div class="block box">
+    <p>{{ _('Rental chair selection') }}: <strong>{{ _('ON') if rental_selection_enabled else _('OFF') }}</strong></p>
+    <p>{{ _('Participants report an expected rented chair; this does not book or reserve a chair. Existing rental information remains visible when disabled.') }}</p>
+    {%- if g.user.has_permission('party.update') %}
+    <form action="{{ url_for('.update_rental_selection', party_id=party.id) }}" method="post" data-rental-selection-form data-enabled="{{ 'true' if rental_selection_enabled else 'false' }}" data-confirm-enable="{{ _('Are you sure you want to enable this for the party?') }}">
+      {{ form_field(rental_selection_form.enabled) }}
+      {{ form_buttons(_('Save')) }}
+    </form>
+    {%- endif %}
+  </div>
+
+{% endblock %}
+
+{% block scripts %}
+    <script type="module" src="{{ url_for('.static', filename='behavior/rental_selection.js') }}"></script>
+{%- endblock %}

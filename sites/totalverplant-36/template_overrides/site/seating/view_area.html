@@ -255,8 +255,12 @@
   </div>
 
   {%- if g.user.authenticated and seat_management_enabled and manage_mode %}
-    {%- set chair_pending_ticket_id = find_first_unanswered_chair_ticket_id() %}
 {% include 'site/seating/_ticket_selector.html' %}
+  {%- endif %}
+
+  {%- set chair_pending_ticket_id = find_first_unanswered_chair_ticket_id() %}
+  {%- if chair_pending_ticket_id %}
+{% include 'site/seating/_chair_reminder.html' %}
   {%- endif %}
 
   {# ===== the seat plan — render_area is left untouched ===== #}

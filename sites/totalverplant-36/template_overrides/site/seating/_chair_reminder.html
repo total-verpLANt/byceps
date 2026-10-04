@@ -1,0 +1,5 @@
+<div class="block chair-prompt">
+  <span class="chair-prompt-kicker">{{ _('Chair information') }}</span>
+  <p class="chair-prompt-head">{{ _('Not specified yet') }}</p>
+  <a class="button chair-information-link" href="{{ url_for('ticketing.index_mine', _anchor='ticket-' ~ chair_pending_ticket_id) }}">{{ render_icon('edit') }} <span>{{ _('Make selection') }}</span></a>
+</div>

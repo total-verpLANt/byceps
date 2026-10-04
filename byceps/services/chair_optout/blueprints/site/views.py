@@ -5,123 +5,95 @@ byceps.services.chair_optout.blueprints.site.views
 :License: Revised BSD (see `LICENSE` file for details)
 """
 
-from flask import abort, g, request
-from flask_babel import gettext
+from uuid import UUID
+
+from flask import g, request
 
 from byceps.services.chair_optout import chair_optout_service
+from byceps.services.chair_optout.chair_setting_service import (
+    is_rental_selection_enabled,
+)
+from byceps.services.chair_optout.presentation import get_chair_source_label
 from byceps.services.ticketing import ticket_service
 from byceps.services.ticketing.models.ticket import TicketID
 from byceps.util.framework.blueprint import create_blueprint
-from byceps.util.framework.flash import flash_success
-from byceps.util.framework.templating import templated
 from byceps.util.views import login_required, redirect_to
 
-from .forms import ChairInformationForm
+from .request_hooks import register_request_hooks
 
 
 blueprint = create_blueprint('chair_optout', __name__)
+register_request_hooks(blueprint)
+blueprint.add_app_template_global(get_chair_source_label, 'chair_source_label')
+blueprint.add_app_template_global(
+    is_rental_selection_enabled, 'is_chair_rental_selection_enabled'
+)
+
+
+@blueprint.app_template_global()
+def get_pending_chair_ticket_ids() -> list[TicketID]:
+    """Return the current user's editable, unanswered participant tickets."""
+    if (
+        not g.user.authenticated
+        or g.party is None
+        or not g.party.ticket_management_enabled
+    ):
+        return []
+
+    cache_key = 'byceps.pending_chair_ticket_ids'
+    if cache_key not in request.environ:
+        request.environ[cache_key] = (
+            chair_optout_service.get_pending_chair_ticket_ids_for_user(
+                g.party.id, g.user.id
+            )
+        )
+    return request.environ[cache_key]
 
 
 @blueprint.app_template_global()
 def find_first_unanswered_chair_ticket_id() -> TicketID | None:
-    if g.party is None or not g.user.authenticated:
-        return None
+    ticket_ids = get_pending_chair_ticket_ids()
+    return ticket_ids[0] if ticket_ids else None
 
-    return chair_optout_service.find_first_unanswered_ticket_id_for_user(
-        g.party.id, g.user.id
+
+@blueprint.app_template_global()
+def can_edit_chair_information(ticket) -> bool:
+    return (
+        g.user.authenticated
+        and g.party is not None
+        and g.party.ticket_management_enabled
+        and ticket is not None
+        and ticket.party_id == g.party.id
+        and (
+            ticket.is_used_by(g.user.id) or ticket.is_user_managed_by(g.user.id)
+        )
+        and not ticket.revoked
+        and not ticket.user_checked_in
     )
 
 
 @blueprint.get('/')
 @login_required
-@templated
-def index(erroneous_ticket_id=None, erroneous_form=None):
-    """Show chair information for the current user's tickets."""
-    party = _get_current_party_or_404()
+def index():
+    """Redirect legacy chair links to the participant's ticket list."""
+    anchor = None
+    ticket_id_arg = request.args.get('ticket_id')
+    if ticket_id_arg and g.party is not None:
+        try:
+            ticket_id = TicketID(UUID(ticket_id_arg))
+        except ValueError:
+            pass
+        else:
+            ticket = ticket_service.find_ticket(ticket_id)
+            if (
+                ticket is not None
+                and ticket.party_id == g.party.id
+                and (
+                    ticket.is_used_by(g.user.id)
+                    or ticket.is_user_managed_by(g.user.id)
+                )
+                and not ticket.revoked
+            ):
+                anchor = f'ticket-{ticket.id}'
 
-    tickets = ticket_service.get_tickets_used_by_user(g.user.id, party.id)
-    if not tickets:
-        abort(403)
-
-    optouts_by_ticket_id = chair_optout_service.get_current_optouts_for_tickets(
-        tickets
-    )
-    ticket_information = [
-        _build_ticket_information(
-            ticket,
-            optouts_by_ticket_id.get(ticket.id),
-            erroneous_form if ticket.id == erroneous_ticket_id else None,
-        )
-        for ticket in tickets
-    ]
-
-    return {
-        'ticket_information': ticket_information,
-    }
-
-
-@blueprint.post('/<uuid:ticket_id>')
-@login_required
-def update(ticket_id):
-    """Update chair information for one currently used ticket."""
-    party = _get_current_party_or_404()
-
-    ticket = ticket_service.find_ticket(ticket_id)
-    if not _is_ticket_editable_by_user(ticket, party.id, g.user.id):
-        abort(403)
-
-    form = ChairInformationForm(request.form, prefix=str(ticket_id))
-    if not form.validate():
-        return index(ticket_id, form)
-
-    brings_own_chair = form.choice.data == 'own'
-    try:
-        chair_optout_service.set_optout(
-            party.id, ticket.id, g.user.id, brings_own_chair
-        )
-    except ValueError:
-        abort(403)
-
-    flash_success(gettext('Changes have been saved.'))
-    return redirect_to('.index', _anchor=f'ticket-{ticket.id}')
-
-
-def _build_ticket_information(ticket, optout, erroneous_form):
-    if erroneous_form is not None:
-        form = erroneous_form
-    else:
-        choice = None
-        if optout is not None:
-            choice = 'own' if optout.brings_own_chair else 'provided'
-        form = ChairInformationForm(
-            prefix=str(ticket.id), data={'choice': choice}
-        )
-
-    return {
-        'ticket': ticket,
-        'seat_label': chair_optout_service.resolve_seat_label_for_ticket(
-            ticket
-        ),
-        'brings_own_chair': (
-            optout.brings_own_chair if optout is not None else None
-        ),
-        'form': form,
-    }
-
-
-def _is_ticket_editable_by_user(ticket, party_id, user_id) -> bool:
-    return (
-        ticket is not None
-        and ticket.party_id == party_id
-        and not ticket.revoked
-        and ticket.used_by_id == user_id
-    )
-
-
-def _get_current_party_or_404():
-    party = g.party
-
-    if party is None:
-        abort(404)
-
-    return party
+    return redirect_to('ticketing.index_mine', _anchor=anchor)

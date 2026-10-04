@@ -34,6 +34,7 @@ from byceps.config.models import (
     WorkerAppConfig,
 )
 from byceps.database import db
+from byceps.services.chair_optout.lifecycle import enable_chair_lifecycle
 from byceps.services.jobs.blueprints.admin.views import enable_rq_dashboard
 from byceps.services.site.models import SiteID
 from byceps.util import templatefilters
@@ -115,6 +116,8 @@ def _create_app(
 
     # Initialize database.
     db.init_app(app)
+
+    enable_chair_lifecycle()
 
     # Initialize Redis client.
     app.redis_client = Redis.from_url(app.config['REDIS_URL'])

@@ -68,6 +68,10 @@
     display:grid;grid-template-columns:232px 1fr;border:1.5px solid var(--ink);
     background:var(--paperLite);box-shadow:5px 5px 0 var(--ink);position:relative;
   }
+  .tickets-page [id^="ticket-"]{scroll-margin-top:120px;}
+  /* Keep ticket menus above the following cards and the separate footer sheet. */
+  .main-content:has(.tickets-page .dropdown.open){z-index:2;}
+  .tickets-page .ticket-card:has(.dropdown.open){z-index:2;}
 
   /* --- LEFT: the torn stub (Abriss) --- */
   .tickets-page .ticket-card-stub{
@@ -198,6 +202,10 @@
   .tickets-page .field-sub .nowrap a{color:var(--inkSoft);text-decoration:none;}
   .tickets-page .field-sub .nowrap a:hover{color:var(--redDeep);}
   .tickets-page .field-sub .dropdown{margin-left:auto;}
+  .tickets-page .chair-update-success,
+  .tickets-page .chair-update-error{font-family:var(--body);font-size:15px;margin:9px 0 0;}
+  .tickets-page .chair-update-success{color:var(--green);}
+  .tickets-page .chair-update-error{color:var(--redDeep);}
 
   /* tags — stock render_tag() pills re-set as inked newspaper tags */
   .tickets-page .tag{
@@ -254,6 +262,8 @@
     .tickets-page .ticket-card-stub::after{bottom:-9px;right:-9px;}
     .tickets-page .ticket-card-stub .stub-foot{margin-top:0;margin-left:auto;}
     .tickets-page .coupon-col + .coupon-col::before{display:none;}
+    .tickets-page .dropdown .dropdown-menu{max-width:calc(100vw - 40px);}
+    .tickets-page .dropdown .dropdown-item{white-space:normal;}
   }
 </style>
 {%- endblock %}
@@ -291,6 +301,7 @@
 {%- endblock %}
 
 {% block scripts %}
+    <script src="{{ url_for_site_file('behavior/chair-information.js') }}"></script>
     <script>
       onDomReady(() => {
         confirmed_delete_on_click_then_reload('[data-action="withdraw-user"]', '{{ _('Use this ticket yourself?') }}');
@@ -307,7 +318,7 @@
       {%- with seat_manager = ticket.get_seat_manager(),
                user_manager = ticket.get_user_manager()
        %}
-    <li>
+    <li id="ticket-{{ ticket.id }}">
       <div class="ticket-card{% if ticket.used_by_id == g.user.id %} ticket-used-by-me{% endif %}">
 
         {# ===== STUB: icon · code · print/checked-in ===== #}
@@ -413,12 +424,13 @@
                 </div>
               </div>
 
+{% include 'site/ticketing/_chair_information.html' %}
             </div>
 
             {# --- right: order + buyer --- #}
             <div class="coupon-col">
 
-              {%- if ticket.owned_by_id == g.user.id %}
+              {%- if ticket.owned_by_id == g.user.id and ticket.order_number is not none %}
               <div class="field">
                 <div class="data-label">{{ _('Order') }}</div>
                 <div class="data-value mono"><a href="{{ url_for('shop_orders.view', order_id=order_ids_by_order_number[ticket.order_number]) }}">{{ ticket.order_number }}</a></div>

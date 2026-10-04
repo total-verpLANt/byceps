@@ -1,0 +1,14 @@
+<div class="chair-info">
+  <h4 class="cb-head">{{ _('Chair information') }}</h4>
+  {%- for ticket in current_party_tickets %}
+  <div class="chair-entry">
+    <div class="chair-entry-copy">
+      <span class="chair-ticket">{{ _('Ticket') }} {{ ticket.code }}</span>
+      <span class="chair-state{% if ticket.chair_source.name == 'unknown' %} is-pending{% endif %}">{{ chair_source_label(ticket.chair_source) }}</span>
+    </div>
+    {%- if can_edit_chair_information(ticket) %}
+    <a class="btn-news chair-action" href="{{ url_for('ticketing.index_mine', _anchor='ticket-' ~ ticket.id) }}">{{ render_icon('edit') }} <span>{{ _('Make selection') if ticket.chair_source.name == 'unknown' else _('Change selection') }}</span></a>
+    {%- endif %}
+  </div>
+  {%- endfor %}
+</div>

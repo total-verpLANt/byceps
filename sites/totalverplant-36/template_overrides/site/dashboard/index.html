@@ -72,12 +72,10 @@
   </header>
 
 {#- Show the outstanding chair choice only to ticket users. #}
-{%- if tickets %}
-  {%- set pending_chair_ticket_id = find_first_unanswered_chair_ticket_id() %}
-  {%- if pending_chair_ticket_id %}
+{%- set pending_chair_ticket_ids = get_pending_chair_ticket_ids() %}
+{%- if pending_chair_ticket_ids %}
 {% include 'site/dashboard/_chair_coupon.html' %}
-  {%- endif %}
-{%- else %}
+{%- elif not tickets %}
 {% include 'site/dashboard/_ticket_coupon.html' %}
 {%- endif %}
 

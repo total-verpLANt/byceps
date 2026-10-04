@@ -32,6 +32,9 @@
   <div>
     <span class="chair-coupon-kicker">{{ _('Chair information') }}</span>
     <h2 class="chair-coupon-head">{{ _('Not specified yet') }}</h2>
+    {%- if pending_chair_ticket_ids|length > 1 %}
+    <p>{{ pending_chair_ticket_ids|length|numberformat }} {{ _('tickets') }}</p>
+    {%- endif %}
   </div>
-  <a class="chair-coupon-action" href="{{ url_for('chair_optout.index', _anchor='ticket-' ~ pending_chair_ticket_id) }}">{{ render_icon('edit') }} <span>{{ _('Make selection') }}</span></a>
+  <a class="chair-coupon-action" href="{{ url_for('ticketing.index_mine', _anchor='ticket-' ~ pending_chair_ticket_ids[0]) }}">{{ render_icon('edit') }} <span>{{ _('Make selection') }}</span></a>
 </aside>

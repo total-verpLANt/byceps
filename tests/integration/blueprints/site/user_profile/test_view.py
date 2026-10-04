@@ -3,11 +3,18 @@
 :License: Revised BSD (see `LICENSE` file for details)
 """
 
+import pytest
+
 from flask_babel import force_locale, gettext
 
-from byceps.services.chair_optout import chair_optout_service
+from byceps.database import db
+from byceps.services.party.dbmodels import DbParty
 from byceps.services.site.models import SiteID
-from byceps.services.ticketing import ticket_creation_service
+from byceps.services.ticketing import (
+    ticket_creation_service,
+    ticket_seat_management_service,
+)
+from byceps.services.ticketing.models.ticket import ChairSource
 from byceps.util.templating import create_site_template_loader
 
 from tests.helpers import generate_token, http_client, log_in_user
@@ -46,7 +53,7 @@ def test_view_profile_of_unknown_user(site_app, site):
     assert response.status_code == 404
 
 
-def test_own_profile_shows_current_chair_state_and_edit_action(
+def test_default_own_profile_has_no_local_chair_display(
     site_app, site, party, make_user, make_ticket_category
 ):
     profile_user = make_user(generate_token())
@@ -54,10 +61,9 @@ def test_own_profile_shows_current_chair_state_and_edit_action(
     ticket = ticket_creation_service.create_ticket(
         category, profile_user, user=profile_user
     )
-    unanswered_ticket = ticket_creation_service.create_ticket(
-        category, profile_user, user=profile_user
-    )
-    chair_optout_service.set_optout(party.id, ticket.id, profile_user.id, False)
+    ticket_seat_management_service.set_chair_source(
+        ticket.id, ChairSource.venue, profile_user
+    ).unwrap()
     log_in_user(profile_user.id)
 
     response = request_profile(
@@ -66,13 +72,8 @@ def test_own_profile_shows_current_chair_state_and_edit_action(
     text = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert ticket.code in text
-    assert unanswered_ticket.code in text
-    assert translate(site_app, 'no seat') in text
-    assert translate(site_app, 'Needs a provided chair') in text
-    assert translate(site_app, 'Make selection') in text
-    assert translate(site_app, 'Change selection') in text
-    assert '/chair_optout/#ticket-' in text
+    assert translate(site_app, 'Chair information') not in text
+    assert '/tickets/mine#ticket-' not in text
 
 
 def test_other_profile_does_not_show_chair_edit_action(
@@ -96,7 +97,12 @@ def test_other_profile_does_not_show_chair_edit_action(
 
 
 def test_gv36_theme_shows_chair_action_only_on_own_profile(
-    make_site_app, site, party, make_user, make_ticket_category
+    make_site_app,
+    site,
+    party,
+    make_user,
+    make_ticket_category,
+    enable_ticket_management,
 ):
     app = make_site_app('www.acmecon.test', site.id)
     app.jinja_loader = create_site_template_loader(SiteID('totalverplant-36'))
@@ -114,9 +120,9 @@ def test_gv36_theme_shows_chair_action_only_on_own_profile(
         own_response = request_profile(
             app, participant.id, current_user_id=participant.id
         )
-        chair_optout_service.set_optout(
-            party.id, ticket.id, participant.id, True
-        )
+        ticket_seat_management_service.set_chair_source(
+            ticket.id, ChairSource.user, participant
+        ).unwrap()
         answered_response = request_profile(
             app, participant.id, current_user_id=participant.id
         )
@@ -130,15 +136,75 @@ def test_gv36_theme_shows_chair_action_only_on_own_profile(
     assert own_response.status_code == 200
     assert 'class="chair-callout"' not in own_html
     assert ticket.code in own_html
-    assert f'/chair_optout/#ticket-{ticket.id}' in own_html
+    assert f'/tickets/mine#ticket-{ticket.id}' in own_html
     assert 'class="btn-news chair-action"' in own_html
     assert translate(app, 'Not specified yet') in own_html
     assert answered_response.status_code == 200
     assert 'class="chair-callout"' not in answered_html
     assert translate(app, 'Brings own chair') in answered_html
+    assert translate(app, 'Change selection') in answered_html
     assert other_response.status_code == 200
     assert 'class="chair-callout"' not in other_html
-    assert '/chair_optout/' not in other_html
+    assert '/tickets/mine#ticket-' not in other_html
+    assert 'class="chair-entry"' not in other_html
+
+
+@pytest.fixture
+def enable_ticket_management(admin_app, party):
+    db_party = db.session.get(DbParty, party.id)
+    previous_value = db_party.ticket_management_enabled
+    db_party.ticket_management_enabled = True
+    db.session.commit()
+    yield
+    db_party.ticket_management_enabled = previous_value
+    db.session.commit()
+
+
+@pytest.mark.parametrize('source', list(ChairSource))
+@pytest.mark.parametrize('state', ['checked_in', 'disabled'])
+def test_gv36_own_profile_displays_inactive_state_without_action(
+    make_site_app,
+    site,
+    party,
+    make_user,
+    make_ticket_category,
+    enable_ticket_management,
+    source,
+    state,
+):
+    app = make_site_app('www.acmecon.test', site.id)
+    app.jinja_loader = create_site_template_loader(SiteID('totalverplant-36'))
+    with app.app_context():
+        participant = make_user(generate_token())
+        category = make_ticket_category(party.id, generate_token())
+        ticket = ticket_creation_service.create_ticket(
+            category, participant, user=participant
+        )
+        ticket_seat_management_service.set_chair_source(
+            ticket.id, source, participant
+        ).unwrap()
+        if state == 'checked_in':
+            ticket.user_checked_in = True
+        else:
+            db.session.get(DbParty, party.id).ticket_management_enabled = False
+        db.session.commit()
+        log_in_user(participant.id)
+        response = request_profile(
+            app, participant.id, current_user_id=participant.id
+        )
+
+    label = {
+        ChairSource.user: 'Brings own chair',
+        ChairSource.venue: 'Needs a provided chair',
+        ChairSource.rental: 'rented',
+        ChairSource.unknown: 'Not specified yet',
+    }[source]
+    html = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert translate(app, label) in html
+    assert ticket.code in html
+    assert 'class="btn-news chair-action"' not in html
+    assert '/tickets/mine#ticket-' not in html
 
 
 # helpers

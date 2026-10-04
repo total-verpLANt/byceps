@@ -209,24 +209,8 @@
           {%- endfor %}
         </tbody>
       </table>
-      {%- if is_own_profile %}
-      <div class="chair-info">
-        <h4 class="cb-head">{{ _('Chair information') }}</h4>
-        {%- for ticket in current_party_tickets %}
-          {%- set brings_own_chair = chair_information_by_ticket_id[ticket.id] %}
-        <div class="chair-entry">
-          <div class="chair-entry-copy">
-            <span class="chair-ticket">{{ _('Ticket') }} {{ ticket.code }}</span>
-            <span class="chair-state{% if brings_own_chair is none %} is-pending{% endif %}">
-              {%- if brings_own_chair is sameas true %}{{ _('Brings own chair') }}
-              {%- elif brings_own_chair is sameas false %}{{ _('Needs a provided chair') }}
-              {%- else %}{{ _('Not specified yet') }}{% endif -%}
-            </span>
-          </div>
-          <a class="btn-news chair-action" href="{{ url_for('chair_optout.index', _anchor='ticket-' ~ ticket.id) }}">{{ render_icon('edit') }} <span>{{ _('Change selection') if brings_own_chair is not none else _('Make selection') }}</span></a>
-        </div>
-        {%- endfor %}
-      </div>
+      {%- if g.user.authenticated and g.user.id == user.id %}
+{% include 'site/user_profile/_chair_information.html' %}
       {%- endif %}
     </div>
     {%- endif %}

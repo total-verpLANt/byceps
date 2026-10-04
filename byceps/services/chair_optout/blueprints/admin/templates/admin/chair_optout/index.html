@@ -1,6 +1,5 @@
 {% extends 'layout/admin/base.html' %}
-{% from 'macros/admin.html' import render_main_tabs %}
-{% from 'macros/admin/chair_optout.html' import render_chair_information_navigation %}
+{% from 'macros/admin/chair_optout.html' import render_chair_information_navigation, render_chair_information_filters with context %}
 {% from 'macros/icons.html' import render_icon %}
 {% from 'macros/stats.html' import render_bigstats_item %}
 {% set current_page = 'more_admin_party' %}
@@ -27,22 +26,15 @@
   <div class="block row row--equal-sized-centered-columns row--space-around row--wrap bigstats">
     {{ render_bigstats_item(summary.brings_own_chair, _('Brings own chair')) }}
     {{ render_bigstats_item(summary.needs_provided_chair, _('Needs a provided chair')) }}
+    {% if summary.rented_chair %}
+    {{ render_bigstats_item(summary.rented_chair, _('Rental chair')) }}
+    {% endif %}
     {{ render_bigstats_item(summary.not_specified, _('Not specified yet')) }}
     {{ render_bigstats_item(summary.no_seat, _('no seat')) }}
   </div>
 
   <div class="block">
-  {{
-    render_main_tabs(
-      Navigation()
-        .add_item(url_for('.chair_information', party_id=party.id, filter='all'), _('All participants'), id='all')
-        .add_item(url_for('.chair_information', party_id=party.id, filter='own_chair'), _('Brings own chair'), id='own_chair')
-        .add_item(url_for('.chair_information', party_id=party.id, filter='provided_chair'), _('Needs a provided chair'), id='provided_chair')
-        .add_item(url_for('.chair_information', party_id=party.id, filter='not_specified'), _('Not specified yet'), id='not_specified')
-        .add_item(url_for('.chair_information', party_id=party.id, filter='no_seat'), _('no seat'), id='no_seat')
-      , selected_filter
-    )
-  }}
+    {{ render_chair_information_filters(party, '.chair_information', selected_filter, show_rental_information) }}
   </div>
 
   {%- if report_entries %}
@@ -74,13 +66,7 @@
           {%- endif -%}
         </td>
         <td>
-          {%- if entry.brings_own_chair is sameas true -%}
-            {{ _('Brings own chair') }}
-          {%- elif entry.brings_own_chair is sameas false -%}
-            {{ _('Needs a provided chair') }}
-          {%- else -%}
-            {{ _('Not specified yet') }}
-          {%- endif -%}
+          {{- chair_source_label(entry.chair_source) -}}
         </td>
       </tr>
       {%- endfor %}

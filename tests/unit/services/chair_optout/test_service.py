@@ -2,301 +2,205 @@
 :License: Revised BSD (see `LICENSE` file for details)
 """
 
-from datetime import datetime
 from types import SimpleNamespace
 
 import pytest
-
-from byceps.services.chair_optout import chair_optout_service
-from byceps.services.chair_optout.dbmodels import DbPartyTicketChairOptout
-from byceps.services.chair_optout.models import ChairOptoutID
-from byceps.services.party.models import PartyID
-from byceps.services.ticketing.models.ticket import TicketID
-from byceps.services.user.models import UserID
-
-from tests.helpers import generate_token, generate_uuid
-
-
-class DummySession:
-    def __init__(self, db_optout: DbPartyTicketChairOptout) -> None:
-        self.db_optout = db_optout
-        self.statement = None
-        self.commit_count = 0
-
-    def scalars(self, statement):
-        self.statement = statement
-        return self
-
-    def one(self):
-        values = self.statement.compile().params
-        self.db_optout.user_id = values['user_id']
-        self.db_optout.brings_own_chair = values['brings_own_chair']
-        self.db_optout.updated_at = values['updated_at']
-        return self.db_optout
-
-    def commit(self) -> None:
-        self.commit_count += 1
-
-
-def _make_ids() -> tuple[PartyID, TicketID, UserID]:
-    return (
-        PartyID(generate_token()),
-        TicketID(generate_uuid()),
-        UserID(generate_uuid()),
-    )
-
-
-def _make_db_optout(
-    party_id: PartyID,
-    ticket_id: TicketID,
-    user_id: UserID,
-    brings_own_chair: bool,
-) -> DbPartyTicketChairOptout:
-    db_optout = DbPartyTicketChairOptout(
-        party_id,
-        ticket_id,
-        user_id,
-        datetime(2026, 1, 15, 12, 0, 0),
-        brings_own_chair=brings_own_chair,
-    )
-    db_optout.id = ChairOptoutID(generate_uuid())
-    return db_optout
-
-
-def _prepare_set_optout(
-    monkeypatch, existing_optout=None
-) -> tuple[DummySession, PartyID, TicketID, UserID]:
-    party_id, ticket_id, user_id = _make_ids()
-    db_optout = existing_optout or _make_db_optout(
-        party_id, ticket_id, user_id, False
-    )
-    session = DummySession(db_optout)
-    monkeypatch.setattr(
-        chair_optout_service, 'db', SimpleNamespace(session=session)
-    )
-    monkeypatch.setattr(
-        chair_optout_service,
-        '_find_eligible_ticket',
-        lambda *_: SimpleNamespace(id=ticket_id),
-    )
-    return session, party_id, ticket_id, user_id
-
-
-@pytest.mark.parametrize('brings_own_chair', [True, False])
-def test_set_optout_creates_answer(monkeypatch, brings_own_chair):
-    session, party_id, ticket_id, user_id = _prepare_set_optout(monkeypatch)
-
-    optout = chair_optout_service.set_optout(
-        party_id, ticket_id, user_id, brings_own_chair
-    )
-
-    assert session.commit_count == 1
-    assert 'ON CONFLICT (party_id, ticket_id) DO UPDATE' in str(
-        session.statement
-    )
-    assert (
-        session.statement.compile().params['brings_own_chair']
-        is brings_own_chair
-    )
-    assert optout.party_id == party_id
-    assert optout.ticket_id == ticket_id
-    assert optout.user_id == user_id
-    assert optout.brings_own_chair is brings_own_chair
-
-
-@pytest.mark.parametrize(
-    ('initial_value', 'new_value'), [(True, False), (False, True)]
+from sqlalchemy import (
+    Boolean,
+    Column,
+    create_engine,
+    MetaData,
+    String,
+    Table,
+    Uuid,
 )
-def test_set_optout_changes_answer(monkeypatch, initial_value, new_value):
-    party_id, ticket_id, user_id = _make_ids()
-    db_optout = _make_db_optout(party_id, ticket_id, user_id, initial_value)
-    session, _, _, _ = _prepare_set_optout(monkeypatch, db_optout)
+from sqlalchemy.orm import joinedload, Session
 
-    optout = chair_optout_service.set_optout(
-        party_id, ticket_id, user_id, new_value
+from byceps.services.chair_optout import chair_optout_service as service
+from byceps.services.ticketing.models.ticket import ChairSource
+
+from tests.helpers import generate_uuid
+
+
+@pytest.fixture
+def ticket_rows(monkeypatch):
+    """Exercise compact queries on an isolated, in-memory ticket table."""
+    engine = create_engine('sqlite://')
+    metadata = MetaData()
+    tickets = Table(
+        'tickets',
+        metadata,
+        Column('id', Uuid, primary_key=True),
+        Column('party_id', String),
+        Column('code', String),
+        Column('used_by_id', Uuid),
+        Column('owned_by_id', Uuid),
+        Column('user_managed_by_id', Uuid),
+        Column('revoked', Boolean),
+        Column('user_checked_in', Boolean),
+        Column('chair_source', String),
+    )
+    metadata.create_all(engine)
+    with Session(engine) as session:
+        monkeypatch.setattr(service, 'db', SimpleNamespace(session=session))
+
+        def insert(*, source=None, **overrides):
+            row = dict(
+                id=generate_uuid(),
+                party_id='party-1',
+                code='T-1',
+                used_by_id=user_id,
+                owned_by_id=generate_uuid(),
+                user_managed_by_id=None,
+                revoked=False,
+                user_checked_in=False,
+                chair_source=source.name if source else None,
+            )
+            row.update(overrides)
+            session.execute(tickets.insert().values(**row))
+            return row['id']
+
+        user_id = generate_uuid()
+        yield insert, user_id
+    engine.dispose()
+
+
+def test_compact_sources_include_all_states_and_only_eligible_tickets(
+    ticket_rows,
+):
+    insert, _ = ticket_rows
+    own = insert(source=ChairSource.user)
+    venue = insert(source=ChairSource.venue)
+    rental = insert(source=ChairSource.rental)
+    pending = insert()
+    unknown = insert(source=ChairSource.unknown)
+    invalid = insert(chair_source='invalid')
+    checked_in = insert(source=ChairSource.user, user_checked_in=True)
+    insert(source=ChairSource.user, revoked=True)
+    insert(source=ChairSource.rental, used_by_id=None)
+    insert(source=ChairSource.venue, party_id='other-party')
+
+    assert service.get_chair_sources_for_party('party-1') == {
+        own: ChairSource.user,
+        venue: ChairSource.venue,
+        rental: ChairSource.rental,
+        pending: ChairSource.unknown,
+        unknown: ChairSource.unknown,
+        invalid: ChairSource.unknown,
+        checked_in: ChairSource.user,
+    }
+
+
+def test_pending_tickets_include_unknown_null_invalid_and_current_permissions(
+    ticket_rows,
+):
+    insert, user_id = ticket_rows
+    second = insert(code='T-2')
+    first = insert(code='T-1')
+    insert(revoked=True)
+    insert(user_checked_in=True)
+    insert(used_by_id=None)
+    insert(used_by_id=None, owned_by_id=user_id)
+    insert(used_by_id=generate_uuid())
+    insert(party_id='other-party')
+    for source in [ChairSource.user, ChairSource.venue, ChairSource.rental]:
+        insert(source=source)
+    unknown = insert(source=ChairSource.unknown, code='T-3')
+    invalid = insert(chair_source='unrecognized-source', code='T-4')
+    managed = insert(
+        used_by_id=generate_uuid(), user_managed_by_id=user_id, code='T-5'
+    )
+    owned = insert(used_by_id=generate_uuid(), owned_by_id=user_id, code='T-6')
+    insert(
+        used_by_id=generate_uuid(),
+        owned_by_id=user_id,
+        user_managed_by_id=generate_uuid(),
     )
 
-    assert session.commit_count == 1
-    assert session.statement.compile().params['brings_own_chair'] is new_value
-    assert optout.brings_own_chair is new_value
-
-
-def test_set_optout_updates_user_after_reassignment(monkeypatch):
-    party_id, ticket_id, old_user_id = _make_ids()
-    new_user_id = UserID(generate_uuid())
-    db_optout = _make_db_optout(party_id, ticket_id, old_user_id, True)
-    session, _, _, _ = _prepare_set_optout(monkeypatch, db_optout)
-
-    optout = chair_optout_service.set_optout(
-        party_id, ticket_id, new_user_id, False
-    )
-
-    assert session.commit_count == 1
-    assert session.statement.compile().params['user_id'] == new_user_id
-    assert optout.user_id == new_user_id
-
-
-def test_set_optout_rejects_ineligible_ticket(monkeypatch):
-    party_id, ticket_id, user_id = _make_ids()
-    monkeypatch.setattr(
-        chair_optout_service, '_find_eligible_ticket', lambda *_: None
-    )
-
-    with pytest.raises(ValueError):
-        chair_optout_service.set_optout(party_id, ticket_id, user_id, True)
-
-
-def test_current_optouts_ignore_stale_participant_and_party(monkeypatch):
-    party_id, current_ticket_id, current_user_id = _make_ids()
-    stale_ticket_id = TicketID(generate_uuid())
-    foreign_party_ticket_id = TicketID(generate_uuid())
-    tickets = [
-        SimpleNamespace(
-            id=current_ticket_id,
-            party_id=party_id,
-            used_by_id=current_user_id,
-            revoked=False,
-        ),
-        SimpleNamespace(
-            id=stale_ticket_id,
-            party_id=party_id,
-            used_by_id=current_user_id,
-            revoked=False,
-        ),
-        SimpleNamespace(
-            id=foreign_party_ticket_id,
-            party_id=party_id,
-            used_by_id=current_user_id,
-            revoked=False,
-        ),
+    assert service.get_pending_chair_ticket_ids_for_user(
+        'party-1', user_id
+    ) == [
+        first,
+        second,
+        unknown,
+        invalid,
+        managed,
+        owned,
     ]
-    optouts = [
-        _make_db_optout(party_id, current_ticket_id, current_user_id, False),
-        _make_db_optout(
-            party_id, stale_ticket_id, UserID(generate_uuid()), True
-        ),
-        _make_db_optout(
-            PartyID(generate_token()),
-            foreign_party_ticket_id,
-            current_user_id,
-            True,
-        ),
-    ]
-    monkeypatch.setattr(
-        chair_optout_service,
-        '_get_db_optouts_for_tickets',
-        lambda *_: optouts,
-    )
-
-    current = chair_optout_service.get_current_optouts_for_tickets(tickets)
-
-    assert set(current) == {current_ticket_id}
-    assert current[current_ticket_id].brings_own_chair is False
 
 
-def test_current_optouts_ignore_revoked_and_unassigned_tickets(monkeypatch):
-    party_id, ticket_id, user_id = _make_ids()
-    tickets = [
-        SimpleNamespace(
-            id=ticket_id,
-            party_id=party_id,
-            used_by_id=user_id,
-            revoked=True,
-        ),
-        SimpleNamespace(
-            id=TicketID(generate_uuid()),
-            party_id=party_id,
-            used_by_id=None,
-            revoked=False,
-        ),
-    ]
-    called = False
-
-    def get_optouts(*_):
-        nonlocal called
-        called = True
-        return []
-
-    monkeypatch.setattr(
-        chair_optout_service, '_get_db_optouts_for_tickets', get_optouts
-    )
-
-    assert chair_optout_service.get_current_optouts_for_tickets(tickets) == {}
-    assert called is False
-
-
-def test_report_includes_all_answer_states_and_missing_seat(monkeypatch):
-    party_id, first_ticket_id, first_user_id = _make_ids()
-    second_ticket_id = TicketID(generate_uuid())
-    third_ticket_id = TicketID(generate_uuid())
+def test_report_uses_current_user_seat_and_core_source(monkeypatch):
     user = SimpleNamespace(
-        id=first_user_id,
+        id=generate_uuid(),
         screen_name='alice',
         detail=SimpleNamespace(full_name='Alice Example'),
     )
-    first_seat = SimpleNamespace(
-        id=generate_uuid(),
-        label='A-1',
-        area=SimpleNamespace(slug='first-area'),
-    )
-    second_seat = SimpleNamespace(
-        id=generate_uuid(),
-        label='A-2',
-        area=SimpleNamespace(slug='second-area'),
+    seat = SimpleNamespace(
+        id=generate_uuid(), label='A-1', area=SimpleNamespace(slug='main')
     )
     tickets = [
         SimpleNamespace(
-            id=first_ticket_id,
-            code='T-1',
+            id=generate_uuid(),
+            code=f'T-{index}',
             used_by=user,
-            occupied_seat=first_seat,
-        ),
-        SimpleNamespace(
-            id=second_ticket_id,
-            code='T-2',
-            used_by=user,
-            occupied_seat=second_seat,
-        ),
-        SimpleNamespace(
-            id=third_ticket_id,
-            code='T-3',
-            used_by=user,
-            occupied_seat=None,
-        ),
+            occupied_seat=seat if index < 3 else None,
+            chair_source=source,
+        )
+        for index, source in enumerate(
+            [
+                ChairSource.user,
+                ChairSource.venue,
+                ChairSource.rental,
+                ChairSource.unknown,
+                ChairSource.rental,
+            ]
+        )
     ]
-    own = SimpleNamespace(brings_own_chair=True)
-    provided = SimpleNamespace(brings_own_chair=False)
-    monkeypatch.setattr(
-        chair_optout_service,
-        '_get_eligible_tickets_for_party',
-        lambda *_: tickets,
+    result = SimpleNamespace(
+        unique=lambda: SimpleNamespace(all=lambda: tickets)
     )
     monkeypatch.setattr(
-        chair_optout_service,
-        'get_current_optouts_for_tickets',
-        lambda *_: {first_ticket_id: own, second_ticket_id: provided},
+        service,
+        'db',
+        SimpleNamespace(
+            session=SimpleNamespace(scalars=lambda _: result),
+            joinedload=joinedload,
+        ),
     )
 
-    entries = chair_optout_service.get_report_entries_for_party(party_id)
-    summary = chair_optout_service.summarize_report_entries(entries)
+    entries = service.get_report_entries_for_party('party-1')
+    summary = service.summarize_report_entries(entries)
 
-    assert [entry.brings_own_chair for entry in entries] == [True, False, None]
-    assert entries[2].has_seat is False
-    assert entries[0].user_id == first_user_id
-    assert entries[0].seat_id == first_seat.id
-    assert entries[0].seat_area_slug == 'first-area'
+    assert [entry.chair_source for entry in entries] == [
+        ticket.chair_source for ticket in tickets
+    ]
+    assert entries[0].seat_id == seat.id
+    assert entries[0].seat_area_slug == 'main'
+    assert entries[0].full_name == 'Alice Example'
+    assert entries[0].user_id == user.id
+    assert entries[3].seat_id is None
+    assert entries[3].seat_label is None
     assert summary.brings_own_chair == 1
     assert summary.needs_provided_chair == 1
+    assert summary.rented_chair == 2
     assert summary.not_specified == 1
-    assert summary.no_seat == 1
+    assert summary.no_seat == 2
+
+    tickets[0].occupied_seat = SimpleNamespace(
+        id=generate_uuid(), label='B-2', area=SimpleNamespace(slug='second')
+    )
+    user.detail = None
+    changed_entry = service.get_report_entries_for_party('party-1')[0]
+    assert changed_entry.seat_label == 'B-2'
+    assert changed_entry.seat_area_slug == 'second'
+    assert changed_entry.full_name is None
+    assert changed_entry.chair_source is ChairSource.user
 
 
-def test_seat_label_changes_without_changing_answer():
-    ticket = SimpleNamespace(occupied_seat=SimpleNamespace(label='A-1'))
-    assert chair_optout_service.resolve_seat_label_for_ticket(ticket) == 'A-1'
-
-    ticket.occupied_seat = SimpleNamespace(label='B-2')
-    assert chair_optout_service.resolve_seat_label_for_ticket(ticket) == 'B-2'
-
-    ticket.occupied_seat = None
-    assert chair_optout_service.resolve_seat_label_for_ticket(ticket) is None
+def test_empty_report_summary():
+    summary = service.summarize_report_entries([])
+    assert summary.brings_own_chair == 0
+    assert summary.needs_provided_chair == 0
+    assert summary.rented_chair == 0
+    assert summary.not_specified == 0
+    assert summary.no_seat == 0

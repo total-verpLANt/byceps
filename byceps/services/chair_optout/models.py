@@ -6,27 +6,9 @@ byceps.services.chair_optout.models
 """
 
 from dataclasses import dataclass
-from datetime import datetime
-from typing import NewType
-from uuid import UUID
-
-from byceps.services.party.models import PartyID
 from byceps.services.seating.models import SeatID
-from byceps.services.ticketing.models.ticket import TicketID
+from byceps.services.ticketing.models.ticket import ChairSource, TicketID
 from byceps.services.user.models import UserID
-
-
-ChairOptoutID = NewType('ChairOptoutID', UUID)
-
-
-@dataclass(frozen=True, kw_only=True)
-class PartyTicketChairOptout:
-    id: ChairOptoutID
-    party_id: PartyID
-    ticket_id: TicketID
-    user_id: UserID
-    brings_own_chair: bool
-    updated_at: datetime
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -40,12 +22,13 @@ class ChairOptoutReportEntry:
     seat_area_slug: str | None
     seat_label: str | None
     has_seat: bool
-    brings_own_chair: bool | None
+    chair_source: ChairSource
 
 
 @dataclass(frozen=True, kw_only=True)
 class ChairInformationSummary:
     brings_own_chair: int
     needs_provided_chair: int
+    rented_chair: int
     not_specified: int
     no_seat: int
