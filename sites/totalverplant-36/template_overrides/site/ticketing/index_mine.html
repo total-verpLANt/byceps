@@ -1,0 +1,443 @@
+{% extends 'layout/base.html' %}
+{% from 'macros/icons.html' import render_icon %}
+{% from 'macros/misc.html' import render_notification, render_tag %}
+{% from 'macros/seating.html' import render_seat_link %}
+{% from 'macros/user.html' import render_user_avatar, render_user_avatar_and_link, render_user_link %}
+{% set current_page = 'ticket' %}
+{% set page_title = _('Tickets') %}
+
+{% block head %}
+<style>
+  /* ============================================================
+     TICKETS — "Kartenschalter" admission-coupon treatment.
+
+     The stock tickets page had no .bote-page wrapper, so the
+     warning band and the .ticket-card grid ran full-bleed across
+     the whole viewport and slid under the sticky masthead (same
+     problem the dashboard, gallery and profile had). We wrap the
+     body in the centered 1320px paper sheet and re-set the stock
+     .ticket-grid / .ticket-card markup as a torn-stub admission
+     ticket: an inked code stub (perforated edge, punched notches)
+     hinged to a two-column ledger of category / attendee / seat /
+     order / buyer, with each manager shown as a "verwaltet von"
+     subline carrying its stock management dropdown.
+
+     All colours are theme tokens, so "Spätausgabe" (dark) is
+     handled automatically.
+     ============================================================ */
+
+  .tickets-page .ticket-meta{
+    font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--inkSoft);margin:0 0 18px;
+  }
+  .tickets-page .ticket-meta strong{color:var(--redDeep);font-weight:700;}
+
+  /* the stock render_notification() warning, re-set as an editorial notice slip */
+  .tickets-page .notification{
+    display:flex;gap:14px;align-items:flex-start;border:1.5px solid var(--ink);
+    border-left:7px solid var(--redDeep);background:var(--paperLite);padding:15px 20px;
+    box-shadow:4px 4px 0 var(--ink);margin:0 0 22px;border-radius:0;max-width:none;
+  }
+  .tickets-page .notification .block-with-icon-icon{
+    color:var(--redDeep);font-size:20px;line-height:1.1;flex:0 0 auto;
+  }
+  .tickets-page .notification .block-with-icon-body{
+    font-family:var(--body);font-style:italic;font-size:18px;line-height:1.4;color:var(--ink);
+  }
+
+  /* empty-state slip */
+  .tickets-page .ticket-empty{
+    border:1.5px dashed var(--inkSoft);padding:26px 24px;
+    background:repeating-linear-gradient(135deg,rgba(128,116,86,.10) 0 7px,transparent 7px 14px);
+  }
+  .tickets-page .ticket-empty .te-head{
+    font-family:var(--mono);font-size:10px;letter-spacing:.2em;text-transform:uppercase;
+    color:var(--redDeep);font-weight:700;margin:0 0 8px;
+  }
+  .tickets-page .ticket-empty p{
+    font-family:var(--body);font-style:italic;font-size:19px;line-height:1.45;
+    color:var(--ink);margin:0;max-width:62ch;
+  }
+  .tickets-page .ticket-empty strong{font-style:normal;}
+
+  /* ===== the ticket grid + coupon ===== */
+  .tickets-page .ticket-grid{list-style:none;margin:0;padding:0;display:grid;gap:clamp(20px,2.6vw,30px);}
+  .tickets-page .ticket-grid > li{margin:0;}
+
+  .tickets-page .ticket-card{
+    display:grid;grid-template-columns:232px 1fr;border:1.5px solid var(--ink);
+    background:var(--paperLite);box-shadow:5px 5px 0 var(--ink);position:relative;
+  }
+
+  /* --- LEFT: the torn stub (Abriss) --- */
+  .tickets-page .ticket-card-stub{
+    position:relative;padding:22px 26px 22px 24px;background:var(--paperDark);
+    border-right:2px dashed var(--ink);display:flex;flex-direction:column;gap:14px;
+  }
+  .tickets-page .ticket-card-stub::before,
+  .tickets-page .ticket-card-stub::after{
+    content:"";position:absolute;right:-9px;width:16px;height:16px;border-radius:50%;
+    background:var(--paper);border:1.5px solid var(--ink);
+  }
+  .tickets-page .ticket-card-stub::before{top:-9px;}
+  .tickets-page .ticket-card-stub::after{bottom:-9px;}
+  .tickets-page .ticket-card-stub .stub-kicker{
+    font-family:var(--mono);font-size:9.5px;letter-spacing:.22em;text-transform:uppercase;
+    color:var(--redDeep);font-weight:700;
+  }
+  .tickets-page .ticket-card-stub .ticket-icon{font-size:52px;line-height:0;color:var(--ink);}
+  .tickets-page .ticket-card-stub .ticket-icon .icon{width:1em;height:1em;}
+  .tickets-page .ticket-card-stub .stub-code-label{
+    font-family:var(--mono);font-size:9px;letter-spacing:.2em;text-transform:uppercase;
+    color:var(--inkMute);margin-bottom:2px;
+  }
+  .tickets-page .ticket-card-stub .ticket-code{
+    font-family:var(--mono);font-weight:700;font-size:31px;letter-spacing:.05em;
+    color:var(--ink);line-height:1;display:block;word-break:break-all;
+  }
+  .tickets-page .ticket-card-stub .stub-foot{margin-top:auto;}
+
+  /* mine: stamp the stub in red ink */
+  .tickets-page .ticket-used-by-me .ticket-card-stub{background:var(--redDeep);border-right-color:var(--paper);}
+  .tickets-page .ticket-used-by-me .ticket-card-stub .stub-kicker{color:var(--paper);}
+  .tickets-page .ticket-used-by-me .ticket-card-stub .stub-code-label{color:rgba(241,234,212,.72);}
+  .tickets-page .ticket-used-by-me .ticket-card-stub .ticket-code,
+  .tickets-page .ticket-used-by-me .ticket-card-stub .ticket-icon{color:var(--paper);}
+  .tickets-page .ticket-used-by-me .ticket-card-stub::before,
+  .tickets-page .ticket-used-by-me .ticket-card-stub::after{border-color:var(--paper);}
+
+  /* --- RIGHT: ledger body --- */
+  .tickets-page .ticket-card-body{padding:20px clamp(20px,2.4vw,28px) 22px;min-width:0;}
+  .tickets-page .coupon-head{
+    display:flex;justify-content:space-between;align-items:flex-start;gap:16px;
+    padding-bottom:12px;border-bottom:3px double var(--ink);margin-bottom:14px;
+  }
+  .tickets-page .coupon-cat-label{
+    font-family:var(--mono);font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--inkSoft);
+  }
+  .tickets-page .coupon-cat{
+    font-family:var(--display);font-weight:900;font-style:italic;letter-spacing:-.02em;line-height:.95;
+    font-size:clamp(1.7rem,2.6vw,2.4rem);color:var(--ink);margin-top:2px;
+  }
+  .tickets-page .coupon-status{
+    font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;
+    padding:5px 10px;white-space:nowrap;border:1.5px solid var(--ink);align-self:flex-start;
+  }
+  .tickets-page .coupon-status.is-mine{background:var(--redDeep);color:var(--paper);border-color:var(--redDeep);}
+  .tickets-page .coupon-status.is-checked{background:var(--ink);color:var(--paper);}
+  .tickets-page .coupon-status.is-assigned{background:var(--paper);color:var(--ink);}
+  .tickets-page .coupon-status.is-free{background:var(--paper);color:var(--inkSoft);border-style:dashed;}
+
+  .tickets-page .coupon-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(248px,1fr));gap:6px 38px;}
+  .tickets-page .coupon-col{display:flex;flex-direction:column;min-width:0;}
+  .tickets-page .coupon-col + .coupon-col{position:relative;}
+  .tickets-page .coupon-col + .coupon-col::before{
+    content:"";position:absolute;left:-19px;top:2px;bottom:2px;border-left:1px solid var(--ink);
+  }
+
+  .tickets-page .field{padding:11px 0;border-bottom:1px solid var(--paperDark);}
+  .tickets-page .field:first-child{padding-top:0;}
+  .tickets-page .field:last-child{border-bottom:0;}
+  .tickets-page .field .data-label{
+    font-family:var(--mono);font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--inkMute);
+    margin-bottom:5px;
+  }
+  .tickets-page .field .data-value{font-family:var(--body);font-size:18px;line-height:1.25;color:var(--ink);}
+  .tickets-page .field .data-value a{color:var(--ink);text-decoration:none;border-bottom:1px dashed var(--inkSoft);}
+  .tickets-page .field .data-value a:hover{color:var(--redDeep);border-bottom-color:var(--redDeep);}
+  .tickets-page .field .data-value.mono{font-family:var(--mono);font-size:14px;letter-spacing:.04em;}
+
+  .tickets-page .avatar img{transition:filter .4s ease;}
+
+  /* attendee row: 48px portrait + name */
+  .tickets-page .ticket-user{display:flex;align-items:center;gap:12px;}
+  .tickets-page .ticket-user .avatar{width:48px;height:48px;flex:0 0 auto;}
+  .tickets-page .ticket-user .avatar img{
+    width:100%;height:100%;object-fit:cover;border:1.5px solid var(--ink);border-radius:0;
+    filter:grayscale(1) sepia(.30) contrast(1.05);
+  }
+  .tickets-page .ticket-user > a{
+    font-family:var(--display);font-style:italic;font-size:21px;color:var(--ink);
+    text-decoration:none;border-bottom:1px dashed transparent;
+  }
+  .tickets-page .ticket-user > a:hover{color:var(--redDeep);border-bottom-color:var(--redDeep);}
+  .tickets-page .ticket-user-placeholder{
+    width:48px;height:48px;border:1.5px dashed var(--inkSoft);
+    background:repeating-linear-gradient(135deg,rgba(128,116,86,.18) 0 5px,transparent 5px 10px);
+  }
+
+  /* small inline avatar+link (buyer / manager) — stock render_user_avatar_and_link markup */
+  .tickets-page .data-value .nowrap{display:inline-flex;align-items:center;gap:7px;}
+  .tickets-page .data-value .nowrap .avatar{width:18px;height:18px;flex:0 0 auto;}
+  .tickets-page .data-value .nowrap .avatar img{
+    width:100%;height:100%;object-fit:cover;border:1px solid var(--ink);border-radius:0;
+    filter:grayscale(1) sepia(.30) contrast(1.05);
+  }
+
+  /* "verwaltet von …" subline under attendee / seat, carries the management dropdown */
+  .tickets-page .field-sub{
+    display:flex;align-items:center;gap:7px;margin-top:9px;
+    font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--inkMute);
+  }
+  .tickets-page .field-sub .nowrap{display:inline-flex;align-items:center;gap:6px;
+    font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;color:var(--inkSoft);}
+  .tickets-page .field-sub .nowrap .avatar{width:15px;height:15px;flex:0 0 auto;}
+  .tickets-page .field-sub .nowrap .avatar img{
+    width:100%;height:100%;object-fit:cover;border:1px solid var(--ink);border-radius:0;
+    filter:grayscale(1) sepia(.30) contrast(1.05);
+  }
+  /* bloom all filed portraits to full colour on hover — same treatment as the
+     profile / board / gallery prints (sepia at rest → filter:none on hover).
+     Must follow the at-rest rules above and match their scopes: a blanket
+     .tickets-page .avatar:hover img loses the cascade to the (0,4,1) nested
+     at-rest declarations. */
+  .tickets-page .ticket-user .avatar:hover img,
+  .tickets-page .data-value .nowrap .avatar:hover img,
+  .tickets-page .field-sub .nowrap .avatar:hover img{filter:none;}
+
+  .tickets-page .field-sub .nowrap a{color:var(--inkSoft);text-decoration:none;}
+  .tickets-page .field-sub .nowrap a:hover{color:var(--redDeep);}
+  .tickets-page .field-sub .dropdown{margin-left:auto;}
+
+  /* tags — stock render_tag() pills re-set as inked newspaper tags */
+  .tickets-page .tag{
+    display:inline-block;font-family:var(--mono);font-size:8.5px;font-weight:700;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--paper);background:var(--inkSoft);padding:3px 7px;border-radius:0;
+    white-space:nowrap;vertical-align:middle;
+  }
+  .tickets-page .tag.color-info{background:var(--blue);}
+  .tickets-page .tag.color-success{background:var(--green);}
+
+  /* checked-in stub tag */
+  .tickets-page .stub-tag{
+    font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--ink);background:var(--paper);padding:4px 9px;border:1.5px solid var(--ink);white-space:nowrap;
+    display:inline-block;
+  }
+
+  /* print button on the stub */
+  .tickets-page .btn-print{
+    display:inline-flex;align-items:center;justify-content:center;width:40px;height:34px;
+    border:1.5px solid var(--ink);background:var(--paperLite);color:var(--ink);text-decoration:none;
+    box-shadow:2px 2px 0 var(--ink);font-size:16px;line-height:0;border-radius:0;
+    transition:transform .14s ease,box-shadow .14s ease,background-color .14s,color .14s;
+  }
+  .tickets-page .btn-print .icon{width:1em;height:1em;}
+  .tickets-page .btn-print:hover{transform:translate(-1px,-1px);box-shadow:3px 3px 0 var(--ink);background:var(--ink);color:var(--paper);}
+
+  /* management dropdown — keep the stock .dropdown component, shrink the toggle */
+  .tickets-page .dropdown{position:relative;display:inline-block;}
+  .tickets-page .dropdown .dropdown-toggle{
+    display:inline-flex;align-items:center;justify-content:center;width:28px;height:22px;min-width:0;
+    border:1.5px solid var(--ink);background:var(--paperLite);color:var(--ink);cursor:pointer;
+    padding:0;border-radius:0;box-shadow:none;font-size:11px;line-height:0;
+  }
+  .tickets-page .dropdown .dropdown-toggle .icon{width:1em;height:1em;}
+  .tickets-page .dropdown .dropdown-toggle:hover{background:var(--ink);color:var(--paper);}
+  .tickets-page .dropdown .dropdown-menu{
+    border:1.5px solid var(--ink);background:var(--paper);box-shadow:4px 4px 0 var(--ink);
+    border-radius:0;padding:4px;
+  }
+  .tickets-page .dropdown .dropdown-item{
+    font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink);
+    padding:7px 10px;text-decoration:none;display:flex;align-items:center;gap:8px;white-space:nowrap;
+  }
+  .tickets-page .dropdown .dropdown-item:hover{background:var(--ink);color:var(--paper);}
+
+  @media (max-width:720px){
+    .tickets-page .ticket-card{grid-template-columns:1fr;}
+    .tickets-page .ticket-card-stub{
+      flex-direction:row;align-items:center;gap:18px;flex-wrap:wrap;
+      border-right:0;border-bottom:2px dashed var(--ink);
+    }
+    .tickets-page .ticket-card-stub::before{top:auto;bottom:-9px;left:-9px;right:auto;}
+    .tickets-page .ticket-card-stub::after{bottom:-9px;right:-9px;}
+    .tickets-page .ticket-card-stub .stub-foot{margin-top:0;margin-left:auto;}
+    .tickets-page .coupon-col + .coupon-col::before{display:none;}
+  }
+</style>
+{%- endblock %}
+
+{% block body %}
+<div class="bote-page tickets-page">
+
+  <div class="page-folio">
+    <span class="pf-ressort">{{ _('Kartenschalter') }} · {{ _('Eintritt') }}</span>
+    <span>Der Rentenbote · Ausgabe 36</span>
+  </div>
+
+  <header class="page-head">
+    <h1 class="ph-title">{{ _('Meine') }} <em>{{ _('Eintrittskarten') }}</em></h1>
+    <p class="ph-standfirst">{{ _('Hier verwahrt die Redaktion Ihre persönlichen Eintrittskarten — gekauft, verwaltet oder zum Sitzen überlassen. Bitte den Abriss bis zum Einlass gut aufbewahren.') }}</p>
+  </header>
+
+{{ render_snippet('ticketing_intro', ignore_if_unknown=True)|safe }}
+
+  {%- if not current_user_uses_any_ticket %}
+{{ render_notification(_('You currently do not use a ticket.'), category='warning', icon='warning') }}
+  {%- endif %}
+
+  {%- if tickets %}
+  <p class="ticket-meta">{{ _('These are the tickets for party <strong>%(party_title)s</strong> relevant to (i.e. owned, managed, and/or used by) you.', party_title=party_title) }}</p>
+{{ render_tickets(tickets) }}
+  {%- else %}
+  <div class="ticket-empty">
+    <div class="te-head">{{ _('Hinweis vom Kartenschalter') }}</div>
+    <p>{{ _('You do not own, manage, or use any tickets for party <strong>%(party_title)s</strong>.', party_title=party_title) }}</p>
+  </div>
+  {%- endif %}
+
+</div>
+{%- endblock %}
+
+{% block scripts %}
+    <script>
+      onDomReady(() => {
+        confirmed_delete_on_click_then_reload('[data-action="withdraw-user"]', '{{ _('Use this ticket yourself?') }}');
+        confirmed_delete_on_click_then_reload('[data-action="withdraw-user-manager"]', '{{ _('Take back user management?') }}');
+        confirmed_delete_on_click_then_reload('[data-action="withdraw-seat-manager"]', '{{ _('Take back seat management?') }}');
+      });
+    </script>
+{% endblock %}
+
+
+{% macro render_tickets(tickets) -%}
+  <ol class="ticket-grid">
+    {%- for ticket in tickets|sort(attribute='created_at') %}
+      {%- with seat_manager = ticket.get_seat_manager(),
+               user_manager = ticket.get_user_manager()
+       %}
+    <li>
+      <div class="ticket-card{% if ticket.used_by_id == g.user.id %} ticket-used-by-me{% endif %}">
+
+        {# ===== STUB: icon · code · print/checked-in ===== #}
+        <div class="ticket-card-stub">
+          <span class="stub-kicker">{{ _('Eintrittskarte') }}</span>
+          <span class="ticket-icon" aria-hidden="true">{{ render_icon('ticket') }}</span>
+          <div>
+            <div class="stub-code-label">{{ _('Code') }}</div>
+            <span class="ticket-code">{{ ticket.code }}</span>
+          </div>
+          <div class="stub-foot">
+            {%- if ticket.user_checked_in %}
+            <span class="stub-tag">{{ _('checked in') }}</span>
+            {%- else %}
+            <a class="btn-print" href="{{ url_for('.view_printable_html', ticket_id=ticket.id) }}" title="{{ _('Print') }}">{{ render_icon('print') }}</a>
+            {%- endif %}
+          </div>
+        </div>
+
+        {# ===== BODY: category + ledger ===== #}
+        <div class="ticket-card-body">
+
+          <div class="coupon-head">
+            <div>
+              <div class="coupon-cat-label">{{ _('Category') }}</div>
+              <div class="coupon-cat">{{ ticket.category.title }}</div>
+            </div>
+            {%- if ticket.user_checked_in %}
+            <span class="coupon-status is-checked">{{ _('checked in') }}</span>
+            {%- elif not ticket.used_by %}
+            <span class="coupon-status is-free">{{ _('available') }}</span>
+            {%- elif ticket.used_by_id == g.user.id %}
+            <span class="coupon-status is-mine">{{ _('Meine Karte') }}</span>
+            {%- else %}
+            <span class="coupon-status is-assigned">{{ _('Vergeben') }}</span>
+            {%- endif %}
+          </div>
+
+          <div class="coupon-cols">
+
+            {# --- left: attendee + seat (with their managers) --- #}
+            <div class="coupon-col">
+
+              <div class="field">
+                <div class="data-label">{{ pgettext('ticket', 'User') }}</div>
+                <div class="data-value">
+                  <span class="ticket-user">
+                    {%- if ticket.used_by %}
+                    {{ render_user_avatar(ticket.used_by, size=48) }}
+                    {{ render_user_link(ticket.used_by) }}
+                    {%- else %}
+                    <span class="ticket-user-placeholder"></span>
+                    {{ render_tag(_('available'), class='color-info') }}
+                    {%- endif %}
+                  </span>
+                </div>
+                <div class="field-sub">
+                  <span>{{ _('verw.') }}</span>{{ render_user_avatar_and_link(user_manager, size=16) }}
+                  {%- if ticket_management_enabled and not ticket.user_checked_in and (user_manager.id == g.user.id or ticket.owned_by_id == g.user.id) %}
+                  <div class="dropdown">
+                    <button class="dropdown-toggle button button--outline is-compact">{{ render_icon('chevron-down') -}}</button>
+                    <ol class="dropdown-menu dropdown-menu--right">
+                      {%- if user_manager.id == g.user.id %}
+                      <li><a class="dropdown-item" href="{{ url_for('.appoint_user_form', ticket_id=ticket.id) }}">{{ render_icon('arrow-right') }} {{ _('Appoint user') }}</a></li>
+                        {%- if ticket.used_by_id != g.user.id %}
+                      <li><a class="dropdown-item" href="{{ url_for('.withdraw_user', ticket_id=ticket.id, _method='DELETE') }}" data-action="withdraw-user">{{ render_icon('arrow-left') }} {{ _('Use yourself') }}</a></li>
+                        {%- endif %}
+                      {%- endif %}
+                      {%- if ticket.owned_by_id == g.user.id %}
+                      <li><a class="dropdown-item" href="{{ url_for('.appoint_user_manager_form', ticket_id=ticket.id) }}">{{ render_icon('arrow-right') }} {{ _('Transfer user management') }}</a></li>
+                        {%- if user_manager.id != g.user.id %}
+                      <li><a class="dropdown-item" href="{{ url_for('.withdraw_user_manager', ticket_id=ticket.id, _method='DELETE') }}" data-action="withdraw-user-manager">{{ render_icon('arrow-left') }} {{ _('Take back user management') }}</a></li>
+                        {%- endif %}
+                      {%- endif %}
+                    </ol>
+                  </div>
+                  {%- endif %}
+                </div>
+              </div>
+
+              <div class="field">
+                <div class="data-label">{{ _('Seat') }}</div>
+                <div class="data-value">
+                  {%- if ticket.occupied_seat -%}
+                  {{ render_seat_link(ticket.occupied_seat) }}
+                  {%- else -%}
+                  {{ render_tag(_('no seat'), class='color-info') }}
+                  {%- endif -%}
+                </div>
+                <div class="field-sub">
+                  <span>{{ _('verw.') }}</span>{{ render_user_avatar_and_link(seat_manager, size=16) }}
+                  {%- if ticket_management_enabled and (ticket.owned_by_id == g.user.id) %}
+                  <div class="dropdown">
+                    <button class="dropdown-toggle button button--outline is-compact">{{ render_icon('chevron-down') -}}</button>
+                    <ol class="dropdown-menu dropdown-menu--right">
+                      <li><a class="dropdown-item" href="{{ url_for('.appoint_seat_manager_form', ticket_id=ticket.id) }}">{{ render_icon('arrow-right') }} {{ _('Transfer seat management') }}</a></li>
+                      {%- if seat_manager.id != g.user.id %}
+                      <li><a class="dropdown-item" href="{{ url_for('.withdraw_seat_manager', ticket_id=ticket.id, _method='DELETE') }}" data-action="withdraw-seat-manager">{{ render_icon('arrow-left') }} {{ _('Take back seat management') }}</a></li>
+                      {%- endif %}
+                    </ol>
+                  </div>
+                  {%- endif %}
+                </div>
+              </div>
+
+            </div>
+
+            {# --- right: order + buyer --- #}
+            <div class="coupon-col">
+
+              {%- if ticket.owned_by_id == g.user.id %}
+              <div class="field">
+                <div class="data-label">{{ _('Order') }}</div>
+                <div class="data-value mono"><a href="{{ url_for('shop_orders.view', order_id=order_ids_by_order_number[ticket.order_number]) }}">{{ ticket.order_number }}</a></div>
+              </div>
+              {%- endif %}
+
+              <div class="field">
+                <div class="data-label">{{ _('Buyer') }}</div>
+                <div class="data-value">{{ render_user_avatar_and_link(ticket.owned_by, size=16) }}</div>
+              </div>
+
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+    </li>
+      {%- endwith %}
+    {%- endfor %}
+  </ol>
+{%- endmacro %}

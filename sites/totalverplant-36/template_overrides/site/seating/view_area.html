@@ -1,0 +1,272 @@
+{% extends 'layout/base.html' %}
+{% from 'macros/icons.html' import render_icon %}
+{% from 'macros/misc.html' import render_progress_bar %}
+{% from 'macros/seating.html' import render_area %}
+{% from 'macros/subnav.html' import render_subnav_for_menu_id %}
+{% set current_page = 'seating' %}
+{% set page_title = [_('Seat management') if manage_mode else _('Seating plan'), area.title] %}
+
+{% block head %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='style/seating.css') }}">
+<style>
+  /* ============================================================
+     SAALPLAN — "Der Saalplan" newspaper treatment.
+
+     The seat arrangement itself (.area + its .seat dots, drawn by
+     render_area from a fixed party background image) keeps its
+     pixel positions — we must not reflow it. The only geometry
+     change is the party seat box size (26px, see below); beyond
+     that we only re-dress everything around it: the stock
+     /seating page had no .bote-page wrapper, so the title, search
+     box, "Manage seats" button, legend and utilization bar ran
+     full-bleed under the sticky masthead. We wrap the body in the
+     centered 1320px paper sheet, frame the plan like a pinned hall
+     map and re-set the surrounding controls as inked newspaper
+     furniture. Markup, endpoints and seating.js hooks are
+     unchanged. All colours are theme tokens → dark mode is free.
+     ============================================================ */
+
+  .seating-page .breadcrumbs{
+    list-style:none;margin:0 0 14px;padding:0;
+    font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--inkSoft);
+  }
+  .seating-page .breadcrumbs ol{list-style:none;margin:0;padding:0;display:flex;gap:10px;flex-wrap:wrap;}
+  .seating-page .breadcrumbs a{color:var(--ink);text-decoration:none;border-bottom:1px dashed var(--inkSoft);}
+  .seating-page .breadcrumbs a:hover{color:var(--redDeep);border-bottom-color:var(--redDeep);}
+
+  /* control bar: search (left) + manage-seats (right) */
+  .seating-page .seat-controls{
+    display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px 24px;
+    padding-bottom:18px;margin-bottom:0;border-bottom:1px solid var(--ink);
+  }
+  .seating-page .seat-controls form.single-row{display:flex;gap:0;margin:0;}
+  .seating-page .form-control{
+    font-family:var(--body);font-size:18px;color:var(--ink);background:var(--paperLite);
+    border:1.5px solid var(--ink);border-right:0;border-radius:0;padding:9px 14px;width:16rem;max-width:60vw;
+    box-shadow:inset 2px 2px 0 rgba(26,24,18,.07);
+  }
+  .seating-page .form-control::placeholder{color:var(--inkMute);font-style:italic;}
+  .seating-page .form-control:focus{outline:none;border-color:var(--redDeep);}
+  .seating-page .seat-controls .button,
+  .seating-page .button-row .button{
+    display:inline-flex;align-items:center;justify-content:center;gap:9px;
+    font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--ink);background:var(--paperLite);border:1.5px solid var(--ink);border-radius:0;
+    padding:0 16px;min-height:42px;text-decoration:none;cursor:pointer;line-height:1;
+    box-shadow:3px 3px 0 var(--ink);
+    transition:transform .14s ease,box-shadow .14s ease,background-color .14s,color .14s;
+  }
+  .seating-page .seat-controls form .button{box-shadow:none;min-width:48px;padding:0 14px;}
+  .seating-page .button:hover{transform:translate(-2px,-2px);box-shadow:5px 5px 0 var(--ink);background:var(--ink);color:var(--paper);}
+  .seating-page .seat-controls form .button:hover{transform:none;box-shadow:none;}
+  .seating-page .button-row{display:flex;gap:12px;}
+  .seating-page .button .icon{width:1em;height:1em;}
+
+  /* the plan, pinned like a hall map — the .area inside is untouched */
+  .seating-page .seatplan-frame{
+    margin-top:22px;border:1.5px solid var(--ink);background:var(--paper);
+    box-shadow:5px 5px 0 var(--ink);padding:clamp(14px,2vw,26px);overflow:auto;
+    background-image:
+      linear-gradient(rgba(117,106,82,.07) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(117,106,82,.07) 1px,transparent 1px);
+    background-size:22px 22px;
+  }
+  .seating-page .seatplan-cap{
+    display:flex;justify-content:space-between;align-items:baseline;gap:8px 18px;flex-wrap:wrap;
+    font-family:var(--mono);font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--inkSoft);
+    border-bottom:1px solid var(--ink);padding-bottom:8px;margin-bottom:6px;
+  }
+  .seating-page .seatplan-cap .sc-area{color:var(--redDeep);font-weight:700;}
+  .seating-page .seatplan-frame .area{margin-top:1rem;}
+
+  /* party seat geometry: the hall plan's seat coordinates are laid out for
+     26px boxes (stock 11px dots would float apart on this grid). Spacing
+     between boxes stays the stock 1px margin + DB coordinates. Scoped to
+     .area so the 13px legend swatches above keep their own size. */
+  .seating-page .area .seat{width:26px;height:26px;}
+  .seating-page .area .seat.seat-type--narrow{width:26px;}
+
+  /* ----------------------------------------------------------------
+     seat tooltip — BYCEPS' core .seat-tooltip is a hardcoded white
+     box with 12px text; in dark mode its label/name inherit the
+     light --ink colour over white and become unreadable. Re-set it
+     as a pinned "reservation slip": theme paper, inked frame +
+     offset shadow, a mono seat-number stamp over a rule, a framed
+     occupant portrait and a legible serif name. Markup is generated
+     by seating.js and left untouched — we only style it.
+     ---------------------------------------------------------------- */
+  .seating-page .seat-tooltip{
+    background:var(--paperLite);color:var(--ink);
+    border:1.5px solid var(--ink);border-radius:0;
+    box-shadow:4px 4px 0 var(--ink);
+    bottom:2.1rem;left:-.7rem;
+    padding:11px 15px 13px;min-width:178px;white-space:nowrap;z-index:6;
+    font-family:var(--body);
+  }
+  .seating-page .seat-tooltip::after{
+    content:"";position:absolute;left:16px;bottom:-7px;width:11px;height:11px;
+    background:var(--paperLite);border-right:1.5px solid var(--ink);border-bottom:1.5px solid var(--ink);
+    transform:rotate(45deg);
+  }
+  .seating-page .seat-label{
+    font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;
+    color:var(--redDeep);border-bottom:1px solid var(--ink);padding-bottom:7px;margin-bottom:10px;
+  }
+  .seating-page .seat-ticket-code{
+    font-family:var(--mono);font-size:12px;letter-spacing:.03em;color:var(--ink);margin:0 0 9px;
+  }
+  .seating-page .seat-ticket-code .dimmed{color:var(--inkMute);font-weight:400;}
+  .seating-page .seat-ticket-code strong{color:var(--ink);font-weight:700;}
+  .seating-page .seat-occupier{display:flex;align-items:center;gap:12px;margin:0;}
+  .seating-page .seat-occupier-avatar{margin:0;}
+  .seating-page .seat-tooltip .avatar.size-48{
+    width:48px;height:48px;border-radius:0;border:1.5px solid var(--ink);
+    box-shadow:2px 2px 0 var(--ink);filter:grayscale(.35) sepia(.12) contrast(1.04);
+    transition:filter .4s ease;
+  }
+  /* bloom to full colour on hover, matching the rest of the design's prints */
+  .seating-page .seat-tooltip .avatar.size-48:hover{filter:none;}
+  .seating-page .seat-tooltip .avatar img{width:100%;height:100%;object-fit:cover;}
+  .seating-page .seat-occupier-name{font-family:var(--body);line-height:1.2;}
+  .seating-page .seat-occupier-name .dimmed{
+    font-family:var(--mono);font-size:8.5px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--inkSoft);
+  }
+  .seating-page .seat-occupier-name strong{
+    display:inline-block;margin-top:3px;font-size:19px;font-weight:700;font-style:italic;color:var(--ink);letter-spacing:.01em;
+  }
+
+  /* legend + utilization footer */
+  .seating-page .seat-footer{
+    display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:24px 40px;
+    margin-top:26px;border-top:3px double var(--ink);padding-top:18px;
+  }
+  .seating-page .seats-legend p,
+  .seating-page .seat-util-head{
+    font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;
+    color:var(--redDeep);margin:0 0 12px;
+  }
+  .seating-page .seats-legend ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;}
+  .seating-page .seats-legend li{
+    display:flex;align-items:center;gap:10px;
+    font-family:var(--body);font-style:italic;font-size:17px;color:var(--ink);
+  }
+  .seating-page .seats-legend .seat{
+    width:13px;height:13px;margin:0;border-radius:0;box-shadow:0 0 0 1px var(--ink);
+  }
+
+  .seating-page .seat-util{min-width:240px;}
+  .seating-page .seat-util small{font-size:inherit;}
+  .seating-page .progress{
+    height:16px;border:1.5px solid var(--ink);background:var(--paperLite);border-radius:0;overflow:hidden;
+    box-shadow:inset 1px 1px 0 rgba(26,24,18,.08);
+  }
+  .seating-page .progress-bar{
+    height:100%;background:var(--redDeep);border-radius:0;
+    background-image:repeating-linear-gradient(45deg,rgba(241,234,212,.18) 0 5px,transparent 5px 10px);
+  }
+  .seating-page .seat-util-count{
+    font-family:var(--mono);font-size:12px;letter-spacing:.06em;color:var(--inkSoft);margin-top:9px;
+  }
+  .seating-page .seat-util-count strong{color:var(--ink);font-weight:700;}
+
+  /* manage-mode warning, re-set as a notice slip */
+  .seating-page .notification{
+    display:flex;gap:14px;align-items:flex-start;border:1.5px solid var(--ink);
+    border-left:7px solid var(--redDeep);background:var(--paperLite);padding:15px 20px;
+    box-shadow:4px 4px 0 var(--ink);margin:18px 0 0;border-radius:0;max-width:none;
+  }
+  .seating-page .notification .block-with-icon-icon{color:var(--redDeep);font-size:20px;line-height:1.1;flex:0 0 auto;}
+  .seating-page .notification .block-with-icon-body{font-family:var(--body);font-style:italic;font-size:18px;line-height:1.4;color:var(--ink);}
+
+  @media (max-width:640px){
+    .seating-page .seat-controls{justify-content:flex-start;}
+    .seating-page .seat-footer{flex-direction:column;}
+  }
+</style>
+{%- endblock %}
+
+{% block subnav %}
+  {%- if subnav_menu_id|default %}
+{{ render_subnav_for_menu_id(subnav_menu_id, current_page) }}
+  {%- endif %}
+{% endblock %}
+
+{% block body %}
+<div class="bote-page seating-page">
+
+  <div class="page-folio">
+    <span class="pf-ressort">{{ _('Saalplan') }} · {{ _('Platzvergabe') }}</span>
+    <span>Großsporthalle Brake · Ausgabe 36</span>
+  </div>
+
+  {%- if manage_mode %}
+  <nav class="breadcrumbs">
+    <ol>
+      <li><a href="{{ url_for('.view_area', slug=area.slug) }}">{{ _('Seating plan') }}</a></li>
+    </ol>
+  </nav>
+  {%- endif %}
+
+  <header class="page-head">
+    <h1 class="ph-title">{%- if manage_mode %}{{ _('Plätze') }} <em>{{ _('verwalten') }}</em>{%- else %}{{ _('Der') }} <em>{{ _('Saalplan') }}</em>{%- endif %}</h1>
+    <p class="ph-standfirst">{{ _('Wer sitzt wo? Hier hängt der Hallenplan der %(area)s aus. Nach Mitgliedern suchen, freie Plätze finden — und mit gültiger Karte den eigenen Platz wählen.', area=area.title) }}</p>
+  </header>
+
+  <div class="seat-controls">
+    <form action="{{ url_for('attendance.attendees') }}" class="single-row unobtrusive">
+      <input type="search" name="search_term" placeholder="{{ _('Username') }}" class="form-control">
+      <button type="submit" class="button" title="{{ _('Search') }}">{{ render_icon('search') }}</button>
+    </form>
+    {%- if g.user.authenticated and seat_management_enabled %}
+    <div class="button-row is-right-aligned">
+      {%- if manage_mode %}
+      <a class="button" href="{{ url_for('.view_area', slug=area.slug) }}">{{ _('Leave seat management') }}</a>
+      {%- else %}
+      <a class="button" href="{{ url_for('.manage_seats_in_area', slug=area.slug) }}">{{ _('Manage seats') }}</a>
+      {%- endif %}
+    </div>
+    {%- endif %}
+  </div>
+
+  {%- if g.user.authenticated and seat_management_enabled and manage_mode %}
+{% include 'site/seating/_ticket_selector.html' %}
+  {%- endif %}
+
+  {# ===== the seat plan — render_area is left untouched ===== #}
+  <div class="seatplan-frame">
+    <div class="seatplan-cap">
+      <span class="sc-area">{{ area.title }}</span>
+      <span>{{ _('Saalplan') }} · {{ _('nicht maßstabsgetreu') }}</span>
+    </div>
+{{ render_area(area, seats) }}
+  </div>
+
+  <div class="seat-footer">
+    <div>
+{% include 'site/seating/_legend.html' %}
+    </div>
+    <div class="seat-util">
+      <p class="seat-util-head">{{ _('Utilization') }}</p>
+      <div class="progress">
+        {{ render_progress_bar(seat_utilization.occupied, seat_utilization.total) }}
+      </div>
+      <p class="seat-util-count"><strong>{{ seat_utilization.occupied|numberformat }}</strong> / {{ seat_utilization.total|numberformat }} {{ _('seats occupied') }}</p>
+    </div>
+  </div>
+
+</div>
+{%- endblock %}
+
+{% block scripts %}
+    <script src="{{ url_for('static', filename='behavior/seating.js') }}"></script>
+    <script>
+      onDomReady(() => {
+        {%- if g.user.authenticated and seat_management_enabled and manage_mode %}
+        const selected_ticket_id = {% if selected_ticket_id|default %}'{{ selected_ticket_id }}'{% else %}null{% endif %};
+        init_seat_management(selected_ticket_id);
+        {%- endif %}
+
+        init_seat_tooltips();
+      });
+    </script>
+{%- endblock %}
