@@ -6,7 +6,7 @@ tests.unit.services.lan_tournament.test_tournament_request_service
 from datetime import datetime, UTC
 import json
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import call, Mock, patch
 
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -150,7 +150,18 @@ def test_submit_request_persists_all_mandatory_fields(
     assert request.description == 'A friendly Sunday cup.'
 
     mock_repo.create_request.assert_called_once_with(request)
+    mock_repo.lock_request_quota_for_update.assert_called_once_with(
+        PARTY_ID, proposer_id
+    )
+    mock_log_service.create_log_entry.assert_called_once_with(
+        'tournament-request-submitted',
+        TournamentID(request.id),
+        proposer_id,
+        data={'number': request.number},
+        commit=False,
+    )
     mock_db.session.commit.assert_called_once()
+    mock_db.session.rollback.assert_not_called()
 
     assert event.request_id == request.id
     assert event.party_id == PARTY_ID
@@ -201,6 +212,7 @@ def test_submit_request_rejects_fourth_open_request(
 
     mock_repo.create_request.assert_not_called()
     mock_db.session.commit.assert_not_called()
+    mock_db.session.rollback.assert_called_once_with()
     mock_signals.tournament_request_submitted.send.assert_not_called()
 
 
@@ -261,6 +273,263 @@ def test_submit_request_persists_aware_utc_from_naive_input(
         2026, 10, 24, 22, 0, tzinfo=UTC
     )
     assert request.preferred_end_time.tzinfo is UTC
+
+
+# fmt: off
+@pytest.mark.parametrize('collides', [False, True])
+# fmt: on
+@patch(f'{MOCK_PREFIX}.db')
+@patch(f'{MOCK_PREFIX}.signals')
+@patch(f'{MOCK_PREFIX}.tournament_log_service')
+@patch(f'{MOCK_PREFIX}.tournament_request_repository')
+def test_submit_request_locks_quota_before_count_and_insert(
+    mock_repo, mock_log_service, mock_signals, mock_db, collides
+):
+    proposer_id = UserID(generate_uuid())
+    mock_repo.count_open_requests_for_proposer.return_value = 2
+    mock_repo.get_next_number_for_party.side_effect = [7, 8]
+    if collides:
+        orig = Mock(
+            diag=Mock(
+                constraint_name='uq_lan_tournament_requests_party_number'
+            )
+        )
+        mock_repo.create_request.side_effect = [
+            IntegrityError('', {}, orig),
+            None,
+        ]
+
+    order = Mock()
+    order.attach_mock(mock_repo.lock_request_quota_for_update, 'lock')
+    order.attach_mock(mock_repo.count_open_requests_for_proposer, 'count')
+    order.attach_mock(mock_repo.get_next_number_for_party, 'allocate')
+    order.attach_mock(mock_repo.create_request, 'insert')
+    order.attach_mock(mock_log_service.create_log_entry, 'audit')
+    order.attach_mock(mock_db.session.commit, 'commit')
+    order.attach_mock(mock_db.session.rollback, 'rollback')
+    order.attach_mock(mock_signals.tournament_request_submitted.send, 'signal')
+
+    result = tournament_request_service.submit_request(
+        PARTY_ID, proposer_id, **_submit_kwargs()
+    )
+
+    assert result.is_ok()
+    request, event = result.unwrap()
+    candidates = [args[0] for args, _kwargs in mock_repo.create_request.call_args_list]
+    assert [candidate.number for candidate in candidates] == (
+        [7, 8] if collides else [7]
+    )
+    assert all(candidate.id == request.id for candidate in candidates)
+    expected = []
+    for index, candidate in enumerate(candidates):
+        if index:
+            expected.append(call.rollback())
+        expected.extend(
+            [
+                call.lock(PARTY_ID, proposer_id),
+                call.count(PARTY_ID, proposer_id),
+                call.allocate(PARTY_ID),
+                call.insert(candidate),
+            ]
+        )
+    expected.extend(
+        [
+            call.audit(
+                'tournament-request-submitted',
+                TournamentID(request.id),
+                proposer_id,
+                data={'number': request.number},
+                commit=False,
+            ),
+            call.commit(),
+            call.signal(None, event=event),
+        ]
+    )
+    assert order.mock_calls == expected
+
+
+@patch(f'{MOCK_PREFIX}.db')
+@patch(f'{MOCK_PREFIX}.signals')
+@patch(f'{MOCK_PREFIX}.tournament_log_service')
+@patch(f'{MOCK_PREFIX}.tournament_request_repository')
+def test_submit_request_rechecks_quota_after_number_collision(
+    mock_repo, mock_log_service, mock_signals, mock_db
+):
+    proposer_id = UserID(generate_uuid())
+    mock_repo.count_open_requests_for_proposer.side_effect = [2, 3]
+    mock_repo.get_next_number_for_party.return_value = 7
+    orig = Mock(
+        diag=Mock(constraint_name='uq_lan_tournament_requests_party_number')
+    )
+    mock_repo.create_request.side_effect = IntegrityError('', {}, orig)
+
+    order = Mock()
+    order.attach_mock(mock_repo.lock_request_quota_for_update, 'lock')
+    order.attach_mock(mock_repo.count_open_requests_for_proposer, 'count')
+    order.attach_mock(mock_repo.get_next_number_for_party, 'allocate')
+    order.attach_mock(mock_repo.create_request, 'insert')
+    order.attach_mock(mock_db.session.rollback, 'rollback')
+
+    result = tournament_request_service.submit_request(
+        PARTY_ID, proposer_id, **_submit_kwargs()
+    )
+
+    assert result.is_err()
+    assert result.unwrap_err() == 'Too many open tournament requests.'
+    mock_repo.create_request.assert_called_once()
+    candidate = mock_repo.create_request.call_args.args[0]
+    assert order.mock_calls == [
+        call.lock(PARTY_ID, proposer_id),
+        call.count(PARTY_ID, proposer_id),
+        call.allocate(PARTY_ID),
+        call.insert(candidate),
+        call.rollback(),
+        call.lock(PARTY_ID, proposer_id),
+        call.count(PARTY_ID, proposer_id),
+        call.rollback(),
+    ]
+    mock_log_service.create_log_entry.assert_not_called()
+    mock_db.session.commit.assert_not_called()
+    mock_signals.tournament_request_submitted.send.assert_not_called()
+
+
+# fmt: off
+@pytest.mark.parametrize('open_count', [3, 4])
+# fmt: on
+@patch(f'{MOCK_PREFIX}.db')
+@patch(f'{MOCK_PREFIX}.signals')
+@patch(f'{MOCK_PREFIX}.tournament_log_service')
+@patch(f'{MOCK_PREFIX}.tournament_request_repository')
+def test_submit_request_quota_refusal_releases_transaction_lock(
+    mock_repo, mock_log_service, mock_signals, mock_db, open_count
+):
+    proposer_id = UserID(generate_uuid())
+    mock_repo.count_open_requests_for_proposer.return_value = open_count
+    order = Mock()
+    order.attach_mock(mock_repo.lock_request_quota_for_update, 'lock')
+    order.attach_mock(mock_repo.count_open_requests_for_proposer, 'count')
+    order.attach_mock(mock_db.session.rollback, 'rollback')
+
+    result = tournament_request_service.submit_request(
+        PARTY_ID, proposer_id, **_submit_kwargs()
+    )
+
+    assert result.is_err()
+    assert result.unwrap_err() == 'Too many open tournament requests.'
+    assert order.mock_calls == [
+        call.lock(PARTY_ID, proposer_id),
+        call.count(PARTY_ID, proposer_id),
+        call.rollback(),
+    ]
+    mock_repo.get_next_number_for_party.assert_not_called()
+    mock_repo.create_request.assert_not_called()
+    mock_log_service.create_log_entry.assert_not_called()
+    mock_db.session.commit.assert_not_called()
+    mock_signals.tournament_request_submitted.send.assert_not_called()
+
+
+# fmt: off
+@pytest.mark.parametrize('failure_point', ['lock', 'count', 'allocate', 'insert', 'audit', 'commit'])
+@pytest.mark.parametrize('integrity_error', [False, True], ids=['runtime', 'unrelated-integrity'])
+# fmt: on
+@patch(f'{MOCK_PREFIX}.db')
+@patch(f'{MOCK_PREFIX}.signals')
+@patch(f'{MOCK_PREFIX}.tournament_log_service')
+@patch(f'{MOCK_PREFIX}.tournament_request_repository')
+def test_submit_request_exception_rolls_back_before_reraise(
+    mock_repo, mock_log_service, mock_signals, mock_db,
+    failure_point, integrity_error,
+):
+    mock_repo.count_open_requests_for_proposer.return_value = 2
+    mock_repo.get_next_number_for_party.return_value = 7
+    failure = (
+        IntegrityError('', {}, Mock(diag=Mock(constraint_name='other_constraint')))
+        if integrity_error
+        else RuntimeError('precommit failure')
+    )
+    operations = {
+        'lock': mock_repo.lock_request_quota_for_update,
+        'count': mock_repo.count_open_requests_for_proposer,
+        'allocate': mock_repo.get_next_number_for_party,
+        'insert': mock_repo.create_request,
+        'audit': mock_log_service.create_log_entry,
+        'commit': mock_db.session.commit,
+    }
+    operations[failure_point].side_effect = failure
+    order = Mock()
+    for name, operation in operations.items():
+        order.attach_mock(operation, name)
+    order.attach_mock(mock_db.session.rollback, 'rollback')
+
+    with pytest.raises(type(failure)) as caught:
+        tournament_request_service.submit_request(
+            PARTY_ID, UserID(generate_uuid()), **_submit_kwargs()
+        )
+    order.propagated()
+
+    assert caught.value is failure
+    mock_db.session.rollback.assert_called_once_with()
+    assert [entry[0] for entry in order.mock_calls] == [
+        *list(operations)[:list(operations).index(failure_point) + 1],
+        'rollback',
+        'propagated',
+    ]
+    mock_signals.tournament_request_submitted.send.assert_not_called()
+
+
+# fmt: off
+@pytest.mark.parametrize('overrides', [
+    {'name': ''},
+    {'preferred_end_time': datetime(2026, 10, 24, 17, 0, tzinfo=UTC)},
+])
+# fmt: on
+@patch(f'{MOCK_PREFIX}.db')
+@patch(f'{MOCK_PREFIX}.signals')
+@patch(f'{MOCK_PREFIX}.tournament_log_service')
+@patch(f'{MOCK_PREFIX}.tournament_request_repository')
+def test_submit_request_validates_fields_before_quota_lock(
+    mock_repo, mock_log_service, mock_signals, mock_db, overrides
+):
+    result = tournament_request_service.submit_request(
+        PARTY_ID, UserID(generate_uuid()), **_submit_kwargs(**overrides)
+    )
+
+    assert result.is_err()
+    mock_repo.lock_request_quota_for_update.assert_not_called()
+    mock_repo.count_open_requests_for_proposer.assert_not_called()
+    mock_repo.get_next_number_for_party.assert_not_called()
+    mock_repo.create_request.assert_not_called()
+    mock_log_service.create_log_entry.assert_not_called()
+    mock_db.session.commit.assert_not_called()
+    mock_db.session.rollback.assert_not_called()
+    mock_signals.tournament_request_submitted.send.assert_not_called()
+
+
+@patch(f'{MOCK_PREFIX}.db')
+@patch(f'{MOCK_PREFIX}.signals')
+@patch(f'{MOCK_PREFIX}.tournament_log_service')
+@patch(f'{MOCK_PREFIX}.tournament_request_repository')
+def test_submit_request_signal_failure_does_not_rollback_committed_request(
+    mock_repo, mock_log_service, mock_signals, mock_db
+):
+    mock_repo.count_open_requests_for_proposer.return_value = 2
+    mock_repo.get_next_number_for_party.return_value = 7
+    failure = RuntimeError('postcommit failure')
+    mock_signals.tournament_request_submitted.send.side_effect = failure
+    order = Mock()
+    order.attach_mock(mock_db.session.commit, 'commit')
+    order.attach_mock(mock_signals.tournament_request_submitted.send, 'signal')
+
+    with pytest.raises(RuntimeError) as caught:
+        tournament_request_service.submit_request(
+            PARTY_ID, UserID(generate_uuid()), **_submit_kwargs()
+        )
+
+    assert caught.value is failure
+    assert [entry[0] for entry in order.mock_calls] == ['commit', 'signal']
+    mock_log_service.create_log_entry.assert_called_once()
+    assert mock_log_service.create_log_entry.call_args.kwargs['commit'] is False
+    mock_db.session.rollback.assert_not_called()
 
 
 # -------------------------------------------------------------------- #
@@ -1497,7 +1766,12 @@ def test_submit_request_retries_once_on_number_collision(
     request, _event = result.unwrap()
     assert request.number == 4
     assert mock_repo.get_next_number_for_party.call_count == 2
+    assert mock_repo.lock_request_quota_for_update.call_count == 2
+    assert mock_repo.count_open_requests_for_proposer.call_count == 2
     assert mock_db.session.rollback.call_count == 1
+    mock_log_service.create_log_entry.assert_called_once()
+    mock_db.session.commit.assert_called_once_with()
+    mock_signals.tournament_request_submitted.send.assert_called_once()
 
 
 @patch(f'{MOCK_PREFIX}.db')
@@ -1524,6 +1798,11 @@ def test_submit_request_gives_up_after_second_collision(
     assert result.is_err()
     assert result.unwrap_err() == 'Could not allocate a request number.'
     assert mock_repo.get_next_number_for_party.call_count == 2
+    assert mock_repo.lock_request_quota_for_update.call_count == 2
+    assert mock_repo.count_open_requests_for_proposer.call_count == 2
+    assert mock_db.session.rollback.call_count == 2
+    mock_log_service.create_log_entry.assert_not_called()
+    mock_db.session.commit.assert_not_called()
     mock_signals.tournament_request_submitted.send.assert_not_called()
 
 

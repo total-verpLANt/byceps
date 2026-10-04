@@ -157,12 +157,6 @@ def submit_request(
     if validation_result.is_err():
         return Err(validation_result.unwrap_err())
 
-    open_count = tournament_request_repository.count_open_requests_for_proposer(
-        party_id, proposer_id
-    )
-    if open_count >= MAX_OPEN_REQUESTS_PER_PROPOSER:
-        return Err('Too many open tournament requests.')
-
     special_rules = tournament_request_domain_service.normalize_optional_text(
         special_rules
     )
@@ -180,34 +174,47 @@ def submit_request(
     # against a concurrent submit for the same party: two callers can
     # read the same MAX(number) before either commits. The UNIQUE
     # constraint on (party_id, number) catches that; on a collision,
-    # re-read the number and retry exactly once.
+    # retry exactly once. Rollback releases the quota lock, so every
+    # attempt must reacquire it and recount before allocating a number.
     for _attempt in range(2):
-        number = tournament_request_repository.get_next_number_for_party(
-            party_id
-        )
-
-        candidate = TournamentRequest(
-            id=request_id,
-            party_id=party_id,
-            number=number,
-            proposer_id=proposer_id,
-            created_at=now,
-            status=TournamentRequestStatus.submitted,
-            name=name,
-            game=game,
-            game_format=game_format,
-            elimination_mode=elimination_mode,
-            team_size=team_size,
-            participant_limit=participant_limit,
-            preferred_start_time=preferred_start_time,
-            preferred_end_time=preferred_end_time,
-            description=description,
-            special_rules=special_rules,
-            notes=notes,
-            desired_template=desired_template,
-        )
-
         try:
+            tournament_request_repository.lock_request_quota_for_update(
+                party_id, proposer_id
+            )
+            open_count = (
+                tournament_request_repository.count_open_requests_for_proposer(
+                    party_id, proposer_id
+                )
+            )
+            if open_count >= MAX_OPEN_REQUESTS_PER_PROPOSER:
+                db.session.rollback()
+                return Err('Too many open tournament requests.')
+
+            number = tournament_request_repository.get_next_number_for_party(
+                party_id
+            )
+
+            candidate = TournamentRequest(
+                id=request_id,
+                party_id=party_id,
+                number=number,
+                proposer_id=proposer_id,
+                created_at=now,
+                status=TournamentRequestStatus.submitted,
+                name=name,
+                game=game,
+                game_format=game_format,
+                elimination_mode=elimination_mode,
+                team_size=team_size,
+                participant_limit=participant_limit,
+                preferred_start_time=preferred_start_time,
+                preferred_end_time=preferred_end_time,
+                description=description,
+                special_rules=special_rules,
+                notes=notes,
+                desired_template=desired_template,
+            )
+
             tournament_request_repository.create_request(candidate)
 
             tournament_log_service.create_log_entry(
@@ -224,6 +231,9 @@ def submit_request(
 
             if extract_constraint_name(e) == _UNIQUE_NUMBER_CONSTRAINT_NAME:
                 continue
+            raise
+        except Exception:
+            db.session.rollback()
             raise
         else:
             event = TournamentRequestSubmittedEvent(

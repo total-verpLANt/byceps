@@ -989,15 +989,27 @@ def change_status(
     initiator_id: UserID | None = None,
     *,
     confirm_generated_layout: bool = False,
+    allow_completed_reopen: bool = False,
 ) -> Result[tuple[Tournament, TournamentStatusChangedEvent], str]:
     """Change the tournament status.
 
+    Completed reopening requires a trusted caller's explicit opt-in.
     A plain round robin settled while it was not running completes on
     the change into ONGOING; the returned tournament still says ONGOING
     then.
     """
     tournament_repository.lock_tournament_for_update(tournament_id)
-    tournament = tournament_repository.get_tournament(tournament_id)
+    tournament = tournament_repository.get_tournament(tournament_id, fresh=True)
+
+    if (
+        tournament.tournament_status == TournamentStatus.COMPLETED
+        and new_status != TournamentStatus.COMPLETED
+        and not allow_completed_reopen
+    ):
+        tournament_repository.rollback_session()
+        return Err(
+            'A completed tournament can only be reopened by an administrator.'
+        )
 
     # Validate state machine transition first
     result = tournament_domain_service.change_tournament_status(
@@ -1078,9 +1090,8 @@ def change_status(
 
     # Leaving COMPLETED means the recorded winner is no longer a
     # result -- the tournament is being played again. Clearing it here
-    # rather than in the reopen route covers every way out of the
-    # status (the admin `reopen` and `resume`/`start` routes all land
-    # on change_status), and mirrors what the retraction cascade in
+    # rather than in the reopen route covers every authorized way out
+    # of the status, and mirrors what the retraction cascade in
     # _unconfirm_match_impl already does when it reverts a completion.
     # Flush only: commit_session below owns the commit, so a failure
     # before it discards this with it.

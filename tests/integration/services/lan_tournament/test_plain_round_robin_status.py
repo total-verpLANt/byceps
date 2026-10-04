@@ -120,8 +120,13 @@ def _generate(tournament, admin):
     ).unwrap()
 
 
-def _change(tournament, status, admin):
-    result = tournament_service.change_status(tournament.id, status, admin.id)
+def _change(tournament, status, admin, *, allow_completed_reopen: bool = False):
+    result = tournament_service.change_status(
+        tournament.id,
+        status,
+        admin.id,
+        allow_completed_reopen=allow_completed_reopen,
+    )
     assert result.is_ok(), result.unwrap_err()
 
 
@@ -287,7 +292,12 @@ def test_the_reopen_of_a_settled_round_robin_stays_ongoing(
         _play(match, admin)
     assert _found(tournament).tournament_status is TournamentStatus.COMPLETED
 
-    _change(tournament, TournamentStatus.ONGOING, admin)
+    _change(
+        tournament,
+        TournamentStatus.ONGOING,
+        admin,
+        allow_completed_reopen=True,
+    )
 
     found = _found(tournament)
     assert found.tournament_status is TournamentStatus.ONGOING

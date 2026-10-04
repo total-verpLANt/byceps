@@ -5,8 +5,10 @@ byceps.services.lan_tournament.tournament_request_repository
 
 from collections.abc import Iterable
 from datetime import datetime, UTC
+from hashlib import sha256
+import json
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 
 from byceps.database import db
 from byceps.services.party.models import PartyID
@@ -122,6 +124,23 @@ def get_next_number_for_party(party_id: PartyID) -> int:
             func.coalesce(func.max(DbTournamentRequest.number), 0) + 1
         ).filter_by(party_id=party_id)
     ).scalar_one()
+
+
+def _request_quota_lock_key(party_id: PartyID, proposer_id: UserID) -> int:
+    """Derive a stable signed 64-bit key for one proposer/party quota."""
+    payload = json.dumps(
+        ['lan_tournament.request_quota.v1', str(party_id), str(proposer_id)],
+        separators=(',', ':'),
+    ).encode('utf-8')
+    return int.from_bytes(sha256(payload).digest()[:8], 'big', signed=True)
+
+
+def lock_request_quota_for_update(
+    party_id: PartyID, proposer_id: UserID
+) -> None:
+    """Serialize quota attempts until the caller commits or rolls back."""
+    key = _request_quota_lock_key(party_id, proposer_id)
+    db.session.execute(text('SELECT pg_advisory_xact_lock(:key)'), {'key': key})
 
 
 def count_open_requests_for_proposer(
