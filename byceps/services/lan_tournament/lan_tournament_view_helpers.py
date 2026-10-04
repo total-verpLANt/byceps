@@ -19,6 +19,7 @@ from flask_babel import (
 from wtforms import Form
 
 from byceps.services.lan_tournament import (
+    tournament_log_service,
     seed_code,
     tournament_match_service,
     tournament_participant_service,
@@ -2058,6 +2059,10 @@ def serialize_seeding_board(
         'locked_reason': (
             gettext(board.locked_reason) if board.locked_reason else None
         ),
+        'regenerate_refusal': (
+            gettext(board.regenerate_refusal)
+            if board.regenerate_refusal else None
+        ),
         'notices': [
             gettext(msgid, **params)
             for msgid, params in zip(
@@ -2210,9 +2215,6 @@ START_NOT_GENERATED_ERROR = (
     'Cannot start tournament without generated brackets. '
     'Generate brackets first.'
 )
-START_CONFIRM_REQUIRED_ERROR = (
-    'Confirm that the generated layout is used before starting.'
-)
 
 
 @dataclass(frozen=True)
@@ -2276,17 +2278,6 @@ def _start_gate_state(tournament: Tournament) -> StartGate:
     if generation is tournament_seeding_service.GenerationStatus.DIFFERS:
         return StartGate('confirm')
     return _START_OPEN
-
-
-def start_refusal(
-    tournament: Tournament, form: Mapping[str, Any]
-) -> str | None:
-    """Return the msgid refusing a start without the confirmation, if any."""
-    if start_gate(tournament).state == 'confirm' and not form.get(
-        START_CONFIRM_FIELD
-    ):
-        return START_CONFIRM_REQUIRED_ERROR
-    return None
 
 
 def _undersized_notice(pool: tournament_match_service.UndersizedPool) -> str:
@@ -2540,6 +2531,9 @@ _SEEDING_EVENT_LABELS: dict[str, Callable[[], str]] = {
         'Qualification closed'
     ),
     'qualification-tie-decided': lambda: gettext('Tie decided'),
+    'qualification-leaderboard-reopened': lambda: gettext(
+        'Qualification reopened'
+    ),
     'qualification-tie-withdrawn': lambda: gettext('Decision withdrawn'),
     'playoffs-released': lambda: gettext('Playoffs released'),
     'playoffs-unreleased': lambda: gettext('Release undone'),
@@ -2674,7 +2668,10 @@ def _qualification_event_details(
                     mode=mode_label,
                 )
             )
-    elif event_type == 'playoffs-unreleased':
+    elif event_type in (
+        'playoffs-unreleased',
+        'qualification-leaderboard-reopened',
+    ):
         reason = _audit_reason(data)
         if reason is not None:
             parts.append(f"{gettext('Reason')}: {reason}")
@@ -2938,6 +2935,55 @@ def _seeding_event_details(
 
 
 SEEDING_LOG_PREFIXES = ('seeding-', 'bracket-', 'qualification-', 'playoffs-')
+SEEDING_AUDIT_LIMIT = 200
+
+
+def seeding_audit_context(
+    tournament_id: TournamentID, names: Mapping[str, str]
+) -> dict[str, Any]:
+    """Return the audit rows of the seeding pages and the shown limit."""
+    entries = tournament_log_service.get_recent_entries_for_tournament(
+        tournament_id,
+        (*SEEDING_LOG_PREFIXES, 'participant-'),
+        limit=SEEDING_AUDIT_LIMIT + 1,
+        registration_statuses=tuple(_REGISTRATION_STATUS_LABELS),
+    )
+    truncated = len(entries) > SEEDING_AUDIT_LIMIT
+    entries = entries[:SEEDING_AUDIT_LIMIT]
+    users = user_service.get_users_indexed_by_id(
+        {entry.initiator_id for entry in entries if entry.initiator_id}
+    )
+    return {
+        'audit_rows': seeding_audit_rows(entries, users, names),
+        'audit_limit': SEEDING_AUDIT_LIMIT if truncated else None,
+    }
+
+
+def playoff_release_open(tournament, state):
+    return (
+        state.ready
+        and state.released_at is None
+        and state.source != tournament_qualification_service.SOURCE_WINNER
+        and tournament.tournament_status is TournamentStatus.ONGOING
+    )
+
+
+def playoff_board(state):
+    """Return the stored playoff board using the same qualification snapshot."""
+    if state.source not in (
+        tournament_qualification_service.SOURCE_GROUPS,
+        tournament_qualification_service.SOURCE_LEADERBOARD,
+    ):
+        return None
+    match tournament_seeding_service.get_board(
+        state.tournament_id,
+        tournament_seeding_service.PLAYOFF_TARGET,
+        qualification=state,
+    ):
+        case Ok(board):
+            return board
+        case Err(_):
+            return None
 
 _STATUS_CHANGED = 'tournament-status-changed'
 _RELEASE_CODE_WINDOW = timedelta(minutes=1)
@@ -3066,7 +3112,7 @@ def seeding_audit_rows(
             )
             group.append(_swap_details(entry.data, names or {}))
             if not previous['children']:
-                previous['children'].append(dict(previous))
+                previous['children'].append({**previous, 'children': []})
             previous['children'].append(current)
             previous['label'] = gettext(
                 '%(n)s × swapped', n=len(previous['children'])
@@ -3627,6 +3673,7 @@ def participant_rankings(
             {
                 'scope': ranking['scope'],
                 'label': ranking['label'],
+                'is_table': state.source == 'groups',
                 'open_matches': ranking['open_matches'],
                 'cut': ranking['cut'],
                 'has_tie': any(e['status'] == 'tie' for e in entries),

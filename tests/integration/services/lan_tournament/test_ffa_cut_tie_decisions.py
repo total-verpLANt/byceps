@@ -6,6 +6,7 @@ The read model of FFA lobby cut ties, and the rule that a decision
 stays put once the next round was built from it.
 """
 
+from contextlib import contextmanager
 from datetime import datetime, UTC
 from itertools import count
 
@@ -24,6 +25,7 @@ from byceps.services.lan_tournament import (
     tournament_service,
 )
 from byceps.services.lan_tournament.models import ContestantType
+from byceps.services.lan_tournament.models.bracket import Bracket
 from byceps.services.lan_tournament.models.elimination_mode import (
     EliminationMode,
 )
@@ -41,6 +43,16 @@ from byceps.services.party.models import PartyID
 from byceps.util.result import Err, Ok
 from byceps.util.uuid import generate_uuid7
 
+from tests.integration.services.lan_tournament import (
+    test_ffa_natural_undersized_wb as natural,
+)
+
+
+engine_party = natural.engine_party
+engine_players = natural.engine_players
+engine_admin = natural.engine_admin
+make_engine = natural.make_engine
+
 
 PARTY_ID = PartyID('lan-party-ffa-cut-tie-decisions')
 
@@ -55,7 +67,7 @@ def party(make_party, make_brand):
 
 @pytest.fixture(scope='module')
 def players(make_user):
-    return [make_user(f'FfaCutTieDecPlayer{i}') for i in range(8)]
+    return [make_user(f'FfaCutTieDecPlayer{i}') for i in range(16)]
 
 
 @pytest.fixture(scope='module')
@@ -67,7 +79,7 @@ def admin(make_user):
 def make_ffa(party, players, admin):
     created = []
 
-    def _make(*, point_table, advancement_count=3, play=True):
+    def _make(*, point_table, advancement_count=3, play=True, player_count=8, lobby_size=6):
         result = tournament_service.create_tournament(
             party.id,
             f'FFA Cut Tie Decisions {next(_counter)}',
@@ -77,14 +89,14 @@ def make_ffa(party, players, admin):
             tournament_status=TournamentStatus.REGISTRATION_CLOSED,
             max_players=16,
             group_size_min=2,
-            group_size_max=6,
+            group_size_max=lobby_size,
             advancement_count=advancement_count,
             point_table=point_table,
         )
         assert result.is_ok(), result.unwrap_err()
         tournament, _ = result.unwrap()
         created.append(tournament)
-        for user in players:
+        for user in players[:player_count]:
             tournament_repository.create_participant(
                 TournamentParticipant(
                     id=TournamentParticipantID(generate_uuid7()),
@@ -193,6 +205,133 @@ def _decisions(tournament):
 TIED_TABLE = [3, 2, 1, 1]
 CLEAN_TABLE = [4, 3, 2, 1]
 SEEDING_TIE_TABLE = [2, 2, 1, 0]
+
+
+def _count_report_queries(tournament):
+    statements = []
+    def record(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+    with event_listener(db.engine, record):
+        report = tournament_qualification_service.get_ffa_decision_report(tournament.id)
+    print(f'FFA report tournament={tournament.id}: {len(statements)} statements')
+    return report, len(statements)
+
+
+@contextmanager
+def event_listener(engine, record):
+    from sqlalchemy import event
+
+    event.listen(engine, 'before_cursor_execute', record)
+    try:
+        yield
+    finally:
+        event.remove(engine, 'before_cursor_execute', record)
+
+
+def test_cut_tie_report_query_count_is_constant(make_ffa):
+    counts = []
+    for size in (8, 16):
+        tournament = make_ffa(point_table=[3, 2, 2, 1], advancement_count=2,
+                              player_count=size, lobby_size=4)
+        report, count = _count_report_queries(tournament)
+        assert len(report.ties) == size // 4
+        assert all(not tie.locked and not tie.decided for tie in report.ties)
+        counts.append(count)
+    assert counts[0] == counts[1] <= 10, counts
+
+
+def test_completed_b2_report_query_count_is_constant(make_ffa, admin):
+    counts = []
+    for size in (8, 16):
+        tournament = make_ffa(point_table=[1, 1, 1, 1], advancement_count=1,
+                              player_count=size, lobby_size=4)
+        lobbies = _round(tournament, 0)
+        _scope = tournament_match_service.ffa_lobby_scope
+        # Store decisions in all lobbies, then empty all but one: those
+        # stored blocks are outdated while the survivor lobby stays decided.
+        for lobby in lobbies:
+            tournament_qualification_service.save_decision(
+                tournament.id, _scope(lobby), sorted(_members(lobby)),
+                reason='Decided at the table.', initiator_id=admin.id,
+            ).unwrap()
+        for lobby in lobbies[1:]:
+            for cid in _members(lobby):
+                tournament_participant_service.admin_remove_participant(
+                    tournament.id, TournamentParticipantID(cid), initiator=admin
+                ).unwrap()
+        assert tournament_match_service.advance_ffa_round(
+            tournament.id, initiator_id=admin.id
+        ).unwrap() == 'completed'
+        done = tournament_repository.get_tournament(tournament.id)
+        assert all(tournament_match_service.ffa_round_consumed(m, done) for m in lobbies)
+        expected = tournament_qualification_service.get_ffa_decision_report(tournament.id)
+        report, count = _count_report_queries(tournament)
+        assert report == expected
+        assert len(report.ties) == 1
+        assert all(tie.decided and tie.locked for tie in report.ties)
+        assert len(report.outdated) == len(lobbies) - 1
+        assert all(block.locked for block in report.outdated)
+        counts.append(count)
+    assert counts[0] == counts[1] <= 10, counts
+
+
+def test_auto_release_failure_after_commit_is_logged_not_raised(make_ffa, admin, monkeypatch, caplog):
+    tournament = make_ffa(point_table=TIED_TABLE)
+    lobby = _round(tournament, 0)[0]
+    scope = tournament_match_service.ffa_lobby_scope(lobby)
+    def fail(*args, **kwargs):
+        raise RuntimeError('injected release failure')
+    monkeypatch.setattr(tournament_qualification_service, 'try_auto_release', fail)
+    result = tournament_qualification_service.save_decision(
+        tournament.id, scope, sorted(_tied_in(lobby)),
+        reason='Committed despite release failure.', initiator_id=admin.id,
+    )
+    assert result.is_ok(), result.unwrap_err()
+    db.session.expire_all()
+    assert scope in _decisions(tournament)
+    assert 'Automatic playoff release failed' in caplog.text
+
+
+def test_a_tie_in_a_lone_winners_lobby_within_the_cut_is_decidable(
+    make_engine, engine_admin
+):
+    tournament = make_engine(
+        'plain', size=16, minimum=3, cut=2, point_table=[1, 1, 0, 0]
+    )
+    wb = natural.reach_lone_wb_round_three(tournament, engine_admin)
+    natural.base.play(wb, engine_admin)
+    scope = tournament_match_service.ffa_lobby_scope(wb)
+    ties = tournament_qualification_service.get_ffa_cut_ties(tournament.id)
+    assert scope in [tie.scope for tie in ties]
+    result = tournament_match_service.advance_ffa_round(
+        tournament.id, pool=Bracket.WINNERS
+    )
+    assert result == Err(tournament_match_service.QUALIFICATION_TIE_ERROR)
+    saved = tournament_qualification_service.save_decision(
+        tournament.id,
+        scope,
+        natural.base.members(wb),
+        reason='Decided at the table.',
+        initiator_id=engine_admin.id,
+    )
+    assert saved.is_ok(), saved.unwrap_err()
+    for match in natural.base.repo.get_matches_for_tournament(tournament.id):
+        if match.confirmed_by is None:
+            natural.base.play(match, engine_admin)
+    result = tournament_match_service.advance_ffa_round(
+        tournament.id, pool=Bracket.WINNERS
+    )
+    if result == Err(tournament_match_service.FFA_LOBBY_BELOW_MINIMUM_ERROR):
+        tournament_match_service.advance_ffa_round(
+            tournament.id, pool=Bracket.LOSERS
+        ).unwrap()
+        for match in natural.base.repo.get_matches_for_tournament(tournament.id):
+            if match.confirmed_by is None:
+                natural.base.play(match, engine_admin)
+        result = tournament_match_service.advance_ffa_round(
+            tournament.id, pool=Bracket.WINNERS
+        )
+    assert result.is_ok(), result.unwrap_err()
 
 
 # -------------------------------------------------------------------- #

@@ -5,9 +5,11 @@ tests.integration.services.lan_tournament.test_migration_019
 
 import os
 from pathlib import Path
+from time import monotonic
 
 import pytest
 from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 
 from byceps.database import db
 
@@ -101,6 +103,41 @@ def _schema_signature(connection) -> dict[str, object]:
         'constraints': [tuple(row) for row in constraints],
         'indexes': [tuple(row) for row in indexes],
     }
+
+
+@pytest.mark.parametrize(
+    'sql_path', [FORWARD_SQL_PATH, ROLLBACK_SQL_PATH], ids=['forward', 'rollback']
+)
+def test_migration_019_sets_a_lock_timeout_first(sql_path):
+    lines = sql_path.read_text().splitlines()
+    begin_index = lines.index('BEGIN;')
+
+    assert lines[begin_index + 1] == "SET LOCAL lock_timeout = '5s';"
+
+
+def test_migration_019_gives_up_on_a_held_lock():
+    rollback_sql = _strip_transaction_control(ROLLBACK_SQL_PATH.read_text())
+
+    db.session.close()
+    _assert_isolated_test_database()
+
+    with db.engine.connect() as holder, db.engine.connect() as contender:
+        try:
+            holder.exec_driver_sql(
+                'LOCK TABLE lan_tournament_seedings IN ACCESS SHARE MODE'
+            )
+            contender.exec_driver_sql("SET LOCAL statement_timeout = '20s';")
+
+            started_at = monotonic()
+            with pytest.raises(OperationalError) as exc_info:
+                contender.exec_driver_sql(rollback_sql)
+            elapsed = monotonic() - started_at
+
+            assert exc_info.value.orig.sqlstate == '55P03'
+            assert 4 <= elapsed < 15
+        finally:
+            contender.rollback()
+            holder.rollback()
 
 
 def test_migration_019_creates_table_and_constraints():

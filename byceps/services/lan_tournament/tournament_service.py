@@ -740,7 +740,7 @@ def update_tournament(
     ):
         from . import tournament_qualification_service
 
-        tournament_qualification_service.try_auto_release(
+        tournament_qualification_service.auto_release_after_commit(
             tournament_id, triggered_by=initiator_id
         )
 
@@ -964,10 +964,31 @@ def _ffa_round_zero_stall(tournament: Tournament) -> bool:
     return tournament_match_service.ffa_stall_for(tournament, count) is not None
 
 
+START_CONFIRM_REQUIRED_ERROR = (
+    'Confirm that the generated layout is used before starting.'
+)
+
+
+def _start_confirmation_refusal(
+    tournament_id: TournamentID, confirmed: bool
+) -> str | None:
+    """Return the msgid refusing an unconfirmed start of a changed board."""
+    if confirmed:
+        return None
+    generation = tournament_seeding_service.peek_initial_generation_status(
+        tournament_id
+    )
+    if generation is tournament_seeding_service.GenerationStatus.DIFFERS:
+        return START_CONFIRM_REQUIRED_ERROR
+    return None
+
+
 def change_status(
     tournament_id: TournamentID,
     new_status: TournamentStatus,
     initiator_id: UserID | None = None,
+    *,
+    confirm_generated_layout: bool = False,
 ) -> Result[tuple[Tournament, TournamentStatusChangedEvent], str]:
     """Change the tournament status.
 
@@ -1001,10 +1022,14 @@ def change_status(
     )
     if is_start:
         violations: list[str] = []
-        if tournament.game_format and (
-            tournament.game_format.requires_bracket_generation
-            or tournament.game_format.uses_placements
-        ):
+        has_board = bool(
+            tournament.game_format
+            and (
+                tournament.game_format.requires_bracket_generation
+                or tournament.game_format.uses_placements
+            )
+        )
+        if has_board:
             violations = tournament_match_service.validate_bracket_for_start(
                 tournament_id, tournament=tournament
             )
@@ -1035,6 +1060,13 @@ def change_status(
             ):
                 return Err(violations[0])
             return Err('Cannot start tournament: ' + '; '.join(violations))
+        if has_board:
+            refusal = _start_confirmation_refusal(
+                tournament_id, confirm_generated_layout
+            )
+            if refusal is not None:
+                tournament_repository.rollback_session()
+                return Err(refusal)
         # The cut or the minimum may have changed after the generation.
         if _ffa_round_zero_stall(tournament):
             tournament_repository.rollback_session()
@@ -1123,7 +1155,7 @@ def change_status(
     ):
         from . import tournament_qualification_service
 
-        tournament_qualification_service.try_auto_release(
+        tournament_qualification_service.auto_release_after_commit(
             tournament_id, triggered_by=initiator_id
         )
 

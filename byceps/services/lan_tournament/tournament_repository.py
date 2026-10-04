@@ -1,11 +1,12 @@
 import json
 import logging
+from collections.abc import Sequence
 from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, TypeVar, cast
 from uuid import UUID
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import and_, delete, func, or_, select, update
 
 from byceps.database import db
 from byceps.services.party.models import PartyID
@@ -24,6 +25,7 @@ from .models.bracket import Bracket
 from .models.contestant_type import ContestantType
 from .models.tournament import Tournament, TournamentID
 from .models.tournament_image import TournamentImageID
+from .models.tournament_log_entry import TournamentLogEntry
 from .models.tournament_match import TournamentMatch, TournamentMatchID
 from .models.tournament_match_comment import (
     TournamentMatchComment,
@@ -2071,6 +2073,54 @@ def get_ready_unconfirmed_match_ids(
     return list(match_ids)
 
 
+def get_log_entries_with_prefixes(
+    tournament_id: TournamentID,
+    prefixes: Sequence[str],
+    limit: int,
+    *,
+    registration_statuses: Sequence[str] = (),
+) -> list[TournamentLogEntry]:
+    """Return matching audit events, newest first, at most `limit`."""
+    if not prefixes:
+        raise ValueError('prefixes must not be empty')
+    predicates = [
+        DbTournamentLogEntry.event_type.startswith(prefix, autoescape=True)
+        for prefix in prefixes
+    ]
+    if registration_statuses:
+        predicates.append(
+            and_(
+                DbTournamentLogEntry.event_type == 'tournament-status-changed',
+                DbTournamentLogEntry.data['new_status'].astext.in_(
+                    registration_statuses
+                ),
+            )
+        )
+    rows = db.session.scalars(
+        select(DbTournamentLogEntry)
+        .where(
+            DbTournamentLogEntry.tournament_id == tournament_id,
+            or_(*predicates),
+        )
+        .order_by(
+            DbTournamentLogEntry.occurred_at.desc(),
+            DbTournamentLogEntry.id.desc(),
+        )
+        .limit(limit)
+    ).all()
+    return [
+        TournamentLogEntry(
+            id=row.id,
+            occurred_at=row.occurred_at,
+            event_type=row.event_type,
+            tournament_id=row.tournament_id,
+            initiator_id=row.initiator_id,
+            data=row.data.copy(),
+        )
+        for row in rows
+    ]
+
+
 def delete_log_entries_older_than(occurred_before: datetime) -> int:
     """Delete tournament log entries which occurred before the given date.
 
@@ -2085,4 +2135,3 @@ def delete_log_entries_older_than(occurred_before: datetime) -> int:
 
     num_deleted = result.rowcount
     return num_deleted
-

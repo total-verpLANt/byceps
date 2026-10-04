@@ -19,6 +19,60 @@ engine_admin = base.engine_admin
 make_engine = base.make_engine
 
 
+def reach_lone_wb_round_three(tournament, admin):
+    """Drive both pools until the naturally undersized WB lobby exists."""
+    for _ in range(12):
+        if base.lobbies(tournament, Bracket.WINNERS, 3):
+            return base.lobbies(tournament, Bracket.WINNERS, 3)[0]
+        for match in base.repo.get_matches_for_tournament(tournament.id):
+            if match.confirmed_by is None:
+                base.play(match, admin)
+        for pool in (Bracket.WINNERS, Bracket.LOSERS):
+            matches.advance_ffa_round(tournament.id, pool=pool)
+    pytest.fail('WB round 3 was not reached')
+
+
+@pytest.mark.parametrize('kind', ['plain', 'highscore'])
+def test_a_winners_pool_within_the_cut_drops_its_last(
+    make_engine, engine_admin, kind
+):
+    tournament = make_engine(kind, size=16, minimum=3, cut=2)
+    wb = reach_lone_wb_round_three(tournament, engine_admin)
+    winner, dropped = base.members(wb)
+    base.play(wb, engine_admin)
+    all_matches = base.repo.get_matches_for_tournament(tournament.id)
+    assert matches._collect_wb_survivors(tournament, all_matches).unwrap() == [
+        winner
+    ]
+    assert dropped in matches._collect_wb_dropped_pending(
+        tournament, all_matches
+    ).unwrap()
+    for _ in range(12):
+        for match in base.repo.get_matches_for_tournament(tournament.id):
+            if match.confirmed_by is None:
+                base.play(match, engine_admin)
+        for pool in (Bracket.WINNERS, Bracket.LOSERS):
+            result = matches.advance_ffa_round(tournament.id, pool=pool)
+            assert not base.lobbies(tournament, Bracket.WINNERS, 4)
+            if result.is_ok() and result.unwrap() == 'grand_final_eligible':
+                all_matches = base.repo.get_matches_for_tournament(tournament.id)
+                assert matches._collect_wb_survivors(
+                    tournament, all_matches
+                ).unwrap() == [winner]
+                assert dropped in {
+                    cid
+                    for m in all_matches
+                    if m.bracket is Bracket.LOSERS
+                    for cid in base.members(m)
+                } | set(
+                    matches._collect_wb_dropped_pending(
+                        tournament, all_matches
+                    ).unwrap()
+                )
+                return
+    pytest.fail('The winners pool failed to reach a legal grand final')
+
+
 @pytest.mark.parametrize('kind', ['plain', 'highscore'])
 @pytest.mark.parametrize('entrypoint', ['direct', 'draft'])
 def test_natural_shortfall_does_not_bypass_source_confirmation(

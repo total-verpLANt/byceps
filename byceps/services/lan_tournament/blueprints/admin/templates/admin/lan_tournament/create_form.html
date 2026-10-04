@@ -208,7 +208,7 @@
               {{ wiz_field(form.image_url, caption=_('For older tournaments and externally hosted images. An uploaded image takes precedence.'), placeholder='https://') }}
             </details>
 
-            {{ wiz_field(form.image_alt_text, optional=True, caption=_('Only needed if the image carries information such as text or a logo. Leave empty if purely decorative.'), placeholder=_('e.g. Logo "Blitz chess by the fireplace" with a chessboard')) }}
+            {{ wiz_field(form.image_alt_text, optional=True, caption=_('Only needed if the image carries information such as text or a logo. Leave empty if purely decorative.'), placeholder=_('e.g. Logo "Blitz chess by the fireplace" with a chessboard')|forceescape) }}
           </div>
         </fieldset>
 
@@ -380,7 +380,7 @@
             <div class="lt-wiz-fixed" data-wiz-fixed>
               <span class="tag color-disabled">{{ _('Skipped') }}</span>
               {%- set skipped_text = _('Playoffs exist only for 1v1 with "Everyone plays everyone" and for Highscore. Other formats have one phase and behave as before.') %}
-              <span data-wiz-playoff-skip data-wiz-default="{{ skipped_text }}">{{ skipped_text }}</span>
+              <span data-wiz-playoff-skip data-wiz-default="{{ skipped_text|forceescape }}">{{ skipped_text }}</span>
             </div>
           </div>
 

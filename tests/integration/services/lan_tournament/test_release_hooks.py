@@ -54,6 +54,109 @@ _counter = count(1)
 MODES = [PlayoffReleaseMode.MANUAL, PlayoffReleaseMode.AUTOMATIC]
 
 
+def _release_failure(*args, **kwargs):
+    raise RuntimeError('injected release failure')
+
+
+def test_update_survives_a_failing_auto_release(make_tournament, users, monkeypatch, caplog):
+    tournament = _make_groups_tournament(make_tournament, users, PlayoffReleaseMode.AUTOMATIC)
+    monkeypatch.setattr(tournament_qualification_service, 'try_auto_release', _release_failure)
+    result = tournament_service.update_tournament(
+        tournament.id, name=tournament.name,
+        game_format=tournament.game_format, elimination_mode=tournament.elimination_mode,
+        playoff_qualifiers_per_group=1, initiator_id=users[0].id,
+    )
+    assert result.is_ok(), result.unwrap_err()
+    db.session.expire_all()
+    assert tournament_repository.get_tournament(tournament.id).playoff_qualifiers_per_group == 1
+    assert 'Automatic playoff release failed' in caplog.text
+
+
+def test_auto_release_and_rollback_failures_after_commit_are_logged_not_raised(
+    make_tournament, users, monkeypatch, caplog
+):
+    tournament = _make_groups_tournament(make_tournament, users, PlayoffReleaseMode.AUTOMATIC)
+    with monkeypatch.context() as scoped:
+        scoped.setattr(tournament_qualification_service, 'try_auto_release', _release_failure)
+        scoped.setattr(tournament_repository, 'rollback_session', _release_failure)
+        tournament_qualification_service.auto_release_after_commit(
+            tournament.id, triggered_by=users[0].id
+        )
+    db.session.expire_all()
+    assert tournament_repository.get_tournament(tournament.id).tournament_status is TournamentStatus.ONGOING
+    assert 'Automatic playoff release failed' in caplog.text
+    assert 'Rollback after automatic playoff release failed' in caplog.text
+
+
+def test_removal_signals_fire_before_the_auto_release(make_tournament, users, monkeypatch):
+    from byceps.services.lan_tournament import signals
+
+    tournament = _make_groups_tournament(make_tournament, users, PlayoffReleaseMode.AUTOMATIC)
+    participant = tournament_repository.get_participants_for_tournament(tournament.id)[-1]
+    order = []
+    def receiver(sender, **kwargs):
+        order.append('participant_left')
+    monkeypatch.setattr(tournament_qualification_service, 'try_auto_release', lambda *a, **kw: order.append('release'))
+    with signals.participant_left.connected_to(receiver):
+        result = tournament_participant_service.admin_remove_participant(
+            tournament.id, participant.id, initiator=users[0]
+        )
+    assert result.is_ok(), result.unwrap_err()
+    assert order == ['participant_left', 'release']
+
+
+@pytest.mark.parametrize('removal', ['admin', 'ticketless', 'last-member'])
+def test_all_team_removal_signals_precede_release(make_tournament, users, monkeypatch, removal):
+    from byceps.services.lan_tournament import signals, tournament_team_service
+    from tests.integration.services.lan_tournament import test_removed_contestants as removed
+
+    tournament, teams = removed._make_team_groups(
+        make_tournament, users, PlayoffReleaseMode.AUTOMATIC
+    )
+    team = teams[0]
+    if removal != 'ticketless':
+        captain = tournament_repository.find_participant_by_user(tournament.id, team.captain_user_id)
+        tournament_participant_service.admin_remove_participant(
+            tournament.id, captain.id, initiator=users[0]
+        ).unwrap()
+    members = tournament_repository.get_participants_for_team(team.id)
+    order = []
+    def member_left(sender, **kwargs):
+        order.append('member_left')
+    def participant_left(sender, **kwargs):
+        order.append('participant_left')
+    def team_deleted(sender, **kwargs):
+        order.append('team_deleted')
+    monkeypatch.setattr(tournament_qualification_service, 'try_auto_release',
+                        lambda *a, **kw: order.append('release'))
+    with (signals.team_member_left.connected_to(member_left),
+          signals.participant_left.connected_to(participant_left),
+          signals.team_deleted.connected_to(team_deleted)):
+        if removal == 'admin':
+            result = tournament_participant_service.admin_remove_participant(
+                tournament.id, members[0].id, initiator=users[0]
+            )
+        elif removal == 'last-member':
+            result = tournament_team_service.remove_team_member(
+                team.id, members[0].user_id, initiator_id=users[0].id
+            )
+        else:
+            removed_users = {member.user_id for member in members}
+            monkeypatch.setattr(tournament_participant_service.ticket_service,
+                                'select_ticket_users_for_party',
+                                lambda user_ids, party_id: user_ids - removed_users)
+            result = tournament_participant_service.remove_participants_without_tickets(
+                tournament.id, PARTY_ID, initiator_id=users[0].id
+            )
+    assert result.is_ok(), result.unwrap_err()
+    assert order[-1] == 'release'
+    assert order.index('team_deleted') < order.index('release')
+    assert order.count('release') == 1
+    assert order.count('member_left') == len(members)
+    if removal != 'last-member':
+        assert order.count('participant_left') == len(members)
+
+
 @pytest.fixture(scope='module')
 def party(make_party, make_brand):
     brand = make_brand('releasehooksbrand', 'Release Hooks Brand')
@@ -62,24 +165,24 @@ def party(make_party, make_brand):
 
 @pytest.fixture(scope='module')
 def users(make_user):
-    return [make_user(f'ReleaseHooksUser{i}') for i in range(8)]
+    return [make_user(f'ReleaseHooksUser{i}') for i in range(16)]
 
 
 @pytest.fixture
 def make_tournament(party, users):
     created = []
 
-    def _make(**args):
+    def _make(*, contestant_type=ContestantType.SOLO, participants=8, **args):
         result = tournament_service.create_tournament(
             PARTY_ID,
             f'Release Hooks Tournament {next(_counter)}',
-            contestant_type=ContestantType.SOLO,
+            contestant_type=contestant_type,
             **args,
         )
         assert result.is_ok(), result.unwrap_err()
         tournament, _ = result.unwrap()
         created.append(tournament)
-        for user in users:
+        for user in users[:participants]:
             tournament_repository.create_participant(
                 TournamentParticipant(
                     id=TournamentParticipantID(generate_uuid7()),

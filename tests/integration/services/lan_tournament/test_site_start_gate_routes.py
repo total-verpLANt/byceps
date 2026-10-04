@@ -274,6 +274,38 @@ def test_a_board_without_generation_disables_the_start(
     assert _status(tournament) is TournamentStatus.REGISTRATION_CLOSED
 
 
+def test_a_resume_without_the_confirmation_is_refused(
+    site_app, orga, make_tournament
+):
+    tournament = make_tournament()
+    _generate(tournament, orga)
+    _change_board(tournament, orga)
+    before = _writes(tournament)
+    layout = _layout(tournament)
+    url = f'{BASE_URL}/orga/tournaments/{tournament.id}/resume'
+
+    response = _post(site_app, orga, url)
+
+    assert response.status_code == 302
+    assert _status(tournament) is TournamentStatus.REGISTRATION_CLOSED
+    assert _writes(tournament) == before
+    assert _layout(tournament) == layout
+
+
+def test_a_confirmed_resume_starts(site_app, orga, make_tournament):
+    tournament = make_tournament()
+    _generate(tournament, orga)
+    _change_board(tournament, orga)
+    layout = _layout(tournament)
+    url = f'{BASE_URL}/orga/tournaments/{tournament.id}/resume'
+
+    response = _post(site_app, orga, url, confirm_generated_layout='1')
+
+    assert response.status_code == 302
+    assert _status(tournament) is TournamentStatus.ONGOING
+    assert _layout(tournament) == layout
+
+
 def test_a_legacy_tournament_without_a_board_keeps_the_plain_start(
     site_app, orga, make_tournament
 ):

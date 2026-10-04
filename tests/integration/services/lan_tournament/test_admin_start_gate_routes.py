@@ -257,6 +257,65 @@ def test_a_confirmed_start_uses_the_generated_layout(
     assert stored.generated_seed_code == generated_code
 
 
+@pytest.mark.parametrize('action', ['resume', 'reopen'])
+def test_a_start_by_another_route_without_the_confirmation_is_refused(
+    client, admin, make_tournament, action
+):
+    tournament = make_tournament()
+    _generate(tournament, admin)
+    _change_board(tournament, admin)
+    before = _writes(tournament)
+    layout = _layout(tournament)
+
+    response = client.post(_url(tournament, f'/{action}'))
+
+    assert response.status_code == 302
+    assert _status(tournament) is TournamentStatus.REGISTRATION_CLOSED
+    assert _writes(tournament) == before
+    assert _layout(tournament) == layout
+
+
+@pytest.mark.parametrize('action', ['resume', 'reopen'])
+def test_a_confirmed_start_by_another_route_starts(
+    client, admin, make_tournament, action
+):
+    tournament = make_tournament()
+    _generate(tournament, admin)
+    _change_board(tournament, admin)
+    layout = _layout(tournament)
+
+    response = client.post(
+        _url(tournament, f'/{action}'), data={'confirm_generated_layout': '1'}
+    )
+
+    assert response.status_code == 302
+    assert _status(tournament) is TournamentStatus.ONGOING
+    assert _layout(tournament) == layout
+
+
+def test_the_service_refuses_an_unconfirmed_start_of_a_changed_board(
+    admin, make_tournament
+):
+    tournament = make_tournament()
+    _generate(tournament, admin)
+    _change_board(tournament, admin)
+    before = _writes(tournament)
+
+    result = tournament_service.change_status(
+        tournament.id,
+        TournamentStatus.ONGOING,
+        admin.id,
+        confirm_generated_layout=False,
+    )
+
+    assert result.is_err()
+    assert result.unwrap_err() == (
+        'Confirm that the generated layout is used before starting.'
+    )
+    assert _status(tournament) is TournamentStatus.REGISTRATION_CLOSED
+    assert _writes(tournament) == before
+
+
 def test_a_board_without_generation_disables_the_start(
     client, admin, make_tournament
 ):

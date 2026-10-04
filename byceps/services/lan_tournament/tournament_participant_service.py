@@ -320,6 +320,7 @@ def _remove_single_participant_bracket_aware(
     now: datetime,
     *,
     initiator_id: UserID | None = None,
+    soft_deleted: bool = False,
 ) -> tuple[tournament_match_service.DefwinResult, TournamentTeamID | None]:
     """Remove one participant, handling bracket defwins if needed.
 
@@ -339,9 +340,10 @@ def _remove_single_participant_bracket_aware(
 
     # Step 1: remove the participant row (soft or hard).
     if bracket_is_active:
-        tournament_repository.soft_delete_participants_by_ids(
-            {participant.id}, now
-        )
+        if not soft_deleted:
+            tournament_repository.soft_delete_participants_by_ids(
+                {participant.id}, now
+            )
     else:
         _delete_unplayed_entries(
             tournament.id, participant_ids=[participant.id]
@@ -407,7 +409,7 @@ def _try_auto_release_after_defwin(
 
     from . import tournament_qualification_service
 
-    tournament_qualification_service.try_auto_release(
+    tournament_qualification_service.auto_release_after_commit(
         tournament_id, triggered_by=initiator_id
     )
 
@@ -457,12 +459,6 @@ def admin_remove_participant(
     for event in defwin.completed:
         signals.tournament_completed.send(None, event=event)
 
-    _try_auto_release_after_defwin(
-        tournament_id,
-        defwin,
-        initiator.id if initiator is not None else None,
-    )
-
     if team_id is not None:
         signals.team_member_left.send(
             None,
@@ -493,6 +489,10 @@ def admin_remove_participant(
         participant_id=participant_id,
     )
     signals.participant_left.send(None, event=left_event)
+
+    _try_auto_release_after_defwin(
+        tournament_id, defwin, initiator.id if initiator is not None else None,
+    )
 
     return Ok(left_event)
 
@@ -549,28 +549,37 @@ def remove_participants_without_tickets(
 
     defwin = tournament_match_service.DefwinResult([], [], [])
 
+    bracket_is_active = tournament.tournament_status in (
+        TournamentStatus.ONGOING,
+        TournamentStatus.PAUSED,
+    )
     if not is_team_tournament:
+        if bracket_is_active:
+            # Remove the whole pass before any defwin: a completion one
+            # triggers must not crown a contestant this pass removes.
+            tournament_repository.soft_delete_participants_by_ids(
+                {p.id for p in ticketless}, now
+            )
         # Solo: delegate per-participant bracket logic to helper
         for p in ticketless:
             p_defwin, _ = _remove_single_participant_bracket_aware(
                 tournament, p, now,
                 initiator_id=initiator_id,
+                soft_deleted=bracket_is_active,
             )
             defwin.advanced.extend(p_defwin.advanced)
             defwin.confirmed.extend(p_defwin.confirmed)
             defwin.completed.extend(p_defwin.completed)
     else:
         # Team: bulk-remove participant rows, then clean up empty teams
-        bracket_is_active = tournament.tournament_status in (
-            TournamentStatus.ONGOING,
-            TournamentStatus.PAUSED,
-        )
         ids_to_remove = {p.id for p in ticketless}
         if bracket_is_active:
             # Soft-delete: preserve match contestant FKs
             tournament_repository.soft_delete_participants_by_ids(
                 ids_to_remove, now
             )
+            for team_id in teams_to_delete:
+                tournament_repository.soft_delete_team_flush(team_id, now)
         else:
             # Hard-delete: only unplayed entries of a generated layout
             _delete_unplayed_entries(
@@ -591,9 +600,7 @@ def remove_participants_without_tickets(
                 defwin.confirmed.extend(result.confirmed)
                 defwin.completed.extend(result.completed)
             tournament_repository.remove_team_from_participants_flush(team_id)
-            if bracket_is_active:
-                tournament_repository.soft_delete_team_flush(team_id, now)
-            else:
+            if not bracket_is_active:
                 tournament_repository.delete_team_flush(team_id)
 
     # One entry per removal, counted as if removed one by one.
@@ -623,8 +630,6 @@ def remove_participants_without_tickets(
         signals.match_confirmed.send(None, event=event)
     for event in defwin.completed:
         signals.tournament_completed.send(None, event=event)
-
-    _try_auto_release_after_defwin(tournament_id, defwin, initiator_id)
 
     for p in ticketless:
         if is_team_tournament and p.team_id is not None:
@@ -658,6 +663,8 @@ def remove_participants_without_tickets(
                 team_id=team_id,
             ),
         )
+
+    _try_auto_release_after_defwin(tournament_id, defwin, initiator_id)
 
     return Ok(len(ticketless))
 

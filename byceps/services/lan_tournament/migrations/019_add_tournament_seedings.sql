@@ -34,6 +34,7 @@
 -- =================================================================
 
 BEGIN;
+SET LOCAL lock_timeout = '5s';
 
 CREATE TABLE IF NOT EXISTS lan_tournament_seedings (
     id                  UUID         NOT NULL,

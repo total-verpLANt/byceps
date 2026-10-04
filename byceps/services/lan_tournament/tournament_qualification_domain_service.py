@@ -103,7 +103,9 @@ DecisionOrders = Mapping[str, Sequence[Sequence[str]]]
 
 
 def _result_rows(
-    contestant_ids: Sequence[str], results: Sequence[MatchResult]
+    contestant_ids: Sequence[str],
+    results: Sequence[MatchResult],
+    walkovers: Sequence[str] = (),
 ) -> dict[str, ResultRow]:
     known = set(contestant_ids)
     acc = {
@@ -128,6 +130,10 @@ def _result_rows(
                 row['drawn'] += 1
             else:
                 row['lost'] += 1
+
+    for cid in walkovers:
+        if cid in known:
+            acc[cid]['won'] += 1
 
     return {
         cid: ResultRow(
@@ -271,6 +277,7 @@ def rank_round_robin(
     orders: Sequence[Sequence[str]] = (),
     *,
     active_ids: Collection[str] | None = None,
+    walkovers: Sequence[str] = (),
 ) -> Ranking:
     """Rank a round robin group: points, head-to-head, difference, scores.
 
@@ -282,7 +289,7 @@ def rank_round_robin(
     With `active_ids`, every other contestant is left out of the ranking,
     but their confirmed results still count for their opponents.
     """
-    rows = _result_rows(contestant_ids, results)
+    rows = _result_rows(contestant_ids, results, walkovers)
     known = set(contestant_ids)
     ranked_ids = (
         list(contestant_ids)

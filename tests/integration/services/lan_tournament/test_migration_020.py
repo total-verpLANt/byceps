@@ -257,6 +257,16 @@ def _set_config(connection, tournament_id, config) -> str | None:
     return None
 
 
+@pytest.mark.parametrize(
+    'sql_path', [FORWARD_SQL_PATH, ROLLBACK_SQL_PATH], ids=['forward', 'rollback']
+)
+def test_migration_020_sets_a_lock_timeout_first(sql_path):
+    lines = sql_path.read_text().splitlines()
+    begin_index = lines.index('BEGIN;')
+
+    assert lines[begin_index + 1] == "SET LOCAL lock_timeout = '5s';"
+
+
 def test_migration_020_adds_columns_and_table():
     """The SQL adds exactly what the dbmodels create with `create_all`."""
     forward_sql = _strip_transaction_control(FORWARD_SQL_PATH.read_text())

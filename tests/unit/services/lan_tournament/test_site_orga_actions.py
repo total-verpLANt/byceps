@@ -209,11 +209,11 @@ def _call_submit_ffa(app, form_data):
         return raw_fn(MATCH_ID_STR)
 
 
-def _call_status(app, tournament_id, action):
+def _call_status(app, tournament_id, action, form_data=None):
     from byceps.services.lan_tournament.blueprints.site import views
 
     raw_fn = _raw(views.orga_change_tournament_status)
-    with app.test_request_context('/', method='POST'):
+    with app.test_request_context('/', method='POST', data=form_data):
         return raw_fn(tournament_id, action)
 
 
@@ -553,12 +553,32 @@ def test_orga_status_transition_rejects_unlisted_action(app):
             mocks['tournament_svc'].change_status.assert_not_called()
 
 
-def test_orga_status_transition_accepts_listed_action(app):
+@pytest.mark.parametrize(
+    ('action', 'new_status'),
+    # fmt: off
+    [
+        ('start', TournamentStatus.ONGOING),
+        ('resume', TournamentStatus.ONGOING),
+        ('pause', TournamentStatus.PAUSED),
+        ('complete', TournamentStatus.COMPLETED),
+    ],
+    # fmt: on
+)
+@pytest.mark.parametrize('confirmation', [None, '', '1'])
+def test_orga_status_transition_accepts_listed_action(
+    app, action, new_status, confirmation
+):
+    data = (
+        {} if confirmation is None else {'confirm_generated_layout': confirmation}
+    )
     with _patched_orga_view(app) as mocks:
-        _call_status(app, str(TOURNAMENT_ID), 'start')
+        _call_status(app, str(TOURNAMENT_ID), action, data)
 
     mocks['tournament_svc'].change_status.assert_called_once_with(
-        TOURNAMENT_ID, TournamentStatus.ONGOING, USER_ID
+        TOURNAMENT_ID,
+        new_status,
+        USER_ID,
+        confirm_generated_layout=bool(confirmation),
     )
 
 
@@ -597,6 +617,7 @@ def test_scoped_orga_cannot_trigger_random_defwin():
         'orga_qualification_draft_action',
         'orga_qualification_draft_create',
         'orga_leaderboard_close',
+        'orga_leaderboard_reopen',
         'orga_advance_ffa_round',
         'orga_generate_ffa_grand_final',
     }

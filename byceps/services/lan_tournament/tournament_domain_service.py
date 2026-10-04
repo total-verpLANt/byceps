@@ -944,9 +944,11 @@ def compute_round_robin_standings(
 ) -> list[RoundRobinStanding]:
     """Compute round-robin standings from confirmed matches.
 
-    Each element in *matches* is a list of exactly two
+    Each element in *matches* is a list of one or two
     ``TournamentMatchToContestant`` entries representing one
-    completed match.  Points are awarded as: Win = 3, Draw = 1,
+    completed match. A one-entry walkover is a win without scores.
+    The caller filters out unconfirmed matches.
+    Points are awarded as: Win = 3, Draw = 1,
     Loss = 0.  The returned list is sorted by points DESC,
     score_diff DESC, score_for DESC.
     """
@@ -965,6 +967,11 @@ def compute_round_robin_standings(
         return stats[cid]
 
     for contestants in matches:
+        if len(contestants) == 1:
+            stats_row = _ensure(contestant_id(contestants[0]))
+            stats_row['wins'] += 1
+            stats_row['points'] += 3
+            continue
         if len(contestants) != 2:
             continue
 

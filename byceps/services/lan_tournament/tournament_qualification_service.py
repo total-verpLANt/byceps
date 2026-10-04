@@ -7,6 +7,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, UTC
 from typing import Any, NamedTuple
+import logging
 import re
 import unicodedata
 
@@ -48,6 +49,7 @@ from .tournament_seeding_domain_service import MIN_DOUBLE_ELIMINATION
 
 
 SOURCE_GROUPS = 'groups'
+logger = logging.getLogger(__name__)
 SOURCE_LEADERBOARD = 'leaderboard'
 SOURCE_WINNER = 'winner'
 SOURCE_FFA = 'ffa'
@@ -206,6 +208,8 @@ def get_ffa_decision_report(tournament_id: TournamentID) -> FfaDecisionReport:
     if (
         tournament is None
         or tournament_match_service._ffa_phase(tournament) is None
+        or tournament.advancement_count is None
+        or tournament.advancement_count < 1
     ):
         return FfaDecisionReport((), ())
 
@@ -213,13 +217,30 @@ def get_ffa_decision_report(tournament_id: TournamentID) -> FfaDecisionReport:
     matches = tournament_repository.get_matches_for_tournament_ordered(
         tournament.id
     )
+    lobbies: dict[tuple[Bracket | None, int | None], int] = {}
+    scope_counts: dict[str, int] = {}
     for match in matches:
+        key = (match.bracket, match.round)
+        lobbies[key] = lobbies.get(key, 0) + 1
         if match.bracket is Bracket.GRAND_FINAL or match.round is None:
             continue
+        scope = tournament_match_service.ffa_lobby_scope(match)
+        scope_counts[scope] = scope_counts.get(scope, 0) + 1
         latest[match.bracket] = max(latest.get(match.bracket, 0), match.round)
 
     repository = tournament_qualification_repository
     decisions = repository.get_decisions_for_tournament(tournament.id)
+    orders = {
+        scope: decision.orders
+        for scope, decision in decisions.items()
+        if scope.startswith('ffa:')
+    }
+    # The same complete snapshot also ranks completed B2 source rounds.
+    contestants = tournament_repository.get_contestants_for_matches(
+        [m.id for m in matches]
+    )
+    active = tournament_match_service.active_contestant_ids(tournament.id)
+    locked_rounds: dict[tuple[Bracket | None, int | None], bool] = {}
     ties: list[FfaCutTie] = []
     outdated: list[FfaOutdatedDecision] = []
     for match in sorted(
@@ -232,16 +253,36 @@ def get_ffa_decision_report(tournament_id: TournamentID) -> FfaDecisionReport:
         if match.bracket is Bracket.GRAND_FINAL:
             continue
         scope = tournament_match_service.ffa_lobby_scope(match)
-        match _ffa_state(tournament, scope):
-            case Err(_):
-                continue
-            case Ok(state):
-                pass
-        ranking = state.rankings[0]
+        if (
+            match.confirmed_by is None
+            or _FFA_SCOPE.fullmatch(scope) is None
+            or scope_counts[scope] != 1
+        ):
+            continue
+        key = (match.bracket, match.round)
+        lobby_cut = tournament_match_service.ffa_lobby_cut(
+            match,
+            contestants[match.id],
+            tournament.advancement_count,
+            active,
+            lobbies_in_round=lobbies[key],
+        )
+        ranking = tournament_match_service.rank_ffa_lobby(
+            match, contestants[match.id], lobby_cut, orders, active_ids=active
+        )
         points = {e.contestant_id: e.value or 0 for e in ranking.entries}
         ranked = set(points)
         pool = tournament_match_service.ffa_pool_token(match.bracket)
-        locked = tournament_match_service.ffa_round_consumed(match, tournament)
+        if key not in locked_rounds:
+            locked_rounds[key] = tournament_match_service.ffa_round_consumed(
+                match,
+                tournament,
+                matches=matches,
+                contestants_by_match=contestants,
+                decisions=orders,
+                active_ids=active,
+            )
+        locked = locked_rounds[key]
         decision = decisions.get(scope)
         blocks = decision.blocks if decision else ()
         for tie in ranking.ties:
@@ -324,6 +365,25 @@ def release_playoffs(
         initiator_id=initiator_id,
     )
     return _finish_release(tournament_id, result)
+
+
+def auto_release_after_commit(
+    tournament_id: TournamentID, *, triggered_by: UserID
+) -> None:
+    """Attempt release after commit without failing the committed operation."""
+    try:
+        try_auto_release(tournament_id, triggered_by=triggered_by)
+    except Exception:
+        logger.exception(
+            'Automatic playoff release failed for tournament %s', tournament_id
+        )
+        try:
+            tournament_repository.rollback_session()
+        except Exception:
+            logger.exception(
+                'Rollback after automatic playoff release failed for tournament %s',
+                tournament_id,
+            )
 
 
 def try_auto_release(
@@ -416,7 +476,7 @@ def save_decision(
     completed_event = result.unwrap()
     if completed_event is not None:
         signals.tournament_completed.send(None, event=completed_event)
-    try_auto_release(tournament_id, triggered_by=initiator_id)
+    auto_release_after_commit(tournament_id, triggered_by=initiator_id)
     return Ok(None)
 
 
@@ -439,7 +499,7 @@ def withdraw_decision(
         tournament_repository.rollback_session()
         return result
     tournament_repository.commit_session()
-    try_auto_release(tournament_id, triggered_by=initiator_id)
+    auto_release_after_commit(tournament_id, triggered_by=initiator_id)
     return result
 
 
@@ -1033,10 +1093,11 @@ def _ffa_state(
     if lobby is None or lobby.confirmed_by is None:
         return no_tie
 
+    contestants = tournament_repository.get_contestants_for_match(lobby.id)
     ranking = tournament_match_service.rank_ffa_lobby(
         lobby,
-        tournament_repository.get_contestants_for_match(lobby.id),
-        cut,
+        contestants,
+        tournament_match_service.ffa_lobby_cut(lobby, contestants, cut),
         tournament_match_service.ffa_decisions(tournament.id),
     )
     blockers = tuple(
@@ -1204,12 +1265,15 @@ def _groups_state(
         scope = f'group:{group}'
         members: list[str] = []
         results = []
+        walkovers = []
         for match in by_group[group]:
             entries = contestants.get(match.id, [])
             ids = [str(c.participant_id or c.team_id) for c in entries]
             for i in ids:
                 if i not in members:
                     members.append(i)
+            if len(entries) == 1 and match.confirmed_by is not None:
+                walkovers.append(ids[0])
             if len(entries) != 2:
                 continue
             results.append(
@@ -1228,6 +1292,7 @@ def _groups_state(
             results,
             decision.orders if decision else (),
             active_ids=active,
+            walkovers=walkovers,
         )
         rankings.append(
             domain.classify_ties(ranking, cut=cut, plain_winner=False)

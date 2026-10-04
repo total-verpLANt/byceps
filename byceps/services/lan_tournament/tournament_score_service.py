@@ -43,6 +43,12 @@ CLOSE_NOT_ONGOING_ERROR = (
     'The leaderboard can only be closed while the tournament is ongoing.'
 )
 
+REOPEN_NOT_CLOSED_ERROR = 'The qualification is not closed.'
+REOPEN_RELEASED_ERROR = 'The playoffs are released. Take the release back first.'
+REOPEN_STATUS_ERROR = (
+    'The qualification can only be reopened while the tournament is ongoing or paused.'
+)
+
 
 def scores_locked(tournament: Tournament) -> bool:
     """Return `True` once the leaderboard is closed or playoffs released.
@@ -311,10 +317,65 @@ def close_leaderboard(
 
     from byceps.services.lan_tournament import tournament_qualification_service
 
-    tournament_qualification_service.try_auto_release(
+    tournament_qualification_service.auto_release_after_commit(
         tournament_id, triggered_by=initiator_id
     )
     return Ok(None)
+
+
+def reopen_leaderboard(
+    tournament_id: TournamentID, *, reason: str, initiator_id: UserID
+) -> Result[None, str]:
+    """Reopen a closed leaderboard for score submissions and corrections.
+
+    Refused while playoffs are released. On `Err`, the session is rolled back.
+    Operational exceptions also roll back before propagating to the caller.
+    """
+    from byceps.services.lan_tournament import tournament_qualification_service
+
+    validated = tournament_qualification_service.validate_reason(reason)
+    if validated.is_err():
+        tournament_repository.rollback_session()
+        return Err(validated.unwrap_err())
+
+    try:
+        tournament_repository.lock_tournament_for_update(tournament_id)
+        tournament = tournament_repository.get_tournament(tournament_id)
+        refusal = _reopen_refusal(tournament)
+        if refusal is not None:
+            tournament_repository.rollback_session()
+            return Err(refusal)
+
+        tournament_repository.set_leaderboard_closed(tournament_id, None)
+        tournament_log_service.create_log_entry(
+            'qualification-leaderboard-reopened',
+            tournament_id,
+            initiator_id,
+            data={'reason': validated.unwrap()},
+            commit=False,
+        )
+        tournament_repository.commit_session()
+    except Exception:
+        tournament_repository.rollback_session()
+        raise
+    return Ok(None)
+
+
+def _reopen_refusal(tournament: Tournament) -> str | None:
+    if tournament.game_format != GameFormat.HIGHSCORE:
+        return 'Tournament mode must be HIGHSCORE to view leaderboard.'
+    if not tournament.has_playoffs:
+        return 'This tournament has no playoff phase.'
+    if tournament.playoff_released_at is not None:
+        return REOPEN_RELEASED_ERROR
+    if tournament.leaderboard_closed_at is None:
+        return REOPEN_NOT_CLOSED_ERROR
+    if tournament.tournament_status not in (
+        TournamentStatus.ONGOING,
+        TournamentStatus.PAUSED,
+    ):
+        return REOPEN_STATUS_ERROR
+    return None
 
 
 def _close_refusal(tournament: Tournament) -> str | None:

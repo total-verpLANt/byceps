@@ -96,6 +96,9 @@ ERR_INVALID_CHANGE = 'That change to the seeding is not possible.'
 ERR_OTHER_MODE = 'This code belongs to a different tournament mode.'
 ERR_STORED_CODE = 'The stored seed code is damaged.'
 ERR_CONFLICT = 'The seeding was changed by another orga. Reload the page.'
+ERR_RESULTS_EXIST = (
+    'A match already has a confirmed result. Take it back before you regenerate.'
+)
 GENERATION_UNCHANGED = 'unchanged'
 MSG_UNCHANGED = (
     'Nothing to regenerate: the matches already follow this seed code.'
@@ -271,6 +274,7 @@ class SeedingBoard:
     generated_code: str | None
     generation: GenerationStatus
     locked_reason: str | None
+    regenerate_refusal: str | None = None
     origin_labels: Mapping[str, str] = field(default_factory=dict)
     same_group_matches: tuple[int, ...] = ()
     stale_structure: bool = False
@@ -856,6 +860,12 @@ def _generate_locked(
             ready_match_ids=frozenset(), occurred_at=datetime.now(UTC),
             unchanged=True,
         ))
+    if (
+        target == INITIAL_TARGET
+        and regenerating
+        and _has_confirmed_result(tournament_id)
+    ):
+        return Err(ERR_RESULTS_EXIST)
     outcome_result = _run_generator(
         tournament_id,
         state,
@@ -2040,6 +2050,21 @@ def _dropped_fixes(
     return max(0, _fix_count(before, roster) - _fix_count(after, roster))
 
 
+def _has_confirmed_result(tournament_id: TournamentID) -> bool:
+    """Ignore confirmed byes and default wins with only one contestant."""
+    confirmed = [
+        match
+        for match in tournament_repository.get_matches_for_tournament(
+            tournament_id
+        )
+        if match.confirmed_by is not None
+    ]
+    contestants = tournament_repository.get_contestants_for_matches(
+        [match.id for match in confirmed]
+    )
+    return any(len(contestants.get(match.id, ())) >= 2 for match in confirmed)
+
+
 def _board(
     view: _TargetView, seeding: TournamentSeeding
 ) -> Result[SeedingBoard, str]:
@@ -2116,6 +2141,13 @@ def _board(
             generated_code=seeding.generated_seed_code,
             generation=_generation_status(view, seeding),
             locked_reason=_locked_reason(view) if locked else None,
+            regenerate_refusal=(
+                ERR_RESULTS_EXIST
+                if seeding.target == INITIAL_TARGET
+                and not locked
+                and _has_confirmed_result(tournament.id)
+                else None
+            ),
             origin_labels=origin_labels,
             same_group_matches=_same_group_matches(roster, state),
             stale_structure=bool(stale_info and stale_info.structure_changed),

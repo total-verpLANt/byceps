@@ -7,6 +7,7 @@ the audit tables show the orga's reason text escaped.
 """
 
 from datetime import datetime, UTC
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -166,6 +167,25 @@ def test_unknown_event_has_no_details():
     assert _row('qualification-brand-new', {'reason': 'x'})['details'] == ''
 
 
+def test_folded_swaps_build_no_cycle():
+    entries = [
+        SimpleNamespace(
+            occurred_at=WHEN,
+            event_type='seeding-swapped',
+            initiator_id='u1',
+            data={},
+        )
+        for _ in range(2)
+    ]
+    rows = helpers.seeding_audit_rows(entries, USERS, names=NAMES)
+
+    json.dumps(rows, default=str)
+    assert len(rows) == 1
+    assert len(rows[0]['children']) == 2
+    assert rows[0]['children'][0]['children'] == []
+    assert rows[0]['children'][0]['children'] is not rows[0]['children']
+
+
 def test_unknown_contestant_falls_back_to_its_id():
     row = _row(
         'qualification-tie-decided',
@@ -174,3 +194,33 @@ def test_unknown_contestant_falls_back_to_its_id():
     )
 
     assert 'zz' in row['details']
+
+
+@pytest.mark.parametrize('count', [0, 199, 200, 201])
+def test_seeding_audit_context_flags_a_cut_log(monkeypatch, count):
+    from unittest.mock import Mock
+
+    entries = [SimpleNamespace(initiator_id='u1') for _ in range(count)]
+    fetch = Mock(return_value=entries)
+    monkeypatch.setattr(
+        helpers.tournament_log_service,
+        'get_recent_entries_for_tournament',
+        fetch,
+    )
+    users = Mock(return_value=USERS)
+    monkeypatch.setattr(
+        helpers.user_service, 'get_users_indexed_by_id', users
+    )
+    rows = Mock(side_effect=lambda selected, users, names: selected)
+    monkeypatch.setattr(helpers, 'seeding_audit_rows', rows)
+    context = helpers.seeding_audit_context('tournament', NAMES)
+    assert len(context['audit_rows']) == min(count, 200)
+    assert context['audit_limit'] == (200 if count > 200 else None)
+    fetch.assert_called_once_with(
+        'tournament',
+        (*helpers.SEEDING_LOG_PREFIXES, 'participant-'),
+        limit=201,
+        registration_statuses=tuple(helpers._REGISTRATION_STATUS_LABELS),
+    )
+    users.assert_called_once_with({'u1'} if count else set())
+    assert rows.call_args.args[2] is NAMES

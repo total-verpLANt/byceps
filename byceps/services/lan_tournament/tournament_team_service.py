@@ -578,6 +578,7 @@ def remove_team_member(
     # Auto-delete empty team
     remaining_members = tournament_repository.get_participants_for_team(team_id)
     if len(remaining_members) == 0:
+        release_due = False
         tournament = tournament_repository.get_tournament(team.tournament_id)
         bracket_is_active = tournament.tournament_status in (
             TournamentStatus.ONGOING,
@@ -601,13 +602,7 @@ def remove_team_member(
                 signals.match_confirmed.send(None, event=confirmed_event)
             for completed_event in defwin.completed:
                 signals.tournament_completed.send(None, event=completed_event)
-            if tournament.has_playoffs:
-                from . import tournament_qualification_service
-
-                tournament_qualification_service.try_auto_release(
-                    team.tournament_id,
-                    triggered_by=initiator_id or team.captain_user_id,
-                )
+            release_due = tournament.has_playoffs
         else:
             tournament_repository.remove_team_from_participants(team_id)
             tournament_repository.remove_team_from_contestants(team_id)
@@ -621,6 +616,14 @@ def remove_team_member(
             team_id=team_id,
         )
         signals.team_deleted.send(None, event=team_deleted_event)
+
+        if release_due:
+            from . import tournament_qualification_service
+
+            tournament_qualification_service.auto_release_after_commit(
+                team.tournament_id,
+                triggered_by=initiator_id or team.captain_user_id,
+            )
 
     return Ok(event)
 

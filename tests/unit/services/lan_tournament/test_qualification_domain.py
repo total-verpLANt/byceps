@@ -45,6 +45,42 @@ def test_rank_round_robin_unambiguous():
     assert ranking.entries[1].row.diff == 0
 
 
+def test_walkover_counts_as_a_three_point_win():
+    ranking = q.rank_round_robin('group:0', ['a', 'b'], [], walkovers=['a'])
+
+    assert _ranks(ranking) == [('a', 1), ('b', 2)]
+    assert ranking.entries[0].row == q.ResultRow(
+        contestant_id='a',
+        played=1,
+        won=1,
+        drawn=0,
+        lost=0,
+        points=3,
+        score_for=0,
+        score_against=0,
+    )
+    assert ranking.entries[1].row.played == 0
+    assert ranking.open_matches == 0
+
+
+def test_repeated_walkovers_ignore_unknown_ids_and_preserve_head_to_head():
+    ranking = q.rank_round_robin(
+        'group:0',
+        ['a', 'b', 'removed'],
+        [_m('a', 'b', 1, 0)],
+        active_ids={'a', 'b'},
+        walkovers=['unknown', 'a', 'b', 'b'],
+    )
+
+    assert _ranks(ranking) == [('a', 1), ('b', 2)]
+    assert {e.decided_by for e in ranking.entries} == {'head_to_head'}
+    a, b = [e.row for e in ranking.entries]
+    assert (a.played, a.won, a.points) == (2, 2, 6)
+    assert (b.played, b.won, b.lost, b.points) == (3, 2, 1, 6)
+    assert (a.score_for, a.score_against) == (1, 0)
+    assert (b.score_for, b.score_against) == (0, 1)
+
+
 def test_rank_round_robin_head_to_head_breaks_tie():
     # a and b both have 6 points; b has the far better difference,
     # but a won the direct meeting.

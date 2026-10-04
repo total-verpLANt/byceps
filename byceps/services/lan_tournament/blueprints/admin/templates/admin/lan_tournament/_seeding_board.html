@@ -553,7 +553,7 @@
         {%- if board.generation == 'not_generated' and seed_embedded is defined %}
         <p class="lt-seed-small">{{ _('The release generates the playoffs from this draft.') }}</p>
         {%- elif board.generation == 'not_generated' %}
-        {%- set why = (_('Layout invalid: %(problem)s', problem=board.problems[0]) if invalid else (_('The seed code is outdated. Re-seed first.') if board.stale else '')) %}
+        {%- set why = (board.get('regenerate_refusal') or (_('Layout invalid: %(problem)s', problem=board.problems[0]) if invalid else (_('The seed code is outdated. Re-seed first.') if board.stale else ''))) %}
         <form action="{{ url_for('.seeding_generate', tournament_id=tournament.id) }}" method="post" class="lt-seed-inline">
           <input type="hidden" name="target" value="{{ board.target }}">
           <input type="hidden" name="version" value="{{ board.version }}">
@@ -588,7 +588,7 @@
           {{ _('Seeding board') }}: {% if board.code %}<code>{{ board.code }}</code>{% else %}{{ _('no valid code') }}{% endif %}
           {%- if board.target == 'initial' %}<br>{{ _('Starting the tournament uses the generated state.') }}{% endif %}</p>
         </div>
-        {%- set why = (_('Layout invalid.') if no_code else (_('The seed code is outdated. Re-seed first.') if board.stale else '')) %}
+        {%- set why = (board.get('regenerate_refusal') or (_('Layout invalid.') if no_code else (_('The seed code is outdated. Re-seed first.') if board.stale else ''))) %}
         <form action="{{ url_for('.seeding_generate', tournament_id=tournament.id) }}" method="post" class="lt-seed-inline"
               {%- if not why %} data-confirm-title="{{ _('Regenerate from this code?') }}" data-confirm-body="{{ _('The bracket is generated again from %(code)s. The previous code %(old)s stays in the audit trail. Until you regenerate, a start uses the generated state.', code=board.code_short, old=board.generated_code_short) }}" data-confirm-ok="{{ _('Regenerate') }}"{% endif %}>
           <input type="hidden" name="target" value="{{ board.target }}">
@@ -651,6 +651,7 @@
         </tbody>
       </table>
     </div>
+    {%- if audit_limit is defined and audit_limit %}<p class="lt-seed-small">{{ _('Only the latest %(n)s entries are shown.', n=audit_limit) }}</p>{%- endif %}
     {%- else %}
     <p>{{ _('No entries yet.') }}</p>
     {%- endif %}

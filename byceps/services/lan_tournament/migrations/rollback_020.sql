@@ -10,6 +10,7 @@
 -- phases. Do not run this after playoffs were generated.
 
 BEGIN;
+SET LOCAL lock_timeout = '5s';
 
 DROP TABLE IF EXISTS lan_tournament_qualification_decisions;
 

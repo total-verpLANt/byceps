@@ -254,32 +254,48 @@ def test_remove_ticketless_wrong_status_fails(mock_repo):
 @patch(
     'byceps.services.lan_tournament.tournament_participant_service.tournament_repository'
 )
+@pytest.mark.parametrize(
+    'status', [TournamentStatus.ONGOING, TournamentStatus.PAUSED]
+)
 def test_remove_ticketless_ongoing_triggers_defwins(
-    mock_repo, mock_ticket, mock_match_svc, mock_signals, audit_log
+    mock_repo, mock_ticket, mock_match_svc, mock_signals, audit_log, status
 ):
-    """In an ONGOING solo tournament, defwin logic is triggered
+    """In an active solo tournament, defwin logic is triggered
     for each removed participant and soft-delete is used."""
     tournament = _create_tournament(
-        tournament_status=TournamentStatus.ONGOING,
+        tournament_status=status,
         contestant_type=ContestantType.SOLO,
     )
     user1 = UserID(generate_uuid())
     p1 = _create_participant(user_id=user1)
+    p2 = _create_participant()
 
     mock_repo.get_tournament.return_value = tournament
-    mock_repo.get_participants_for_tournament.return_value = [p1]
+    mock_repo.get_participants_for_tournament.return_value = [p1, p2]
     mock_ticket.select_ticket_users_for_party.return_value = set()
-    mock_match_svc.handle_defwin_for_removed_participant.return_value = DefwinResult([], [], [])
+
+    def handle_defwin(*args, **kwargs):
+        mock_repo.soft_delete_participants_by_ids.assert_called_once()
+        assert mock_repo.soft_delete_participants_by_ids.call_args.args[0] == {
+            p1.id,
+            p2.id,
+        }
+        mock_repo.commit_session.assert_not_called()
+        return DefwinResult([], [], [])
+
+    mock_match_svc.handle_defwin_for_removed_participant.side_effect = handle_defwin
 
     result = tournament_participant_service.remove_participants_without_tickets(
         TOURNAMENT_ID, PARTY_ID
     )
 
     assert result.is_ok()
-    assert result.unwrap() == 1
-    mock_match_svc.handle_defwin_for_removed_participant.assert_called_once_with(
-        TOURNAMENT_ID, p1.id, initiator_id=None
-    )
+    assert result.unwrap() == 2
+    assert mock_match_svc.handle_defwin_for_removed_participant.call_count == 2
+    for participant in [p1, p2]:
+        mock_match_svc.handle_defwin_for_removed_participant.assert_any_call(
+            TOURNAMENT_ID, participant.id, initiator_id=None
+        )
     # Soft-delete, not hard-delete
     mock_repo.soft_delete_participants_by_ids.assert_called_once()
     mock_repo.delete_participants_by_ids.assert_not_called()
@@ -389,16 +405,19 @@ def test_remove_ticketless_team_all_members_ticketless_deletes_team(
 @patch(
     'byceps.services.lan_tournament.tournament_participant_service.tournament_repository'
 )
+@pytest.mark.parametrize(
+    'status', [TournamentStatus.ONGOING, TournamentStatus.PAUSED]
+)
 def test_remove_ticketless_team_ongoing_soft_deletes(
-    mock_repo, mock_ticket, mock_match_svc, mock_signals, audit_log
+    mock_repo, mock_ticket, mock_match_svc, mock_signals, audit_log, status
 ):
-    """When all team members are ticketless during ONGOING,
+    """When all team members are ticketless in an active bracket,
     the team is soft-deleted."""
     team_id = TournamentTeamID(generate_uuid())
     captain_user_id = UserID(generate_uuid())
 
     tournament = _create_tournament(
-        tournament_status=TournamentStatus.ONGOING,
+        tournament_status=status,
         contestant_type=ContestantType.TEAM,
     )
     captain = _create_participant(user_id=captain_user_id, team_id=team_id)
@@ -408,7 +427,15 @@ def test_remove_ticketless_team_ongoing_soft_deletes(
     mock_repo.get_participants_for_tournament.return_value = [captain]
     mock_ticket.select_ticket_users_for_party.return_value = set()
     mock_repo.get_teams_by_ids.return_value = [team]
-    mock_match_svc.handle_defwin_for_removed_team.return_value = DefwinResult([], [], [])
+
+    def handle_defwin(*args, **kwargs):
+        mock_repo.soft_delete_participants_by_ids.assert_called_once()
+        mock_repo.soft_delete_team_flush.assert_called_once()
+        assert mock_repo.soft_delete_team_flush.call_args.args[0] == team_id
+        mock_repo.commit_session.assert_not_called()
+        return DefwinResult([], [], [])
+
+    mock_match_svc.handle_defwin_for_removed_team.side_effect = handle_defwin
 
     result = tournament_participant_service.remove_participants_without_tickets(
         TOURNAMENT_ID, PARTY_ID

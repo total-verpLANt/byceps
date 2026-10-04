@@ -5,6 +5,7 @@
 -- generated from a draft are not touched.
 
 BEGIN;
+SET LOCAL lock_timeout = '5s';
 
 DROP TABLE IF EXISTS lan_tournament_seedings;
 

@@ -375,6 +375,12 @@ rollback and its README entry before merging.
 drafts, generated codes and roster snapshots are lost; brackets already
 generated stay untouched)
 
+Sets `SET LOCAL lock_timeout = '5s'`: if another session holds a lock on
+the table, the script aborts after 5 s instead of queueing the site behind it.
+Re-run it in a quiet moment. This also applies to `rollback_019.sql`.
+The timeout aborts the transaction; idempotency is unchanged. Undo timeout
+edits only in these files, never by executing the destructive rollback script.
+
 ### 020_add_playoff_phase.sql
 
 Adds the optional playoff phase of a LAN tournament (PRD F-10).
@@ -427,6 +433,12 @@ check, FK and ten columns -- irreversible: all decisions, playoff configuration 
 playoffs ran the phase-2 matches lose their marker and become
 indistinguishable from phase-1 matches; do not run it after playoffs were
 generated)
+
+Sets `SET LOCAL lock_timeout = '5s'`: if another session holds a lock on
+the table, the script aborts after 5 s instead of queueing the site behind it.
+Re-run it in a quiet moment. This also applies to `rollback_020.sql`.
+The timeout aborts the transaction; idempotency is unchanged. Undo timeout
+edits only in these files, never by executing the destructive rollback script.
 
 ## Pre-Application Checklist
 

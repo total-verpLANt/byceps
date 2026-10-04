@@ -337,6 +337,18 @@
         <p class="lt-seed-muted">{{ _('The qualifiers are set once all results are final and all ties are decided.') }}</p>
         {%- endif %}
 
+        {%- if is_leaderboard and q.leaderboard_closed and not release.released and tournament.tournament_status.name in ('ONGOING', 'PAUSED') %}
+        <button type="button" class="button is-compact" data-lt-reveal="reopen" data-js-only hidden>{{ _('Reopen qualification') }}</button>
+        <form id="reopen" class="lt-seed-wd" action="{{ url_for('.orga_leaderboard_reopen', tournament_id=tournament.id) }}" method="post" data-lt-reason-form data-lt-reveal-target
+              data-confirm-title="{{ _('Reopen the qualification?') }}"
+              data-confirm-body="{{ _('Scores can be submitted and corrected again. Closing it again determines the qualifiers anew.') }}"
+              data-confirm-ok="{{ _('Reopen qualification') }}">
+          {%- call reason_field('reopen-reason', _('Reason for reopening'), _('Reopen qualification')) %}
+          <button type="button" class="button is-compact" data-lt-hide="reopen" data-js-only hidden>{{ _('Cancel') }}</button>
+          {%- endcall %}
+        </form>
+        {%- endif %}
+
         {%- if is_leaderboard and not q.leaderboard_closed and tournament.tournament_status.name == 'ONGOING' %}
         <form action="{{ url_for('.orga_leaderboard_close', tournament_id=tournament.id) }}" method="post" class="lt-seed-row"
               data-confirm-title="{{ _('Close the qualification?') }}"
@@ -429,13 +441,25 @@
         <tr data-event="{{ row.event_type }}">
           <td>{{ row.occurred_at|dateformat }}, {{ row.occurred_at|timeformat('short') }}</td>
           <td>{% if row.who %}{{ row.who }}{% else %}{{ _('System') }}{% endif %}</td>
-          <td>{{ row.label }}</td>
+            <td>
+              {%- if row.children %}
+              <details>
+                <summary>{{ row.label }}</summary>
+                <ul class="lt-seed-subrows">
+                  {%- for child in row.children %}
+                  <li>{{ child.occurred_at|timeformat('short') }} · {{ child.label }}{% if child.details %} · {{ child.details }}{% endif %}</li>
+                  {%- endfor %}
+                </ul>
+              </details>
+              {%- else %}{{ row.label }}{% endif -%}
+            </td>
           <td>{{ row.details }}</td>
         </tr>
         {%- endfor %}
       </tbody>
     </table>
     </div>
+    {%- if audit_limit is defined and audit_limit %}<p class="lt-seed-small">{{ _('Only the latest %(n)s entries are shown.', n=audit_limit) }}</p>{%- endif %}
     {%- else %}
     <p class="lt-seed-empty">{{ _('No entries yet.') }}</p>
     {%- endif %}
