@@ -1,0 +1,8 @@
+{% macro render_chair_information_navigation(party, current_tab, selected_filter) -%}
+  <nav aria-label="{{ _('Participant chair information') }}">
+    <ol class="tabs">
+      <li><a class="tabs-tab{% if current_tab == 'participants' %} tabs-tab--current{% endif %}" href="{{ url_for('chair_optout_admin.chair_information', party_id=party.id, filter=selected_filter) }}">{{ _('Participant list') }}</a></li>
+      <li><a class="tabs-tab{% if current_tab == 'seating_plan' %} tabs-tab--current{% endif %}" href="{{ url_for('chair_optout_admin.chair_information_seating_plan', party_id=party.id, filter=selected_filter) }}">{{ _('Graphical seating plan') }}</a></li>
+    </ol>
+  </nav>
+{%- endmacro %}
