@@ -12,6 +12,7 @@ from tests.helpers import log_in_user
 def more_admin(make_admin):
     permission_ids = {
         'admin.access',
+        'seating.view',
     }
     admin = make_admin(permission_ids)
     log_in_user(admin.id)
