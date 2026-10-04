@@ -139,6 +139,7 @@ This guide documents all available URLs for the LAN Tournament module, covering 
 - **URL**: `/lan-tournaments/tournaments/<tournament_id>/resume`
 - **Method**: POST
 - **Permission**: `lan_tournament.administrate`
+- **Form Fields**: `confirm_generated_layout` (required when a REGISTRATION_CLOSED tournament is started through this route and the seeding board differs from the generated layout; not required for an ordinary PAUSED resume)
 - **Description**: Changes status back to ONGOING from PAUSED
 
 #### Complete Tournament
@@ -186,7 +187,7 @@ All routes: `lan_tournament.administrate`. A seeding target is `initial` (defaul
 - **URL**: `/lan-tournaments/tournaments/<tournament_id>/seeding/generate`
 - **Method**: POST
 - **Form Fields**: `version`, `target`
-- **Description**: Generates the bracket, the groups or the lobbies from the draft. The only entry for initial generation, for regenerating the playoffs after their release and for creating a later FFA round. Refused while the draft has problems or is stale. Consumes the draft version: a second submit with the same version is refused with the flash 'changed by another orga'. When the matches already follow the current code, nothing is regenerated (notice flash)
+- **Description**: Generates the bracket, the groups or the lobbies from the draft. The only entry for initial generation, for regenerating the playoffs after their release and for creating a later FFA round. Refused while the draft has problems or is stale. Refused for the initial target while a match with two contestants has a confirmed result. Consumes the draft version: a second submit with the same version is refused with the flash 'changed by another orga'. When the matches already follow the current code, nothing is regenerated (notice flash)
 
 #### Qualification
 - **URL**: `/lan-tournaments/tournaments/<tournament_id>/qualification`
@@ -227,6 +228,12 @@ All routes: `lan_tournament.administrate`. A seeding target is `initial` (defaul
 - **URL**: `/lan-tournaments/tournaments/<tournament_id>/leaderboard/close`
 - **Method**: POST
 - **Description**: Ends the score phase of a highscore tournament, so its qualification can be decided
+
+#### Reopen Leaderboard
+- **URL**: `/lan-tournaments/tournaments/<tournament_id>/leaderboard/reopen`
+- **Method**: POST
+- **Form Fields**: `reason`
+- **Description**: Reopens a closed highscore qualification for score submission and correction while ongoing or paused. Undo the playoff release first
 
 #### Advance FFA Round (Draft)
 - **URL**: `/lan-tournaments/tournaments/<tournament_id>/advance_ffa_round`
@@ -525,6 +532,7 @@ Tournament orgas (and global administrators) run the seeding flow on the site. A
 | `/lan-tournaments/orga/tournaments/<tournament_id>/qualification/release` | POST | Release |
 | `/lan-tournaments/orga/tournaments/<tournament_id>/qualification/unrelease` | POST | Unrelease |
 | `/lan-tournaments/orga/tournaments/<tournament_id>/leaderboard/close` | POST | Close Leaderboard |
+| `/lan-tournaments/orga/tournaments/<tournament_id>/leaderboard/reopen` | POST | Reopen Leaderboard (`reason` required) |
 | `/lan-tournaments/orga/tournaments/<tournament_id>/advance_ffa_round` | POST | Advance FFA Round (Draft) |
 | `/lan-tournaments/orga/tournaments/<tournament_id>/generate_ffa_grand_final` | POST | Generate FFA Grand Final |
 

@@ -8,6 +8,7 @@ admin app.
 
 from datetime import datetime, UTC
 from itertools import count
+import re
 
 import pytest
 
@@ -140,6 +141,44 @@ def _swap(version, p=0, q=1):
         'p': str(p),
         'q': str(q),
     }
+
+
+def test_board_disables_regenerate_while_a_result_is_confirmed(
+    client, make_tournament, admin
+):
+    tournament = make_tournament()
+    board = svc.get_board(tournament.id).unwrap()
+    assert svc.generate_from_seeding(
+        tournament.id, expected_version=board.version, initiator_id=admin.id
+    ).is_ok()
+    matches = tournament_repository.get_matches_for_tournament(tournament.id)
+    contestants = tournament_repository.get_contestants_for_matches([m.id for m in matches])
+    match = next(m for m in matches if m.round == 0 and len(contestants[m.id]) == 2)
+    assert tournament_match_service.admin_set_and_confirm_match(
+        match.id, admin.id,
+        {c.participant_id: i for i, c in enumerate(contestants[match.id])},
+    ).is_ok()
+    board = svc.get_board(tournament.id).unwrap()
+    response = client.post(
+        _url(tournament, '/actions'), data=_swap(board.version, 0, 7), headers=JSON
+    )
+    assert response.status_code == 200
+    payload = response.get_json()['board']
+    reason = 'A match already has a confirmed result. Take it back before you regenerate.'
+    assert payload.get('regenerate_refusal') == reason
+    html = client.get(_url(tournament)).get_data(as_text=True)
+    assert reason in html
+    assert re.search(r'<button[^>]* disabled[^>]*>Regenerate from this code</button>', html)
+    before = _match_ids(tournament)
+    _flashes(client)
+    response = client.post(
+        _url(tournament, '/generate'),
+        data={'target': 'initial', 'version': str(payload['version'])},
+    )
+    assert response.status_code == 302
+    assert reason in _flashes(client)
+    assert _match_ids(tournament) == before
+    assert tournament_repository.get_match(match.id).confirmed_by == admin.id
 
 
 def test_seeding_page_renders_for_admin(client, make_tournament):

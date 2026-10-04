@@ -196,6 +196,71 @@ def _payload(board):
     return payload
 
 
+@pytest.mark.parametrize(
+    'generation', [GenerationStatus.NOT_GENERATED, GenerationStatus.DIFFERS]
+)
+@pytest.mark.parametrize('surface', ['admin', 'site'])
+@pytest.mark.parametrize('condition', ['fresh', 'stale', 'invalid'])
+def test_regenerate_refusal_disables_the_button(
+    env, site_env, generation, surface, condition
+):
+    reason = (
+        'A match already has a confirmed result. Take it back before you regenerate.'
+    )
+    board = dataclasses.replace(
+        _board(
+            generation=generation,
+            stale=condition == 'stale',
+            layout_swaps=[(4, 1)] if condition == 'invalid' else (),
+        ),
+        regenerate_refusal=reason,
+    )
+    payload = _payload(board)
+    assert payload.get('regenerate_refusal') == reason
+    def render(b, **kwargs):
+        if surface == 'admin':
+            return _render(env, b, **kwargs)
+        return _render_site(site_env, b, **kwargs)
+
+    html = _markup(render(board))
+    assert f'<span class="lt-seed-why">{reason}</span>' in html
+    form = re.search(
+        r'<form[^>]*action="/[^"]*seeding_generate".*?</form>', html, re.S
+    ).group()
+    assert re.search(r'<button[^>]* disabled', form)
+    assert 'data-confirm-title' not in form
+    # Missing optional payload keys must remain safe under StrictUndefined.
+    absent = _markup(render(board, drop=('regenerate_refusal',)))
+    assert reason not in absent
+
+
+@pytest.mark.parametrize(
+    'generation', [GenerationStatus.NOT_GENERATED, GenerationStatus.DIFFERS]
+)
+@pytest.mark.parametrize('surface', ['admin', 'site'])
+def test_regenerate_refusal_payload_is_rendered(
+    env, site_env, monkeypatch, generation, surface
+):
+    reason = (
+        'A match already has a confirmed result. Take it back before you regenerate.'
+    )
+    real_payload = helpers.seeding_board_payload
+
+    def payload(board):
+        return real_payload(board) | {'regenerate_refusal': reason}
+
+    monkeypatch.setattr(helpers, 'seeding_board_payload', payload)
+    board = _board(generation=generation)
+    html = _markup(
+        _render(env, board) if surface == 'admin' else _render_site(site_env, board)
+    )
+    assert f'<span class="lt-seed-why">{reason}</span>' in html
+    form = re.search(
+        r'<form[^>]*action="/[^"]*seeding_generate".*?</form>', html, re.S
+    ).group()
+    assert re.search(r'<button[^>]* disabled', form)
+
+
 def _render(
     env,
     board,

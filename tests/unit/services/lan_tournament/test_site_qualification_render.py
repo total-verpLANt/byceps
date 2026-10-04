@@ -690,6 +690,7 @@ def test_audit_rows_are_listed(template):
             who='Ohrwurm',
             label='Tie decided',
             details='Group B',
+            children=[],
         ),
         SimpleNamespace(
             event_type='playoffs-released',
@@ -697,6 +698,7 @@ def test_audit_rows_are_listed(template):
             who=None,
             label='Released',
             details='',
+            children=[],
         ),
     ]
 
@@ -705,6 +707,33 @@ def test_audit_rows_are_listed(template):
     assert 'data-event="qualification-tie-decided"' in html
     assert 'data-event="playoffs-released"' in html
     assert 'System' in html
+
+
+def test_folded_swaps_show_their_details(template):
+    entries = [
+        SimpleNamespace(
+            occurred_at=WHEN,
+            event_type='seeding-swapped',
+            initiator_id='u0',
+            data={},
+        )
+        for _ in range(2)
+    ]
+    rows = helpers.seeding_audit_rows(
+        entries, {'u0': SimpleNamespace(screen_name='Ohrwurm')}, names=NAMES
+    )
+    rows[0]['children'][0]['details'] = EVIL_REASON
+    rows[0]['children'][1]['details'] = 'Second swap'
+
+    html = template.render(_context(_blocked_payload(), audit_rows=rows))
+
+    subrows = re.search(r'<ul class="lt-seed-subrows">(.*?)</ul>', html, re.S)
+    assert subrows is not None
+    assert subrows.group(1).count('<li>') == 2
+    assert subrows.group(1).index('&lt;script&gt;') < subrows.group(1).index(
+        'Second swap'
+    )
+    assert '<script>alert(1)</script>' not in html
 
 
 def _hostile_audit_rows():
@@ -783,13 +812,25 @@ def test_bote_page_is_the_slip_with_its_style(bote_env):
     assert 'lt-seed-site' in html
 
 
-def test_bote_style_is_plain_css():
+def test_bote_style_is_plain_css(bote_env):
     text = _BOTE_STYLE.read_text()
 
+    # Server-side documentation is allowed, executable Jinja is not.
     assert '{%' not in text
     assert '{{' not in text
-    assert '{#' not in text
     assert 'seeding-page' not in text
+
+    rendered = bote_env.from_string(
+        '{% include "site/lan_tournament/_bote_qualification_style.html" %}'
+    ).render()
+
+    for delimiter in ('{%', '%}', '{{', '}}', '{#', '#}'):
+        assert delimiter not in rendered
+    assert not re.search(r'[\w./-]+\.(html|css)\b', rendered)
+    assert 'seeding-page' not in rendered
+    assert '.tournament-page.qualification-page' in rendered
+    assert '<style>' in rendered
+    assert '</style>' in rendered
 
 
 # -------------------------------------------------------------------- #

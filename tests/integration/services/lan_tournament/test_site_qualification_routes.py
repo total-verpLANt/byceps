@@ -901,6 +901,26 @@ def test_leaderboard_close_route(site_app, orga, make_tournament):
     assert isinstance(closed.leaderboard_closed_at, datetime)
 
 
+def test_leaderboard_reopen_route(site_app, orga, make_tournament):
+    tournament = make_tournament.highscore()
+    assert tournament_score_service.close_leaderboard(
+        tournament.id, initiator_id=orga.id
+    ).is_ok()
+    with http_client(site_app, user_id=orga.id) as client:
+        before = client.get(_url(tournament, '/qualification')).get_data(as_text=True)
+        assert '/leaderboard/reopen' in before
+        response = client.post(
+            _url(tournament, '/leaderboard/reopen'),
+            data={'reason': 'Correct scores'},
+            headers=JSON,
+        )
+        assert response.status_code == 200
+        assert response.get_json()['qualification']['leaderboard_closed'] is False
+        page = client.get(_url(tournament, '/qualification')).get_data(as_text=True)
+        assert '/leaderboard/reopen' not in page
+        assert '/leaderboard/close' in page
+
+
 def test_close_button_shows_only_while_the_tournament_is_ongoing(
     site_app, orga, make_tournament
 ):
@@ -1045,6 +1065,7 @@ def _all_requests(tournament, state_form):
         ),
         ('post', '/qualification/draft/create', {}),
         ('post', '/leaderboard/close', {}),
+        ('post', '/leaderboard/reopen', {'reason': 'because'}),
         ('post', '/advance_ffa_round', {}),
         ('post', '/generate_ffa_grand_final', {}),
     ]

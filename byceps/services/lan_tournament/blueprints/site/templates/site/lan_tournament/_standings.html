@@ -39,7 +39,7 @@
 
 {% macro render_group_standings(rankings, cut=none) -%}
 {%- if rankings %}
-{%- set is_table = rankings[0].entries and rankings[0].entries[0].stats %}
+{%- set is_table = rankings[0].is_table %}
 <p class='lt-chain'>
   <span class='lt-chain__label'>{{ _('Order on a tie') }}</span>
   {% if is_table -%}
@@ -50,6 +50,7 @@
 </p>
 <div class='lt-gcards'>
   {%- for ranking in rankings %}
+  {%- set is_table = ranking.is_table %}
   {%- set line = cut if cut is not none else ranking.get('cut') %}
   <section class='lt-gcard{% if ranking.has_tie %} is-tie{% endif %}' data-lt-ranking>
     <header class='lt-gcard__head'>

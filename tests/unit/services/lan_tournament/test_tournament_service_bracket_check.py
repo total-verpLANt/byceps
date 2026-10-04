@@ -433,6 +433,166 @@ def _generated_code(roster_ids) -> str:
     return seed_code.encode_seed_code(state, state.layout)
 
 
+def test_changed_board_refusal_runs_under_lock_without_status_or_audit_writes():
+    from byceps.services.lan_tournament import (
+        tournament_seeding_service,
+        tournament_service,
+    )
+
+    tournament = _create_tournament()
+    order = []
+    with (
+        patch.object(tournament_service, 'tournament_repository') as repo,
+        patch.object(tournament_service, 'create_log_entry') as audit,
+        patch.object(tournament_service, 'signals') as signals,
+        patch.object(
+            tournament_service.tournament_match_service,
+            'validate_bracket_for_start',
+            side_effect=lambda *a, **kw: order.append('bracket') or [],
+        ),
+        patch.object(
+            tournament_seeding_service,
+            'start_violations',
+            side_effect=lambda *a: order.append('roster') or [],
+        ),
+        patch.object(
+            tournament_seeding_service,
+            'peek_initial_generation_status',
+            side_effect=lambda *a: order.append('probe')
+            or tournament_seeding_service.GenerationStatus.DIFFERS,
+        ) as probe,
+    ):
+        repo.lock_tournament_for_update.side_effect = lambda *a: order.append(
+            'lock'
+        )
+        repo.get_tournament.return_value = tournament
+
+        repo.set_tournament_status_flush.return_value = Ok(None)
+
+        result = tournament_service.change_status(
+            tournament.id, TournamentStatus.ONGOING
+        )
+
+        assert result.is_err()
+        assert result.unwrap_err() == (
+            'Confirm that the generated layout is used before starting.'
+        )
+        assert order == ['lock', 'bracket', 'roster', 'probe']
+        probe.assert_called_once_with(tournament.id)
+        repo.rollback_session.assert_called_once()
+        repo.set_tournament_status_flush.assert_not_called()
+        repo.commit_session.assert_not_called()
+        audit.assert_not_called()
+        signals.tournament_status_changed.send.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ('status', 'format_', 'generation', 'confirmed', 'probed'),
+    # fmt: off
+    [
+        (TournamentStatus.REGISTRATION_CLOSED, GameFormat.ONE_V_ONE, None, False, True),
+        (TournamentStatus.REGISTRATION_CLOSED, GameFormat.ONE_V_ONE, 'NOT_GENERATED', False, True),
+        (TournamentStatus.REGISTRATION_CLOSED, GameFormat.ONE_V_ONE, 'MATCHES', False, True),
+        (TournamentStatus.REGISTRATION_CLOSED, GameFormat.ONE_V_ONE, 'DIFFERS', True, False),
+        (TournamentStatus.PAUSED, GameFormat.ONE_V_ONE, 'DIFFERS', False, False),
+        (TournamentStatus.COMPLETED, GameFormat.ONE_V_ONE, 'DIFFERS', False, False),
+        (TournamentStatus.REGISTRATION_CLOSED, GameFormat.HIGHSCORE, 'DIFFERS', False, False),
+    ],
+    # fmt: on
+)
+def test_confirmation_only_gates_unconfirmed_changed_board_starts(
+    status, format_, generation, confirmed, probed
+):
+    from byceps.services.lan_tournament import (
+        tournament_seeding_service,
+        tournament_service,
+    )
+
+    tournament = _create_tournament(
+        tournament_status=status, game_format=format_
+    )
+    with (
+        patch.object(tournament_service, 'tournament_repository') as repo,
+        patch.object(tournament_service, 'create_log_entry'),
+        patch.object(tournament_service, 'signals'),
+        patch.object(
+            tournament_service.tournament_match_service,
+            'validate_bracket_for_start',
+            return_value=[],
+        ),
+        patch.object(
+            tournament_seeding_service, 'start_violations', return_value=[]
+        ) as roster,
+        patch.object(
+            tournament_seeding_service,
+            'peek_initial_generation_status',
+            return_value=(
+                tournament_seeding_service.GenerationStatus[generation]
+                if generation
+                else None
+            ),
+        ) as probe,
+    ):
+        repo.get_tournament.return_value = tournament
+        repo.set_tournament_status_flush.return_value = Ok(None)
+        repo.set_tournament_winner.return_value = Ok(None)
+
+        result = tournament_service.change_status(
+            tournament.id,
+            TournamentStatus.ONGOING,
+            confirm_generated_layout=confirmed,
+        )
+
+        assert result.is_ok()
+        assert probe.called is probed
+        if status is TournamentStatus.REGISTRATION_CLOSED:
+            roster.assert_called_once_with(tournament.id)
+        else:
+            roster.assert_not_called()
+        repo.commit_session.assert_called_once()
+
+
+def test_explicit_confirmation_cannot_override_roster_refusal():
+    from byceps.services.lan_tournament import (
+        tournament_seeding_service,
+        tournament_service,
+    )
+
+    tournament = _create_tournament()
+    with (
+        patch.object(tournament_service, 'tournament_repository') as repo,
+        patch.object(tournament_service, 'create_log_entry') as audit,
+        patch.object(
+            tournament_service.tournament_match_service,
+            'validate_bracket_for_start',
+            return_value=[],
+        ),
+        patch.object(
+            tournament_seeding_service,
+            'start_violations',
+            return_value=[tournament_seeding_service.ERR_ROSTER_CHANGED],
+        ),
+        patch.object(
+            tournament_seeding_service, 'peek_initial_generation_status'
+        ) as probe,
+    ):
+        repo.get_tournament.return_value = tournament
+
+        result = tournament_service.change_status(
+            tournament.id,
+            TournamentStatus.ONGOING,
+            confirm_generated_layout=True,
+        )
+
+        assert (
+            result.unwrap_err() == tournament_seeding_service.ERR_ROSTER_CHANGED
+        )
+        probe.assert_not_called()
+        repo.rollback_session.assert_called_once()
+        repo.set_tournament_status_flush.assert_not_called()
+        audit.assert_not_called()
+
+
 def _roster(ids):
     return SimpleNamespace(ids=tuple(ids))
 
@@ -517,6 +677,8 @@ def test_start_allowed_when_roster_matches_generation(
     mock_repository.set_tournament_status_flush.return_value = Ok(None)
     mock_seeding_tournament_repo.get_tournament.return_value = tournament
     no_seeding_draft.find_seeding.return_value = SimpleNamespace(
+        target='initial',
+        seed_code=_generated_code(['p1', 'p2', 'p3', 'p4']),
         generated_seed_code=_generated_code(['p1', 'p2', 'p3', 'p4'])
     )
     mock_roster.return_value = _roster(['p4', 'p3', 'p2', 'p1'])
@@ -564,6 +726,7 @@ def test_start_blocked_when_structure_changed_after_generation(
 
 
 @patch('byceps.services.lan_tournament.tournament_service.create_log_entry')
+@patch(f'{SEEDING_SERVICE}.tournament_repository')
 @patch(
     'byceps.services.lan_tournament.tournament_match_service.validate_bracket_for_start',
     return_value=[],
@@ -576,18 +739,20 @@ def test_start_allowed_for_legacy_tournament_without_seeding(
     mock_signals,
     mock_repository,
     mock_validate,
+    mock_seeding_tournament_repo,
     mock_create_log_entry,
     no_seeding_draft,
 ):
     tournament = _create_tournament()
     mock_repository.get_tournament.return_value = tournament
     mock_repository.set_tournament_status_flush.return_value = Ok(None)
+    mock_seeding_tournament_repo.get_tournament.return_value = tournament
 
     # No draft at all, then a draft that was never generated from.
     assert _start(tournament).is_ok()
 
     no_seeding_draft.find_seeding.return_value = SimpleNamespace(
-        generated_seed_code=None
+        target='initial', seed_code='x', generated_seed_code=None
     )
     assert _start(tournament).is_ok()
 

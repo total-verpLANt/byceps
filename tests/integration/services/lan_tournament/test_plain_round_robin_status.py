@@ -15,6 +15,7 @@ import pytest
 from byceps.database import db
 from byceps.services.lan_tournament import (
     tournament_match_service,
+    tournament_participant_service,
     tournament_qualification_service,
     tournament_repository,
     tournament_seeding_service,
@@ -31,6 +32,10 @@ from byceps.services.lan_tournament.models.tournament_participant import (
 )
 from byceps.services.lan_tournament.models.tournament_status import (
     TournamentStatus,
+)
+from byceps.services.lan_tournament.models.tournament_team import (
+    TournamentTeam,
+    TournamentTeamID,
 )
 from byceps.services.party.models import PartyID
 from byceps.util.uuid import generate_uuid7
@@ -69,13 +74,30 @@ def make_tournament(party, users):
         tournament, _ = result.unwrap()
         created.append(tournament)
         for user in users[:participants]:
+            team_id = None
+            if contestant_type is ContestantType.TEAM:
+                team_id = TournamentTeamID(generate_uuid7())
+                tournament_repository.create_team(
+                    TournamentTeam(
+                        id=team_id,
+                        tournament_id=tournament.id,
+                        name=f'Team {user.id}',
+                        tag=None,
+                        description=None,
+                        image_url=None,
+                        captain_user_id=user.id,
+                        join_code=None,
+                        created_at=datetime.now(UTC),
+                        updated_at=None,
+                    )
+                )
             tournament_repository.create_participant(
                 TournamentParticipant(
                     id=TournamentParticipantID(generate_uuid7()),
                     user_id=user.id,
                     tournament_id=tournament.id,
                     substitute_player=False,
-                    team_id=None,
+                    team_id=team_id,
                     created_at=datetime.now(UTC),
                 )
             )
@@ -145,6 +167,79 @@ def test_the_last_confirm_while_paused_does_not_complete(
     found = _found(tournament)
     assert found.tournament_status is TournamentStatus.PAUSED
     assert found.winner_participant_id is None
+
+
+def _remove_ticketless_pass(tournament, admin, monkeypatch, status):
+    participants = tournament_repository.get_participants_for_tournament(
+        tournament.id
+    )
+    first, second, survivor = participants
+    second_id = str(second.team_id or second.id)
+    survivor_id = str(survivor.team_id or survivor.id)
+    _generate(tournament, admin)
+    _change(tournament, TournamentStatus.ONGOING, admin)
+    if status is TournamentStatus.PAUSED:
+        _change(tournament, status, admin)
+
+    # The first removal settles both remaining matches. Before this fix,
+    # its defwins crown the second ticketless contestant (two wins).
+    match = next(
+        m
+        for m in _matches(tournament)
+        if set(_members(m)) == {second_id, survivor_id}
+    )
+    _play(match, admin, second_id)
+    monkeypatch.setattr(
+        tournament_participant_service.ticket_service,
+        'select_ticket_users_for_party',
+        lambda user_ids, party_id: {survivor.user_id},
+    )
+
+    result = tournament_participant_service.remove_participants_without_tickets(
+        tournament.id, PARTY_ID, initiator_id=admin.id
+    )
+    assert result.is_ok(), result.unwrap_err()
+    assert result.unwrap() == 2
+    active_ids = tournament_match_service.active_contestant_ids(tournament.id)
+    assert active_ids == {survivor_id, str(survivor.id)}
+    assert str(first.team_id or first.id) not in active_ids
+    assert second_id not in active_ids
+    if status is TournamentStatus.PAUSED:
+        assert _found(tournament).tournament_status is TournamentStatus.PAUSED
+        _change(tournament, TournamentStatus.ONGOING, admin)
+    return _found(tournament), active_ids, survivor_id
+
+
+@pytest.mark.parametrize(
+    'status', [TournamentStatus.ONGOING, TournamentStatus.PAUSED]
+)
+def test_a_ticketless_pass_never_crowns_a_contestant_it_removes(
+    make_tournament, users, monkeypatch, status
+):
+    tournament = make_tournament(participants=3)
+    found, active_ids, survivor_id = _remove_ticketless_pass(
+        tournament, users[0], monkeypatch, status
+    )
+    assert str(found.winner_participant_id) in active_ids
+    assert str(found.winner_participant_id) == survivor_id
+    assert found.tournament_status is TournamentStatus.COMPLETED
+
+
+@pytest.mark.parametrize(
+    'status', [TournamentStatus.ONGOING, TournamentStatus.PAUSED]
+)
+def test_a_ticketless_pass_never_crowns_a_team_it_removes(
+    make_tournament, users, monkeypatch, status
+):
+    tournament = make_tournament(
+        participants=3, contestant_type=ContestantType.TEAM
+    )
+    found, active_ids, survivor_id = _remove_ticketless_pass(
+        tournament, users[0], monkeypatch, status
+    )
+    assert str(found.winner_team_id) in active_ids
+    assert str(found.winner_team_id) == survivor_id
+    assert found.tournament_status is TournamentStatus.COMPLETED
 
 
 def test_confirming_every_match_before_the_start_does_not_complete(

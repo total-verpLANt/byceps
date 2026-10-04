@@ -47,6 +47,7 @@
 -- =================================================================
 
 BEGIN;
+SET LOCAL lock_timeout = '5s';
 
 ALTER TABLE lan_tournaments
     ADD COLUMN IF NOT EXISTS playoff_game_format TEXT NULL,

@@ -37,7 +37,6 @@ from byceps.util.views import permission_required, redirect_to, respond_no_conte
 from byceps.services.lan_tournament import (
     tournament_domain_service,
     tournament_image_service,
-    tournament_log_service,
     tournament_maintenance_service,
     tournament_match_service,
     tournament_notification_service,
@@ -141,11 +140,12 @@ from byceps.services.lan_tournament.lan_tournament_view_helpers import (
     ffa_cut_ties_payload,
     qualification_js_strings,
     qualification_strings,
-    is_seeding_audit_entry,
+    playoff_board,
+    playoff_release_open,
     generation_flash,
-    seeding_audit_rows,
+    seeding_audit_context,
     start_gate,
-    start_refusal,
+    START_CONFIRM_FIELD,
     seeding_board_payload,
     leaderboard_submission_times,
     seeding_error_status,
@@ -2345,11 +2345,6 @@ def close_registration(tournament_id):
 @permission_required('lan_tournament.administrate')
 def start(tournament_id):
     """Start the tournament; a changed board needs a confirmation."""
-    tournament = _get_tournament_or_404(tournament_id)
-    refusal = start_refusal(tournament, request.form)
-    if refusal is not None:
-        flash_error(gettext(refusal))
-        return redirect_to('.view', tournament_id=tournament.id)
     return _change_status(tournament_id, TournamentStatus.ONGOING)
 
 
@@ -2397,7 +2392,10 @@ def _change_status(tournament_id, new_status: TournamentStatus):
     tournament = _get_tournament_or_404(tournament_id)
 
     match tournament_service.change_status(
-        tournament.id, new_status, g.user.id
+        tournament.id,
+        new_status,
+        g.user.id,
+        confirm_generated_layout=bool(request.form.get(START_CONFIRM_FIELD)),
     ):
         case Ok((_, _event)):
             flash_success(
@@ -2450,25 +2448,11 @@ def seeding(tournament_id):
         case Ok(board):
             pass
 
-    entries = [
-        entry
-        for entry in tournament_log_service.get_entries_for_tournament(
-            tournament.id
-        )
-        if is_seeding_audit_entry(entry)
-    ]
-    entries.reverse()
-    users_by_id = user_service.get_users_indexed_by_id(
-        {entry.initiator_id for entry in entries if entry.initiator_id}
-    )
-
     return {
         'party': party,
         'tournament': tournament,
         'board': seeding_board_payload(board) if board is not None else None,
-        'audit_rows': seeding_audit_rows(
-            entries, users_by_id, contestant_names(tournament.id)
-        ),
+        **seeding_audit_context(tournament.id, contestant_names(tournament.id)),
     }
 
 
@@ -2558,7 +2542,7 @@ def _seeding_error(tournament, target, error_message, status, json_wanted):
     return redirect_to('.seeding', tournament_id=tournament.id, target=target)
 
 
-def _qualification_payload(tournament, state):
+def _qualification_payload(tournament, state, names):
     decisions = tournament_qualification_repository.get_decisions_for_tournament(
         tournament.id
     )
@@ -2567,48 +2551,13 @@ def _qualification_payload(tournament, state):
         user_ids.add(state.released_by)
     return serialize_qualification(
         state,
-        contestant_names(tournament.id),
+        names,
         qualification_strings(),
         tournament=tournament,
         decisions=decisions,
         users=user_service.get_users_indexed_by_id(user_ids),
         submitted_at=leaderboard_submission_times(tournament.id, state),
     )
-
-
-def _playoff_draft_version(tournament, state):
-    """Return the version of the playoff draft the release would use."""
-    releasable = (
-        state.ready
-        and state.released_at is None
-        and state.source != tournament_qualification_service.SOURCE_WINNER
-        and tournament.tournament_status is TournamentStatus.ONGOING
-    )
-    if not releasable:
-        return None
-    match tournament_seeding_service.get_board(
-        tournament.id, tournament_seeding_service.PLAYOFF_TARGET
-    ):
-        case Ok(board):
-            return board.version
-        case Err(_):
-            return None
-
-
-def _playoff_draft_payload(state):
-    """Return the playoff draft board for the page, or None without one."""
-    if state.source not in (
-        tournament_qualification_service.SOURCE_GROUPS,
-        tournament_qualification_service.SOURCE_LEADERBOARD,
-    ):
-        return None
-    match tournament_seeding_service.get_board(
-        state.tournament_id, tournament_seeding_service.PLAYOFF_TARGET
-    ):
-        case Ok(board):
-            return seeding_board_payload(board)
-        case Err(_):
-            return None
 
 
 @blueprint.get('/tournaments/<tournament_id>/qualification')
@@ -2626,27 +2575,22 @@ def qualification(tournament_id):
         case Ok(state):
             pass
 
-    entries = [
-        entry
-        for entry in tournament_log_service.get_entries_for_tournament(
-            tournament.id
-        )
-        if is_seeding_audit_entry(entry)
-    ]
-    entries.reverse()
-    users_by_id = user_service.get_users_indexed_by_id(
-        {entry.initiator_id for entry in entries if entry.initiator_id}
-    )
+    names = contestant_names(tournament.id)
+    board = playoff_board(state)
 
     return {
         'party': party,
         'tournament': tournament,
-        'qualification': _qualification_payload(tournament, state),
-        'playoff_version': _playoff_draft_version(tournament, state),
-        'playoff_board': _playoff_draft_payload(state),
-        'audit_rows': seeding_audit_rows(
-            entries, users_by_id, contestant_names(tournament.id)
+        'qualification': _qualification_payload(tournament, state, names),
+        'playoff_version': (
+            board.version
+            if board is not None and playoff_release_open(tournament, state)
+            else None
         ),
+        'playoff_board': (
+            seeding_board_payload(board) if board is not None else None
+        ),
+        **seeding_audit_context(tournament.id, names),
         'js_strings': qualification_js_strings(),
     }
 
@@ -2722,7 +2666,9 @@ def _qualification_outcome(
                 )
                 payload = (
                     _qualification_payload(
-                        _get_tournament_or_404(tournament.id), state.unwrap()
+                        _get_tournament_or_404(tournament.id),
+                        state.unwrap(),
+                        contestant_names(tournament.id),
                     )
                     if state.is_ok()
                     else None
@@ -2859,6 +2805,24 @@ def leaderboard_close(tournament_id):
         tournament,
         result,
         gettext('Qualification closed.'),
+        wants_json(request),
+    )
+
+
+@blueprint.post('/tournaments/<tournament_id>/leaderboard/reopen')
+@permission_required('lan_tournament.administrate')
+def leaderboard_reopen(tournament_id):
+    """Reopen the score phase of a highscore tournament."""
+    tournament = _get_tournament_or_404(tournament_id)
+    result = tournament_score_service.reopen_leaderboard(
+        tournament.id,
+        reason=request.form.get('reason', ''),
+        initiator_id=g.user.id,
+    )
+    return _qualification_outcome(
+        tournament,
+        result,
+        gettext('Qualification reopened.'),
         wants_json(request),
     )
 

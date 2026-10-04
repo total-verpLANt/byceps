@@ -3,6 +3,7 @@ byceps.services.lan_tournament.tournament_log_service
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 """
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
 
@@ -72,6 +73,22 @@ def get_entries_for_tournament(
     ).all()
 
     return [_db_entity_to_entry(db_entry) for db_entry in db_entries]
+
+
+def get_recent_entries_for_tournament(
+    tournament_id: TournamentID,
+    prefixes: Sequence[str],
+    *,
+    limit: int,
+    registration_statuses: Sequence[str] = (),
+) -> list[TournamentLogEntry]:
+    """Return the bounded matching audit entries, newest first."""
+    return tournament_repository.get_log_entries_with_prefixes(
+        tournament_id,
+        prefixes,
+        limit,
+        registration_statuses=registration_statuses,
+    )
 
 
 def purge_entries_older_than(occurred_before: datetime) -> Result[int, str]:

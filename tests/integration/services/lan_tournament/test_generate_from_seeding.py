@@ -153,6 +153,124 @@ def _generate(tournament, board, admin):
     )
 
 
+def _confirm_round_zero(tournament, admin):
+    matches = tournament_repository.get_matches_for_tournament(tournament.id)
+    contestants = tournament_repository.get_contestants_for_matches(
+        [m.id for m in matches]
+    )
+    match = next(m for m in matches if m.round == 0 and len(contestants[m.id]) == 2)
+    scores = {c.participant_id: i for i, c in enumerate(contestants[match.id])}
+    assert tournament_match_service.admin_set_and_confirm_match(
+        match.id, admin.id, scores
+    ).is_ok()
+    return match.id, scores
+
+
+def test_initial_regeneration_refused_while_a_result_is_confirmed(
+    make_tournament, users, captured_signals, monkeypatch
+):
+    tournament, _ = make_tournament()
+    admin = users[0]
+    assert _generate(tournament, _board(tournament), admin).is_ok()
+    match_id, scores = _confirm_round_zero(tournament, admin)
+    before_code = _generated_code(tournament)
+    board = _action(tournament, _board(tournament), svc.Swap(0, 7), admin)
+    before_version = board.version
+    for events in captured_signals.values():
+        events.clear()
+
+    order = []
+    real_lock = tournament_repository.lock_tournament_for_update
+    real_has_result = svc._has_confirmed_result
+
+    def lock(tournament_id):
+        result = real_lock(tournament_id)
+        order.append('locked')
+        return result
+
+    def has_result(tournament_id):
+        order.append('checked')
+        return real_has_result(tournament_id)
+
+    monkeypatch.setattr(tournament_repository, 'lock_tournament_for_update', lock)
+    monkeypatch.setattr(svc, '_has_confirmed_result', has_result)
+
+    result = _generate(tournament, board, admin)
+
+    assert result.is_err()
+    assert order == ['locked', 'checked']
+    assert result.unwrap_err() == svc.ERR_RESULTS_EXIST
+    board = _board(tournament)
+    assert board.regenerate_refusal == svc.ERR_RESULTS_EXIST
+    assert board.version == before_version
+    assert _generated_code(tournament) == before_code
+    match = tournament_repository.get_match(match_id)
+    assert match.confirmed_by == admin.id
+    contestants = tournament_repository.get_contestants_for_matches([match_id])
+    assert {c.participant_id: c.score for c in contestants[match_id]} == scores
+    assert _entries(tournament, 'bracket-regenerated') == []
+    assert captured_signals == {'created': [], 'deleted': [], 'ready': []}
+
+
+def test_locked_initial_board_has_no_regenerate_refusal(make_tournament, users):
+    tournament, _ = make_tournament()
+    admin = users[0]
+    assert _generate(tournament, _board(tournament), admin).is_ok()
+    _confirm_round_zero(tournament, admin)
+    assert _board(tournament).regenerate_refusal == svc.ERR_RESULTS_EXIST
+    assert tournament_repository.set_tournament_status_flush(
+        tournament.id, TournamentStatus.ONGOING
+    ).is_ok()
+    db.session.commit()
+    board = _board(tournament)
+    assert board.generation is svc.GenerationStatus.LOCKED
+    assert board.regenerate_refusal is None
+
+
+def test_initial_regeneration_ignores_confirmed_byes(make_tournament, users):
+    tournament, _ = make_tournament(participants=6)
+    admin = users[0]
+    assert _generate(tournament, _board(tournament), admin).is_ok()
+    matches = tournament_repository.get_matches_for_tournament(tournament.id)
+    contestants = tournament_repository.get_contestants_for_matches([m.id for m in matches])
+    confirmed = [m for m in matches if m.confirmed_by is not None]
+    assert len(confirmed) == 2
+    assert all(len(contestants[m.id]) == 1 for m in confirmed)
+    board = _action(tournament, _board(tournament), svc.Swap(0, 7), admin)
+    assert board.regenerate_refusal is None
+    assert _generate(tournament, board, admin).is_ok()
+
+
+def test_confirmed_result_preserves_unchanged_no_op(make_tournament, users):
+    tournament, _ = make_tournament()
+    admin = users[0]
+    assert _generate(tournament, _board(tournament), admin).is_ok()
+    match_id, _ = _confirm_round_zero(tournament, admin)
+    board = _board(tournament)
+    assert _generate(tournament, board, admin).unwrap() == svc.GENERATION_UNCHANGED
+    assert _board(tournament).version == board.version
+    assert tournament_repository.get_match(match_id).confirmed_by == admin.id
+
+
+def test_initial_regeneration_ignores_one_contestant_default_win(
+    make_tournament, users
+):
+    tournament, _ = make_tournament()
+    admin = users[0]
+    assert _generate(tournament, _board(tournament), admin).is_ok()
+    matches = tournament_repository.get_matches_for_tournament(tournament.id)
+    match = next(m for m in matches if m.round == 0)
+    contestants = tournament_repository.get_contestants_for_matches([match.id])
+    # Represent a confirmed default win without changing the registered roster.
+    tournament_repository.delete_match_contestant(contestants[match.id][1].id)
+    tournament_repository.confirm_match(match.id, admin.id)
+    db.session.commit()
+    assert len(tournament_repository.get_contestants_for_matches([match.id])[match.id]) == 1
+    board = _action(tournament, _board(tournament), svc.Swap(0, 7), admin)
+    assert board.regenerate_refusal is None
+    assert _generate(tournament, board, admin).is_ok()
+
+
 def _placement(tournament):
     """Return the bracket as comparable data, blind to slot order in a match."""
     db.session.rollback()

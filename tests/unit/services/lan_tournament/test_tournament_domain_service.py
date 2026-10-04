@@ -4,8 +4,13 @@ tests.unit.services.lan_tournament.test_tournament_domain_service
 """
 
 from datetime import datetime
+from types import SimpleNamespace
 
 import pytest
+
+from byceps.services.lan_tournament.lan_tournament_view_helpers import (
+    build_round_robin_standings,
+)
 
 from byceps.services.lan_tournament.models.contestant_type import (
     ContestantType,
@@ -391,6 +396,31 @@ def test_compute_round_robin_standings_empty_input():
     standings = compute_round_robin_standings([])
 
     assert standings == []
+
+
+def test_round_robin_standings_count_a_walkover():
+    pid = TournamentParticipantID(generate_uuid())
+    entry = _create_contestant_with_pid(pid, score=99)
+    (standing,) = compute_round_robin_standings([[entry]])
+
+    assert standing.contestant_id == str(pid)
+    assert (standing.wins, standing.draws, standing.losses) == (1, 0, 0)
+    assert standing.points == 3
+    assert (standing.score_for, standing.score_against) == (0, 0)
+    assert standing.score_diff == 0
+
+    data = [
+        {
+            'match': SimpleNamespace(confirmed_by=generate_uuid()),
+            'contestants': [entry],
+        },
+        {'match': SimpleNamespace(confirmed_by=None), 'contestants': [entry]},
+    ]
+    assert build_round_robin_standings(data) == [standing]
+    assert build_round_robin_standings(data[1:]) == []
+    (repeated,) = compute_round_robin_standings([[entry], [entry], []])
+    assert (repeated.wins, repeated.points) == (2, 6)
+    assert (repeated.score_for, repeated.score_against) == (0, 0)
 
 
 def test_compute_round_robin_standings_basic():

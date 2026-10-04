@@ -15829,3 +15829,36 @@ msgstr "Niedrigere Punktzahl ist besser."
 
 msgid "Registration opened"
 msgstr "Anmeldung geöffnet"
+
+msgid "Reopen qualification"
+msgstr "Qualifikation wieder öffnen"
+
+msgid "Reopen the qualification?"
+msgstr "Qualifikation wieder öffnen?"
+
+msgid "Scores can be submitted and corrected again. Closing it again determines the qualifiers anew."
+msgstr "Ergebnisse können wieder eingetragen und korrigiert werden. Beim erneuten Abschließen werden die Qualifizierten neu bestimmt."
+
+msgid "Reason for reopening"
+msgstr "Begründung für das Wiederöffnen"
+
+msgid "Qualification reopened."
+msgstr "Qualifikation wieder geöffnet."
+
+msgid "Qualification reopened"
+msgstr "Qualifikation wieder geöffnet"
+
+msgid "The qualification is not closed."
+msgstr "Die Qualifikation ist nicht abgeschlossen."
+
+msgid "The playoffs are released. Take the release back first."
+msgstr "Die Playoffs sind freigegeben. Nimm zuerst die Freigabe zurück."
+
+msgid "The qualification can only be reopened while the tournament is ongoing or paused."
+msgstr "Die Qualifikation kann nur wieder geöffnet werden, solange das Turnier läuft oder pausiert ist."
+
+msgid "A match already has a confirmed result. Take it back before you regenerate."
+msgstr "Eine Partie hat bereits ein bestätigtes Ergebnis. Nimm es zurück, bevor du neu generierst."
+
+msgid "Only the latest %(n)s entries are shown."
+msgstr "Nur die letzten %(n)s Einträge werden angezeigt."

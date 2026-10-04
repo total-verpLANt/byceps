@@ -767,6 +767,58 @@ def test_decide_rejects_an_unknown_action(client, admin, make_tournament):
 # release
 
 
+def test_admin_qualification_json_success_uses_the_shared_names(
+    client, admin, make_tournament, monkeypatch
+):
+    from unittest.mock import Mock
+
+    from byceps.services.lan_tournament.blueprints.admin import views
+
+    names = Mock(wraps=helpers.contestant_names)
+    payload = Mock(wraps=views._qualification_payload)
+    monkeypatch.setattr(views, 'contestant_names', names)
+    monkeypatch.setattr(views, '_qualification_payload', payload)
+
+    def post(tournament, suffix, data):
+        names.reset_mock()
+        payload.reset_mock()
+        response = client.post(_url(tournament, suffix), data=data, headers=JSON)
+        assert response.status_code == 200
+        qualification = response.get_json()['qualification']
+        assert qualification is not None
+        assert {'source', 'ready', 'qualifiers', 'decisions'} <= qualification.keys()
+        names.assert_called_once_with(tournament.id)
+        assert len(payload.call_args.args) == 3
+        assert payload.call_args.args[2]
+        return qualification
+
+    tied = make_tournament.groups(
+        participants=4, qualifiers_per_group=1, started=False
+    )
+    _play_all_draws(tied, admin)
+    assert post(
+        tied, '/qualification/decisions', _decide_form(_state(tied))
+    )['decisions']
+
+    groups = make_tournament.groups()
+    _play_groups(groups, admin)
+    assert post(
+        groups, '/qualification/release',
+        {'version': str(_draft_version(groups))},
+    )['release']['released_at']
+    assert post(
+        groups, '/qualification/unrelease', {'reason': 'Correct qualifiers'}
+    )['release']['released_at'] is None
+
+    leaderboard = make_tournament.highscore()
+    assert tournament_score_service.close_leaderboard(
+        leaderboard.id, initiator_id=admin.id
+    ).is_ok()
+    assert post(
+        leaderboard, '/leaderboard/reopen', {'reason': 'Correct scores'}
+    )['leaderboard_closed'] is False
+
+
 def test_release_manual(client, admin, make_tournament):
     tournament = make_tournament.groups()
     _play_groups(tournament, admin)
@@ -1105,6 +1157,69 @@ def test_leaderboard_close_route(client, admin, make_tournament):
     again = client.post(_url(tournament, '/leaderboard/close'), headers=JSON)
 
     assert again.status_code == 422
+
+
+def test_leaderboard_reopen_route(client, admin, make_tournament):
+    tournament = make_tournament.highscore()
+    assert tournament_score_service.close_leaderboard(
+        tournament.id, initiator_id=admin.id
+    ).is_ok()
+    before = client.get(_url(tournament, '/qualification')).get_data(as_text=True)
+    assert '/leaderboard/reopen' in before
+    response = client.post(
+        _url(tournament, '/leaderboard/reopen'),
+        data={'reason': 'Correct scores'},
+        headers=JSON,
+    )
+    assert response.status_code == 200
+    assert response.get_json()['qualification']['leaderboard_closed'] is False
+    page = client.get(_url(tournament, '/qualification')).get_data(as_text=True)
+    assert '/leaderboard/reopen' not in page
+    assert '/leaderboard/close' in page
+
+
+def test_reopen_form_shows_only_when_closed_and_unreleased(
+    client, admin, make_tournament
+):
+    tournament = make_tournament.highscore()
+    page = _url(tournament, '/qualification')
+    assert '/leaderboard/reopen' not in client.get(page).get_data(as_text=True)
+    assert tournament_score_service.close_leaderboard(
+        tournament.id, initiator_id=admin.id
+    ).is_ok()
+    assert '/leaderboard/reopen' in client.get(page).get_data(as_text=True)
+    assert tournament_service.change_status(
+        tournament.id, TournamentStatus.PAUSED, admin.id
+    ).is_ok()
+    assert '/leaderboard/reopen' in client.get(page).get_data(as_text=True)
+    response = client.post(
+        _url(tournament, '/leaderboard/reopen'),
+        data={'reason': 'Paused correction'},
+        headers=JSON,
+    )
+    assert response.status_code == 200
+    tournament_repository.set_leaderboard_closed(
+        tournament.id, datetime.now(UTC).replace(tzinfo=None)
+    )
+    tournament_repository.set_playoff_release(
+        tournament.id,
+        released_at=datetime.now(UTC).replace(tzinfo=None),
+        released_by=admin.id,
+    )
+    db.session.commit()
+    assert '/leaderboard/reopen' not in client.get(page).get_data(as_text=True)
+
+
+def test_leaderboard_reopen_requires_administrate_permission(
+    viewer_client, make_tournament
+):
+    tournament = make_tournament.highscore()
+    response = viewer_client.post(
+        _url(tournament, '/leaderboard/reopen'),
+        data={'reason': 'Correct scores'},
+        headers=JSON,
+    )
+    assert response.status_code == 403
 
 
 def test_close_button_shows_only_while_the_tournament_is_ongoing(

@@ -259,7 +259,7 @@ def _try_auto_release(
 
     from . import tournament_qualification_service
 
-    tournament_qualification_service.try_auto_release(
+    tournament_qualification_service.auto_release_after_commit(
         tournament_id, triggered_by=triggered_by
     )
 
@@ -2747,6 +2747,13 @@ def retraction_reverts_completion(
 def _single_survivor_source_plan(
     match: TournamentMatch,
     tournament: Tournament,
+    *,
+    matches: Sequence[TournamentMatch] | None = None,
+    contestants_by_match: Mapping[
+        TournamentMatchID, list[TournamentMatchToContestant]
+    ] | None = None,
+    decisions: qualification_domain.DecisionOrders | None = None,
+    active_ids: Collection[str] | None = None,
 ) -> 'FfaAdvancePlan | None':
     """Recognize the fully confirmed source of a no-lobby SE completion."""
     phase = _ffa_phase(tournament)
@@ -2757,9 +2764,10 @@ def _single_survivor_source_plan(
         or tournament.advancement_count is None or tournament.advancement_count < 1
     ):
         return None
+    if matches is None:
+        matches = tournament_repository.get_matches_for_tournament(tournament.id)
     phase_matches = [
-        m for m in tournament_repository.get_matches_for_tournament(tournament.id)
-        if m.phase == phase and m.bracket is None
+        m for m in matches if m.phase == phase and m.bracket is None
     ]
     if not phase_matches or match.round is None:
         return None
@@ -2772,7 +2780,11 @@ def _single_survivor_source_plan(
     ):
         return None
     ranked = _round_standings(
-        round_matches, tournament.advancement_count, ffa_decisions(tournament.id)
+        round_matches,
+        tournament.advancement_count,
+        ffa_decisions(tournament.id) if decisions is None else decisions,
+        contestants_by_match=contestants_by_match,
+        active_ids=active_ids,
     )
     if ranked.is_err():
         return None
@@ -2790,6 +2802,8 @@ def _single_survivor_source_plan(
 def ffa_round_already_advanced(
     match: TournamentMatch,
     tournament: Tournament,
+    *,
+    matches: Sequence[TournamentMatch] | None = None,
 ) -> bool:
     """Return `True` if a later FFA round was built from the match's round."""
     if _ffa_phase(tournament) is None:
@@ -2798,7 +2812,8 @@ def ffa_round_already_advanced(
     if match.bracket == Bracket.GRAND_FINAL:
         return False
 
-    matches = tournament_repository.get_matches_for_tournament(tournament.id)
+    if matches is None:
+        matches = tournament_repository.get_matches_for_tournament(tournament.id)
 
     # Double elimination seeds its grand final from both pools.
     if match.bracket is not None and any(
@@ -2822,13 +2837,28 @@ def ffa_round_already_advanced(
     )
 
 
-def ffa_round_consumed(match: TournamentMatch, tournament: Tournament) -> bool:
+def ffa_round_consumed(
+    match: TournamentMatch,
+    tournament: Tournament,
+    *,
+    matches: Sequence[TournamentMatch] | None = None,
+    contestants_by_match: Mapping[
+        TournamentMatchID, list[TournamentMatchToContestant]
+    ] | None = None,
+    decisions: qualification_domain.DecisionOrders | None = None,
+    active_ids: Collection[str] | None = None,
+) -> bool:
     """Return `True` if the match's round fed a later round or decided
     the tournament.
     """
-    return ffa_round_already_advanced(match, tournament) or (
+    return ffa_round_already_advanced(match, tournament, matches=matches) or (
         tournament.tournament_status is TournamentStatus.COMPLETED
-        and _single_survivor_source_plan(match, tournament) is not None
+        and _single_survivor_source_plan(
+            match, tournament, matches=matches,
+            contestants_by_match=contestants_by_match,
+            decisions=decisions,
+            active_ids=active_ids,
+        ) is not None
     )
 
 
@@ -2913,6 +2943,7 @@ def plain_round_robin_standing(
     members: list[str] = []
     by_id: dict[str, TournamentMatchToContestant] = {}
     results = []
+    walkovers = []
     for match in matches:
         entries = by_match.get(match.id, [])
         ids = [contestant_id(c) for c in entries]
@@ -2920,6 +2951,8 @@ def plain_round_robin_standing(
             if cid not in by_id:
                 members.append(cid)
                 by_id[cid] = entry
+        if len(entries) == 1 and match.confirmed_by is not None:
+            walkovers.append(ids[0])
         if len(entries) != 2:
             continue
         results.append(
@@ -2939,6 +2972,7 @@ def plain_round_robin_standing(
             results,
             decision.orders if decision else (),
             active_ids=active_contestant_ids(tournament.id),
+            walkovers=walkovers,
         ),
         cut=None,
         plain_winner=True,
@@ -4973,11 +5007,41 @@ def _open_cut_tie(ranking: qualification_domain.Ranking) -> list[str]:
     ]
 
 
+def ffa_lobby_cut(
+    match: TournamentMatch,
+    contestants: Sequence[TournamentMatchToContestant],
+    cut: int,
+    active_ids: Collection[str] | None = None,
+    *,
+    lobbies_in_round: int | None = None,
+) -> int:
+    """Return how many of the lobby advance.
+
+    A winners pool no larger than the cut is a single lobby: all but one
+    of it advance, so somebody drops and the lone winner can wait.
+    """
+    if match.bracket is not Bracket.WINNERS:
+        return cut
+    if active_ids is None:
+        active_ids = active_contestant_ids(match.tournament_id)
+    active = sum(1 for c in contestants if contestant_id(c) in active_ids)
+    if active > cut:
+        return cut
+    if lobbies_in_round is None:
+        lobbies_in_round = len(tournament_repository.get_matches_for_round(
+            match.tournament_id, match.round or 0, bracket=Bracket.WINNERS
+        ))
+    return max(1, active - 1) if lobbies_in_round == 1 else cut
+
+
 def _split_ffa_lobby(
     match: TournamentMatch,
     contestants: list[TournamentMatchToContestant],
     cut: int,
     decisions: qualification_domain.DecisionOrders,
+    *,
+    active_ids: Collection[str] | None = None,
+    lobbies_in_round: int | None = None,
 ) -> Result[tuple[list[_Standing], list[_Standing]], list[str]]:
     """Split a lobby into advancing and dropped contestants.
 
@@ -4985,7 +5049,12 @@ def _split_ffa_lobby(
     band of a contestant counts the distinct ranks above it among those
     on its side of the cut.
     """
-    ranking = rank_ffa_lobby(match, contestants, cut, decisions)
+    if active_ids is None:
+        active_ids = active_contestant_ids(match.tournament_id)
+    cut = ffa_lobby_cut(
+        match, contestants, cut, active_ids, lobbies_in_round=lobbies_in_round
+    )
+    ranking = rank_ffa_lobby(match, contestants, cut, decisions, active_ids)
     tied = _open_cut_tie(ranking)
     if tied:
         return Err(tied)
@@ -5111,18 +5180,22 @@ def removed_in_race(tournament: Tournament) -> RemovedInRace:
         if match.confirmed_by is not None and not grand_final:
             # Rank every entrant, so a stored block still applies to a
             # leaver. A tie across the cut that is undecided cut nobody.
+            entrant_ids = {contestant_id(c) for c in entries}
+            lobby_cut = ffa_lobby_cut(
+                match, entries, cut, active_ids=entrant_ids
+            )
             ranking = rank_ffa_lobby(
                 match,
                 entries,
-                cut,
+                lobby_cut,
                 decisions,
-                active_ids={contestant_id(c) for c in entries},
+                active_ids=entrant_ids,
             )
             undecided = set(_open_cut_tie(ranking))
             below_cut = {
                 entry.contestant_id
                 for place, entry in enumerate(ranking.entries)
-                if place >= cut and entry.contestant_id not in undecided
+                if place >= lobby_cut and entry.contestant_id not in undecided
             }
         for entry in leavers:
             cid = contestant_id(entry)
@@ -5975,12 +6048,21 @@ def _round_standings(
     round_matches: list[TournamentMatch],
     cut: int,
     decisions: qualification_domain.DecisionOrders,
+    *,
+    contestants_by_match: Mapping[
+        TournamentMatchID, list[TournamentMatchToContestant]
+    ] | None = None,
+    active_ids: Collection[str] | None = None,
 ) -> Result[list[_Standing], list[str]]:
     """Rank the contestants still alive after a round, lobby by lobby."""
     alive: list[_Standing] = []
 
     for match in round_matches:
-        contestants = tournament_repository.get_contestants_for_match(match.id)
+        contestants = (
+            tournament_repository.get_contestants_for_match(match.id)
+            if contestants_by_match is None
+            else contestants_by_match[match.id]
+        )
         if match.confirmed_by is None:
             alive.extend(
                 _Standing(
@@ -5994,7 +6076,12 @@ def _round_standings(
             )
             continue
 
-        split = _split_ffa_lobby(match, contestants, cut, decisions)
+        split = _split_ffa_lobby(
+            match, contestants, cut, decisions, active_ids=active_ids,
+            lobbies_in_round=(
+                len(round_matches) if contestants_by_match is not None else None
+            ),
+        )
         if split.is_err():
             return Err(split.unwrap_err())
         alive.extend(split.unwrap()[0])

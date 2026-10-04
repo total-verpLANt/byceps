@@ -5,13 +5,17 @@ tests.integration.services.lan_tournament.test_highscore_playoffs
 
 from datetime import datetime, UTC
 from itertools import count
+from unittest.mock import Mock
 
 import pytest
-from sqlalchemy import select, update
+from flask_babel import force_locale
+from sqlalchemy import select, text, update
+from sqlalchemy.exc import DBAPIError
 
 from byceps.database import db
 from byceps.services.lan_tournament import (
     lan_tournament_view_helpers as view_helpers,
+    tournament_log_service,
     tournament_match_service,
     tournament_qualification_domain_service as qualification_domain,
     tournament_qualification_service,
@@ -21,6 +25,7 @@ from byceps.services.lan_tournament import (
     tournament_service,
 )
 from byceps.services.lan_tournament.dbmodels.match import DbTournamentMatch
+from byceps.services.lan_tournament.dbmodels.tournament import DbTournament
 from byceps.services.lan_tournament.dbmodels.tournament_log_entry import (
     DbTournamentLogEntry,
 )
@@ -361,6 +366,201 @@ def test_close_leaderboard_locks_scores_and_is_audited(make_tournament, users):
         .all()
     )
     assert [e.initiator_id for e in entries] == [users[1].id]
+
+
+def test_reopen_unlocks_scores_and_is_audited(make_tournament, users):
+    tournament = make_tournament()
+    ids = _fill(tournament, users, [100, 90, 80, 70, 60])
+    _close(tournament, users[0])
+
+    result = tournament_score_service.reopen_leaderboard(
+        tournament.id,
+        reason='  Correct scores\r\nnow  ',
+        initiator_id=users[1].id,
+    )
+
+    assert result.is_ok(), result.unwrap_err()
+    found = tournament_repository.get_tournament(tournament.id)
+    assert found.leaderboard_closed_at is None
+    assert not _qualification(tournament).ready
+    _submit(tournament, ids[4], 110)
+    _close(tournament, users[0])
+    state = _qualification(tournament)
+    assert state.ready
+    assert str(state.qualifiers[0].contestant_id) == ids[4]
+    entries = (
+        db.session.execute(
+            select(DbTournamentLogEntry).filter_by(
+                tournament_id=tournament.id,
+                event_type='qualification-leaderboard-reopened',
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(entries) == 1
+    assert entries[0].initiator_id == users[1].id
+    assert entries[0].data == {'reason': 'Correct scores\nnow'}
+    with force_locale('en'):
+        assert (
+            view_helpers.seeding_event_label(entries[0].event_type)
+            == 'Qualification reopened'
+        )
+        details = view_helpers._qualification_event_details(
+            entries[0].event_type, entries[0].data, {}
+        )
+        assert 'Correct scores' in details
+
+
+# fmt: off
+@pytest.mark.parametrize('stage', [
+    'lock_tournament_for_update',
+    'get_tournament',
+    'set_leaderboard_closed',
+    'create_log_entry',
+    'commit_session',
+    'commit_database_error',
+])
+# fmt: on
+def test_reopen_failure_preserves_closed_audit_and_session(
+    make_tournament, users, monkeypatch, stage
+):
+    tournament = make_tournament()
+    _close(tournament, users[0])
+    closed_at = tournament_repository.get_tournament(
+        tournament.id
+    ).leaderboard_closed_at
+    target = (
+        tournament_log_service
+        if stage == 'create_log_entry'
+        else tournament_repository
+    )
+    method = 'commit_session' if stage == 'commit_database_error' else stage
+    original = getattr(target, method)
+    failure: Exception = RuntimeError(f'injected {stage}')
+
+    def fail(*args, **kwargs):
+        nonlocal failure
+        if stage == 'commit_database_error':
+            # PostgreSQL aborts the transaction, making rollback mandatory.
+            try:
+                db.session.execute(text('SELECT 1 / 0'))
+            except DBAPIError as exc:
+                failure = exc
+                raise
+        # Fail after real locking/reading/flushing, but before any commit.
+        if stage != 'commit_session':
+            original(*args, **kwargs)
+        raise failure
+
+    rollback = Mock(wraps=tournament_repository.rollback_session)
+    with monkeypatch.context() as patch:
+        patch.setattr(target, method, fail)
+        patch.setattr(tournament_repository, 'rollback_session', rollback)
+        expected_error = (
+            DBAPIError if stage == 'commit_database_error' else RuntimeError
+        )
+        with pytest.raises(expected_error) as caught:
+            tournament_score_service.reopen_leaderboard(
+                tournament.id, reason='Correction', initiator_id=users[0].id
+            )
+
+    assert caught.value is failure
+    rollback.assert_called_once_with()
+    # Inspect committed state independently, without resetting the caller session.
+    with db.engine.connect() as connection:
+        persisted = connection.execute(
+            select(DbTournament.leaderboard_closed_at).filter_by(id=tournament.id)
+        ).scalar_one()
+        audits = connection.execute(
+            select(DbTournamentLogEntry.id).filter_by(
+                tournament_id=tournament.id,
+                event_type='qualification-leaderboard-reopened',
+            )
+        ).all()
+    assert persisted == closed_at
+    assert audits == []
+    # Read and then successfully retry on the same session without manual rollback.
+    assert tournament_repository.get_tournament(
+        tournament.id
+    ).leaderboard_closed_at == closed_at
+    reopened = tournament_score_service.reopen_leaderboard(
+        tournament.id, reason='Retry correction', initiator_id=users[0].id
+    )
+    assert reopened.is_ok(), reopened.unwrap_err()
+    assert tournament_repository.get_tournament(
+        tournament.id
+    ).leaderboard_closed_at is None
+    assert _log_types(tournament).count('qualification-leaderboard-reopened') == 1
+
+
+def test_reopen_is_refused_while_released(make_tournament, users):
+    tournament = make_tournament()
+    _fill(tournament, users, [100, 90, 80, 70, 60])
+    _close(tournament, users[0])
+    _release(tournament, users[0])
+    result = tournament_score_service.reopen_leaderboard(
+        tournament.id, reason='Correct scores', initiator_id=users[0].id
+    )
+    assert result.unwrap_err() == (
+        'The playoffs are released. Take the release back first.'
+    )
+    found = tournament_repository.get_tournament(tournament.id)
+    assert found.leaderboard_closed_at is not None
+    assert 'qualification-leaderboard-reopened' not in _log_types(tournament)
+    undone = tournament_qualification_service.unrelease_playoffs(
+        tournament.id, reason='Correct scores', initiator_id=users[0].id
+    )
+    assert undone.is_ok(), undone.unwrap_err()
+    assert tournament_score_service.reopen_leaderboard(
+        tournament.id, reason='Correct scores', initiator_id=users[0].id
+    ).is_ok()
+
+
+# fmt: off
+@pytest.mark.parametrize('reason', ['', '  \n ', '\u200b'])
+# fmt: on
+def test_reopen_needs_a_visible_reason(make_tournament, users, reason):
+    tournament = make_tournament()
+    _close(tournament, users[0])
+    result = tournament_score_service.reopen_leaderboard(
+        tournament.id, reason=reason, initiator_id=users[0].id
+    )
+    assert result.is_err()
+    found = tournament_repository.get_tournament(tournament.id)
+    assert found.leaderboard_closed_at is not None
+    assert 'qualification-leaderboard-reopened' not in _log_types(tournament)
+
+
+def test_reopen_is_refused_when_not_closed(make_tournament, users):
+    tournament = make_tournament()
+    result = tournament_score_service.reopen_leaderboard(
+        tournament.id, reason='Correct scores', initiator_id=users[0].id
+    )
+    assert result.unwrap_err() == 'The qualification is not closed.'
+    assert 'qualification-leaderboard-reopened' not in _log_types(tournament)
+
+
+# fmt: off
+@pytest.mark.parametrize('status', [TournamentStatus.COMPLETED, TournamentStatus.CANCELLED])
+# fmt: on
+def test_reopen_is_refused_when_completed_or_cancelled(
+    make_tournament, users, status
+):
+    tournament = make_tournament(status=status)
+    tournament_repository.set_leaderboard_closed(
+        tournament.id, datetime.now(UTC).replace(tzinfo=None)
+    )
+    db.session.commit()
+    result = tournament_score_service.reopen_leaderboard(
+        tournament.id, reason='Correct scores', initiator_id=users[0].id
+    )
+    assert result.unwrap_err() == (
+        'The qualification can only be reopened while the tournament is ongoing or paused.'
+    )
+    found = tournament_repository.get_tournament(tournament.id)
+    assert found.leaderboard_closed_at is not None
+    assert 'qualification-leaderboard-reopened' not in _log_types(tournament)
 
 
 def test_close_leaderboard_refuses_a_second_close(make_tournament, users):

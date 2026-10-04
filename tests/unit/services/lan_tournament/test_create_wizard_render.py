@@ -4,6 +4,7 @@ tests.unit.services.lan_tournament.test_create_wizard_render
 """
 
 from datetime import datetime
+from html.parser import HTMLParser
 import json
 import pathlib
 import re
@@ -123,7 +124,7 @@ def env():
         ),
     )
     e.globals['g'] = _user_with_permissions({'user.view'})
-    e.globals['_'] = lambda s, **kw: (Markup(s) % kw) if kw else s  # noqa: S704
+    e.globals['_'] = lambda s, **kw: (Markup(s) % kw) if kw else Markup(s)  # noqa: S704
     e.globals['ngettext'] = lambda s, p, num, **kw: (s if num == 1 else p) % kw
     e.globals['url_for'] = _url_for
     e.filters['dateformat'] = lambda dt, *a, **k: dt.strftime('%Y-%m-%d')
@@ -1301,6 +1302,23 @@ def _tag(out, element_id):
     return re.search(rf'<[^>]*id="{element_id}"[^>]*>', out).group(0)
 
 
+def _parsed_attrs(out, marker, value=None):
+    class AttributeParser(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.matches = []
+
+        def handle_starttag(self, tag, attrs):
+            attrs = dict(attrs)
+            if marker in attrs and attrs[marker] == value:
+                self.matches.append(attrs)
+
+    parser = AttributeParser()
+    parser.feed(out)
+    assert len(parser.matches) == 1
+    return parser.matches[0]
+
+
 def test_create_form_text_fields_carry_no_maxlength(env, ctx):
     out = _render(env, _make_form())
 
@@ -1336,10 +1354,22 @@ def test_create_form_game_and_alt_fields_show_examples(env, ctx):
     out = _render(env, _make_form())
 
     assert 'placeholder="e.g. Mario Kart 8 Deluxe"' in _tag(out, 'game')
+    assert _parsed_attrs(out, 'id', 'image_alt_text')['placeholder'] == (
+        'e.g. Logo "Blitz chess by the fireplace" with a chessboard'
+    )
     assert (
         'placeholder="e.g. Logo &#34;Blitz chess by the fireplace&#34; '
         'with a chessboard"'
     ) in _tag(out, 'image_alt_text')
+
+
+def test_create_form_playoff_skip_default_keeps_the_whole_text(env, ctx):
+    out = _render(env, _make_form())
+
+    assert _parsed_attrs(out, 'data-wiz-playoff-skip')['data-wiz-default'] == (
+        'Playoffs exist only for 1v1 with "Everyone plays everyone" and for '
+        'Highscore. Other formats have one phase and behave as before.'
+    )
 
 
 def test_create_form_timezone_caption_names_the_offset(env, ctx):

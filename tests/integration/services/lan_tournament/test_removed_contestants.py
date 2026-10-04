@@ -26,6 +26,9 @@ from byceps.services.lan_tournament import (
     tournament_team_service,
 )
 from byceps.services.lan_tournament.models import ContestantType
+from byceps.services.lan_tournament.lan_tournament_view_helpers import (
+    build_round_robin_standings,
+)
 from byceps.services.lan_tournament.models.elimination_mode import (
     EliminationMode,
 )
@@ -207,6 +210,90 @@ def _phase_two_contestants(tournament):
 # group qualification
 
 
+@pytest.mark.parametrize('grouped', [False, True], ids=['plain', 'groups'])
+def test_unconfirmed_one_entry_match_counts_no_win(
+    make_tournament, users, monkeypatch, grouped
+):
+    if grouped:
+        tournament = _make_groups_tournament(
+            make_tournament, users, PlayoffReleaseMode.MANUAL
+        )
+    else:
+        tournament = make_tournament(
+            participants=4,
+            game_format=GameFormat.ONE_V_ONE,
+            elimination_mode=EliminationMode.ROUND_ROBIN,
+            tournament_status=TournamentStatus.REGISTRATION_CLOSED,
+        )
+        _start(tournament, users[0])
+    matches = _matches(tournament, 1)
+    by_match = tournament_repository.get_contestants_for_tournament(tournament.id)
+    match = matches[0]
+    assert match.confirmed_by is None
+    by_match[match.id] = by_match[match.id][:1]
+    monkeypatch.setattr(
+        tournament_repository, 'get_contestants_for_tournament', lambda _: by_match
+    )
+
+    if grouped:
+        state, _ = _qualifier_ids(tournament)
+        rankings = state.rankings
+        assert not state.ready
+    else:
+        standing = tournament_match_service.plain_round_robin_standing(tournament)
+        rankings = [standing.ranking]
+        assert standing.open_match_count == len(matches)
+    for ranking in rankings:
+        for entry in ranking.entries:
+            assert (entry.row.played, entry.row.won, entry.row.points) == (0, 0, 0)
+    assert build_round_robin_standings([
+        {'match': m, 'contestants': by_match[m.id]} for m in matches
+    ]) == []
+
+
+def test_group_withdrawal_gives_every_remaining_opponent_the_walkover(
+    make_tournament, users
+):
+    admin = users[0]
+    tournament = _make_groups_tournament(
+        make_tournament, users, PlayoffReleaseMode.MANUAL
+    )
+    leaver, *opponents = _group_members(tournament, 0)
+    played = _open_match(tournament, 0, leaver, opponents[0])
+    tournament_match_service.admin_set_and_confirm_match(
+        played.id, admin.id, {UUID(leaver): 0, UUID(opponents[0]): 5}
+    ).unwrap()
+    _remove(tournament, leaver, admin)
+
+    state, _ = _qualifier_ids(tournament)
+    ranking = next(r for r in state.rankings if r.scope == 'group:0')
+    rows = {e.contestant_id: e.row for e in ranking.entries}
+    assert set(rows) == set(opponents)
+    for cid in opponents:
+        row = rows[cid]
+        assert (row.played, row.won, row.drawn, row.lost) == (1, 1, 0, 0)
+        assert row.points == 3
+        assert row.score_for == (5 if cid == opponents[0] else 0)
+        assert row.score_against == 0
+    assert ranking.open_matches == 3
+
+    public = build_round_robin_standings([
+        {
+            'match': m,
+            'contestants': tournament_repository.get_contestants_for_match(m.id),
+        }
+        for m in _matches(tournament, 1)
+        if m.group_order == 0
+    ])
+    public_rows = {r.contestant_id: r for r in public}
+    for cid, row in rows.items():
+        shown = public_rows[cid]
+        assert (shown.wins, shown.points) == (row.won, row.points)
+        assert (shown.score_for, shown.score_against) == (
+            row.score_for, row.score_against
+        )
+
+
 @pytest.mark.parametrize('mode', MODES, ids=['manual', 'automatic'])
 def test_removed_group_leader_does_not_qualify(make_tournament, users, mode):
     admin = users[0]
@@ -284,6 +371,58 @@ def test_a_tie_that_only_existed_with_the_removed_member_disappears(
 
 # -------------------------------------------------------------------- #
 # plain round robin
+
+
+def test_plain_round_robin_counts_a_walkover_win(make_tournament, users):
+    admin = users[0]
+    tournament = make_tournament(
+        participants=4,
+        game_format=GameFormat.ONE_V_ONE,
+        elimination_mode=EliminationMode.ROUND_ROBIN,
+        tournament_status=TournamentStatus.REGISTRATION_CLOSED,
+    )
+    _start(tournament, admin)
+    leaver, winner, second, third = sorted(
+        {cid for m in _matches(tournament) for cid in _members(m)}
+    )
+    for match in _matches(tournament):
+        ids = _members(match)
+        if leaver in ids and second not in ids:
+            continue
+        match_winner = winner if winner in ids else second
+        scores = {UUID(cid): int(cid == match_winner) for cid in ids}
+        tournament_match_service.admin_set_and_confirm_match(
+            match.id, admin.id, scores
+        ).unwrap()
+    _remove(tournament, leaver, admin)
+    standing = tournament_match_service.plain_round_robin_standing(tournament)
+    rows = {e.contestant_id: e.row for e in standing.ranking.entries}
+    assert rows[winner].points == 9
+    assert (rows[winner].played, rows[winner].won, rows[winner].lost) == (3, 3, 0)
+    assert (rows[winner].score_for, rows[winner].score_against) == (2, 0)
+    assert rows[second].points == 6
+    assert rows[third].points == 3
+    found = tournament_repository.get_tournament(tournament.id)
+    assert found.tournament_status is TournamentStatus.COMPLETED
+    assert str(found.winner_participant_id) == winner
+    public = build_round_robin_standings([
+        {
+            'match': m,
+            'contestants': tournament_repository.get_contestants_for_match(m.id),
+        }
+        for m in _matches(tournament)
+    ])
+    public_rows = {r.contestant_id: r for r in public}
+    assert public[0].contestant_id == str(found.winner_participant_id)
+    for cid, row in rows.items():
+        shown = public_rows[cid]
+        assert (shown.wins, shown.draws, shown.losses) == (
+            row.won, row.drawn, row.lost
+        )
+        assert shown.points == row.points
+        assert (shown.score_for, shown.score_against) == (
+            row.score_for, row.score_against
+        )
 
 
 def test_removed_leader_does_not_win_a_plain_round_robin(
