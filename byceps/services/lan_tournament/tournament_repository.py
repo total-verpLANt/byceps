@@ -343,12 +343,26 @@ def find_tournament(
 
 def get_tournament(
     tournament_id: TournamentID,
+    *,
+    fresh: bool = False,
 ) -> Tournament:
     """Return the tournament.
 
+    Use `fresh` to re-read after locking without flushing queued writes.
     Raise an exception if not found.
     """
-    tournament = find_tournament(tournament_id)
+    if fresh:
+        with db.session.no_autoflush:
+            db_tournament = db.session.get(
+                DbTournament, tournament_id, populate_existing=True
+            )
+            tournament = (
+                _db_tournament_to_tournament(db_tournament)
+                if db_tournament is not None
+                else None
+            )
+    else:
+        tournament = find_tournament(tournament_id)
     if tournament is None:
         raise ValueError(f'Unknown tournament ID "{tournament_id}"')
     return tournament

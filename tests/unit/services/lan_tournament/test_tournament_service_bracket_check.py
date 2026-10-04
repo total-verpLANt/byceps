@@ -487,21 +487,21 @@ def test_changed_board_refusal_runs_under_lock_without_status_or_audit_writes():
 
 
 @pytest.mark.parametrize(
-    ('status', 'format_', 'generation', 'confirmed', 'probed'),
+    ('status', 'format_', 'generation', 'confirmed', 'probed', 'allow_reopen'),
     # fmt: off
     [
-        (TournamentStatus.REGISTRATION_CLOSED, GameFormat.ONE_V_ONE, None, False, True),
-        (TournamentStatus.REGISTRATION_CLOSED, GameFormat.ONE_V_ONE, 'NOT_GENERATED', False, True),
-        (TournamentStatus.REGISTRATION_CLOSED, GameFormat.ONE_V_ONE, 'MATCHES', False, True),
-        (TournamentStatus.REGISTRATION_CLOSED, GameFormat.ONE_V_ONE, 'DIFFERS', True, False),
-        (TournamentStatus.PAUSED, GameFormat.ONE_V_ONE, 'DIFFERS', False, False),
-        (TournamentStatus.COMPLETED, GameFormat.ONE_V_ONE, 'DIFFERS', False, False),
-        (TournamentStatus.REGISTRATION_CLOSED, GameFormat.HIGHSCORE, 'DIFFERS', False, False),
+        (TournamentStatus.REGISTRATION_CLOSED, GameFormat.ONE_V_ONE, None, False, True, False),
+        (TournamentStatus.REGISTRATION_CLOSED, GameFormat.ONE_V_ONE, 'NOT_GENERATED', False, True, False),
+        (TournamentStatus.REGISTRATION_CLOSED, GameFormat.ONE_V_ONE, 'MATCHES', False, True, False),
+        (TournamentStatus.REGISTRATION_CLOSED, GameFormat.ONE_V_ONE, 'DIFFERS', True, False, False),
+        (TournamentStatus.PAUSED, GameFormat.ONE_V_ONE, 'DIFFERS', False, False, False),
+        (TournamentStatus.COMPLETED, GameFormat.ONE_V_ONE, 'DIFFERS', False, False, True),
+        (TournamentStatus.REGISTRATION_CLOSED, GameFormat.HIGHSCORE, 'DIFFERS', False, False, False),
     ],
     # fmt: on
 )
 def test_confirmation_only_gates_unconfirmed_changed_board_starts(
-    status, format_, generation, confirmed, probed
+    status, format_, generation, confirmed, probed, allow_reopen
 ):
     from byceps.services.lan_tournament import (
         tournament_seeding_service,
@@ -541,6 +541,7 @@ def test_confirmation_only_gates_unconfirmed_changed_board_starts(
             tournament.id,
             TournamentStatus.ONGOING,
             confirm_generated_layout=confirmed,
+            allow_completed_reopen=allow_reopen,
         )
 
         assert result.is_ok()

@@ -4549,10 +4549,30 @@ def set_ffa_placements(
 
     Returns ``Ok(None)`` on success.
     """
-    match = tournament_repository.find_match(match_id)
-    if match is not None:
-        tournament_repository.lock_tournament_for_update(match.tournament_id)
-    match = tournament_repository.get_match_for_update(match_id)
+    try:
+        match = tournament_repository.find_match(match_id)
+        if match is not None:
+            tournament_repository.lock_tournament_for_update(match.tournament_id)
+        match = tournament_repository.get_match_for_update(match_id)
+        tournament = tournament_repository.get_tournament(match.tournament_id)
+        result = _set_ffa_placements_impl(match, tournament, placements)
+        if result.is_err():
+            tournament_repository.rollback_session()
+            return Err(result.unwrap_err())
+        tournament_repository.commit_session()
+    except Exception:
+        tournament_repository.rollback_session()
+        raise
+
+    return Ok(None)
+
+
+def _set_ffa_placements_impl(
+    match: TournamentMatch,
+    tournament: Tournament,
+    placements: dict[str, int],
+) -> Result[None, str]:
+    """Validate and write placements for an already locked match; flush only."""
 
     # A confirmed result changes only through the audited unconfirm.
     if match.confirmed_by is not None:
@@ -4566,14 +4586,13 @@ def set_ffa_placements(
     # never feeds its next_match_id and can no longer be confirmed
     # properly. Both site routes already refuse this; the admin ones
     # did not, so enforce it here for both.
-    tournament = tournament_repository.get_tournament(match.tournament_id)
     locked = _refuse_phase1_change_after_release(tournament, match)
     if locked.is_err():
         return locked
     if not _decided_by_placements(tournament, match):
         return Err('Placements apply only to free-for-all matches.')
 
-    contestants = tournament_repository.get_contestants_for_match(match_id)
+    contestants = tournament_repository.get_contestants_for_match(match.id)
 
     # Build lookup: contestant-id-string -> contestant record.
     cid_to_contestant: dict[str, TournamentMatchToContestant] = {}
@@ -4613,8 +4632,18 @@ def set_ffa_placements(
         updates[c.id] = (placement, points)
 
     tournament_repository.update_contestant_placement_and_points(updates)
-    tournament_repository.commit_session()
     return Ok(None)
+
+
+@dataclass(frozen=True)
+class _FfaConfirmationOutcome:
+    """Confirmation state carried out of the result transaction for dispatch."""
+
+    tournament_id: TournamentID
+    match_id: TournamentMatchID
+    winner: TournamentMatchToContestant | None
+    tournament_was_completed: bool
+    single_survivor_event: TournamentCompletedEvent | None
 
 
 def confirm_ffa_match(
@@ -4629,10 +4658,31 @@ def confirm_ffa_match(
 
     Returns ``Ok(None)`` on success.
     """
-    match = tournament_repository.find_match(match_id)
-    if match is not None:
-        tournament_repository.lock_tournament_for_update(match.tournament_id)
-    match = tournament_repository.get_match_for_update(match_id)
+    try:
+        match = tournament_repository.find_match(match_id)
+        if match is not None:
+            tournament_repository.lock_tournament_for_update(match.tournament_id)
+        match = tournament_repository.get_match_for_update(match_id)
+        tournament = tournament_repository.get_tournament(match.tournament_id)
+        result = _confirm_ffa_match_impl(match, tournament, initiator_id)
+        if result.is_err():
+            tournament_repository.rollback_session()
+            return Err(result.unwrap_err())
+        tournament_repository.commit_session()
+    except Exception:
+        tournament_repository.rollback_session()
+        raise
+
+    _dispatch_ffa_confirmation(result.unwrap(), initiator_id)
+    return Ok(None)
+
+
+def _confirm_ffa_match_impl(
+    match: TournamentMatch,
+    tournament: Tournament,
+    initiator_id: UserID,
+) -> Result[_FfaConfirmationOutcome, str]:
+    """Confirm an already locked FFA match and stage completion/audit; flush only."""
 
     # Reject already-confirmed matches. Checked before the format
     # guard below so a confirmed match keeps reporting the more
@@ -4645,14 +4695,13 @@ def confirm_ffa_match(
     # which is correct for FFA and ruinous for a bracket match -- it
     # would be marked confirmed, never feed its next_match_id, and be
     # refused by the normal confirm path from then on.
-    tournament = tournament_repository.get_tournament(match.tournament_id)
     locked = _refuse_phase1_change_after_release(tournament, match)
     if locked.is_err():
-        return locked
+        return Err(locked.unwrap_err())
     if not _decided_by_placements(tournament, match):
         return Err('Placements apply only to free-for-all matches.')
 
-    contestants = tournament_repository.get_contestants_for_match(match_id)
+    contestants = tournament_repository.get_contestants_for_match(match.id)
 
     # Validate all placements are set.
     missing = [c for c in contestants if c.placement is None]
@@ -4662,7 +4711,7 @@ def confirm_ffa_match(
             f'{len(missing)} contestant(s) lack placements.'
         )
 
-    tournament_repository.confirm_match(match_id, initiator_id)
+    tournament_repository.confirm_match(match.id, initiator_id)
 
     tournament_was_completed = False
     winner = None
@@ -4704,7 +4753,7 @@ def confirm_ffa_match(
                 winner = first_place[0]
                 comp = _try_auto_complete_tournament(match, tournament, winner)
                 if comp.is_err():
-                    return comp
+                    return Err(comp.unwrap_err())
                 tournament_was_completed = comp.unwrap()
 
         elif tournament.tournament_status is TournamentStatus.ONGOING:
@@ -4712,7 +4761,6 @@ def confirm_ffa_match(
             if plan is not None:
                 completed = complete_ffa_single_survivor(tournament, plan, initiator_id)
                 if completed.is_err():
-                    tournament_repository.rollback_session()
                     return Err(completed.unwrap_err())
                 single_survivor_event = completed.unwrap()
 
@@ -4737,7 +4785,7 @@ def confirm_ffa_match(
                 winner = first_place[0]
                 comp = _try_auto_complete_tournament(match, tournament, winner)
                 if comp.is_err():
-                    return comp
+                    return Err(comp.unwrap_err())
                 tournament_was_completed = comp.unwrap()
 
     create_log_entry(
@@ -4745,13 +4793,11 @@ def confirm_ffa_match(
         match.tournament_id,
         initiator_id,
         data={
-            'match_id': str(match_id),
+            'match_id': str(match.id),
             'placements': _snapshot_contestant_placements(contestants),
         },
         commit=False,
     )
-
-    tournament_repository.commit_session()
 
     # Resolve winner for signal dispatch if not already set from
     # auto-complete paths above.
@@ -4760,16 +4806,31 @@ def confirm_ffa_match(
         if first_place:
             winner = first_place[0]
 
+    return Ok(_FfaConfirmationOutcome(
+        tournament_id=match.tournament_id,
+        match_id=match.id,
+        winner=winner,
+        tournament_was_completed=tournament_was_completed,
+        single_survivor_event=single_survivor_event,
+    ))
+
+
+def _dispatch_ffa_confirmation(
+    outcome: _FfaConfirmationOutcome,
+    initiator_id: UserID,
+) -> None:
+    """Dispatch FFA events and qualification follow-up after the result commit."""
+    winner = outcome.winner
     if winner is not None:
         now = datetime.now(UTC)
-        tid = match.tournament_id
+        tid = outcome.tournament_id
         match_confirmed.send(None, event=MatchConfirmedEvent(
             occurred_at=now, initiator=None,
-            tournament_id=tid, match_id=match_id,
+            tournament_id=tid, match_id=outcome.match_id,
             winner_team_id=winner.team_id,
             winner_participant_id=winner.participant_id,
         ))
-        if tournament_was_completed:
+        if outcome.tournament_was_completed:
             tournament_completed.send(None, event=TournamentCompletedEvent(
                 occurred_at=now, initiator=None,
                 tournament_id=tid,
@@ -4777,10 +4838,48 @@ def confirm_ffa_match(
                 winner_participant_id=winner.participant_id,
             ))
 
-    if single_survivor_event is not None:
-        tournament_completed.send(None, event=single_survivor_event)
+    if outcome.single_survivor_event is not None:
+        tournament_completed.send(None, event=outcome.single_survivor_event)
 
-    _try_auto_release(match.tournament_id, initiator_id)
+    _try_auto_release(outcome.tournament_id, initiator_id)
+
+
+def set_and_confirm_ffa_match(
+    match_id: TournamentMatchID,
+    placements: dict[str, int],
+    initiator_id: UserID,
+) -> Result[None, str]:
+    """Set placements and confirm them in one locked result transaction.
+
+    Placements, points, confirmation, completion and audit commit together.
+    Refusals roll back; mutation/commit exceptions roll back and propagate.
+    A commit exception is not proof that the server did not commit. Signals
+    and qualification follow-up run outside that cleanup boundary, after a
+    successful commit, and may own independent transactions.
+    """
+    try:
+        match = tournament_repository.find_match(match_id)
+        if match is not None:
+            tournament_repository.lock_tournament_for_update(match.tournament_id)
+        match = tournament_repository.get_match_for_update(match_id)
+        tournament = tournament_repository.get_tournament(match.tournament_id)
+
+        placements_result = _set_ffa_placements_impl(match, tournament, placements)
+        if placements_result.is_err():
+            tournament_repository.rollback_session()
+            return Err(placements_result.unwrap_err())
+
+        result = _confirm_ffa_match_impl(match, tournament, initiator_id)
+        if result.is_err():
+            tournament_repository.rollback_session()
+            return Err(result.unwrap_err())
+
+        tournament_repository.commit_session()
+    except Exception:
+        tournament_repository.rollback_session()
+        raise
+
+    _dispatch_ffa_confirmation(result.unwrap(), initiator_id)
     return Ok(None)
 
 

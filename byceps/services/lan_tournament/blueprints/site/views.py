@@ -1538,15 +1538,7 @@ def orga_correct_match_result(match_id):
 @login_required
 @scoped_orga_required
 def orga_submit_ffa_result(match_id):
-    """Set the placements of an FFA match and confirm it, in one step.
-
-    The panel offers a single button, so the two service calls are
-    composed here rather than in the engine. They are deliberately
-    not one transaction: a failed confirm leaves the placements
-    stored but unconfirmed, which is exactly the state the former
-    two-step flow produced between its two clicks. The panel renders
-    that state with the selects pre-filled, so the same button
-    retries it.
+    """Set the placements of an FFA match and confirm them atomically.
 
     The admin blueprint keeps the two steps separate; this is the
     site-side orga surface only.
@@ -1566,26 +1558,15 @@ def orga_submit_ffa_result(match_id):
         flash_error(parse_result.unwrap_err())
         return redirect_to('.view_match', match_id=match.id)
 
-    set_result = tournament_match_service.set_ffa_placements(
-        match.id, parse_result.unwrap()
-    )
-    if set_result.is_err():
-        flash_error(
-            gettext(
-                'Error setting placements: %(error)s',
-                error=gettext(set_result.unwrap_err()),
-            )
-        )
-        return redirect_to('.view_match', match_id=match.id)
-
-    match tournament_match_service.confirm_ffa_match(match.id, g.user.id):
+    match tournament_match_service.set_and_confirm_ffa_match(
+        match.id, parse_result.unwrap(), g.user.id
+    ):
         case Ok(_):
             flash_success(gettext('FFA match has been confirmed.'))
         case Err(error_message):
             flash_error(
                 gettext(
-                    'Error confirming FFA match: %(error)s The placements '
-                    'were saved; submit again to confirm them.',
+                    'Error confirming FFA match: %(error)s',
                     error=gettext(error_message),
                 )
             )
@@ -1660,6 +1641,7 @@ def orga_change_tournament_status(tournament_id, action):
         new_status,
         g.user.id,
         confirm_generated_layout=bool(request.form.get(START_CONFIRM_FIELD)),
+        allow_completed_reopen=False,
     ):
         case Ok((_, _event)):
             flash_success(

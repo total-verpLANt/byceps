@@ -109,8 +109,7 @@ def _patched_orga_view(
     unconfirm_result=None,
     correct_result=None,
     status_result=None,
-    set_placements_result=None,
-    confirm_ffa_result=None,
+    submit_ffa_result=None,
 ):
     """Patch the dependencies of the scoped-orga action views."""
     if tournament is None:
@@ -149,13 +148,8 @@ def _patched_orga_view(
             correct_result if correct_result is not None else Ok((None, False))
         )
         mock_match_svc.add_comment.return_value = Ok(None)
-        mock_match_svc.set_ffa_placements.return_value = (
-            set_placements_result
-            if set_placements_result is not None
-            else Ok(None)
-        )
-        mock_match_svc.confirm_ffa_match.return_value = (
-            confirm_ffa_result if confirm_ffa_result is not None else Ok(None)
+        mock_match_svc.set_and_confirm_ffa_match.return_value = (
+            submit_ffa_result if submit_ffa_result is not None else Ok(None)
         )
         mock_tournament_svc.change_status.return_value = (
             status_result
@@ -579,7 +573,35 @@ def test_orga_status_transition_accepts_listed_action(
         new_status,
         USER_ID,
         confirm_generated_layout=bool(confirmation),
+        allow_completed_reopen=False,
     )
+
+
+@pytest.mark.parametrize('action', ['start', 'resume', 'pause', 'complete'])
+def test_orga_status_action_explicitly_disallows_completed_reopen(app, action):
+    with _patched_orga_view(app) as mocks:
+        _call_status(
+            app,
+            str(TOURNAMENT_ID),
+            action,
+            {'allow_completed_reopen': '1', 'confirm_generated_layout': '1'},
+        )
+
+    mocks['tournament_svc'].change_status.assert_called_once_with(
+        TOURNAMENT_ID,
+        _ORGA_ACTION_STATUSES[action],
+        USER_ID,
+        confirm_generated_layout=True,
+        allow_completed_reopen=False,
+    )
+
+
+_ORGA_ACTION_STATUSES = {
+    'start': TournamentStatus.ONGOING,
+    'resume': TournamentStatus.ONGOING,
+    'pause': TournamentStatus.PAUSED,
+    'complete': TournamentStatus.COMPLETED,
+}
 
 
 # ------------------------------------------------------------------ #
@@ -703,14 +725,7 @@ _NOT_ONGOING = [
         ),
         (
             _call_submit_ffa,
-            'set_ffa_placements',
-            GameFormat.FREE_FOR_ALL,
-            False,
-            {f'placement_{PARTICIPANT_A}': '1'},
-        ),
-        (
-            _call_submit_ffa,
-            'confirm_ffa_match',
+            'set_and_confirm_ffa_match',
             GameFormat.FREE_FOR_ALL,
             False,
             {f'placement_{PARTICIPANT_A}': '1'},
@@ -720,8 +735,7 @@ _NOT_ONGOING = [
         'confirm',
         'unconfirm',
         'correct',
-        'submit_ffa_placements',
-        'submit_ffa_confirm',
+        'submit_ffa',
     ],
 )
 def test_orga_result_action_refused_unless_ongoing(
@@ -735,6 +749,8 @@ def test_orga_result_action_refused_unless_ongoing(
         call(app, form_data)
 
     getattr(mocks['match_svc'], service_function).assert_not_called()
+    mocks['match_svc'].set_ffa_placements.assert_not_called()
+    mocks['match_svc'].confirm_ffa_match.assert_not_called()
     mocks['flash_error'].assert_called_once_with(
         'Tournament is not in progress.'
     )
@@ -757,12 +773,12 @@ def test_orga_submit_ffa_result_binds_placements_by_contestant_key(app):
     with _patched_orga_view(app, tournament=_FFA) as mocks:
         _call_submit_ffa(app, form_data)
 
-    mocks['match_svc'].set_ffa_placements.assert_called_once_with(
-        MATCH_ID, {str(PARTICIPANT_A): 2, str(PARTICIPANT_B): 1}
+    mocks['match_svc'].set_and_confirm_ffa_match.assert_called_once_with(
+        MATCH_ID, {str(PARTICIPANT_A): 2, str(PARTICIPANT_B): 1}, USER_ID
     )
-    mocks['match_svc'].confirm_ffa_match.assert_called_once_with(
-        MATCH_ID, USER_ID
-    )
+    mocks['match_svc'].set_ffa_placements.assert_not_called()
+    mocks['match_svc'].confirm_ffa_match.assert_not_called()
+    mocks['flash_error'].assert_not_called()
     mocks['flash_success'].assert_called_once_with(
         'FFA match has been confirmed.'
     )
@@ -774,8 +790,8 @@ def test_orga_submit_ffa_result_rejects_non_integer(app):
     with _patched_orga_view(app, tournament=_FFA) as mocks:
         _call_submit_ffa(app, form_data)
 
-    mocks['match_svc'].set_ffa_placements.assert_not_called()
-    mocks['match_svc'].confirm_ffa_match.assert_not_called()
+    mocks['match_svc'].set_and_confirm_ffa_match.assert_not_called()
+    mocks['flash_success'].assert_not_called()
     mocks['flash_error'].assert_called_once_with(
         'Invalid placement value for contestant.'
     )
@@ -785,8 +801,8 @@ def test_orga_submit_ffa_result_rejects_empty_submission(app):
     with _patched_orga_view(app, tournament=_FFA) as mocks:
         _call_submit_ffa(app, {})
 
-    mocks['match_svc'].set_ffa_placements.assert_not_called()
-    mocks['match_svc'].confirm_ffa_match.assert_not_called()
+    mocks['match_svc'].set_and_confirm_ffa_match.assert_not_called()
+    mocks['flash_success'].assert_not_called()
     mocks['flash_error'].assert_called_once_with('No placement data submitted.')
 
 
@@ -794,8 +810,8 @@ def test_orga_confirm_ffa_records_the_orga_as_initiator(app):
     with _patched_orga_view(app, tournament=_FFA) as mocks:
         _call_submit_ffa(app, {f'placement_{PARTICIPANT_A}': '1'})
 
-    mocks['match_svc'].confirm_ffa_match.assert_called_once_with(
-        MATCH_ID, USER_ID
+    mocks['match_svc'].set_and_confirm_ffa_match.assert_called_once_with(
+        MATCH_ID, {str(PARTICIPANT_A): 1}, USER_ID
     )
     mocks['flash_success'].assert_called_once_with(
         'FFA match has been confirmed.'
@@ -805,35 +821,36 @@ def test_orga_confirm_ffa_records_the_orga_as_initiator(app):
 def test_orga_submit_ffa_result_does_not_confirm_when_placements_are_refused(
     app,
 ):
-    """A rejected placement set must not confirm the match anyway.
-
-    The two calls are composed in the view, so the confirm has to be
-    skipped explicitly -- otherwise a refused submission would confirm
-    the match on whatever placements it already carried.
-    """
+    """A refused combined operation never falls back to standalone confirmation."""
     with _patched_orga_view(
-        app, tournament=_FFA, set_placements_result=Err(_SERVICE_ERROR)
+        app, tournament=_FFA, submit_ffa_result=Err(_SERVICE_ERROR)
     ) as mocks:
         _call_submit_ffa(app, {f'placement_{PARTICIPANT_A}': '1'})
 
+    mocks['match_svc'].set_and_confirm_ffa_match.assert_called_once_with(
+        MATCH_ID, {str(PARTICIPANT_A): 1}, USER_ID
+    )
+    mocks['match_svc'].set_ffa_placements.assert_not_called()
     mocks['match_svc'].confirm_ffa_match.assert_not_called()
+    mocks['flash_success'].assert_not_called()
+    mocks['flash_error'].assert_called_once()
 
 
 def test_orga_submit_ffa_result_refuses_bracket_match(app):
     with _patched_orga_view(app) as mocks:
         _call_submit_ffa(app, {f'placement_{PARTICIPANT_A}': '1'})
 
-    mocks['match_svc'].set_ffa_placements.assert_not_called()
-    mocks['match_svc'].confirm_ffa_match.assert_not_called()
+    mocks['match_svc'].set_and_confirm_ffa_match.assert_not_called()
+    mocks['flash_success'].assert_not_called()
     mocks['flash_error'].assert_called_once_with(
         'Placements apply only to free-for-all matches.'
     )
 
 
-def test_orga_set_ffa_placements_error_is_translated_whole(app):
-    wrapper_de = 'Fehler beim Setzen der Platzierungen: %(error)s'
+def test_orga_submit_ffa_placement_error_is_translated_whole(app):
+    wrapper_de = 'Fehler beim Bestätigen der FFA-Partie: %(error)s'
     catalogue = {
-        'Error setting placements: %(error)s': wrapper_de,
+        'Error confirming FFA match: %(error)s': wrapper_de,
         _SERVICE_ERROR: _SERVICE_ERROR_DE,
     }
 
@@ -841,7 +858,7 @@ def test_orga_set_ffa_placements_error_is_translated_whole(app):
         _patched_orga_view(
             app,
             tournament=_FFA,
-            set_placements_result=Err(_SERVICE_ERROR),
+            submit_ffa_result=Err(_SERVICE_ERROR),
         ) as mocks,
         _translating(catalogue),
     ):
@@ -851,25 +868,38 @@ def test_orga_set_ffa_placements_error_is_translated_whole(app):
 
 
 def test_orga_confirm_ffa_error_is_translated_whole(app):
-    wrapper_de = (
-        'Fehler beim Bestätigen der FFA-Partie: %(error)s Die Platzierungen '
-        'wurden gespeichert; erneut absenden, um sie zu bestätigen.'
-    )
+    wrapper_de = 'Fehler beim Bestätigen der FFA-Partie: %(error)s'
     catalogue = {
-        'Error confirming FFA match: %(error)s The placements were saved; '
-        'submit again to confirm them.': wrapper_de,
+        'Error confirming FFA match: %(error)s': wrapper_de,
         _SERVICE_ERROR: _SERVICE_ERROR_DE,
     }
 
     with (
         _patched_orga_view(
-            app, tournament=_FFA, confirm_ffa_result=Err(_SERVICE_ERROR)
+            app, tournament=_FFA, submit_ffa_result=Err(_SERVICE_ERROR)
         ) as mocks,
         _translating(catalogue),
     ):
         _call_submit_ffa(app, {f'placement_{PARTICIPANT_A}': '1'})
 
     _assert_flash_translated(mocks, wrapper_de)
+
+
+def test_orga_submit_ffa_result_failure_does_not_claim_saved_placements(app):
+    with (
+        _patched_orga_view(
+            app, tournament=_FFA, submit_ffa_result=Err(_SERVICE_ERROR)
+        ) as mocks,
+        _translating({}),
+    ):
+        _call_submit_ffa(app, {f'placement_{PARTICIPANT_A}': '1'})
+
+    mocks['flash_error'].assert_called_once_with(
+        f'Error confirming FFA match: {_SERVICE_ERROR}'
+    )
+    mocks['flash_success'].assert_not_called()
+    mocks['match_svc'].set_ffa_placements.assert_not_called()
+    mocks['match_svc'].confirm_ffa_match.assert_not_called()
 
 
 def test_orga_resume_cannot_reopen_a_completed_tournament(app):

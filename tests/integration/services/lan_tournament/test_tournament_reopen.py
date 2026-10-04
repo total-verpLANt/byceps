@@ -99,7 +99,10 @@ def test_a_completed_round_robin_can_be_reopened(party, ticketed, admin):
     )
 
     result = tournament_service.change_status(
-        tournament.id, TournamentStatus.ONGOING, admin.id
+        tournament.id,
+        TournamentStatus.ONGOING,
+        admin.id,
+        allow_completed_reopen=True,
     )
 
     assert result.is_ok(), result.unwrap_err()
@@ -137,7 +140,10 @@ def test_reopening_clears_the_recorded_winner(party, ticketed, admin):
     )
 
     result = tournament_service.change_status(
-        tournament.id, TournamentStatus.ONGOING, admin.id
+        tournament.id,
+        TournamentStatus.ONGOING,
+        admin.id,
+        allow_completed_reopen=True,
     )
 
     assert result.is_ok(), result.unwrap_err()
@@ -161,7 +167,10 @@ def test_reopening_is_logged_with_its_initiator(party, ticketed, admin):
         ).is_ok()
 
     assert tournament_service.change_status(
-        tournament.id, TournamentStatus.ONGOING, admin.id
+        tournament.id,
+        TournamentStatus.ONGOING,
+        admin.id,
+        allow_completed_reopen=True,
     ).is_ok()
 
     entries = [
@@ -241,7 +250,10 @@ def test_reopening_skips_the_pre_start_bracket_validation(
     )
 
     result = tournament_service.change_status(
-        tournament.id, TournamentStatus.ONGOING, admin.id
+        tournament.id,
+        TournamentStatus.ONGOING,
+        admin.id,
+        allow_completed_reopen=True,
     )
 
     assert result.is_ok(), result.unwrap_err()

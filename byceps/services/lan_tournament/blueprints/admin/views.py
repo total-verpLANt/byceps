@@ -893,7 +893,11 @@ def _parse_create_submission(
     image_url = form.image_url.data.strip() if form.image_url.data else None
     ruleset = form.ruleset.data.strip() if form.ruleset.data else None
     start_time_local = form.start_time.data
-    start_time = to_utc(start_time_local) if start_time_local else None
+    start_time = (
+        to_utc(start_time_local)
+        if start_time_local and not form.start_time.errors
+        else None
+    )
 
     contestant_type = parse_enum(
         form.contestant_type,
@@ -2384,10 +2388,17 @@ def cancel(tournament_id):
 @permission_required('lan_tournament.administrate')
 def reopen(tournament_id):
     """Reopen a completed tournament."""
-    return _change_status(tournament_id, TournamentStatus.ONGOING)
+    return _change_status(
+        tournament_id, TournamentStatus.ONGOING, allow_completed_reopen=True
+    )
 
 
-def _change_status(tournament_id, new_status: TournamentStatus):
+def _change_status(
+    tournament_id,
+    new_status: TournamentStatus,
+    *,
+    allow_completed_reopen: bool = False,
+):
     """Change the tournament status."""
     tournament = _get_tournament_or_404(tournament_id)
 
@@ -2396,6 +2407,7 @@ def _change_status(tournament_id, new_status: TournamentStatus):
         new_status,
         g.user.id,
         confirm_generated_layout=bool(request.form.get(START_CONFIRM_FIELD)),
+        allow_completed_reopen=allow_completed_reopen,
     ):
         case Ok((_, _event)):
             flash_success(

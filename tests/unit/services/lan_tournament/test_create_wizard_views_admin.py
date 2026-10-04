@@ -7,7 +7,7 @@ from contextlib import ExitStack
 from datetime import datetime
 from io import BytesIO
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 from uuid import UUID, uuid4, uuid5
 
 from flask import Flask, g, request
@@ -26,6 +26,9 @@ from byceps.services.lan_tournament.models.tournament_request import (
 )
 from byceps.services.lan_tournament.models.validation_message import (
     ValidationMessage,
+)
+from byceps.services.lan_tournament.tournament_request_domain_service import (
+    YEAR_RANGE_ERROR_MESSAGE,
 )
 from byceps.util.result import Err, Ok
 
@@ -671,6 +674,199 @@ def test_validate_create_ok_for_valid_data(app):
     assert body['errors'] == {}
     assert body['first_error_step'] is None
     assert mocks.tournament_svc.method_calls == []
+
+
+@pytest.fixture
+def berlin_app(app, monkeypatch):
+    monkeypatch.setattr(
+        app.extensions['babel'], 'timezone_selector', lambda: 'Europe/Berlin'
+    )
+    return app
+
+
+# fmt: off
+@pytest.fixture(params=[
+    pytest.param(('0001-01-01T00:00', YEAR_RANGE_ERROR_MESSAGE), id='year-0001'),
+    pytest.param(('9999-12-31T23:59', YEAR_RANGE_ERROR_MESSAGE), id='year-9999'),
+    pytest.param(('not-a-datetime', 'Not a valid datetime value.'), id='malformed'),
+])
+# fmt: on
+def invalid_date_case(request):
+    return request.param
+
+
+def test_validate_create_invalid_date_returns_json_in_berlin(
+    berlin_app, invalid_date_case
+):
+    start_time, error = invalid_date_case
+
+    mocks = _post(
+        berlin_app,
+        {**_VALID_DATA, 'start_time': start_time},
+        view='validate_create',
+    )
+    body = mocks.result.get_json()
+
+    assert mocks.result.status_code == 200
+    assert body == {
+        'ok': False,
+        'errors': {'start_time': [error]},
+        'first_error_step': 0,
+        'checked_at': body['checked_at'],
+        'refusal': None,
+    }
+    assert datetime.strptime(body['checked_at'], '%H:%M')
+
+
+def test_validate_create_invalid_date_is_not_converted(
+    berlin_app, invalid_date_case
+):
+    start_time, error = invalid_date_case
+
+    with patch(f'{_V}.to_utc', wraps=views.to_utc) as mock_to_utc:
+        mocks = _post(
+            berlin_app,
+            {**_VALID_DATA, 'start_time': start_time},
+            view='validate_create',
+        )
+
+    form = mocks.first_error_step.call_args.args[0]
+    assert form.start_time.errors == [error]
+    if start_time != 'not-a-datetime':
+        # Rejected years still have parsed data: absence of data is not the guard.
+        assert isinstance(form.start_time.data, datetime)
+    mock_to_utc.assert_not_called()
+
+
+# fmt: off
+@pytest.mark.parametrize(('point_table', 'point_table_error'), [
+    ('', 'Add points for at least place 1.'),
+    ('not-an-integer', 'Point table must be comma-separated integers.'),
+])
+# fmt: on
+def test_validate_create_invalid_date_keeps_structural_errors(
+    berlin_app, invalid_date_case, point_table, point_table_error
+):
+    start_time, error = invalid_date_case
+
+    mocks = _post(
+        berlin_app,
+        {
+            **_VALID_DATA,
+            'start_time': start_time,
+            'game_format': 'FREE_FOR_ALL',
+            'point_table': point_table,
+        },
+        view='validate_create',
+    )
+    body = mocks.result.get_json()
+
+    assert mocks.result.status_code == 200
+    assert body['ok'] is False
+    assert body['errors']['start_time'] == [error]
+    assert body['errors']['point_table'] == [point_table_error]
+    assert body['errors']['group_size_max'] == ['Required for Free-for-All.']
+    assert body['first_error_step'] == 0
+
+
+def test_validate_create_invalid_date_never_writes(
+    berlin_app, invalid_date_case
+):
+    start_time, error = invalid_date_case
+    image = SimpleNamespace(id=uuid4())
+
+    mocks = _post(
+        berlin_app,
+        {
+            **_VALID_DATA,
+            'start_time': start_time,
+            'from_request_id': _REQUEST_ID,
+            'submission_token': str(uuid4()),
+            'image_id': str(image.id),
+            'image': (BytesIO(b'raw'), 'cover.png'),
+        },
+        view='validate_create',
+        tournament_request=_make_request(),
+        attachable_image=image,
+    )
+
+    assert mocks.result.get_json()['errors'] == {'start_time': [error]}
+    assert mocks.repo.method_calls == [call.find_request(UUID(_REQUEST_ID))]
+    mocks.find_image.assert_called_once()
+    assert mocks.tournament_svc.method_calls == []
+    assert mocks.request_svc.method_calls == []
+    mocks.store_image.assert_not_called()
+    mocks.clear_link.assert_not_called()
+    mocks.create_form.assert_not_called()
+    mocks.flash_error.assert_not_called()
+    mocks.flash_notice.assert_not_called()
+    mocks.flash_success.assert_not_called()
+
+
+# fmt: off
+@pytest.mark.parametrize(('start_time', 'expected_local', 'expected_utc'), [
+    ('2000-01-01T00:00', datetime(2000, 1, 1), datetime(1999, 12, 31, 23)),
+    ('2100-12-31T23:59', datetime(2100, 12, 31, 23, 59), datetime(2100, 12, 31, 22, 59)),
+    ('', None, None),
+])
+# fmt: on
+def test_validate_create_valid_and_blank_dates_keep_behavior(
+    berlin_app, start_time, expected_local, expected_utc
+):
+    parsed_submissions = []
+    parse_submission = views._parse_create_submission
+
+    def spy(form, party):
+        sub = parse_submission(form, party)
+        parsed_submissions.append(sub)
+        return sub
+
+    with (
+        patch(f'{_V}.to_utc', wraps=views.to_utc) as mock_to_utc,
+        patch(f'{_V}._parse_create_submission', side_effect=spy),
+    ):
+        mocks = _post(
+            berlin_app,
+            {**_VALID_DATA, 'start_time': start_time},
+            view='validate_create',
+        )
+
+    body = mocks.result.get_json()
+    assert mocks.result.status_code == 200
+    assert body['ok'] is True
+    assert body['errors'] == {}
+    assert body['first_error_step'] is None
+    assert body['refusal'] is None
+    assert len(parsed_submissions) == 1
+    assert parsed_submissions[0].start_time == expected_utc
+    if expected_local is None:
+        mock_to_utc.assert_not_called()
+    else:
+        mock_to_utc.assert_called_once_with(expected_local)
+    assert mocks.tournament_svc.method_calls == []
+    mocks.store_image.assert_not_called()
+
+
+def test_create_invalid_date_refuses_before_submission_parsing(
+    berlin_app, invalid_date_case
+):
+    start_time, error = invalid_date_case
+
+    with (
+        patch(
+            f'{_V}._parse_create_submission',
+            wraps=views._parse_create_submission,
+        ) as mock_parse,
+        patch(f'{_V}.to_utc', wraps=views.to_utc) as mock_to_utc,
+    ):
+        mocks = _post(berlin_app, {**_VALID_DATA, 'start_time': start_time})
+
+    assert mocks.result == 'rendered-form'
+    assert mocks.form.start_time.errors == [error]
+    mock_parse.assert_not_called()
+    mock_to_utc.assert_not_called()
+    mocks.tournament_svc.create_tournament.assert_not_called()
+    mocks.store_image.assert_not_called()
 
 
 def test_validate_create_sets_body_limit_first(app):
