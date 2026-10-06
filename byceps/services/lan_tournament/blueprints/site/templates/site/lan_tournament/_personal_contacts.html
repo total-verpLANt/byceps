@@ -40,9 +40,12 @@
     {% set user_seats = seats_by_user_id.get(orga.user.id, []) %}
     <div class="personal-orga">
       <span class="personal-orga-name"><strong>{{ _('Tournament orga') }}:</strong> {{ profile(orga.user) }}</span>
+      <span class="personal-orga-leader" aria-hidden="true"></span>
       {% if user_seats %}
+      <span class="personal-orga-seats">
       <span class="personal-seat-label">{{ ngettext('Seat', 'Seats', user_seats|length) }}:</span>
       {{ seat_links(user_seats) }}
+      </span>
       {% else %}<span class="personal-contact-fallback">{{ _('Ask the tournament orga') }}</span>{% endif %}
       {% if orga.duties %}<span class="personal-orga-duties">({{ orga.duties }})</span>{% endif %}
     </div>

@@ -1,5 +1,6 @@
 .personal-tournaments {
   --personal-border: color-mix(in srgb, currentColor 25%, transparent);
+  --personal-leader: color-mix(in srgb, currentColor 45%, transparent);
   --personal-surface: color-mix(in srgb, currentColor 4%, transparent);
   --personal-accent: currentColor;
   --personal-open: #a32424;
@@ -79,11 +80,16 @@
 .personal-tournaments .personal-match-details + .personal-format-action { display: block; margin-top: .5rem; }
 .personal-tournaments :is(summary, a):focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
 .personal-tournaments .personal-footer { container-type: inline-size; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .5rem 1.5rem; border-top: 1px solid var(--personal-border); padding-top: .75rem; margin-top: .75rem; font-size: .9rem; }
-.personal-tournaments .personal-orgas { flex: 1 1 30rem; min-width: 0; display: grid; grid-template-columns: minmax(0, max-content) max-content minmax(0, 1fr) minmax(0, 2fr); gap: .5rem; align-items: center; }
+.personal-tournaments .personal-orgas { flex: 1 1 30rem; min-width: 0; display: grid; grid-template-columns: minmax(0, max-content) minmax(1.5rem, 1fr) max-content minmax(0, max-content) minmax(0, 1fr); gap: .5rem; align-items: center; }
 .personal-tournaments .personal-orga { display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; align-items: center; }
 .personal-tournaments .personal-orga > * { min-width: 0; }
-.personal-tournaments .personal-orga .personal-contact-fallback { grid-column: 2 / 4; }
-.personal-tournaments .personal-orga-duties { grid-column: 4; font-size: .9em; opacity: .8; }
+.personal-tournaments .personal-orga-name { grid-column: 1; }
+.personal-tournaments .personal-orga-leader { grid-column: 2; height: .5em; align-self: center; background-image: radial-gradient(circle, var(--personal-leader) 1px, transparent 1.25px); background-size: .45em .5em; background-repeat: repeat-x; }
+.personal-tournaments .personal-orga-seats { display: contents; }
+.personal-tournaments .personal-orga-seats .personal-seat-label { grid-column: 3; }
+.personal-tournaments .personal-orga-seats .personal-seat-links { grid-column: 4; min-width: 0; }
+.personal-tournaments .personal-orga .personal-contact-fallback { grid-column: 3 / 5; }
+.personal-tournaments .personal-orga-duties { grid-column: 5; font-size: .9em; opacity: .8; }
 .personal-tournaments .personal-seats { display: inline-flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
 .personal-tournaments .personal-seat-links { display: inline-flex; flex-wrap: wrap; gap: .4rem; }
 .personal-tournaments .personal-seat-links a { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-width: 2.2rem; min-height: 2rem; padding: .1rem .4rem; border: 1px solid var(--personal-border); font-weight: 700; text-align: center; line-height: 1.3; }
@@ -92,12 +98,14 @@
 .personal-assignment .button { white-space: normal; }
 
 @supports not (grid-template-columns: subgrid) {
-  .personal-tournaments .personal-orga { display: contents; }
+  .personal-tournaments .personal-orga, .personal-tournaments .personal-orga-seats { display: contents; }
 }
 @container (max-width: 50rem) {
-  .personal-tournaments .personal-orgas { grid-template-columns: minmax(0, max-content) minmax(0, 1fr); }
-  .personal-tournaments .personal-orga-name { grid-column: 1 / -1; }
-  .personal-tournaments .personal-orga .personal-contact-fallback, .personal-tournaments .personal-orga-duties { grid-column: 1 / -1; }
+  .personal-tournaments .personal-orgas, .personal-tournaments .personal-orga { display: block; }
+  .personal-tournaments .personal-orga-leader { display: none; }
+  .personal-tournaments .personal-orga .personal-contact-fallback { display: inline; }
+  .personal-tournaments .personal-orga-seats { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .5rem; margin-top: .35rem; }
+  .personal-tournaments .personal-orga-duties { display: block; margin-top: .35rem; }
   .personal-tournaments .personal-orga + .personal-orga { margin-top: .5rem; }
 }
 
