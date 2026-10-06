@@ -14,7 +14,7 @@
 {% if orgas_by_tournament.get(tournament.id) or tournament.start_time %}
 <footer class="personal-footer">
   {{ orgas(tournament) }}
-  {% if tournament.start_time %}<div class="tournament-start">{{ _('Start') }}: {{ tournament.start_time|dateformat }}, {{ tournament.start_time|timeformat('short') }}</div>{% endif %}
+  {% if tournament.start_time %}<div class="tournament-start"><span class="personal-start-label">{{ _('Start') }}:</span> <span class="personal-start-value">{{ tournament.start_time|dateformat }}, {{ tournament.start_time|timeformat('short') }}</span></div>{% endif %}
 </footer>
 {% endif %}
 {% endmacro %}

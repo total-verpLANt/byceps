@@ -209,7 +209,7 @@ def test_solo_profiles_multiple_seats_orga_fallbacks_and_render_without_queries(
     fallback = html.split('Ask the tournament orga')[0].rsplit(
         '<div class="personal-orga">', 1
     )[1]
-    assert 'personal-seat-label' not in fallback
+    assert 'class="personal-seat-label">Seat:</span>' in fallback
     assert 'personal-seat-links' not in fallback
     assert 'Start:' in html
     assert html.count('personal-format-action') == 1
