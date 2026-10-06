@@ -11,6 +11,7 @@
 {%- endblock %}
 
 {% block before_body %}
+{{ super() }}
 {{ render_backlink(url_for('.view', tournament_id=tournament.id), tournament.name) }}
 {%- endblock %}
 

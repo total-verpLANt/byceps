@@ -1565,6 +1565,21 @@ def get_matches_for_tournament(
     return [_db_match_to_match(m) for m in db_matches]
 
 
+def get_matches_for_tournaments(
+    tournament_ids: Collection[TournamentID],
+) -> list[TournamentMatch]:
+    """Return all matches of those tournaments, with one query."""
+    if not tournament_ids:
+        return []
+
+    db_matches = db.session.scalars(
+        select(DbTournamentMatch).where(
+            DbTournamentMatch.tournament_id.in_(list(tournament_ids))
+        )
+    ).all()
+    return [_db_match_to_match(m) for m in db_matches]
+
+
 def get_matches_for_tournament_ordered(
     tournament_id: TournamentID,
 ) -> list[TournamentMatch]:

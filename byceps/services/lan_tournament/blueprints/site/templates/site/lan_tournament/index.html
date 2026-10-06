@@ -12,17 +12,7 @@
 
   <h1 class="title">{{ page_title }}</h1>
 
-  {%- if g.user.authenticated %}
-  <div class="button-row is-hcentered">
-    <a class="button is-outlined" href="{{ url_for('.propose_form') }}">{{ render_icon('add') }} {{ _('Propose a tournament') }}</a>
-    <a class="button is-outlined" href="{{ url_for('.my_requests') }}">{{ render_icon('clipboard') }} {{ _('My tournament requests') }}</a>
-    {%- if may_view_orga_dashboard|default(false) %}
-    <a class="button color-primary" href="{{ url_for('.orga_dashboard') }}">{{ _('Orga dashboard') }}</a>
-    {%- endif %}
-  </div>
-  {%- endif %}
-
-  {% include 'lan_tournament/_category_filter.html' %}
+  {% include 'site/lan_tournament/_overview_nav.html' %}
 
   <div class="main-body-box">
   {%- if tournaments %}
@@ -89,7 +79,12 @@
     {%- endif %}
     {%- endfor %}
   {%- else %}
+    {% if total_count %}
+    {% set category_filter_endpoint = '.index' %}
+    {% include 'lan_tournament/_category_empty.html' %}
+    {% else %}
     <p class="dimmed">{{ _('No tournaments found.') }}</p>
+    {% endif %}
   {%- endif %}
   </div>
 

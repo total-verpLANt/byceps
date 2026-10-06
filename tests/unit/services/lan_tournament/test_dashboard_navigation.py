@@ -16,10 +16,17 @@ from byceps.services.lan_tournament.blueprints.site import views as site_views
 from byceps.services.lan_tournament.dashboard_view_helpers import (
     DASHBOARD_ENDPOINTS,
 )
+from byceps.services.lan_tournament.lan_tournament_view_helpers import (
+    group_tournaments_by_category,
+)
+from byceps.services.lan_tournament.models.tournament_category import (
+    TournamentCategory,
+)
 from byceps.util.navigation import Navigation
 
 
 _MODULE = pathlib.Path('byceps/services/lan_tournament/blueprints')
+_COMMON = pathlib.Path('byceps/services/core/blueprints/common/templates')
 _ADMIN_LAYOUT = _MODULE / 'admin/templates/layout/admin/lan_tournament.html'
 _ADMIN_DASHBOARD_PAGE = (
     _MODULE / 'admin/templates/admin/lan_tournament/dashboard.html'
@@ -91,6 +98,7 @@ def _render_tabs(app, template, *, permissions, current_tab='overview'):
             current_tab=current_tab,
             Navigation=Navigation,
             lan_tournament_pending_request_count=lambda party_id: 0,
+            lan_tournament_has_orga_assignments=lambda party_id: False,
         )
 
     return [
@@ -196,14 +204,26 @@ def index_template(request):
                 parent: '{% block body %}{% endblock %}',
                 'macros/misc.html': _MISC_MACROS.read_text(),
                 'macros/icons.html': _ICON_MACROS.read_text(),
+                **{name: path.read_text() for name, path in _PARTIALS.items()},
             }
         ),
     )
     env.globals['_'] = lambda message, **kw: message % kw if kw else message
     env.globals['url_for'] = _url_for
+    env.globals['render_icon'] = lambda *a, **kw: ''
     env.filters['dateformat'] = lambda value, *a, **kw: ''
     env.filters['timeformat'] = lambda value, *a, **kw: ''
     return env.get_template('index')
+
+
+_PARTIALS = {
+    'site/lan_tournament/_overview_nav.html': _MODULE
+    / 'site/templates/site/lan_tournament/_overview_nav.html',
+    'lan_tournament/_category_empty.html': _COMMON
+    / 'lan_tournament/_category_empty.html',
+    'lan_tournament/_category_filter.html': _COMMON
+    / 'lan_tournament/_category_filter.html',
+}
 
 
 def _url_for(endpoint, **values):
@@ -232,8 +252,14 @@ def _site_context(monkeypatch, *, answer):
     )
 
     context = {}
-    for processor in site_views.blueprint.template_context_processors[None]:
-        context.update(processor())
+    # The overview processor reads `request.endpoint`, which is `None` here.
+    with Flask(__name__).test_request_context('/'):
+        for processor in site_views.blueprint.template_context_processors[None]:
+            context.update(processor())
+
+    # Flask's default processor offers its own `g`; the test supplies one.
+    context.pop('g', None)
+    context.pop('request', None)
 
     return context, asked
 
@@ -245,6 +271,8 @@ def _render_index(template, *, authenticated, populated=False, **context):
             SimpleNamespace(
                 id='t-1',
                 name='Cup',
+                category=TournamentCategory.MAIN,
+                position=0,
                 game=None,
                 image_url=None,
                 tournament_status=None,
@@ -255,9 +283,15 @@ def _render_index(template, *, authenticated, populated=False, **context):
             )
         ]
 
+    context.setdefault('has_orga_assignments', False)
     return template.render(
         page_title='Tournaments',
         tournaments=tournaments,
+        tournament_groups=group_tournaments_by_category(tournaments),
+        categories=[],
+        category_filter=None,
+        category_filter_args={},
+        total_count=len(tournaments),
         participant_counts={},
         team_counts={},
         g=SimpleNamespace(user=SimpleNamespace(authenticated=authenticated)),

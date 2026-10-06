@@ -8,6 +8,7 @@ from datetime import datetime, UTC
 from sqlalchemy.exc import IntegrityError
 
 from byceps.database import db
+from byceps.services.party.models import PartyID
 from byceps.services.user import user_service
 from byceps.services.user.models import UserID
 from byceps.util.result import Err, Ok, Result
@@ -156,6 +157,35 @@ def get_orgas_for_tournament(
 ) -> list[TournamentOrga]:
     """Return all orga assignments for that tournament."""
     return tournament_orga_repository.get_orgas_for_tournament(tournament_id)
+
+
+def get_tournament_ids_for_orga(user_id: UserID) -> set[TournamentID]:
+    return tournament_orga_repository.get_tournament_ids_for_orga(user_id)
+
+
+def has_orga_assignments_for_party(party_id: PartyID, user_id: UserID) -> bool:
+    """Return whether the user explicitly supervises a tournament in this party."""
+    return tournament_orga_repository.has_orga_assignments_for_party(
+        party_id, user_id
+    )
+
+
+def get_public_orgas_for_tournaments(
+    tournament_ids: list[TournamentID],
+) -> dict[TournamentID, list[PublicTournamentOrga]]:
+    """Resolve all responsible orgas in two batch queries, without real names."""
+    orgas = tournament_orga_repository.get_orgas_for_tournaments(tournament_ids)
+    if not orgas:
+        return {}
+    users = user_service.get_users_indexed_by_id({o.user_id for o in orgas})
+    result: dict[TournamentID, list[PublicTournamentOrga]] = {}
+    for orga in orgas:
+        user = users.get(orga.user_id)
+        if user is not None and not user.deleted:
+            result.setdefault(orga.tournament_id, []).append(
+                PublicTournamentOrga(user=user, duties=orga.duties)
+            )
+    return result
 
 
 def get_public_orgas_for_tournament(

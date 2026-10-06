@@ -54,6 +54,14 @@ def _snippet(path: pathlib.Path) -> str:
 
 def _make_env(templates: dict[str, str]) -> Environment:
     templates = {
+        'site/lan_tournament/_overview_nav.html': pathlib.Path(
+            'byceps/services/lan_tournament/blueprints/site/templates'
+            '/site/lan_tournament/_overview_nav.html'
+        ).read_text(),
+        'lan_tournament/_category_empty.html': pathlib.Path(
+            'byceps/services/core/blueprints/common/templates'
+            '/lan_tournament/_category_empty.html'
+        ).read_text(),
         'lan_tournament/_category_filter.html': pathlib.Path(
             'byceps/services/core/blueprints/common/templates'
             '/lan_tournament/_category_filter.html'
@@ -100,6 +108,11 @@ def _render_index(env, *, authenticated: bool, **ctx):
         'tournaments': [],
         'participant_counts': {},
         'team_counts': {},
+        'has_orga_assignments': False,
+        'categories': [],
+        'category_filter': None,
+        'category_filter_args': {},
+        'total_count': 0,
         'g': SimpleNamespace(user=SimpleNamespace(authenticated=authenticated)),
     }
     base_ctx.update(ctx)
@@ -119,6 +132,15 @@ def test_index_shows_request_nav_links_when_authenticated(env_name, request):
     assert 'href="/my_requests"' in html
     assert 'Propose a tournament' in html
     assert 'My tournament requests' in html
+    assert 'href="/my_tournaments"' in html
+    assert 'href="/supervised_tournaments"' not in html
+
+
+@pytest.mark.parametrize('env_name', ['base_env', 'bote_env'])
+def test_index_shows_supervised_link_only_with_assignments(env_name, request):
+    env = request.getfixturevalue(env_name)
+    html = _render_index(env, authenticated=True, has_orga_assignments=True)
+    assert 'href="/supervised_tournaments"' in html
 
 
 @pytest.mark.parametrize('env_name', ['base_env', 'bote_env'])
@@ -131,6 +153,8 @@ def test_index_hides_request_nav_links_when_anonymous(env_name, request):
     assert 'href="/my_requests"' not in html
     assert 'Propose a tournament' not in html
     assert 'My tournament requests' not in html
+    assert 'href="/my_tournaments"' not in html
+    assert 'href="/supervised_tournaments"' not in html
 
 
 @pytest.mark.parametrize('env_name', ['base_env', 'bote_env'])

@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+from flask import Flask
 
 from byceps.services.lan_tournament import tournament_domain_service
 from byceps.services.lan_tournament.blueprints.site import views
@@ -35,8 +36,9 @@ def _tournament(name, category, position, **kwargs):
     )[0]
 
 
-def _public_context(tournaments):
+def _public_context(tournaments, query=''):
     with (
+        Flask(__name__).test_request_context('/?' + query),
         patch.object(views, '_get_current_party_or_404'),
         patch.object(views, 'tournament_service') as service,
         patch.object(views, 'tournament_team_service') as teams,
@@ -108,9 +110,13 @@ def test_public_groups_keep_cards_positions_and_hide_draft_only_categories(
     assert 'Paused' in html and 'Completed' in html
     assert 'href="/view"' in html
     assert 'href="/propose_form"' in html and 'href="/my_requests"' in html
-    for category in TournamentCategory:
-        assert f'data-category-filter="{category.value}"' in html
-    assert 'data-category-filter="ALL" aria-pressed="true"' in html
+    assert context['categories'] == [
+        TournamentCategory.MAIN,
+        TournamentCategory.FUN,
+        TournamentCategory.USER_ORGANIZED,
+    ]
+    assert 'data-category-dropdown' in html
+    assert 'aria-current="true"' in html
 
 
 @pytest.mark.parametrize('path', [_BASE_INDEX_TEMPLATE, _BOTE_INDEX_TEMPLATE])
@@ -146,6 +152,16 @@ def test_admin_filter_available_for_readers_and_editors(can_update, template):
         tournament_status=TournamentStatus.DRAFT,
     )
     html = env.get_template('index').render(
+        heading='LAN Tournaments',
+        assignment_filter='all',
+        category_filter=None,
+        category_filter_endpoint='.index'
+        if template == 'index'
+        else '.overview',
+        category_filter_args={'party_id': 'party'},
+        categories=[TournamentCategory.MAIN, TournamentCategory.STAGE],
+        filtered_count=2,
+        total_count=2,
         tournaments=[main, draft],
         tournament_groups=group_tournaments_by_category([main, draft]),
         party=SimpleNamespace(id='party'),
@@ -165,11 +181,31 @@ def test_admin_filter_available_for_readers_and_editors(can_update, template):
             )
         ),
     )
-    for category in TournamentCategory:
-        assert f'data-category-filter="{category.value}"' in html
-    assert 'data-category-filter="ALL" aria-pressed="true"' in html
+    assert 'aria-current="true"' in html
     assert 'Main cup' in html and 'Stage draft' in html
-    assert 'data-tournament-category="FUN" data-tournament-count="0"' in html
+    assert 'data-tournament-category="FUN"' not in html
     assert ('class="drag-handle"' in html) == (
         can_update and template == 'index'
     )
+
+
+def test_public_category_keeps_choices_from_unfiltered_visible_stock():
+    main = _tournament(
+        'Main',
+        TournamentCategory.MAIN,
+        0,
+        tournament_status=TournamentStatus.ONGOING,
+    )
+    fun = _tournament(
+        'Fun',
+        TournamentCategory.FUN,
+        0,
+        tournament_status=TournamentStatus.ONGOING,
+    )
+    context = _public_context([main, fun], 'category=FUN')
+    assert context['tournaments'] == [fun]
+    assert context['categories'] == [
+        TournamentCategory.MAIN,
+        TournamentCategory.FUN,
+    ]
+    assert context['total_count'] == 2

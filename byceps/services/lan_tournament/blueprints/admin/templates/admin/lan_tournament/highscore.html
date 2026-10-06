@@ -9,6 +9,7 @@
 {% block head %}{{ super() }}{{ hover_card_styles() }}{% endblock %}
 
 {% block before_body %}
+{{ super() }}
 {{ render_backlink(url_for('.view', tournament_id=tournament.id),
                    _('Tournament')) }}
 {%- endblock %}

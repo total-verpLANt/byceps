@@ -16,6 +16,7 @@
 {%- endblock %}
 
 {% block before_body %}
+{{ super() }}
 {{ render_backlink(url_for('.matches_for_tournament',
                            tournament_id=tournament.id), _('Matches')) }}
 {%- if dashboard_back|default(none) %}

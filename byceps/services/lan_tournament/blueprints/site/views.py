@@ -27,6 +27,7 @@ from byceps.services.lan_tournament import (
     tournament_readiness_authorization_service,
     tournament_readiness_service,
     tournament_repository,
+    tournament_personal_service,
     tournament_request_domain_service,
     tournament_request_service,
     tournament_score_service,
@@ -89,6 +90,7 @@ from byceps.services.lan_tournament.lan_tournament_view_helpers import (
     build_ffa_standings,
     build_hover_lookups,
     build_match_readiness_projections,
+    build_match_label,
     build_round_robin_standings,
     build_seat_lookup,
     compute_feed_counts,
@@ -153,6 +155,12 @@ from byceps.services.lan_tournament.models.game_format import (
 )
 from byceps.services.party import party_service
 from byceps.services.party.models import PartyID
+from byceps.services.global_setting import global_setting_service
+from byceps.services.lan_tournament.tournament_overview_filters import (
+    available_categories,
+    parse_assignment,
+    parse_category,
+)
 from byceps.services.ticketing import ticket_service
 from byceps.services.user import user_service
 from byceps.services.user.models import UserID
@@ -193,11 +201,34 @@ register_blueprints(
 )
 
 
+@blueprint.context_processor
+def _overview_navigation():
+    """Prepare party-scoped navigation once per rendered overview request."""
+    has_assignments = False
+    if (
+        request.endpoint
+        in {
+            'lan_tournament.index',
+            'lan_tournament.my_tournaments',
+            'lan_tournament.supervised_tournaments',
+        }
+        and g.user.authenticated
+        and g.party
+    ):
+        has_assignments = (
+            tournament_orga_service.has_orga_assignments_for_party(
+                g.party.id, g.user.id
+            )
+        )
+    return {'has_orga_assignments': has_assignments}
+
+
 @blueprint.get('/')
 @templated
 def index():
     """List all tournaments for the current party."""
     party = _get_current_party_or_404()
+    category = _overview_category()
 
     tournaments = tournament_service.get_tournaments_for_party(party.id)
 
@@ -211,17 +242,113 @@ def index():
     # Sort by admin-defined position (data arrives pre-sorted from
     # get_tournaments_for_party, but re-sort the visible subset).
     visible_tournaments.sort(key=lambda t: t.position)
+    categories = available_categories(visible_tournaments)
+    total_count = len(visible_tournaments)
+    visible_tournaments = [
+        t
+        for t in visible_tournaments
+        if category is None or t.category == category
+    ]
 
     tournament_ids = [t.id for t in visible_tournaments]
     participant_counts = tournament_service.get_participant_counts_for_tournaments(tournament_ids)
     team_counts = tournament_team_service.get_team_counts_for_tournaments(tournament_ids)
 
     return {
+        'overview_mode': 'all',
+        'category_filter': category,
+        'categories': categories,
+        'category_filter_args': {},
+        'total_count': total_count,
         'tournaments': visible_tournaments,
         'tournament_groups': group_tournaments_by_category(visible_tournaments),
         'participant_counts': participant_counts,
         'team_counts': team_counts,
     }
+
+
+@blueprint.get('/mine')
+@login_required
+@templated
+def my_tournaments():
+    """Current solo and team participation, scoped to the logged-in user."""
+    party = _get_current_party_or_404()
+    category = _overview_category()
+    context = tournament_personal_service.get_personal_overview(
+        party.id, g.user.id
+    )
+    context['total_count'] = len(context['entries'])
+    categories = available_categories(
+        [e.tournament for e in context['entries']]
+    )
+    context['personal_groups'] = {
+        group: [
+            e
+            for e in entries
+            if category is None or e.tournament.category == category
+        ]
+        for group, entries in context['personal_groups'].items()
+    }
+    return {
+        **context,
+        'overview_mode': 'personal',
+        'category_filter': category,
+        'categories': categories,
+        'category_filter_args': {},
+        'match_label': build_match_label,
+    }
+
+
+@blueprint.get('/supervised')
+@login_required
+@templated('site/lan_tournament/my_tournaments')
+def supervised_tournaments():
+    """Explicit orga assignments; global admins may select all."""
+    party = _get_current_party_or_404()
+    category = _overview_category()
+    try:
+        assignment = parse_assignment(request.args.get('assignment', 'mine'))
+    except ValueError:
+        abort(400)
+    can_view_all = g.user.has_permission('lan_tournament.administrate')
+    if assignment == 'all' and not can_view_all:
+        abort(403)
+    context = tournament_personal_service.get_supervised_overview(
+        party.id, g.user.id, include_all=assignment == 'all'
+    )
+    total = len(context['tournaments'])
+    categories = available_categories(context['tournaments'])
+    context['tournaments'] = [
+        t
+        for t in context['tournaments']
+        if category is None or t.category == category
+    ]
+    admin_root = None
+    if g.user.has_permission('admin.access') and g.user.has_permission(
+        'lan_tournament.view'
+    ):
+        admin_root = global_setting_service.find_setting_value('admin_url_root')
+    return {
+        **context,
+        'overview_mode': 'supervised',
+        'total_count': total,
+        'tournament_groups': group_tournaments_by_category(
+            context['tournaments']
+        ),
+        'category_filter': category,
+        'categories': categories,
+        'category_filter_args': {'assignment': assignment},
+        'assignment_filter': assignment,
+        'can_view_all': can_view_all,
+        'admin_url_root': admin_root,
+    }
+
+
+def _overview_category():
+    try:
+        return parse_category(request.args.get('category', 'ALL'))
+    except ValueError:
+        abort(400)
 
 
 @blueprint.get('/<tournament_id>')

@@ -427,4 +427,8 @@ def test_reorder_partial_write_failure_preserves_all_positions(party):
             tournament_service.reorder_tournaments(
                 party.id, [str(t.id) for t in before]
             )
-    assert tournament_service.get_tournaments_for_party(party.id) == before
+    # SQL only orders by position. Ties may change row order after a rolled
+    # back UPDATE; verify every tournament's full state by identity instead.
+    assert {
+        t.id: t for t in tournament_service.get_tournaments_for_party(party.id)
+    } == {t.id: t for t in before}

@@ -470,7 +470,7 @@ def test_request_visibility_shows_all_to_admin():
         assert result == [own_request, other_request]
 
 
-def test_request_visibility_excludes_requests_from_site_index():
+def test_request_visibility_excludes_requests_from_site_index(app):
     """`index()` never touches request data -- invisibility is structural.
 
     An unaccepted request never becomes a tournament, so it cannot
@@ -483,6 +483,7 @@ def test_request_visibility_excludes_requests_from_site_index():
     assert 'tournament_request' not in inspect.getsource(views.index)
 
     with (
+        app.test_request_context('/'),
         patch(f'{_V}.tournament_request_service') as mock_request_svc,
         patch(f'{_V}.tournament_service') as mock_tournament_svc,
         patch(f'{_V}.tournament_team_service') as mock_team_svc,
@@ -496,6 +497,11 @@ def test_request_visibility_excludes_requests_from_site_index():
         result = views.index.__wrapped__()
 
         assert set(result.keys()) == {
+            'overview_mode',
+            'category_filter',
+            'categories',
+            'category_filter_args',
+            'total_count',
             'tournaments',
             'tournament_groups',
             'participant_counts',

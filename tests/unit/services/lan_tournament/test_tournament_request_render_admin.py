@@ -1039,6 +1039,7 @@ def _render_nav_tab_label(
             current_tab=current_tab,
             Navigation=Navigation,
             lan_tournament_pending_request_count=lambda party_id: request_count,
+            lan_tournament_has_orga_assignments=lambda party_id: False,
         )
 
 
@@ -1822,7 +1823,9 @@ def create_form_banner_env():
 
 def _render_create_form_backlink(env, *, party, source_request):
     tmpl = env.get_template('create_form_backlink')
-    return tmpl.render(party=party, source_request=source_request)
+    return tmpl.render(
+        party=party, source_request=source_request, super=lambda: ''
+    )
 
 
 def _render_create_form_banner(

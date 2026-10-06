@@ -6,9 +6,11 @@ byceps.services.lan_tournament.tournament_orga_repository
 from sqlalchemy import delete, select
 
 from byceps.database import db
+from byceps.services.party.models import PartyID
 from byceps.services.user.models import UserID
 
 from .dbmodels.tournament_orga import DbTournamentOrga
+from .dbmodels.tournament import DbTournament
 from .models.tournament import TournamentID
 from .models.tournament_orga import TournamentOrga, TournamentOrgaID
 
@@ -76,6 +78,40 @@ def get_tournament_ids_for_orga(user_id: UserID) -> set[TournamentID]:
         .all()
     )
     return set(tournament_ids)
+
+
+def has_orga_assignments_for_party(party_id: PartyID, user_id: UserID) -> bool:
+    """Check explicit assignments in this party, including drafts."""
+    return bool(
+        db.session.scalar(
+            select(
+                select(DbTournamentOrga)
+                .join(
+                    DbTournament,
+                    DbTournamentOrga.tournament_id == DbTournament.id,
+                )
+                .where(
+                    DbTournament.party_id == party_id,
+                    DbTournamentOrga.user_id == user_id,
+                )
+                .exists()
+            )
+        )
+    )
+
+
+def get_orgas_for_tournaments(
+    tournament_ids: list[TournamentID],
+) -> list[TournamentOrga]:
+    """Load assignments in stable order with one query."""
+    if not tournament_ids:
+        return []
+    entities = db.session.scalars(
+        select(DbTournamentOrga)
+        .where(DbTournamentOrga.tournament_id.in_(tournament_ids))
+        .order_by(DbTournamentOrga.assigned_at, DbTournamentOrga.id)
+    ).all()
+    return [_db_entity_to_orga(entity) for entity in entities]
 
 
 def delete_orga(orga_id: TournamentOrgaID) -> None:

@@ -6,6 +6,7 @@
 {% set page_title = _('Add participant') %}
 
 {% block before_body %}
+{{ super() }}
 {{ render_backlink(url_for('.participants_for_tournament', tournament_id=tournament.id), _('Participants')) }}
 {%- endblock %}
 

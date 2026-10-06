@@ -113,9 +113,11 @@
   {% include 'lan_tournament/_category_filter.html' %}
 
   {%- if tournaments %}
-  <h2>{{ _('Tournaments') }} {{ render_extra_in_heading(tournaments|length) }}</h2>
+  <h2>{{ _('Tournaments') }} {{ render_extra_in_heading(filtered_count) }}</h2>
+  {% if not filtered_count %}{% include 'lan_tournament/_category_empty.html' %}{% endif %}
   {%- for category, category_tournaments in tournament_groups.items() %}
-  <section class="block" data-tournament-category="{{ category.value }}" data-tournament-count="{{ category_tournaments|length }}">
+  {%- if category_tournaments %}
+  <section class="block" data-tournament-category="{{ category.value }}" data-tournament-count="{{ category_tournaments|length }}"{% if category_filter and category != category_filter %} hidden{% endif %}>
   <h3>{{ category.label }} {{ render_extra_in_heading(category_tournaments|length) }}</h3>
   <table class="itemlist is-vcentered is-wide">
     <thead>
@@ -178,6 +180,7 @@
     </tbody>
   </table>
   </section>
+  {%- endif %}
   {%- endfor %}
   {%- else %}
   <div class="box no-data-message">

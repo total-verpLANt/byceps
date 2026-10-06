@@ -1,0 +1,4 @@
+<p class="no-data-message" data-tournament-filter-empty>
+  {{ _('No tournaments match these filters.') }}
+  <a href="{{ url_for(category_filter_endpoint, category='ALL', **category_filter_args) }}">{{ _('All categories') }}</a>
+</p>

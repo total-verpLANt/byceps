@@ -1,0 +1,52 @@
+{% from 'macros/seating.html' import render_seat_link %}
+
+{% macro profile(user) -%}
+  {% if user and user.id in contact_users_by_id %}<a href="{{ url_for('user_profile.view', user_id=user.id) }}">{{ user.screen_name or _('Unknown') }}</a>
+  {% else %}{{ user.screen_name if user and user.screen_name else _('Unknown') }}{% endif %}
+{%- endmacro %}
+
+{% macro seat_links(user_seats) -%}
+  <span class="personal-seat-links">{% for seat in user_seats %}{{ render_seat_link(seat) }}{% endfor %}</span>
+{%- endmacro %}
+
+{% macro seats(user_id) -%}
+  {% set user_seats = seats_by_user_id.get(user_id, []) %}
+  {% if user_seats %}
+    <span class="personal-seats">{{ ngettext('Seat', 'Seats', user_seats|length) }}: {{ seat_links(user_seats) }}</span>
+  {% else %}<span class="personal-contact-fallback">{{ _('No seat specified') }}</span>{% endif %}
+{%- endmacro %}
+
+{% macro opponent(side) -%}
+  {% set team = teams_by_id.get(side.team_id) if side.team_id else none %}
+  {% set user = participants_by_id.get(side.participant_id) if side.participant_id else none %}
+  <div class="personal-opponent">
+    {% if team %}
+      <div>{{ _('Opponent') }}: {% if team.removed_at is none %}<a href="{{ url_for('lan_tournament.view_team', team_id=team.id) }}">{{ team.name }}</a>{% else %}{{ team.name }}{% endif %}</div>
+      {% set captain = contact_users_by_id.get(team.captain_user_id) if team.removed_at is none else none %}
+      {% if captain %}<div class="personal-captain">{{ _('Captain') }}: {{ profile(captain) }} · {{ seats(captain.id) }}</div>
+      {% else %}<div class="personal-contact-fallback">{{ _('No captain available') }}</div>{% endif %}
+    {% else %}
+      <div>{{ _('Opponent') }}: {{ profile(user) }}</div>
+      {% if user and user.id in contact_users_by_id %}<div>{{ seats(user.id) }}</div>{% endif %}
+    {% endif %}
+  </div>
+{%- endmacro %}
+
+{% macro orgas(tournament) -%}
+  {% set assigned = orgas_by_tournament.get(tournament.id, []) %}
+  {% if assigned %}
+  <div class="personal-orgas">
+    {% for orga in assigned %}
+    {% set user_seats = seats_by_user_id.get(orga.user.id, []) %}
+    <div class="personal-orga">
+      <span class="personal-orga-name"><strong>{{ _('Tournament orga') }}:</strong> {{ profile(orga.user) }}</span>
+      {% if user_seats %}
+      <span class="personal-seat-label">{{ ngettext('Seat', 'Seats', user_seats|length) }}:</span>
+      {{ seat_links(user_seats) }}
+      {% else %}<span class="personal-contact-fallback">{{ _('Ask the tournament orga') }}</span>{% endif %}
+      {% if orga.duties %}<span class="personal-orga-duties">({{ orga.duties }})</span>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+{%- endmacro %}

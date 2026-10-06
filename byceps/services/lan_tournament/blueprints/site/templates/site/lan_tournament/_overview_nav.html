@@ -1,0 +1,26 @@
+{% set mode = overview_mode|default('all') %}
+{% set category_filter_endpoint = '.my_tournaments' if mode == 'personal' else '.supervised_tournaments' if mode == 'supervised' else '.index' %}
+<div class="tournament-overview-controls block">
+  <div class="tournament-overview-toolbar">
+    <nav class="button-row tournament-overview-nav" aria-label="{{ _('Tournaments') }}">
+      <a class="button {{ 'color-primary' if mode == 'all' else 'is-outlined' }}" href="{{ url_for('.index') }}"{% if mode == 'all' %} aria-current="page"{% endif %}>{{ _('All tournaments') }}</a>
+      {% if g.user.authenticated %}
+      <a class="button {{ 'color-primary' if mode == 'personal' else 'is-outlined' }}" href="{{ url_for('.my_tournaments') }}"{% if mode == 'personal' %} aria-current="page"{% endif %}>{{ _('My tournaments') }}</a>
+      {% if has_orga_assignments %}
+      <a class="button {{ 'color-primary' if mode == 'supervised' else 'is-outlined' }}" href="{{ url_for('.supervised_tournaments', assignment='mine') }}"{% if mode == 'supervised' %} aria-current="page"{% endif %}>{{ _('Tournaments I supervise') }}</a>
+      {% endif %}
+      {% endif %}
+    </nav>
+    {% if g.user.authenticated %}
+    <div class="button-row tournament-overview-actions">
+      <a class="button is-outlined" href="{{ url_for('.my_requests') }}">{{ _('My tournament requests') }}</a>
+      <a class="button is-outlined" href="{{ url_for('.propose_form') }}">{{ render_icon('add') }} {{ _('Propose a tournament') }}</a>
+      {%- if may_view_orga_dashboard|default(false) %}
+      <a class="button color-primary" href="{{ url_for('.orga_dashboard') }}">{{ _('Orga dashboard') }}</a>
+      {%- endif %}
+    </div>
+    {% endif %}
+  </div>
+  {% set category_filter_dropdown = true %}
+  {% include 'lan_tournament/_category_filter.html' %}
+</div>

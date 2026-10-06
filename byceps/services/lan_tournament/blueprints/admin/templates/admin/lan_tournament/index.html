@@ -3,8 +3,9 @@
 {% from 'macros/icons.html' import render_icon %}
 {% from 'macros/misc.html' import render_tag %}
 {% set current_page_party = party %}
-{% set current_tab = 'tournaments' %}
-{% set page_title = [_('LAN Tournaments'), party.title] %}
+{% set current_tab = 'supervised' if assignment_filter == 'mine' else 'tournaments' %}
+{% set heading = _('Tournaments I supervise') if assignment_filter == 'mine' else _('LAN Tournaments') %}
+{% set page_title = [heading, party.title] %}
 
 {% block head %}
   <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_sort.css') }}">
@@ -15,7 +16,7 @@
 
   <div class="row row--space-between block">
     <div>
-      <h1 class="title">{{ _('LAN Tournaments') }} {{ render_extra_in_heading(tournaments|length) }}</h1>
+      <h1 class="title">{{ heading }} {{ render_extra_in_heading(filtered_count) }}</h1>
     </div>
     <div>
       {%- if g.user.has_permission('lan_tournament.create') %}
@@ -28,14 +29,17 @@
 
   {% include 'lan_tournament/_category_filter.html' %}
 
+  {% if not filtered_count and total_count %}{% include 'lan_tournament/_category_empty.html' %}{% endif %}
+
   {%- if tournaments %}
   {%- for category, category_tournaments in tournament_groups.items() %}
-  <section class="block" data-tournament-category="{{ category.value }}" data-tournament-count="{{ category_tournaments|length }}">
+  {%- if category_tournaments %}
+  <section class="block" data-tournament-category="{{ category.value }}" data-tournament-count="{{ category_tournaments|length }}"{% if category_filter|default(none) and (category != category_filter or not category_tournaments) %} hidden{% endif %}>
   <h2>{{ category.label }} {{ render_extra_in_heading(category_tournaments|length) }}</h2>
   <table class="itemlist is-vcentered is-wide">
     <thead>
       <tr>
-        {%- if g.user.has_permission('lan_tournament.update') %}
+        {%- if g.user.has_permission('lan_tournament.update') and assignment_filter|default('all') == 'all' %}
         <th></th>
         {%- endif %}
         <th>{{ _('Name') }}</th>
@@ -50,7 +54,7 @@
     <tbody data-tournament-group="{{ category.value }}">
     {%- for tournament in category_tournaments %}
       <tr data-tournament-id="{{ tournament.id }}">
-        {%- if g.user.has_permission('lan_tournament.update') %}
+        {%- if g.user.has_permission('lan_tournament.update') and assignment_filter|default('all') == 'all' %}
         <td class="drag-handle">&#9776;</td>
         {%- endif %}
         <td>
@@ -106,21 +110,22 @@
         </td>
       </tr>
     {%- else %}
-      <tr><td colspan="{{ 8 if g.user.has_permission('lan_tournament.update') else 7 }}" class="no-data-message">{{ _('No tournaments exist.') }}</td></tr>
+      <tr><td colspan="{{ 8 if g.user.has_permission('lan_tournament.update') and assignment_filter|default('all') == 'all' else 7 }}" class="no-data-message">{{ _('No tournaments exist.') }}</td></tr>
     {%- endfor %}
     </tbody>
   </table>
   </section>
+  {%- endif %}
   {%- endfor %}
   {%- else %}
-  <div class="box no-data-message">{{ _('No tournaments exist.') }}</div>
+  <div class="box no-data-message">{{ _('No tournaments are assigned to you at this party.') if assignment_filter == 'mine' else _('No tournaments exist.') }}</div>
   {%- endif %}
 
 {%- endblock %}
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='behavior/lan_tournament_category_filter.js') }}" defer></script>
-{%- if tournaments and g.user.has_permission('lan_tournament.update') %}
+{%- if tournaments and g.user.has_permission('lan_tournament.update') and assignment_filter|default('all') == 'all' %}
 <script src="{{ url_for('static', filename='behavior/sortable.min.js') }}"></script>
 <script src="{{ url_for('static', filename='behavior/lan_tournament_sort.js') }}" data-sort-url="{{ url_for('.sort_tournaments', party_id=party.id) }}"></script>
 {%- endif %}

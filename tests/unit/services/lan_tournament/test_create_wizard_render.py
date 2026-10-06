@@ -77,6 +77,7 @@ _URLS = {
 
 # The `before_body` block: F-17's back link target and text, drafted style.
 _BEFORE_BODY = """{% block before_body %}
+{{ super() }}
 {% if source_request %}
 <a class="lt-wiz-backlink" href="{{ url_for('.view_request', request_id=source_request.id) }}">← {{ _('Tournament request #%(number)s', number='%04d'|format(source_request.number)) }}</a>
 {% else %}

@@ -70,6 +70,7 @@ def render(backend, request, monkeypatch):  # noqa: F811 -- imported fixture
         Navigation=Navigation,
         get_flashed_messages=get_flashed_messages,
         lan_tournament_pending_request_count=lambda _: 0,
+        lan_tournament_has_orga_assignments=lambda _: False,
     )
     env.filters.update(
         dim=dim,

@@ -1,0 +1,22 @@
+{% extends 'layout/base.html' %}
+{% set current_page = 'tournaments' %}
+{% set page_title = _('My tournaments') if overview_mode == 'personal' else _('Tournaments I supervise') %}
+
+{% block head %}
+  {% include 'site/lan_tournament/_bote_tournament_style.html' %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_category_filter.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_personal.css') }}">
+{% endblock %}
+
+{% block body %}
+<div class="bote-page tournament-page personal-tournaments">
+  <div class="page-folio"><span class="pf-ressort">{{ _('Tournaments') }} · {{ g.party.title }}</span><span>{{ page_title }}</span></div>
+  <header class="page-head"><h1 class="ph-title">{{ page_title }}</h1></header>
+  {% include 'site/lan_tournament/_personal_overview.html' %}
+</div>
+{%- endblock %}
+
+{% block scripts %}
+  {{ super() }}
+  <script src="{{ url_for('static', filename='behavior/lan_tournament_category_filter.js') }}" defer></script>
+{% endblock %}

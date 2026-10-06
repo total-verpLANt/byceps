@@ -1,0 +1,174 @@
+{% from 'macros/misc.html' import render_tag %}
+{% from 'macros/icons.html' import render_icon %}
+{% from 'site/lan_tournament/_personal_contacts.html' import opponent, orgas with context %}
+{% include 'site/lan_tournament/_overview_nav.html' %}
+{% set category_filter_endpoint = '.my_tournaments' if overview_mode == 'personal' else '.supervised_tournaments' %}
+{% if overview_mode == 'supervised' and can_view_all %}
+<nav class="button-row personal-assignment block" aria-label="{{ _('Orga assignment') }}">
+  <a class="button {{ 'color-primary' if assignment_filter == 'mine' else 'is-outlined' }}" href="{{ url_for('.supervised_tournaments', assignment='mine', category=category_filter.value if category_filter else 'ALL') }}"{% if assignment_filter == 'mine' %} aria-current="true"{% endif %}>{{ _('Assigned to me as orga') }}</a>
+  <a class="button {{ 'color-primary' if assignment_filter == 'all' else 'is-outlined' }}" href="{{ url_for('.supervised_tournaments', assignment='all', category=category_filter.value if category_filter else 'ALL') }}"{% if assignment_filter == 'all' %} aria-current="true"{% endif %}>{{ _('All tournaments') }}</a>
+</nav>
+{% endif %}
+
+{% macro contact_footer(tournament) %}
+{% if orgas_by_tournament.get(tournament.id) or tournament.start_time %}
+<footer class="personal-footer">
+  {{ orgas(tournament) }}
+  {% if tournament.start_time %}<div class="tournament-start">{{ _('Start') }}: {{ tournament.start_time|dateformat }}, {{ tournament.start_time|timeformat('short') }}</div>{% endif %}
+</footer>
+{% endif %}
+{% endmacro %}
+
+{% macro state_symbol(state) %}<span class="personal-state-symbol" aria-hidden="true">{{ {'open': '●', 'waiting': '⌛', 'confirmed': '✓', 'notice': 'ⓘ', 'neutral': '—'}[state] }}</span>{% endmacro %}
+
+{% macro tournament_header(tournament, personal_status=none, personal_state='neutral') %}
+<div class="personal-identity">
+  <div class="tournament-icon">
+    {% if tournament.image_url %}<div class="tournament-media"><img src="{{ tournament.image_url }}" alt="{{ tournament.image_alt_text or '' }}" loading="lazy"></div>
+    {% else %}{{ render_icon('trophy') }}{% endif %}
+  </div>
+  <div class="tournament-info">
+    <h3 class="tournament-name">{% if tournament.tournament_status and tournament.tournament_status.name != 'DRAFT' %}<a class="disguised" href="{{ url_for('.view', tournament_id=tournament.id) }}">{{ tournament.name }}</a>{% else %}{{ tournament.name }}{% endif %}</h3>
+    {% if tournament.game %}<div class="tournament-game">{{ tournament.game }}</div>{% endif %}
+    {{ render_tag(tournament.category.label) }}
+    {% if personal_status %}
+    {% set status_label %}{{ state_symbol(personal_state) }}{{ personal_status }}{% endset %}
+    {{ render_tag(status_label, class='personal-status personal-status--' ~ personal_state) }}
+    {% elif not tournament.tournament_status or tournament.tournament_status.name == 'DRAFT' %}{{ render_tag(_('In preparation')) }}
+    {% else %}{{ render_tag({'REGISTRATION_OPEN': _('Registration open'), 'REGISTRATION_CLOSED': _('Registration closed'), 'ONGOING': _('Ongoing'), 'PAUSED': _('Paused'), 'COMPLETED': _('Completed'), 'CANCELLED': _('Cancelled')}[tournament.tournament_status.name]) }}{% endif %}
+  </div>
+  {% if overview_mode == 'supervised' %}<div class="tournament-participants">{{ _('Registrations') }}: {{ team_counts.get(tournament.id, 0) if tournament.contestant_type and tournament.contestant_type.name == 'TEAM' else participant_counts.get(tournament.id, 0) }}</div>{% endif %}
+</div>
+{% endmacro %}
+
+{% macro format_link(tournament, leaderboard_only=false) %}
+  {% if tournament.game_format and tournament.game_format.name == 'HIGHSCORE' %}
+  <a class="button is-outlined personal-format-action" href="{{ url_for('.highscore', tournament_id=tournament.id) }}">{{ _('Leaderboard') if leaderboard_only else _('Submit a score / Leaderboard') }}</a>
+  {% else %}
+  <a class="button is-outlined personal-format-action" href="{{ url_for('.bracket', tournament_id=tournament.id) }}">{{ _('View standings') if tournament.game_format and tournament.game_format.name == 'FREE_FOR_ALL' or tournament.elimination_mode and tournament.elimination_mode.name == 'ROUND_ROBIN' else _('View Bracket') }}</a>
+  {% endif %}
+{% endmacro %}
+
+{% macro result(side) %}
+  <div class="personal-result">
+    {% if side.score is not none %}<span>{{ _('Score') }}: {{ side.score }}</span>{% endif %}
+    {% if side.placement is not none %}<span>{{ _('Placement') }}: {{ side.placement }}</span>{% endif %}
+    {% if side.points is not none %}<span>{{ _('Points') }}: {{ side.points }}</span>{% endif %}
+    {% if side.contestant_status %}<span>{{ _('Match status') }}: {{ {'FINISHED': _('Finished'), 'DNS': _('Did not start'), 'DNF': _('Did not finish'), 'DQ': _('Disqualified (match)')}[side.contestant_status.name] }}</span>{% endif %}
+  </div>
+{% endmacro %}
+
+{% macro match_list(entry, encounters) %}
+<ul class="personal-matches">
+  {% for encounter in encounters %}
+  {% set actionable = encounter.state == 'open' and entry.group.value == 'ongoing' and not entry.needs_attention %}
+  {% set state = encounter.state if encounter.state == 'confirmed' or actionable or encounter.state == 'waiting' and not entry.needs_attention else 'notice' %}
+  <li class="personal-encounter">
+    <div class="personal-match-state personal-match-state--{{ state }}">
+      {{ state_symbol(state) }}
+      {% if encounter.state == 'confirmed' %}{{ _('Confirmed') if encounter.opponents else _('DEFWIN') }}
+      {% elif encounter.state == 'open' %}{{ _('Match open') }}
+      {% else %}{{ _('Opponent pending') }}{% endif %}
+    </div>
+    <div class="personal-match-info">
+      <strong class="personal-match-label">{{ match_label(encounter.match) }}</strong>
+      <div class="personal-opponents">
+        {% for side in encounter.opponents %}{{ opponent(side) }}{% else %}<div>{{ _('DEFWIN') if encounter.state == 'confirmed' else _('Opponent pending') }}</div>{% endfor %}
+      </div>
+      {{ result(encounter.own_side) }}
+    </div>
+    <div class="personal-match-actions">
+      <a class="button {{ 'color-primary' if actionable else 'is-outlined' }}" href="{{ url_for('.view_match', match_id=encounter.match.id) }}">{{ _('Go to match') if actionable else _('View details') }} {{ render_icon('arrow-right') }}</a>
+    </div>
+  </li>
+  {% endfor %}
+</ul>
+{% endmacro %}
+
+{% if overview_mode == 'personal' %}
+  {% set ns = namespace(shown=0) %}
+  {% for group, group_entries in personal_groups.items() %}
+  {% if group_entries %}
+  <section class="block" data-personal-group="{{ group.value }}">
+    <h2>{{ group.label }} <small>({{ group_entries|length }})</small></h2>
+    <div class="tournament-list personal-list">
+    {% for entry in group_entries %}
+      {% set ns.shown = ns.shown + 1 %}
+      {% set tournament = entry.tournament %}
+      <article class="tournament-card personal-card personal-card--{{ group.value }}" data-personal-tournament="{{ tournament.id }}">
+        <div class="personal-card-body">
+        <div>
+        {{ tournament_header(tournament, entry.status, entry.state) }}
+        {% if entry.participant.team_id in teams_by_id %}
+        <div class="personal-team-note"><p>{{ _('Current team') }}: <a href="{{ url_for('.view_team', team_id=entry.participant.team_id) }}">{{ teams_by_id[entry.participant.team_id].name }}</a></p>
+        <p class="dimmed">{{ _('Team matches reflect your current team, not historical player appearances.') }}</p></div>
+        {% endif %}
+        {% if group.value == 'finished' and entry.matches %}{{ result(entry.matches[-1].own_side) }}{% endif %}
+        </div>
+        <div class="{{ 'personal-details personal-match-box' if group.value in ('ongoing', 'waiting') else 'personal-compact-actions' }}">
+          {% if tournament.game_format and tournament.game_format.name == 'HIGHSCORE' %}
+            {{ format_link(tournament, leaderboard_only=not entry.show_score_submission_prompt) }}
+          {% elif group.value == 'registered' %}{{ format_link(tournament) }}
+          {% elif entry.matches %}
+            {% if entry.ready_matches %}{{ match_list(entry, entry.ready_matches) }}{% endif %}
+            {% if entry.waiting_matches %}
+            <section class="personal-waiting-matches" aria-label="{{ _('Waiting for a match') }}">
+              <h4>{{ _('Waiting for a match') }} ({{ entry.waiting_matches|length }})</h4>
+              {{ match_list(entry, entry.waiting_matches) }}
+            </section>
+            {% endif %}
+            {% if entry.confirmed_matches %}
+            <details class="personal-match-details"><summary>{{ _('Match history') }} ({{ entry.confirmed_matches|length }})</summary>
+              {{ match_list(entry, entry.confirmed_matches) }}
+            </details>
+            {% endif %}
+            {{ format_link(tournament) }}
+          {% else %}
+            {% if group.value == 'waiting' and not entry.needs_attention %}<p>{{ _('No own matches scheduled yet.') }}</p>{% endif %}
+            {{ format_link(tournament) }}
+          {% endif %}
+        </div>
+        </div>
+        {{ contact_footer(tournament) }}
+      </article>
+    {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+  {% endfor %}
+  {% if not ns.shown %}
+    {% if total_count %}{% include 'lan_tournament/_category_empty.html' %}
+    {% else %}<p class="no-data-message">{{ _('You are not participating in any tournaments at this party.') }}</p>{% endif %}
+  {% endif %}
+{% else %}
+  {% for category, category_tournaments in tournament_groups.items() %}
+  {% if category_tournaments %}
+  <section class="block" data-tournament-category="{{ category.value }}">
+    <h2>{{ category.label }} <small>({{ category_tournaments|length }})</small></h2>
+    <div class="tournament-list personal-list">
+    {% for tournament in category_tournaments %}
+      <article class="tournament-card personal-card" data-supervised-tournament="{{ tournament.id }}">
+        <div class="personal-card-body">
+        {{ tournament_header(tournament) }}
+        <div class="button-row personal-actions">
+        {% if tournament.tournament_status and tournament.tournament_status.name != 'DRAFT' %}
+          <a class="button is-outlined" href="{{ url_for('.view', tournament_id=tournament.id) }}">{{ _('Overview') }}</a>
+          {% if tournament.game_format and tournament.game_format.name == 'HIGHSCORE' %}
+          <a class="button is-outlined" href="{{ url_for('.highscore', tournament_id=tournament.id) }}">{{ _('Leaderboard') }}</a>
+          {% else %}<a class="button is-outlined" href="{{ url_for('.matches', tournament_id=tournament.id, only='all') }}">{{ _('Matches') }}</a>{% endif %}
+        {% endif %}
+        {% if admin_url_root %}<a class="button is-outlined" href="https://{{ admin_url_root }}/lan-tournaments/tournaments/{{ tournament.id }}">{{ _('Backend overview') }}</a>{% endif %}
+        </div>
+        </div>
+        {{ contact_footer(tournament) }}
+      </article>
+    {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+  {% endfor %}
+  {% if not tournaments %}
+    {% if total_count %}{% include 'lan_tournament/_category_empty.html' %}
+    {% else %}<p class="no-data-message">{{ _('No tournaments are assigned to you at this party.') if assignment_filter == 'mine' else _('No tournaments exist.') }}</p>{% endif %}
+  {% endif %}
+{% endif %}

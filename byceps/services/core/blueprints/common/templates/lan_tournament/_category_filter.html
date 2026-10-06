@@ -1,7 +1,27 @@
-<div class="tournament-category-filter block" role="group" aria-label="{{ _('Tournament category') }}" data-tournament-filter hidden>
-  <button type="button" class="button color-primary" data-category-filter="ALL" aria-pressed="true">{{ _('All') }}</button>
-  {%- for category in tournament_groups %}
-  <button type="button" class="button is-outlined" data-category-filter="{{ category.value }}" aria-pressed="false">{{ category.label }}</button>
-  {%- endfor %}
+{% set choices = categories|default([]) %}
+{% set active_category = category_filter|default(none) %}
+{% set filter_args = category_filter_args|default({}) %}
+{% if choices %}
+{% if category_filter_dropdown|default(false) %}
+<div class="tournament-category-filter tournament-category-filter--dropdown">
+  <span class="tournament-category-filter-icon" aria-hidden="true">{{ render_icon('filter') }}</span>
+  <span id="tournament-category-label" class="tournament-category-filter-label">{{ _('Tournament category') }}</span>
+  <details class="tournament-category-dropdown" data-category-dropdown>
+    <summary class="button is-outlined" aria-labelledby="tournament-category-label tournament-category-current"><span id="tournament-category-current">{{ active_category.label if active_category else _('All') }}</span></summary>
+    <div class="tournament-category-options">
+      <a class="button {{ 'color-primary' if not active_category else 'is-outlined' }}" href="{{ url_for(category_filter_endpoint, category='ALL', **filter_args) }}"{% if not active_category %} aria-current="true"{% endif %}>{{ _('All') }}</a>
+      {% for category in choices %}
+      <a class="button {{ 'color-primary' if active_category == category else 'is-outlined' }}" href="{{ url_for(category_filter_endpoint, category=category.value, **filter_args) }}"{% if active_category == category %} aria-current="true"{% endif %}>{{ category.label }}</a>
+      {% endfor %}
+    </div>
+  </details>
 </div>
-<p class="dimmed" data-tournament-filter-empty role="status" hidden>{{ _('No tournaments found.') }}</p>
+{% else %}
+<nav class="tournament-category-filter block" aria-label="{{ _('Tournament category') }}">
+  <a class="button {{ 'color-primary' if not active_category else 'is-outlined' }}" href="{{ url_for(category_filter_endpoint, category='ALL', **filter_args) }}"{% if not active_category %} aria-current="true"{% endif %}>{{ _('All') }}</a>
+  {% for category in choices %}
+  <a class="button {{ 'color-primary' if active_category == category else 'is-outlined' }}" href="{{ url_for(category_filter_endpoint, category=category.value, **filter_args) }}"{% if active_category == category %} aria-current="true"{% endif %}>{{ category.label }}</a>
+  {% endfor %}
+</nav>
+{% endif %}
+{% endif %}

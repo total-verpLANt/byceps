@@ -1,0 +1,117 @@
+.personal-tournaments {
+  --personal-border: color-mix(in srgb, currentColor 25%, transparent);
+  --personal-surface: color-mix(in srgb, currentColor 4%, transparent);
+  --personal-accent: currentColor;
+  --personal-open: #a32424;
+  --personal-waiting: #805b12;
+  --personal-confirmed: #27643a;
+  --personal-notice: #536575;
+  --personal-radius: 14px;
+  min-width: 0;
+}
+.lt-dark .personal-tournaments {
+  --personal-accent: var(--lt-brand-blue);
+  --personal-open: #ff9292;
+  --personal-waiting: #e4be63;
+  --personal-confirmed: #93cc9f;
+  --personal-notice: #b1bfcd;
+}
+.personal-tournaments .personal-list { display: grid; gap: 1rem; border: 0; }
+.personal-tournaments .personal-card {
+  display: block;
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--personal-border);
+  border-radius: var(--personal-radius);
+  overflow-wrap: anywhere;
+}
+.personal-tournaments .personal-card + .personal-card { margin-top: 0; }
+.personal-tournaments .personal-card:hover { transform: none; }
+.personal-tournaments .personal-card-body {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  align-items: center;
+  gap: 1.5rem;
+}
+.personal-tournaments .personal-card-body > * { min-width: 0; }
+.personal-tournaments .personal-identity { display: grid; grid-template-columns: 4.8rem minmax(0, 1fr); align-items: center; gap: 1rem; }
+.personal-tournaments .tournament-name { margin: 0; }
+.personal-tournaments .tournament-game { color: inherit; opacity: .8; margin-top: .25rem; }
+.personal-tournaments .tournament-icon { width: 4.8rem; height: 4.8rem; align-self: start; display: flex; align-items: center; justify-content: center; }
+.personal-tournaments .tournament-icon > svg { width: 2rem; height: 2rem; }
+.personal-tournaments .tournament-media { width: 100%; height: 100%; }
+.personal-tournaments .tournament-media img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.personal-tournaments .tournament-info .tag { white-space: normal; }
+.personal-tournaments .tournament-participants { grid-column: 2; font-size: .9rem; }
+.personal-tournaments .tournament-info .personal-status { display: block; width: fit-content; max-width: 100%; box-sizing: border-box; margin: .6rem 0 0; padding: .4rem .65rem; border: 1px solid currentColor; background: color-mix(in srgb, currentColor 8%, transparent); font-size: .85rem; font-weight: 700; line-height: 1.5; white-space: normal; }
+.personal-tournaments .personal-team-note { margin-top: .75rem; font-size: .85rem; }
+.personal-tournaments .personal-team-note p { margin: .25rem 0; }
+.personal-tournaments .personal-match-box { padding: 1rem; background: var(--personal-surface); border-left: 1px solid var(--personal-border); border-radius: var(--personal-radius); }
+.personal-tournaments .personal-match-box > p { margin: 0 0 .75rem; }
+.personal-tournaments .personal-matches { list-style: none; padding: 0; margin: 0; }
+.personal-tournaments .personal-encounter { display: flex; flex-wrap: wrap; gap: .75rem 1rem; align-items: center; }
+.personal-tournaments .personal-match-info { flex: 1 1 24rem; min-width: 0; }
+.personal-tournaments .personal-encounter + .personal-encounter { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--personal-border); }
+.personal-tournaments .personal-match-state { flex: 1 0 100%; padding-bottom: .6rem; border-bottom: 1px solid var(--personal-border); font-weight: 700; }
+.personal-tournaments :is(.personal-match-state--open, .personal-status--open) { color: var(--personal-open); }
+.personal-tournaments :is(.personal-match-state--waiting, .personal-status--waiting) { color: var(--personal-waiting); }
+.personal-tournaments :is(.personal-match-state--confirmed, .personal-status--confirmed) { color: var(--personal-confirmed); }
+.personal-tournaments :is(.personal-match-state--notice, .personal-status--notice) { color: var(--personal-notice); }
+.personal-tournaments .personal-state-symbol { display: inline-block; margin-right: .6rem; }
+.personal-tournaments .personal-match-label { color: inherit; }
+.personal-tournaments .personal-match-actions .button.color-primary { background: var(--personal-open); border-color: var(--personal-open); color: #fff; }
+.lt-dark .personal-tournaments .personal-match-actions .button.color-primary { color: #1c1914; }
+.personal-tournaments .personal-waiting-matches { margin-top: 1rem; padding-top: .75rem; border-top: 1px solid var(--personal-border); }
+.personal-tournaments .personal-waiting-matches:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+.personal-tournaments .personal-waiting-matches h4 { margin: 0 0 .75rem; color: var(--personal-waiting); }
+.personal-tournaments .personal-match-box > .personal-format-action { display: block; margin-top: .75rem; }
+.personal-tournaments .personal-opponents { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr)); gap: .5rem 1rem; margin-top: .4rem; }
+.personal-tournaments .personal-opponent { min-width: 0; }
+.personal-tournaments .personal-captain, .personal-tournaments .personal-contact-fallback { font-size: .9em; }
+.personal-tournaments .personal-match-actions { flex: 0 1 9rem; margin-left: auto; display: flex; flex-direction: column; gap: .5rem; }
+.personal-tournaments .personal-result { display: flex; flex-wrap: wrap; gap: .25rem .75rem; margin-top: .4rem; font-size: .9rem; }
+.personal-tournaments .personal-result:empty { display: none; }
+.personal-tournaments .personal-card .button { white-space: normal; text-align: center; }
+.personal-tournaments .personal-compact-actions { display: grid; gap: .5rem; justify-items: end; }
+.personal-tournaments .personal-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; margin: 0; }
+.personal-tournaments .personal-match-details { width: 100%; min-width: 0; }
+.personal-tournaments .personal-match-details summary { cursor: pointer; padding: .5rem 0; }
+.personal-tournaments .personal-match-details + .personal-format-action { display: block; margin-top: .5rem; }
+.personal-tournaments :is(summary, a):focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+.personal-tournaments .personal-footer { container-type: inline-size; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .5rem 1.5rem; border-top: 1px solid var(--personal-border); padding-top: .75rem; margin-top: .75rem; font-size: .9rem; }
+.personal-tournaments .personal-orgas { flex: 1 1 30rem; min-width: 0; display: grid; grid-template-columns: minmax(0, max-content) max-content minmax(0, 1fr) minmax(0, 2fr); gap: .5rem; align-items: center; }
+.personal-tournaments .personal-orga { display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; align-items: center; }
+.personal-tournaments .personal-orga > * { min-width: 0; }
+.personal-tournaments .personal-orga .personal-contact-fallback { grid-column: 2 / 4; }
+.personal-tournaments .personal-orga-duties { grid-column: 4; font-size: .9em; opacity: .8; }
+.personal-tournaments .personal-seats { display: inline-flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
+.personal-tournaments .personal-seat-links { display: inline-flex; flex-wrap: wrap; gap: .4rem; }
+.personal-tournaments .personal-seat-links a { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-width: 2.2rem; min-height: 2rem; padding: .1rem .4rem; border: 1px solid var(--personal-border); font-weight: 700; text-align: center; line-height: 1.3; }
+.personal-tournaments .tournament-start { color: inherit; margin: 0 0 0 auto; text-align: right; }
+.personal-assignment { display: flex; flex-wrap: wrap; gap: .5rem; }
+.personal-assignment .button { white-space: normal; }
+
+@supports not (grid-template-columns: subgrid) {
+  .personal-tournaments .personal-orga { display: contents; }
+}
+@container (max-width: 50rem) {
+  .personal-tournaments .personal-orgas { grid-template-columns: minmax(0, max-content) minmax(0, 1fr); }
+  .personal-tournaments .personal-orga-name { grid-column: 1 / -1; }
+  .personal-tournaments .personal-orga .personal-contact-fallback, .personal-tournaments .personal-orga-duties { grid-column: 1 / -1; }
+  .personal-tournaments .personal-orga + .personal-orga { margin-top: .5rem; }
+}
+
+@media (max-width: 960px) {
+  .personal-tournaments .personal-card-body { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+  .personal-tournaments .personal-match-box { border-left: 0; border-top: 1px solid var(--personal-border); }
+  .personal-tournaments .personal-compact-actions { justify-items: start; }
+  .personal-tournaments .personal-actions { justify-content: flex-start; }
+}
+@media (max-width: 560px) {
+  .personal-tournaments .personal-card { padding: .75rem; }
+  .personal-tournaments .personal-identity { grid-template-columns: 3.5rem minmax(0, 1fr); gap: .75rem; }
+  .personal-tournaments .tournament-icon { width: 3.5rem; height: 3.5rem; }
+  .personal-tournaments .personal-match-box { padding: .75rem; }
+  .personal-tournaments .personal-opponents { grid-template-columns: minmax(0, 1fr); }
+  .personal-tournaments .personal-match-actions { flex-basis: 100%; }
+}

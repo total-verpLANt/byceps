@@ -194,6 +194,55 @@
     color:var(--inkSoft); margin-top:5px;
   }
 
+  /* Shared overview controls and compact personal details. */
+  .tournament-page .tournament-overview-controls .button[aria-current],
+  .tournament-page .personal-assignment .button[aria-current]{
+    background:var(--ink); color:var(--paper); border-color:var(--ink);
+    box-shadow:3px 3px 0 var(--redDeep);
+  }
+  .tournament-page .tournament-category-dropdown summary{ border-radius:0; }
+  .tournament-page .tournament-category-options{ background:var(--paperLite); color:var(--ink); }
+  .tournament-page .personal-details{ color:var(--ink); font-family:var(--body); }
+  .tournament-page .tournament-icon{ display:flex; align-items:center; justify-content:center; }
+
+  /* Personal dashboard: paper contours, serif identity, mono match register. */
+  .tournament-page.personal-tournaments{
+    --personal-border:var(--inkMute); --personal-surface:var(--paperLite);
+    --personal-accent:var(--redDeep); --personal-radius:0;
+    --personal-open:var(--redDeep); --personal-waiting:#75500e;
+    --personal-confirmed:var(--green); --personal-notice:var(--inkSoft);
+    color:var(--ink);
+  }
+  html[data-theme="dark"] .tournament-page.personal-tournaments{
+    --personal-open:color-mix(in srgb,var(--redDeep) 85%,var(--ink));
+    --personal-waiting:#d6a948;
+  }
+  .tournament-page.personal-tournaments .personal-card{ display:block; padding:clamp(14px,2vw,24px); border:1px solid var(--inkMute); background:transparent; }
+  .tournament-page.personal-tournaments .personal-list{ border:0; margin-top:18px; }
+  .tournament-page.personal-tournaments section > h2{ font-family:var(--display); font-size:clamp(24px,2.6vw,34px); border-bottom:2px solid var(--ink); padding-bottom:8px; }
+  .tournament-page.personal-tournaments .personal-card--ongoing .tournament-name{ font-size:clamp(26px,3vw,40px); }
+  .tournament-page.personal-tournaments .personal-match-box{ font-family:var(--body); border:1px solid color-mix(in srgb,var(--ink) 15%,transparent); padding:clamp(14px,1.8vw,24px); }
+  .tournament-page.personal-tournaments .personal-match-state{ font-family:var(--mono); font-size:12px; letter-spacing:.12em; text-transform:uppercase; }
+  .tournament-page.personal-tournaments .personal-match-label{ font-size:20px; }
+  .tournament-page.personal-tournaments .personal-opponent{ font-size:18px; line-height:1.4; }
+  .tournament-page.personal-tournaments .tournament-info .personal-status{
+    font-family:var(--mono); font-size:12px; letter-spacing:.06em; text-transform:uppercase;
+    padding:7px 10px; border:1.5px solid currentColor; border-radius:0;
+    background:var(--paperLite); color:var(--personal-notice);
+  }
+  .tournament-page.personal-tournaments .tournament-info .personal-status--open{ color:var(--personal-open); }
+  .tournament-page.personal-tournaments .tournament-info .personal-status--waiting{ color:var(--personal-waiting); }
+  .tournament-page.personal-tournaments .tournament-info .personal-status--confirmed{ color:var(--personal-confirmed); }
+  .tournament-page.personal-tournaments .tournament-info .personal-status--neutral{ color:var(--ink); }
+  .tournament-page.personal-tournaments .personal-footer{ color:var(--ink); font-family:var(--body); font-size:16px; }
+  .tournament-page.personal-tournaments .personal-match-actions .button.color-primary{ background:var(--personal-open); border-color:var(--personal-open); color:var(--paperLite); }
+  html[data-theme="dark"] .tournament-page.personal-tournaments .personal-match-actions .button.color-primary{ color:var(--paperDark); }
+  .tournament-page.personal-tournaments .personal-footer strong{ font-family:var(--mono); font-size:11px; font-weight:400; text-transform:uppercase; letter-spacing:.08em; }
+  .tournament-page.personal-tournaments .personal-seat-links a{ font-family:var(--mono); text-decoration:none; }
+  .tournament-page .tournament-category-filter--dropdown{ color:var(--ink); }
+  .tournament-page .tournament-category-dropdown summary{ font-family:var(--mono); text-transform:uppercase; letter-spacing:.08em; }
+  .tournament-page .tournament-category-filter-icon .icon{ fill:none; stroke:currentColor; stroke-width:20px; }
+
   /* =====================================================================
      RESPONSIVE
      ===================================================================== */

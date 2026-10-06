@@ -256,6 +256,11 @@ from byceps.services.lan_tournament.tournament_dashboard_settings_service import
 )
 from byceps.services.more.blueprints.admin import item_service
 from byceps.services.more.blueprints.admin.item_service import MoreItem
+from byceps.services.lan_tournament.tournament_overview_filters import (
+    available_categories,
+    parse_assignment,
+    parse_category,
+)
 
 from .forms import (
     AddParticipantForm,
@@ -311,6 +316,10 @@ if not getattr(item_service.get_party_items, '_lan_tournament_patched', False):
 def overview(party_id):
     """Show tournament overview dashboard for a party."""
     party = _get_party_or_404(party_id)
+    try:
+        category_filter = parse_category(request.args.get('category', 'ALL'))
+    except ValueError:
+        abort(400)
     tournaments = tournament_service.get_tournaments_for_party(party.id)
     participant_counts = (
         tournament_service.get_participant_counts_for_tournaments(
@@ -331,6 +340,15 @@ def overview(party_id):
         'stats': stats,
         'participant_counts': participant_counts,
         'email_templates_configured': email_templates_configured,
+        'categories': available_categories(tournaments),
+        'category_filter': category_filter,
+        'category_filter_endpoint': '.overview',
+        'category_filter_args': {'party_id': party.id},
+        'filtered_count': sum(
+            1
+            for t in tournaments
+            if category_filter is None or t.category == category_filter
+        ),
     }
 
 
@@ -343,6 +361,20 @@ def index(party_id):
 
     tournaments = tournament_service.get_tournaments_for_party(party.id)
 
+    try:
+        assignment_filter = parse_assignment(
+            request.args.get('assignment', 'all')
+        )
+        category_filter = parse_category(request.args.get('category', 'ALL'))
+    except ValueError:
+        abort(400)
+    if assignment_filter == 'mine':
+        assigned_ids = tournament_orga_service.get_tournament_ids_for_orga(
+            g.user.id
+        )
+        tournaments = [t for t in tournaments if t.id in assigned_ids]
+
+    total_count = len(tournaments)
     tournament_ids = [t.id for t in tournaments]
     participant_counts = tournament_service.get_participant_counts_for_tournaments(tournament_ids)
     team_counts = tournament_team_service.get_team_counts_for_tournaments(tournament_ids)
@@ -354,6 +386,20 @@ def index(party_id):
         'participant_counts': participant_counts,
         'team_counts': team_counts,
         'elimination_mode_labels': _build_elimination_mode_labels(),
+        'assignment_filter': assignment_filter,
+        'categories': available_categories(tournaments),
+        'category_filter_endpoint': '.index',
+        'category_filter_args': {
+            'party_id': party.id,
+            'assignment': assignment_filter,
+        },
+        'category_filter': category_filter,
+        'total_count': total_count,
+        'filtered_count': sum(
+            1
+            for t in tournaments
+            if category_filter is None or t.category == category_filter
+        ),
     }
 
 
@@ -1425,6 +1471,19 @@ def _build_elimination_mode_labels() -> dict:
         mode: str(label)
         for mode, label in _REQUEST_ELIMINATION_MODE_LABELS.items()
     }
+
+
+@blueprint.app_template_global('lan_tournament_has_orga_assignments')
+def _has_orga_assignments_for_nav(party_id) -> bool:
+    if not g.user.has_permission('lan_tournament.view'):
+        return False
+    cache = request.environ.setdefault('byceps.lan_tournament_orga_nav', {})
+    key = (party_id, g.user.id)
+    if key not in cache:
+        cache[key] = tournament_orga_service.has_orga_assignments_for_party(
+            PartyID(party_id), g.user.id
+        )
+    return cache[key]
 
 
 @blueprint.app_template_global('lan_tournament_pending_request_count')

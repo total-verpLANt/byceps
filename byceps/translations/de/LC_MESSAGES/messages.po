@@ -18,6 +18,153 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
 
+msgid "My tournaments"
+msgstr "Meine Turniere"
+
+msgid "Up now"
+msgstr "Jetzt dran"
+
+msgid "Waiting for a match"
+msgstr "Wartet auf Begegnung"
+
+msgid "View details"
+msgstr "Details ansehen"
+
+msgid "Tournament orga"
+msgstr "Turnier-Orga"
+
+msgid "Ask the tournament orga"
+msgstr "Bei der Turnier-Orga nachfragen"
+
+msgid "No tournament orga assigned"
+msgstr "Keine Turnier-Orga zugewiesen"
+
+msgid "No seat specified"
+msgstr "Kein Sitzplatz angegeben"
+
+msgid "No captain available"
+msgstr "Kein Kapitän verfügbar"
+
+msgid "Opponent"
+msgstr "Gegner"
+
+msgid "Match open"
+msgstr "Match offen"
+
+msgid "Go to match"
+msgstr "Zum Match"
+
+msgid "View standings"
+msgstr "Rangliste anzeigen"
+
+msgid "Match history"
+msgstr "Matchhistorie"
+
+msgid "Tournaments I supervise"
+msgstr "Betreute Turniere"
+
+msgid "All categories"
+msgstr "Alle Kategorien"
+
+msgid "Completed / Eliminated"
+msgstr "Abgeschlossen / Ausgeschieden"
+
+msgid "All tournaments"
+msgstr "Alle Turniere"
+
+msgid "Assigned to me as orga"
+msgstr "Mir als Orga zugewiesen"
+
+msgid "Orga assignment"
+msgstr "Orga-Zuweisung"
+
+msgid "Backend overview"
+msgstr "Backendübersicht"
+
+msgid "Responsible orgas"
+msgstr "Verantwortliche Orgas"
+
+msgid "No orga assigned."
+msgstr "Keine Orga zugewiesen."
+
+msgid "Current team"
+msgstr "Aktuelles Team"
+
+msgid "No current team"
+msgstr "Kein aktuelles Team"
+
+msgid "Team matches reflect your current team, not historical player appearances."
+msgstr "Die Teambegegnungen beziehen sich auf dein aktuelles Team, nicht auf frühere Spielereinsätze."
+
+msgid "Submit a score"
+msgstr "Ergebnis einreichen"
+
+msgid "Submit a score / Leaderboard"
+msgstr "Ergebnis einreichen / Rangliste"
+
+msgid "Waiting for the tournament orga to complete the tournament"
+msgstr "Warten auf Abschluss durch die Turnier-Orga"
+
+msgid "All own matches completed"
+msgstr "Alle eigenen Begegnungen abgeschlossen"
+
+msgid "Open matches"
+msgstr "Offene Begegnungen"
+
+msgid "Match occupied"
+msgstr "Partie besetzt"
+
+msgid "Opponent pending"
+msgstr "Gegner steht noch nicht fest"
+
+msgid "Opponents"
+msgstr "Gegner"
+
+msgid "Match status"
+msgstr "Partiestatus"
+
+msgid "Finished"
+msgstr "Beendet"
+
+msgid "Did not start"
+msgstr "Nicht angetreten"
+
+msgid "Did not finish"
+msgstr "Nicht beendet"
+
+msgid "Disqualified (match)"
+msgstr "Disqualifiziert (Partie)"
+
+msgid "Participation needs review"
+msgstr "Teilnahmestatus muss geprüft werden"
+
+msgid "Tournament completed with an open third-place match"
+msgstr "Turnier abgeschlossen, aber Spiel um Platz 3 noch offen"
+
+msgid "Waiting for an opponent"
+msgstr "Wartet auf einen Gegner"
+
+msgid "Waiting for matches"
+msgstr "Wartet auf Begegnungen"
+
+msgid "Waiting for round advancement"
+msgstr "Wartet auf Rundenfortschritt"
+
+msgid "Advancement cutoff tied"
+msgstr "Gleichstand an der Weiterkommensgrenze"
+
+msgid "No own matches scheduled yet."
+msgstr "Noch keine eigenen Begegnungen angesetzt."
+
+msgid "No tournaments are assigned to you at this party."
+msgstr "Dir sind bei dieser Veranstaltung keine Turniere zugewiesen."
+
+msgid "No tournaments match these filters."
+msgstr "Keine Turniere passen zu diesen Filtern."
+
+msgid "You are not participating in any tournaments at this party."
+msgstr "Du nimmst bei dieser Veranstaltung an keinem Turnier teil."
+
 msgid "A correction reason is required."
 msgstr "Eine Begründung für die Korrektur ist erforderlich."
 
