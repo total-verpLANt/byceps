@@ -31,6 +31,7 @@ from byceps.services.lan_tournament.models.elimination_mode import (
 )
 from byceps.services.lan_tournament.models.game_format import GameFormat
 from byceps.services.party.models import PartyID
+from byceps.services.site import site_service
 from byceps.services.site.models import Site, SiteID
 from byceps.services.ticketing import ticket_creation_service
 from byceps.services.user.models import User
@@ -229,15 +230,48 @@ def party(make_party, brand):
     )
 
 
-@pytest.fixture(scope='module')
-def site(party) -> Site:
-    """`totalverplant-36`: the real on-disk `template_overrides` id."""
-    return create_site(
-        SITE_ID,
-        party.brand_id,
-        server_name='lt-design-conformance.test',
-        party_id=party.id,
+def _bound_to(site: Site, party_id: PartyID | None) -> Site:
+    """Bind the site to that party, keeping every other field."""
+    return site_service.update_site(
+        site.id,
+        site.title,
+        site.server_name,
+        party_id,
+        site.enabled,
+        site.user_account_creation_enabled,
+        site.login_enabled,
+        site.board_id,
+        site.storefront_id,
+        site.is_intranet,
+        site.check_in_on_login,
+        site.archived,
     )
+
+
+@pytest.fixture(scope='module')
+def site(party) -> Iterator[Site]:
+    """`totalverplant-36`: the real on-disk `template_overrides` id.
+
+    The id exists once per database, so a module that found the site
+    of another one binds it to its own party and gives it back.
+    """
+    previous = site_service.find_site(SITE_ID)
+    if previous is None:
+        site = create_site(
+            SITE_ID,
+            party.brand_id,
+            server_name='lt-design-conformance.test',
+            party_id=party.id,
+        )
+    else:
+        site = _bound_to(previous, party.id)
+
+    yield site
+
+    if previous is None:
+        site_service.delete_site(SITE_ID)
+    else:
+        _bound_to(previous, previous.party_id)
 
 
 @pytest.fixture(scope='session')

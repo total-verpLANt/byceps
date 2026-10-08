@@ -1,0 +1,231 @@
+{#- Canonical rows of the orga dashboard, shared by the admin and the site.
+
+    Read only sanitized data: a `dashboard` context from
+    `build_dashboard_context`, never a DTO, a match or an ID of its own.
+    Every text arrives final and localized; nothing here translates.
+
+      {% from 'common/lan_tournament/_dashboard_rows.html' import render_rows %}
+      {{ render_rows(dashboard, 'count-heading-id', action) }}
+
+    `action` is the refusal of a native POST (or `None`): it shows next to
+    the pin and in the form of the row it names, and nowhere else.
+
+    The classes are `ltd-*` (modifiers `t-*`, `s-*`, `rs-*`, `is-*` and `pri`
+    sit under `.lt-dashboard`). The attributes named `data-*` are empty hooks
+    for the script and carry no information. Without a script the form of
+    every offered row is open under the row; the controls that only a script
+    can use (`data-ack-open`, `data-ack-cancel`) are `hidden` until it runs.
+-#}
+
+{% macro render_rows(dashboard, labelled_by, action=None) -%}
+{%- if dashboard.rows -%}
+<ol class="ltd-rows" aria-labelledby="{{ labelled_by }}">
+{%- for row in dashboard.rows %}
+{{ render_row(row, dashboard.labels, action) }}
+{%- endfor %}
+</ol>
+{%- endif -%}
+{%- endmacro %}
+
+
+{% macro render_row(row, labels, action=None) -%}
+<li class="ltd-row" id="{{ row.id }}">
+<article aria-labelledby="{{ row.heading_id }}">
+{{ _tier_cell(row.tier) }}
+<div class="ltd-main">
+<p class="ltd-ctx"><a href="{{ row.tournament.url }}">{{ row.tournament.name }}</a><span>{% if row.game %}{{ row.game }}{% else %}<span class="ltd-na">{{ row.game_label }}</span>{% endif %}</span><span>{{ row.format_label }}</span></p>
+{{ _matchup(row) }}
+<p class="ltd-loc">{{ row.location }}</p>
+<p class="ltd-orgas"><span class="ltd-k">{{ labels.orgas }}</span> {% if row.orgas.text %}{{ row.orgas.text }}{% else %}<span class="ltd-na">{{ labels.no_orga }}</span>{% endif %}</p>
+{{ _ready(row.ready, labels) }}
+{{ _signals(row.signals) }}
+{%- for block in row.conflicts %}
+{{ _conflict(block, labels) }}
+{%- endfor %}
+{%- if row.note %}
+<p class="ltd-note">{{ row.note }}</p>
+{%- endif %}
+</div>
+{{ _times(row.times) }}
+{{ _actions(row, labels, action) }}
+{{ _ack_band(row, labels, action) }}
+</article>
+</li>
+{%- endmacro %}
+
+
+{% macro _tier_cell(tier) -%}
+<div class="ltd-tier t-{{ tier.kind }}"><span class="ltd-ti" aria-hidden="true">{{ tier.icon }}</span><span class="ltd-tn">{{ tier.name }}</span><span class="ltd-tv">{% if tier.value %}<b>{{ tier.value }}</b> {% endif %}{{ tier.caption }}</span></div>
+{%- endmacro %}
+
+
+{% macro _side(side) -%}
+<span class="ltd-sn{% if side.is_open %} is-open{% endif %}">{{ side.text }}</span>
+{%- endmacro %}
+
+
+{% macro _matchup(row) -%}
+{%- set matchup = row.matchup -%}
+{%- if matchup.kind == 'lobby' -%}
+<h3 id="{{ row.heading_id }}"><a href="{{ row.match_url }}" class="ltd-mlink">{{ matchup.title }}</a></h3>
+<ul class="ltd-lobby" aria-label="{{ matchup.participants_label }}">{% for name in matchup.participants %}<li>{{ name }}</li>{% endfor %}</ul>
+{%- else -%}
+<h3 id="{{ row.heading_id }}"><a href="{{ row.match_url }}" class="ltd-mlink">{{ _side(matchup.side_a) }} <span class="ltd-vs">{{ matchup.versus }}</span> {{ _side(matchup.side_b) }}</a></h3>
+{%- endif -%}
+{%- endmacro %}
+
+
+{% macro _ready(ready, labels) -%}
+{%- if ready is none -%}
+{%- elif not ready.available -%}
+<p class="ltd-ready"><span class="ltd-k">{{ labels.readiness }}</span> <span class="ltd-na">{{ ready.unavailable_text }}</span></p>
+{%- else -%}
+<p class="ltd-ready"><span class="ltd-k">{{ labels.readiness }}</span> <b class="ltd-rs rs-{{ ready.level }}">{{ ready.summary }}</b>
+{%- for side in ready.sides -%}
+<span class="ltd-rd{% if side.ready %} is-on{% endif %}"><i aria-hidden="true">{{ '✓' if side.ready else '○' }}</i>{{ side.text }}</span>
+{%- endfor -%}
+</p>
+{%- endif -%}
+{%- endmacro %}
+
+
+{% macro _signals(signals) -%}
+{%- if signals -%}
+{%- set suffixes = {
+    'pin': 'pin',
+    'conflict': 'conf',
+    'review': 'rev',
+    'review_unavailable': 'na',
+    'episode': 'ep',
+} -%}
+<p class="ltd-sigs">
+{%- for signal in signals -%}
+<span class="ltd-sig s-{{ suffixes[signal.kind] }}">{% if signal.icon %}<i aria-hidden="true">{{ signal.icon }}</i>{% endif %}{{ signal.text }}</span>
+{%- endfor -%}
+</p>
+{%- endif -%}
+{%- endmacro %}
+
+
+{#- An authorized block names its counterparts; the external block is the
+    name and one fixed sentence, whatever the hidden overlap. -#}
+{% macro _conflict(block, labels) -%}
+{%- if block.kind == 'external' -%}
+<div class="ltd-conf is-ext"><p><i aria-hidden="true">⇄</i><b>{{ block.name }}</b> {{ block.tail }}</p></div>
+{%- else -%}
+<div class="ltd-conf"><p><i aria-hidden="true">⇄</i><b>{{ block.name }}</b>{% if block.role %} {{ block.role }}{% endif %} {{ block.tail }}</p>
+<ul>
+{%- for ref in block.refs %}
+<li><span>{{ ref.text }}</span><span class="ltd-cl"><a href="{{ ref.match_url }}">{{ labels.link_match }}</a>{% if ref.list_page_url %}<a href="{{ ref.list_page_url }}">{{ ref.list_page_label }}</a>{% endif %}</span></li>
+{%- endfor %}
+</ul></div>
+{%- endif -%}
+{%- endmacro %}
+
+
+{% macro _times(times) -%}
+<dl class="ltd-times">
+{%- for item in times %}
+<div{% if item.is_key %} class="is-key"{% endif %}><dt>{{ item.label }}</dt><dd>{% if item.is_unknown %}<span class="ltd-na">{{ item.value }}</span>{% else %}{{ item.value }}{% endif %}</dd></div>
+{%- endfor %}
+</dl>
+{%- endmacro %}
+
+
+{% macro _hidden(name, value) -%}
+<input type="hidden" name="{{ name }}" value="{{ value }}">
+{%- endmacro %}
+
+
+{#- The row's own action fails next to the pin; a failed check shows in its form. -#}
+{% macro _actions(row, labels, action) -%}
+{%- set ack = row.ack -%}
+{%- set pin = row.pin -%}
+<div class="ltd-act">
+{%- if ack.offered %}
+<button type="button" class="ltd-btn pri" data-ack-open aria-expanded="{{ 'true' if ack.form.get('open') else 'false' }}" aria-controls="{{ ack.form.id }}" hidden>{{ ack.opener_label }}</button>
+{%- else %}
+<p class="ltd-why">{{ ack.unavailable_text }}</p>
+{%- endif %}
+{%- if pin.offered %}
+<form class="ltd-pin" method="post" action="{{ pin.action_url }}">
+{{ _hidden('csrf_token', pin.csrf_token) }}
+{{ _hidden('revision', pin.revision) }}
+{{ _hidden('return', pin.return_value) }}
+{{ _hidden('pinned', pin.target) }}
+<button type="submit" class="ltd-btn" data-pin>{{ pin.label }}</button>
+</form>
+{%- if action and action.kind == 'pin' and action.match_id == row.match_id %}
+<p class="ltd-err" role="alert">{{ action.message }}</p>
+{%- endif %}
+{%- endif %}
+<span class="ltd-links"><a href="{{ row.match_url }}">{{ labels.link_match }}</a><a href="{{ row.tournament.url }}">{{ labels.link_tournament }}</a></span>
+</div>
+{%- endmacro %}
+
+
+{% macro _ack_band(row, labels, action) -%}
+{%- set ack = row.ack -%}
+{%- if ack.record or ack.form -%}
+<div class="ltd-ack">
+{%- if ack.record %}
+{{ _record(ack.record, ack.history) }}
+{%- endif %}
+{%- if ack.form %}
+{{ _ack_form(row, ack.form, labels, action) }}
+{%- endif %}
+</div>
+{%- endif -%}
+{%- endmacro %}
+
+
+{#- The comment is plain text: escaped, never marked safe. -#}
+{% macro _record(record, history) -%}
+<div class="ltd-rec" id="{{ record.id }}" tabindex="-1">
+<p class="ltd-rech"><b>{{ record.text }}</b>
+{%- if record.follow -%}
+<span class="ltd-follow is-{{ record.follow_tier }}"><i aria-hidden="true">▲</i>{{ record.follow_text }}</span>
+{%- endif -%}
+</p>
+{%- if record.comment %}
+<p class="ltd-recc"><q>{{ record.comment }}</q></p>
+{%- endif %}
+{%- if history %}
+<button type="button" class="ltd-disc" data-hist aria-expanded="false" aria-controls="{{ history.id }}">{{ history.show_label }} <span class="ltd-dc">{{ history.count_text }}</span></button>
+<ol class="ltd-hist" id="{{ history.id }}" hidden>
+{#- `history.items` would read the dict method, so subscript it. -#}
+{%- for item in history['items'] %}
+<li><b>{{ item.actor }}</b> · {{ item.time }}{% if item.is_current %} · {{ item.current_label }}{% endif %}{% if item.comment %}<span><q>{{ item.comment }}</q></span>{% else %}<span class="ltd-na">{{ item.no_comment_label }}</span>{% endif %}</li>
+{%- endfor %}
+</ol>
+{%- endif %}
+</div>
+{%- endmacro %}
+
+
+{#- The form is a native POST. `episode` and `revision` are what the viewer
+    saw; the server checks them under its lock and takes the actor from the
+    session. A refused native POST reopens it (`open`) with the draft. -#}
+{% macro _ack_form(row, form, labels, action) -%}
+{%- set error_text = form.get('error_text') -%}
+{%- set draft = form.get('draft') or '' -%}
+{%- set refused_here = action and action.kind == 'ack' and action.match_id == row.match_id and action.draft_target -%}
+<form class="ltd-form" id="{{ form.id }}" method="post" action="{{ form.action_url }}" data-ack{% if form.get('open') %} data-open{% endif %} aria-labelledby="{{ form.heading_id }}">
+{%- if refused_here and not error_text %}
+<div class="ltd-fmsg is-err" role="alert"><b>{{ action.message }}</b>{% if action.detail %}<p>{{ action.detail }}</p>{% endif %}</div>
+{%- endif %}
+{{ _hidden('csrf_token', form.csrf_token) }}
+{{ _hidden('episode', form.episode) }}
+{{ _hidden('revision', form.revision) }}
+{{ _hidden('return', form.return_value) }}
+<h4 id="{{ form.heading_id }}">{{ form.heading }}</h4>
+<p class="ltd-help" id="{{ form.help_id }}">{{ labels.ack_help }}</p>
+<label class="ltd-lbl" for="{{ form.comment_id }}">{{ labels.ack_comment }}</label>
+<textarea id="{{ form.comment_id }}" name="comment" rows="3" aria-describedby="{{ form.help_id }} {{ form.counter_id }}{% if error_text %} {{ form.error_id }}{% endif %}"{% if error_text %} aria-invalid="true"{% endif %}>{{ draft }}</textarea>
+<p class="ltd-cnt{% if form.get('is_over') %} is-over{% endif %}" id="{{ form.counter_id }}">{{ form.counter_text }}</p>
+{%- if error_text %}
+<p class="ltd-err" id="{{ form.error_id }}">{{ error_text }}</p>
+{%- endif %}
+<div class="ltd-frow"><button type="submit" class="ltd-btn pri">{{ labels.ack_submit }}</button><button type="button" class="ltd-btn" data-ack-cancel hidden>{{ labels.ack_cancel }}</button></div>
+</form>
+{%- endmacro %}

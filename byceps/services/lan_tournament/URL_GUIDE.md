@@ -24,6 +24,7 @@ This guide documents all available URLs for the LAN Tournament module, covering 
 - **URL**: `/lan-tournaments/tournaments/<tournament_id>`
 - **Method**: GET
 - **Permission**: `lan_tournament.view`
+- **Query**: `return=<encoded dashboard list query>` (optional, allowlisted list parameters only, see Orga Dashboard Reference). A holder of `lan_tournament.administrate` gets a link back to the dashboard list; everyone else gets the page unchanged. The value is read and never a redirect target
 - **Description**: Shows details of a specific tournament
 - **Example**: `/lan-tournaments/tournaments/01234567-89ab-cdef-0123-456789abcdef`
 
@@ -348,6 +349,7 @@ All routes: `lan_tournament.administrate`. A seeding target is `initial` (defaul
 - **URL**: `/lan-tournaments/matches/<match_id>`
 - **Method**: GET
 - **Permission**: `lan_tournament.view`
+- **Query**: `return=<encoded dashboard list query>` (optional, allowlisted list parameters only, see Orga Dashboard Reference). A holder of `lan_tournament.administrate` gets a link back to the dashboard list, anchored to the row of this match (`#lt-row-<match_id>`); everyone else gets the page unchanged. The value is read and never a redirect target
 - **Description**: Shows detailed match information including contestants, scores, and comments
 - **Example**: `/lan-tournaments/matches/abcdef01-2345-6789-abcd-ef0123456789`
 
@@ -403,6 +405,64 @@ All routes: `lan_tournament.administrate`. A seeding target is `initial` (defaul
 - **Result**: flash with the numbers (deleted, skipped, failed file deletes); a run that deletes nothing flashes "Nothing was deleted." instead of the success line; image skips are split into "a tournament uses it now" and "no longer qualifies"; redirect to the maintenance tab
 - **Example**: `/lan-tournaments/for_party/lan-2026/maintenance/unused-images`
 
+#### Party Maintenance: Dashboard Thresholds (Admin)
+- **URL**: `/lan-tournaments/for_party/<party_id>/maintenance/dashboard-thresholds`
+- **Endpoint**: `lan_tournament_admin.update_dashboard_thresholds`
+- **Method**: POST. The card is part of the maintenance tab (`GET /lan-tournaments/for_party/<party_id>/maintenance`, anchor `#dashboard-thresholds`). The static rule wins over `POST .../maintenance/<action_id>`; `dashboard-thresholds` is not an action id
+- **Permission**: `lan_tournament.maintain`
+- **Form Fields** (each exactly once; a duplicate counts as missing):
+  - `csrf_token`: dashboard token of the viewer (see Orga Dashboard Reference)
+  - `action`: `save` or `reset`
+  - `expected_revision`, `expected_updated_at`: the version the card was rendered from. `0` and an empty value while the party has no override; otherwise the revision and `YYYY-MM-DDTHH:MM:SS.ffffff` (naive UTC)
+  - `yellow_minutes`, `red_minutes` (`save` only): 1 to 9 ASCII digits each. The service then requires whole minutes with `1 <= yellow < red <= 1440`
+- **Description**: Saves or removes the override of the yellow and red thresholds of this party. It applies to every tournament of the party, on the admin and the site dashboard. Poll interval and page size always come from the deployment configuration. The party comes from the URL; a `party_id` form field is never read. A change is checked against the version (revision and time) the card showed, so a second orga's change in between is refused, never overwritten. The service logs party, actor, old and new values to the application log
+- **Response**: `303` to the maintenance tab with a flash ("The dashboard thresholds were saved." / "... were reset to the default."). A reset without an override is a success
+- **Errors**: without the `maintain` permission (also anonymous) the core `403` page, nothing is stored and no service runs. Otherwise the tab is rendered again with the submitted values and version, and the marker `data-error-code`: `403` `csrf_invalid` (missing, foreign, stale or duplicated token); `422` `invalid` (unknown `action`, unreadable or out-of-bounds minutes, with a field error); `409` `stale` (the version is no longer current or does not parse; sending the same form again stays `409` until the tab is reloaded). There is no JSON variant
+- **Broken deployment configuration**: the tab stays `200` and the card shows the error instead of the form
+- **Example**: `/lan-tournaments/for_party/lan-2026/maintenance/dashboard-thresholds`
+
+### Orga Dashboard (Admin)
+
+The due matches of a party across its tournaments, for holders of `lan_tournament.administrate`. A scoped orga without that permission is refused here and uses the site dashboard. The party always comes from the URL. Every answer carries `Cache-Control: private, no-store`. Query parameters, JSON answers, error codes, the form contract and the `return=` context are described once in the Orga Dashboard Reference; the site routes behave the same way (see Orga Dashboard (Site)).
+
+The party tab "Dashboard" (right after "Übersicht") links the list. It is shown only to holders of `lan_tournament.administrate`.
+
+#### Dashboard List
+- **URL**: `/lan-tournaments/for_party/<party_id>/dashboard`
+- **Endpoint**: `lan_tournament_admin.dashboard_for_party`
+- **Method**: GET
+- **Permission**: `lan_tournament.administrate`. Anonymous: redirect to the login form. Authenticated without the permission: `403`. Unknown party: `404`
+- **Query**: `scope`, `view`, `state`, `sort`, `tournament`, `page`
+- **Description**: One page of the party's matches, with tier tiles, filters and the shared pin and acknowledgement forms. `scope=assigned` (default) shows the tournaments the viewer is assigned to; `scope=all` shows every tournament of this party and works only for this permission. The request is read-only: no INSERT, UPDATE or DELETE, no row lock, no clock initialisation
+- **Example**: `/lan-tournaments/for_party/lan-2026/dashboard?scope=all&view=due&sort=wait`
+
+#### Dashboard Poll
+- **URL**: `/lan-tournaments/for_party/<party_id>/dashboard/poll`
+- **Endpoint**: `lan_tournament_admin.dashboard_poll_for_party`
+- **Method**: GET
+- **Permission**: `lan_tournament.administrate`, answered as JSON and never as a redirect: anonymous (and a user without `admin.access`, which core reads as anonymous) gets `401` `session_expired`; an authenticated user without the permission gets `403` `access_revoked`
+- **Query**: the same as the list
+- **Success**: `200` `{html, as_of, poll_seconds}`: the rendered panel, the ISO 8601 UTC time of the snapshot and the refresh interval in seconds. An unknown party is an empty list, not a `404`
+- **Example**: `/lan-tournaments/for_party/lan-2026/dashboard/poll?scope=all&view=all&sort=wait`
+
+#### Pin Match
+- **URL**: `/lan-tournaments/for_party/<party_id>/dashboard/matches/<match_id>/pin`
+- **Endpoint**: `lan_tournament_admin.dashboard_pin`
+- **Method**: POST
+- **Permission**: `lan_tournament.administrate`; the service checks the authority again under the tournament lock
+- **Form Fields**: `csrf_token`, `revision`, `pinned` (`true` or `false`), `return`
+- **Description**: Sets the shared pin of a live match to an explicit state for every orga with authority. The match must belong to the party of the URL
+- **Response**: see Orga Dashboard Reference (native `303`, JSON `200`, refusals)
+
+#### Acknowledge Delay
+- **URL**: `/lan-tournaments/for_party/<party_id>/dashboard/matches/<match_id>/ack`
+- **Endpoint**: `lan_tournament_admin.dashboard_ack`
+- **Method**: POST
+- **Permission**: `lan_tournament.administrate`; the service checks the authority again under the tournament lock
+- **Form Fields**: `csrf_token`, `episode`, `revision`, `comment` (optional), `return`
+- **Description**: Records that an orga checked the delay of a due match, for the current wait episode only. It restarts the alert interval, not the total wait
+- **Response**: see Orga Dashboard Reference (native `303`, JSON `200`, refusals)
+
 ---
 
 ## Site URLs (User-Facing)
@@ -420,6 +480,7 @@ All routes: `lan_tournament.administrate`. A seeding target is `initial` (defaul
 - **URL**: `/lan-tournaments/<tournament_id>`
 - **Method**: GET
 - **Authentication**: Not required
+- **Query**: `return=<encoded dashboard list query>` (optional, allowlisted list parameters only, see Orga Dashboard Reference). An orga with at least one assignment in the current party gets a link back to the dashboard list; everyone else gets the page unchanged. The value is read and never a redirect target
 - **Description**: Shows tournament details, participants list, and join/leave options. Hides draft tournaments.
 - **Example**: `/lan-tournaments/01234567-89ab-cdef-0123-456789abcdef`
 
@@ -508,6 +569,7 @@ All routes: `lan_tournament.administrate`. A seeding target is `initial` (defaul
 - **URL**: `/lan-tournaments/matches/<match_id>`
 - **Method**: GET
 - **Authentication**: Not required
+- **Query**: `return=<encoded dashboard list query>` (optional, allowlisted list parameters only, see Orga Dashboard Reference). An orga with at least one assignment in the current party gets a link back to the dashboard list, anchored to the row of this match (`#lt-row-<match_id>`); everyone else gets the page unchanged. The value is read and never a redirect target
 - **Description**: Shows detailed match information including contestants, scores, and comments
 - **Example**: `/lan-tournaments/matches/abcdef01-2345-6789-abcd-ef0123456789`
 
@@ -568,6 +630,106 @@ Tournament orgas (and global administrators) run the seeding flow on the site. A
 | `/lan-tournaments/orga/tournaments/<tournament_id>/advance_ffa_round` | POST | Advance FFA Round (Draft) |
 | `/lan-tournaments/orga/tournaments/<tournament_id>/generate_ffa_grand_final` | POST | Generate FFA Grand Final |
 
+### Orga Dashboard (Site)
+
+Scoped orgas read and act on the due matches of their assigned tournaments on the site. The viewer needs a login and at least one orga assignment in the party of the current site; the party is the site's and never comes from the request. A global administrator without an assignment gets `403` here (the admin dashboard is theirs); with assignments they are held to them on the site too, for reads and for pin and acknowledgement. The routes use their own collection check, not `@scoped_orga_required`. The static rule `/lan-tournaments/orga-dashboard` wins over `/lan-tournaments/<tournament_id>`. Every answer carries `Cache-Control: private, no-store`. Behaviour, query parameters, JSON answers and error codes match the admin routes of the same role and are described in the Orga Dashboard Reference.
+
+| Route | Method | Guard | Admin counterpart |
+|-------|--------|-------|-------------------|
+| `/lan-tournaments/orga-dashboard` | GET | Anonymous: login redirect. Logged in without an assignment in this party: `403` page | Dashboard List |
+| `/lan-tournaments/orga-dashboard/poll` | GET | JSON only: `401` `session_expired` (anonymous), `403` `access_revoked` (no assignment); never a redirect | Dashboard Poll |
+| `/lan-tournaments/orga-dashboard/matches/<match_id>/pin` | POST | Own check chain, below | Pin Match |
+| `/lan-tournaments/orga-dashboard/matches/<match_id>/ack` | POST | Own check chain, below | Acknowledge Delay |
+
+Endpoints: `lan_tournament.orga_dashboard`, `orga_dashboard_poll`, `orga_dashboard_pin`, `orga_dashboard_ack`. `scope` is ignored on the site: the scope is always the viewer's assignments, re-resolved on every request. Form fields of the POST routes are the same as in the admin section.
+
+**Check chain of a POST**, in this fixed order: session (JSON `401` `session_expired`; native: login redirect), collection (no assignment: `403` `access_revoked`), dashboard CSRF token (`403` `csrf_invalid`), match lookup (one `404` `unavailable` for a malformed ID, a missing match, another party's match and a match outside the viewer's assignments), form validation (`422` `invalid`), then the service, which checks authority, revision and episode again under the tournament lock. A revoked viewer with a valid token reads `access_revoked`; a viewer with authority and a bad token reads `csrf_invalid`.
+
+**Discoverability**: the site index (generic and `totalverplant-36`) shows an "Orga-Dashboard" button to a logged-in viewer with an assignment. It uses the same check as the routes, so link and route cannot disagree. Admin: the party tab "Dashboard", see Orga Dashboard (Admin).
+
+---
+
+## Orga Dashboard Reference
+
+One canonical, party-scoped list of matches, on two surfaces (admin page and site page) that read through the same service. For one scope and one moment, page and poll agree on rows, order, tiles and counts.
+
+### Query parameters (list and poll)
+
+Every value is validated on the server. An invalid, repeated or out-of-scope value is dropped to that field's default with a notice; it is never repaired and never widens the scope. A malformed query never causes a `500`. Unknown parameters are ignored on the list.
+
+| Parameter | Values (first is the default) | Meaning |
+|-----------|-------------------------------|---------|
+| `scope` | `assigned`, `all` | Admin only; the site ignores it. `all` is every tournament of the party and works only with `lan_tournament.administrate`; anything else resolves to the viewer's assignments in this party |
+| `view` | `due`, `upcoming`, `all` | `due`: matches with current demand (state due, or unknown timing). `upcoming`: not due yet (later round, partial pairing, lobby not complete). `all`: every state, including paused, bye and done rows |
+| `state` | `all`, `tier-red`, `tier-yellow`, `tier-green`, `ready-none`, `ready-one`, `ready-both`, `ready-unavailable`, `conflict`, `review-open`, `pinned` | Filter inside the view; the tier tiles toggle `tier-*` |
+| `sort` | `urgency`, `wait`, `tournament` | `urgency`: due first, then tier red, yellow, green, then conflict or open review, then alert interval and total wait, descending |
+| `tournament` | a tournament UUID | Must lie inside the resolved scope. A hidden, a foreign and a missing ID give the same notice ("not available") |
+| `page` | `1` to `1000000` | The page size comes from the deployment configuration, never from the query |
+
+### What the list means
+
+- **Due**: a match is due when its demand is real and current: a complete pairing that can be played now in an `ONGOING` tournament. Single and double elimination: the playable pairing. Round robin: the earliest unfinished round per phase and group. Free-for-all: the lobby of the current generated round. Later rounds, partial pairings, incomplete lobbies, byes and confirmed matches are not due. Pre-start and paused time do not count.
+- **Active wait**: the tournament's operational clock runs only while the tournament is `ONGOING`. It starts at the real start (`REGISTRATION_CLOSED` to `ONGOING`), freezes on a pause and continues on resume. A paused tournament's matches show in view `all` only and cannot be acknowledged.
+- **Alert interval and tiers**: the alert interval of a due match is the active time since its wait episode opened or since the latest acknowledgement, whichever is later. Green below the yellow threshold, yellow from it, red from the red threshold (defaults 15 and 45 minutes, per party overridable in the Wartung tab). The total active wait stays visible separately.
+- **Acknowledgement**: records the acting orga, the time and an optional comment as a checked delay, not as ownership or resolution. It is shared, bound to the current episode and revision, and restarts the alert interval, so the match escalates again after the yellow and red intervals. Only yellow and red can be acknowledged. A new episode (for example after a corrected result reopens the match) starts without inherited acknowledgements.
+- **Pin**: a shared flag on a live match, set and removed explicitly by any orga with authority; a pin disappears with its match.
+- **Readiness**: the per-side Ready state of the match is displayed; it never starts, resets or pauses the wait.
+- **Last change**: the domain-only time of the last change of a match. Comments, pins and acknowledgements never move it.
+- **Conflicts**: the same person demanded by two different due matches of the same party. A viewer sees the named counterparts they may see. A counterpart outside the viewer's tournaments is disclosed only by one generic, fixed sentence naming the person ("... is needed in a match outside your tournaments at the same time."), with no tournament, match, team, time, count or link, and identical for one or many hidden overlaps. That generic disclosure is the only authorized look beyond the assignments. Another party's demand is never a conflict.
+- **Unknown history**: a tournament that already ran when the schema was applied has no operational clock, and a match without a stored last-change time has none either. Such timing is shown as unavailable and never reconstructed; no acknowledgement can be recorded for a tournament without a clock (`refused`). See `migrations/README.md`, migration 023.
+
+### JSON answers and error codes
+
+The answer is JSON when the poll route is called, or when a POST sends `Accept: application/json` (`application/json` must be the preferred type). Without it, a POST is answered natively.
+
+- **Poll `200`**: `{html, as_of, poll_seconds}`
+- **POST success, JSON `200`**: `{committed_at, fragment}` where `committed_at` is the server time of the write (ISO 8601 UTC) and `fragment` is the re-read poll body
+- **POST success, native**: a flash and `303` to the list URL rebuilt from the route, the validated `return` query and the row anchor `#lt-row-<match_id>`
+- **Refusal, JSON**: `{error, message}` plus, for `stale`, `refused` and `invalid`, `fragment` (the whole re-read panel) and `draft_target` (the target row is in that panel and still offers the action). `message` is final localized text. `session_expired`, `access_revoked`, `unavailable` and `csrf_invalid` carry neither
+- **Refusal, native**: the dashboard page again with the status of the table, the draft kept and the form reopened; `401` goes to the login form, a hidden or missing match gets the one `404` page
+
+| `error` | Status | When |
+|---------|--------|------|
+| `session_expired` | `401` | no session (poll and JSON POST; a native request is redirected to the login form) |
+| `access_revoked` | `403` | no dashboard authority now (permission or assignment), also when lost between the gate and the service |
+| `csrf_invalid` | `403` | missing, malformed, foreign or stale token |
+| `unavailable` | `404` | malformed ID, missing match, another party's match, a match outside the viewer's scope: one answer for all |
+| `stale` | `409` | pin revision or acknowledgement episode/revision is not the current one, including a duplicate submit |
+| `refused` | `409` | match or tournament is terminal, tournament paused, match not due, clock unknown, alert interval below the yellow threshold, or acknowledged recently |
+| `invalid` | `422` | a hidden field or the comment fails validation; `message` is the form's own text |
+
+A client dispatches on `error`, not on the status alone. A non-JSON `5xx` (for example the operator error below) is transient.
+
+Known limits of the refresh script: every successful poll replaces the whole panel, so a text selection or a screen reader's reading position is lost each interval. A POST that times out in the browser (15 s) reads "not saved" although the server may have committed; the next submit then gets `stale`, which is safe. The JSON path of a stale acknowledgement shows the message only; the native path also names the actor and time of the other orga's record.
+
+### Form contract of pin and acknowledgement
+
+All fields are untrusted and must be sent exactly once. The server never takes the party, the scope or any authority from the form.
+
+- `csrf_token`: the module's own token, bound to the session and the user and kept in the signed session. Validation never mints or rotates it. `LocalizedForm` carries no CSRF token of its own, so these forms and the Wartung threshold form use this one
+- `revision`: unsigned decimal, at most 2147483647: the pin revision (pin) or the acknowledgement revision of the episode (acknowledge) the form was rendered from
+- `pinned` (pin): exactly `true` or `false`; there is no toggle and no default
+- `episode` (acknowledge): the canonical hyphenated UUID of the due episode the form was rendered from
+- `comment` (acknowledge, optional): plain text of at most 500 characters. CRLF becomes LF and the text is trimmed; blank means none; control characters other than newline and tab, line and paragraph separators, surrogates and bidirectional controls are refused
+- `return`: the list context to come back to (below); at most 1024 characters, an over-long value is dropped, not refused
+
+### The `return=` context
+
+The list URL a viewer came from is carried as `return=<urlencoded query string>` to the tournament and match pages (admin and site) and as the hidden `return` field of the pin and acknowledgement forms. It is an allowlisted context, never a URL and never a redirect target.
+
+- It is accepted only if it is exactly an encoded query string (strict parse) of the allowlisted parameters `scope`, `view`, `state`, `sort`, `tournament` and `page`, each at most once, with valid values, at most 1024 characters. Any other value (an absolute or scheme-relative URL, a path, markup, an unknown or repeated key, a bad pair or escape, an over-long value) falls back to the default list. No `return` at all means no link
+- The destination page rebuilds the link with `url_for` from its own tournament's party and the validated query; the raw value is neither echoed nor used for the party, and the site ignores `scope`
+- It is never a redirect target: the native `303` after a pin or acknowledgement goes to the same rebuilt URL, and no route redirects to the raw value
+- Authority: the admin pages show the link only to holders of `lan_tournament.administrate`; the site pages only to an orga with an assignment in the current party. Without authority the page is byte-identical with and without `return`. A match page adds the row anchor `#lt-row-<match_id>`; a tournament page has none
+
+### Configuration
+
+Deployment settings come from the environment (`LAN_TOURNAMENT_DASHBOARD_YELLOW_MINUTES`, `_RED_MINUTES`, `_POLL_SECONDS`, `_PAGE_SIZE`); defaults, bounds and precedence are in `migrations/README.md` (migration 023). The Wartung card overrides only the two thresholds per party. A set but invalid deployment value is an operator error: the dashboard routes answer `500`, the admin back link is hidden and the Wartung card shows the error instead of its form (a destination page never fails), and nothing falls back silently.
+
+### Cost
+
+Measured on a synthetic party of 33 tournaments and 1,368 fixtures (30 round robins of 10 players, 2 single eliminations, 1 free-for-all), no latency target is derived from it. The dashboard snapshot runs 11 statements with conflicts (9 for `view=upcoming`, 6 for a page past the end), under the budget of 16; a whole request, including session, scope and layout, runs 18 to 23. Growth from 10 to 50 to 100 rows and from 1 to 33 tournaments is 0 statements. The party-wide due oracle runs three times (counts, rows, conflicts), so the cost follows the fixtures of the party, not the page: about 70 ms for the rows and 150 to 230 ms for the conflicts statement at that size. Look at the plans before a party grows far past a few thousand fixtures.
+
 ---
 
 ## Match List Filter
@@ -607,13 +769,14 @@ Currently, there are no dedicated REST API endpoints. All interactions happen th
 - `lan_tournament.create` - Create tournaments and teams
 - `lan_tournament.update` - Update tournaments, teams, and match scores
 - `lan_tournament.delete` - Delete tournaments and teams
-- `lan_tournament.administrate` - Full control including status changes, bracket generation, match confirmation
-- `lan_tournament.maintain` - Party maintenance: delete unused images and orphaned image files
+- `lan_tournament.administrate` - Full control including status changes, bracket generation, match confirmation, and the admin orga dashboard (list, poll, pin, acknowledge)
+- `lan_tournament.maintain` - Party maintenance: delete unused images and orphaned image files, and set or reset the dashboard thresholds of the party
 
 ### User Authentication
 - Most site URLs are publicly viewable (no authentication)
 - Actions like joining, leaving, and team creation require `@login_required`
 - Draft tournaments are hidden from site visitors
+- The site orga dashboard (`/lan-tournaments/orga-dashboard` and its poll, pin and acknowledge routes) needs a login and an orga assignment in the party of the current site; `lan_tournament.administrate` alone is not enough there
 
 ---
 
@@ -639,6 +802,13 @@ Currently, there are no dedicated REST API endpoints. All interactions happen th
 7. Start tournament → `/lan-tournaments/tournaments/<tournament_id>/start`
 8. Manage matches → `/lan-tournaments/matches/<match_id>`
 9. Complete tournament → `/lan-tournaments/tournaments/<tournament_id>/complete`
+
+### Orga: Watching the Dashboard
+1. Scoped orga (site): open the "Orga-Dashboard" button on `/lan-tournaments/` → `/lan-tournaments/orga-dashboard`
+2. Administrator (admin): open the party tab "Dashboard" → `/lan-tournaments/for_party/<party_id>/dashboard` (add `scope=all` for every tournament of the party)
+3. Open a match or tournament from a row; the page carries `return=` and offers the way back to the same list and row
+4. Pin a match, or acknowledge a yellow or red delay with an optional comment; the other orgas see both on their next poll
+5. Change the thresholds of the party (Maintenance tab, permission `lan_tournament.maintain`) → `/lan-tournaments/for_party/<party_id>/maintenance/dashboard-thresholds`
 
 ### User: Solo Tournament Participation
 1. View tournaments → `/lan-tournaments/`
@@ -673,6 +843,8 @@ This follows common web conventions where:
 - `/admin/lan_tournament/...` (wrong prefix and underscore)
 - `/tournaments/...` (missing "lan-" prefix)
 - `/lan_tournament/...` (underscore instead of dash)
+- `/lan-tournaments/orga_dashboard` (the site route is `/lan-tournaments/orga-dashboard`, with a hyphen; the endpoint is `lan_tournament.orga_dashboard`)
+- `/lan-tournaments/orga-dashboard?party_id=...` (the site party is never a parameter; the admin party is `/lan-tournaments/for_party/<party_id>/dashboard`)
 
 **✅ Correct:**
 - `/lan-tournaments/...` (both admin and site use this prefix)

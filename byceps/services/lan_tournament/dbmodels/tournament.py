@@ -68,6 +68,10 @@ class DbTournament(db.Model):
             unique=True,
             postgresql_where=text('creation_token IS NOT NULL'),
         ),
+        db.CheckConstraint(
+            'operational_clock_elapsed_us >= 0',
+            name='ck_lan_tournaments_operational_clock_elapsed_us',
+        ),
     )
 
     id: Mapped[TournamentID] = mapped_column(
@@ -154,6 +158,11 @@ class DbTournament(db.Model):
         ),
     )
     leaderboard_closed_at: Mapped[datetime | None]
+    operational_clock_elapsed_us: Mapped[int] = mapped_column(
+        db.BigInteger, nullable=False, default=0, server_default='0'
+    )
+    operational_clock_running_since: Mapped[datetime | None]
+    operational_clock_activated_at: Mapped[datetime | None]
 
     def __init__(
         self,
@@ -235,6 +244,7 @@ class DbTournament(db.Model):
         self.playoff_qualifier_count = playoff_qualifier_count
         self.playoff_release_mode = playoff_release_mode
         self.playoff_auto_release_suspended = False
+        self.operational_clock_elapsed_us = 0
 
     def __repr__(self) -> str:
         return (

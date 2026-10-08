@@ -25,6 +25,9 @@
   <div class="button-row is-hcentered">
     <a class="button is-outlined" href="{{ url_for('.propose_form') }}">{{ render_icon('add') }} {{ _('Propose a tournament') }}</a>
     <a class="button is-outlined" href="{{ url_for('.my_requests') }}">{{ render_icon('clipboard') }} {{ _('My tournament requests') }}</a>
+    {%- if may_view_orga_dashboard|default(false) %}
+    <a class="button color-primary" href="{{ url_for('.orga_dashboard') }}">{{ _('Orga dashboard') }}</a>
+    {%- endif %}
   </div>
   {%- endif %}
 

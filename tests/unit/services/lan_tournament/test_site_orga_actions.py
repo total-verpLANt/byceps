@@ -642,6 +642,10 @@ def test_scoped_orga_cannot_trigger_random_defwin():
         'orga_leaderboard_reopen',
         'orga_advance_ffa_round',
         'orga_generate_ffa_grand_final',
+        'orga_dashboard',
+        'orga_dashboard_poll',
+        'orga_dashboard_pin',
+        'orga_dashboard_ack',
     }
     assert not any('defwin' in endpoint for endpoint in orga_endpoints)
 

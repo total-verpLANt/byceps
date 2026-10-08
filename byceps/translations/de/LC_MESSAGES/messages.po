@@ -158,7 +158,7 @@ msgid "Grand final, match %(match)d"
 msgstr "Großes Finale, Partie %(match)d"
 
 msgid "Losers bracket, round %(round)d, match %(match)d"
-msgstr "Verliererseite, Runde %(round)d, Partie %(match)d"
+msgstr "Verliererrunde, Runde %(round)d, Partie %(match)d"
 
 msgid "Not yet determined"
 msgstr "Noch nicht ermittelt"
@@ -179,7 +179,7 @@ msgid "Will be deleted"
 msgstr "Wird gelöscht"
 
 msgid "Winners bracket, round %(round)d, match %(match)d"
-msgstr "Gewinnerseite, Runde %(round)d, Partie %(match)d"
+msgstr "Gewinnerrunde, Runde %(round)d, Partie %(match)d"
 
 #: byceps/announce/helpers.py:41
 #: byceps/services/shop/order/blueprints/admin/templates/admin/shop/order/_view_events.html:171
@@ -11606,10 +11606,10 @@ msgid "Loser SF 1 vs Loser SF 2"
 msgstr "Verlierer HF 1 gegen Verlierer HF 2"
 
 msgid "Losers Bracket (LB)"
-msgstr "Verliererseite (LB)"
+msgstr "Verliererrunde (LB)"
 
 msgid "Losers only"
-msgstr "Nur Verliererseite"
+msgstr "Nur Verliererrunde"
 
 msgid "M"
 msgstr "P"
@@ -11621,7 +11621,7 @@ msgid "Optional reset game and additional matches"
 msgstr "Optionales Entscheidungsspiel und zusätzliche Partien"
 
 msgid "Played only if the losers-bracket winner takes Grand Final Game 1."
-msgstr "Wird nur gespielt, wenn der Verliererseiten-Sieger das erste Große Finale gewinnt."
+msgstr "Wird nur gespielt, wenn der Sieger der Verliererrunde das erste Große Finale gewinnt."
 
 msgid "R"
 msgstr "R"
@@ -11657,10 +11657,10 @@ msgid "WB Winner vs LB Winner"
 msgstr "WB-Sieger gegen LB-Sieger"
 
 msgid "Winners Bracket (WB)"
-msgstr "Gewinnerseite (WB)"
+msgstr "Gewinnerrunde (WB)"
 
 msgid "Winners only"
-msgstr "Nur Gewinnerseite"
+msgstr "Nur Gewinnerrunde"
 
 msgid "click to jump to source match"
 msgstr "Klicken, um zur Quellpartie zu springen"
@@ -11799,13 +11799,13 @@ msgid "No LB contestants qualified for advancement."
 msgstr "Keine LB-Teilnehmer für den Aufstieg qualifiziert."
 
 msgid "No Losers bracket matches found."
-msgstr "Keine Partien im Verlierer-Turnierbaum gefunden."
+msgstr "Keine Partien in der Verliererrunde gefunden."
 
 msgid "No WB contestants qualified for advancement."
 msgstr "Keine WB-Teilnehmer für den Aufstieg qualifiziert."
 
 msgid "No Winners bracket matches found."
-msgstr "Keine Partien im Gewinner-Turnierbaum gefunden."
+msgstr "Keine Partien in der Gewinnerrunde gefunden."
 
 msgid "No contestants qualified for advancement."
 msgstr "Keine Teilnehmer für den Aufstieg qualifiziert."
@@ -14434,7 +14434,7 @@ msgid "M%(n)s, position %(pos)s"
 msgstr "M%(n)s, Position %(pos)s"
 
 msgid "Only winners round 1 is seeded here. Losers-bracket entry follows the fixed losers routing."
-msgstr "Hier wird nur Runde 1 der Gewinnerseite gesetzt. Der Einstieg in die Verliererseite folgt der festen Verlierer-Zuordnung."
+msgstr "Hier wird nur Runde 1 der Gewinnerrunde gesetzt. Der Einstieg in die Verliererrunde folgt der festen Verlierer-Zuordnung."
 
 msgid "Tier mix"
 msgstr "Stufenmischung"
@@ -15467,10 +15467,10 @@ msgid "Bye: %(name)s waits in %(where)s, round %(round)s."
 msgstr "Freilos: %(name)s wartet in %(where)s, Runde %(round)s."
 
 msgid "%(name)s is waiting for the Grand Final while the lower bracket continues."
-msgstr "%(name)s wartet auf das große Finale, während das Verlierer-Bracket weiterläuft."
+msgstr "%(name)s wartet auf das große Finale, während die Verliererrunde weiterläuft."
 
 msgid "%(name)s won the winners bracket, round %(round)s, and waits for the Grand Final."
-msgstr "%(name)s hat das Gewinner-Bracket in Runde %(round)s gewonnen und wartet auf das große Finale."
+msgstr "%(name)s hat die Gewinnerrunde in Runde %(round)s gewonnen und wartet auf das große Finale."
 
 msgid "Lone survivor wins"
 msgstr "Letzter verbliebener Teilnehmer gewinnt"
@@ -15482,10 +15482,10 @@ msgid "The tournament is complete. The lone survivor wins."
 msgstr "Das Turnier ist abgeschlossen. Der letzte verbliebene Teilnehmer gewinnt."
 
 msgid "The winners bracket is finished. Continue the losers bracket."
-msgstr "Das Gewinner-Bracket ist abgeschlossen. Setze das Verlierer-Bracket fort."
+msgstr "Die Gewinnerrunde ist abgeschlossen. Setze die Verliererrunde fort."
 
 msgid "Losers bracket matches are not confirmed."
-msgstr "Die Begegnungen im Verlierer-Bracket sind noch nicht bestätigt."
+msgstr "Die Begegnungen in der Verliererrunde sind noch nicht bestätigt."
 
 msgid "The tournament must be ongoing to advance an FFA round."
 msgstr "Das Turnier muss laufen, um eine FFA-Runde fortzusetzen."
@@ -16108,10 +16108,10 @@ msgid "Bracket not yet generated."
 msgstr "Turnierbaum noch nicht generiert."
 
 msgid "Losers Bracket"
-msgstr "Verliererseite"
+msgstr "Verliererrunde"
 
 msgid "Winners Bracket"
-msgstr "Gewinnerseite"
+msgstr "Gewinnerrunde"
 
 msgid "Quarter-Finals"
 msgstr "Viertelfinale"
@@ -16154,3 +16154,792 @@ msgstr "Diff."
 
 msgid "P"
 msgstr "Pkt."
+
+msgid "invalid_dashboard_yellow_minutes"
+msgstr ""
+"Die Gelb-Schwelle muss eine ganze Zahl von Minuten zwischen 1 und 1440 sein."
+
+msgid "invalid_dashboard_red_minutes"
+msgstr ""
+"Die Rot-Schwelle muss eine ganze Zahl von Minuten zwischen 1 und 1440 sein."
+
+msgid "invalid_dashboard_threshold_order"
+msgstr "Die Gelb-Schwelle muss kleiner als die Rot-Schwelle sein."
+
+msgid "invalid_dashboard_poll_seconds"
+msgstr ""
+"Das Aktualisierungsintervall muss eine ganze Zahl von Sekunden zwischen 5 "
+"und 300 sein."
+
+msgid "invalid_dashboard_page_size"
+msgstr "Die Seitengröße muss eine ganze Zahl zwischen 1 und 100 sein."
+
+msgid "unsupported_started_creation"
+msgstr ""
+"Ein Turnier kann nicht in einem bereits gestarteten Status (Laufend, "
+"Pausiert, Abgeschlossen) angelegt werden. Lege es zuerst an und starte es "
+"dann regulär."
+
+msgid "unsupported_status_transition"
+msgstr ""
+"Dieser Statuswechsel wird von der Zeiterfassung nicht unterstützt: In den "
+"Status „Laufend“ kann ein Turnier nur aus „Anmeldung geschlossen“, "
+"„Pausiert“ oder „Abgeschlossen“ wechseln."
+
+msgid "Comment (optional)"
+msgstr "Kommentar (optional)"
+
+msgid ""
+"Comment is too long: %(count)d of at most 500 characters. Nothing was saved."
+msgstr ""
+"Kommentar ist zu lang: %(count)d von höchstens 500 Zeichen. Nichts wurde "
+"gespeichert."
+
+msgid ""
+"Comment contains characters that are not allowed in plain text. Nothing was "
+"saved."
+msgstr ""
+"Der Kommentar enthält Zeichen, die in reinem Text nicht erlaubt sind. Nichts "
+"wurde gespeichert."
+
+msgid ""
+"The form check has expired. Please reload the page; your draft stays "
+"visible."
+msgstr ""
+"Die Formularprüfung ist abgelaufen. Bitte die Seite neu laden; dein Entwurf "
+"bleibt sichtbar."
+
+msgid "Revision"
+msgstr "Versionsstand"
+
+msgid "Episode"
+msgstr "Episode"
+
+msgid "Return target"
+msgstr "Rücksprungziel"
+
+msgid "Pin state"
+msgstr "Pin-Zustand"
+
+msgid "Orga dashboard"
+msgstr "Orga-Dashboard"
+
+msgid "Dashboard scope"
+msgstr "Umfang"
+
+msgid "Assigned tournaments"
+msgstr "Zugewiesene Turniere"
+
+msgid "All tournaments of this party"
+msgstr "Alle Turniere dieser Party"
+
+msgid "Apply scope"
+msgstr "Umfang anwenden"
+
+msgid "Fixed for site orgas"
+msgstr "Fest für Site-Orgas"
+
+msgid "As of"
+msgstr "Stand"
+
+msgid "Refresh now"
+msgstr "Jetzt aktualisieren"
+
+msgid "Try again"
+msgstr "Erneut versuchen"
+
+msgid "Refreshes automatically every %(seconds)d s"
+msgstr "Automatisch alle %(seconds)d s"
+
+msgid "Refreshing…"
+msgstr "Wird aktualisiert…"
+
+msgid "Automatic refresh paused while a form is being edited"
+msgstr "Automatische Aktualisierung angehalten, solange ein Formular bearbeitet wird"
+
+msgid "Paused while the tab is in the background"
+msgstr "Angehalten, solange der Tab im Hintergrund ist"
+
+msgid "Refresh failed – the data shown is out of date."
+msgstr "Aktualisierung fehlgeschlagen – angezeigte Daten sind veraltet."
+
+msgid "Refresh stopped"
+msgstr "Aktualisierung gestoppt"
+
+msgid "Without JavaScript: manual refresh only"
+msgstr "Ohne JavaScript: nur manuelle Aktualisierung"
+
+msgid "(%(minutes)d min ago)"
+msgstr "(vor %(minutes)d min)"
+
+msgid "Refreshed, as of %(time)s"
+msgstr "Aktualisiert, Stand %(time)s"
+
+msgid "As of %(time)s. Tiers and times may have changed since. Actions are checked by the server."
+msgstr "Stand %(time)s. Stufen und Zeiten können inzwischen anders sein. Aktionen werden vom Server geprüft."
+
+msgid "Keep the draft and refresh the list?"
+msgstr "Entwurf behalten und Liste aktualisieren?"
+
+msgid "Your session has expired. Refreshing was stopped."
+msgstr "Deine Sitzung ist abgelaufen. Die Aktualisierung wurde gestoppt."
+
+msgid "The list was hidden. After signing in you return to the same view."
+msgstr "Die Liste wurde ausgeblendet. Nach dem Anmelden kommst du zu derselben Ansicht zurück."
+
+msgid "Sign in"
+msgstr "Anmelden"
+
+msgid "No access any more. Refreshing was stopped."
+msgstr "Kein Zugriff mehr. Die Aktualisierung wurde gestoppt."
+
+msgid "You can no longer see the orga dashboard. Contact the tournament team with any questions."
+msgstr "Du kannst das Orga-Dashboard nicht mehr sehen. Wende dich bei Fragen an die Turnierleitung."
+
+msgid "To the tournament overview"
+msgstr "Zur Turnierübersicht"
+
+msgid "Unsent draft"
+msgstr "Nicht gesendeter Entwurf"
+
+msgid "Your comment was not sent. Copy it if you need it; it is discarded when you leave the page."
+msgstr "Dein Kommentar wurde nicht gesendet. Kopiere ihn bei Bedarf; er wird beim Verlassen der Seite verworfen."
+
+msgid "Draft (read only)"
+msgstr "Entwurf (nur lesen)"
+
+msgid "%(match)s is no longer due (confirmed) and was removed."
+msgstr "%(match)s ist nicht mehr fällig (bestätigt) und wurde entfernt."
+
+msgid "Focus is on the next match."
+msgstr "Der Fokus liegt auf der nächsten Begegnung."
+
+msgid "Due matches by tier"
+msgstr "Aktuell fällig nach Stufe"
+
+msgid "· whole scope, independent of filters and page"
+msgstr "· gesamter Umfang, unabhängig von Filtern und Seite"
+
+msgid "Long delay"
+msgstr "Lange Verzögerung"
+
+msgid "Check delay"
+msgstr "Verzögerung prüfen"
+
+msgid "Below warning threshold"
+msgstr "Unter Warnschwelle"
+
+msgid "from %(minutes)d min"
+msgstr "ab %(minutes)d min"
+
+msgid "%(low)d–%(high)d min"
+msgstr "%(low)d–%(high)d min"
+
+msgid "under %(minutes)d min"
+msgstr "unter %(minutes)d min"
+
+msgid "%(minutes)d min"
+msgstr "%(minutes)d min"
+
+msgid "under 1 min"
+msgstr "unter 1 min"
+
+msgid "%(hours)d h %(minutes)02d min"
+msgstr "%(hours)d h %(minutes)02d min"
+
+msgid "Filter the list to this tier"
+msgstr "Liste auf diese Stufe filtern"
+
+msgid "Remove the filter, show all matches"
+msgstr "Filter aufheben, alle Begegnungen zeigen"
+
+msgid "Due now"
+msgstr "Aktuell fällig"
+
+msgid "Upcoming matches"
+msgstr "Kommende Begegnungen"
+
+msgid "All matches"
+msgstr "Alle Begegnungen"
+
+msgid "Filter dashboard matches"
+msgstr "Begegnungen filtern"
+
+msgid "State"
+msgstr "Zustand"
+
+msgid "Sort order"
+msgstr "Sortierung"
+
+msgid "All assigned tournaments"
+msgstr "Alle zugewiesenen Turniere"
+
+msgid "All states"
+msgstr "Alle Zustände"
+
+msgid "Tier: %(tier)s"
+msgstr "Stufe: %(tier)s"
+
+msgid "Nobody ready"
+msgstr "Niemand bereit"
+
+msgid "One side ready"
+msgstr "Eine Seite bereit"
+
+msgid "Readiness not available"
+msgstr "Bereitschaft nicht verfügbar"
+
+msgid "With conflict"
+msgstr "Mit Konflikt"
+
+msgid "Review open"
+msgstr "Überprüfung offen"
+
+msgid "Pinned"
+msgstr "Angepinnt"
+
+msgid "Urgency"
+msgstr "Dringlichkeit"
+
+msgid "Total active wait"
+msgstr "Aktive Wartezeit gesamt"
+
+msgid "Apply filters"
+msgstr "Anwenden"
+
+msgid "Reset"
+msgstr "Zurücksetzen"
+
+msgid "Applied filters"
+msgstr "Angewendet"
+
+msgid "Sort: %(sort)s"
+msgstr "Sortierung: %(sort)s"
+
+msgid "Part of the query was invalid and was not applied."
+msgstr "Ein Teil der Abfrage war ungültig und wurde nicht angewendet."
+
+msgid "This value is invalid and was not applied."
+msgstr "Dieser Wert ist ungültig und wurde nicht angewendet."
+
+msgid "This tournament is not available"
+msgstr "Dieses Turnier ist nicht verfügbar"
+
+msgid "%(field)s “%(value)s” does not exist. The list is shown without this value."
+msgstr "%(field)s „%(value)s“ gibt es nicht. Angezeigt wird die Liste ohne diesen Wert."
+
+msgid "Tournament “%(value)s” is not available. The list is shown without this value."
+msgstr "Turnier „%(value)s“ ist nicht verfügbar. Angezeigt wird die Liste ohne diesen Wert."
+
+msgid "Page %(page)d of %(pages)d"
+msgstr "Seite %(page)d von %(pages)d"
+
+msgid "Page %(page)d no longer exists"
+msgstr "Seite %(page)d gibt es nicht mehr"
+
+msgid "‹ Previous"
+msgstr "‹ Vorherige"
+
+msgid "Next ›"
+msgstr "Nächste ›"
+
+msgid "Knockout"
+msgstr "K.-o."
+
+msgid "Round robin"
+msgstr "Jeder gegen jeden"
+
+msgid "Free for all"
+msgstr "Free-for-all"
+
+msgid "Game unknown"
+msgstr "Spiel unbekannt"
+
+msgid "against"
+msgstr "gegen"
+
+msgid "Opponent still open"
+msgstr "Gegner noch offen"
+
+msgid "no opponent (bye)"
+msgstr "kein Gegner (Freilos)"
+
+msgid "Participants in %(lobby)s"
+msgstr "Teilnehmende in %(lobby)s"
+
+msgid "Responsible"
+msgstr "Zuständig"
+
+msgid "No orga assigned"
+msgstr "Keine Orga hinterlegt"
+
+msgid "Game %(num)d"
+msgstr "Spiel %(num)d"
+
+msgid "Winners bracket"
+msgstr "Gewinnerrunde"
+
+msgid "Losers bracket"
+msgstr "Verliererrunde"
+
+msgid "Grand final"
+msgstr "Großes Finale"
+
+msgid "Third place"
+msgstr "Spiel um Platz 3"
+
+msgid "Winners pool"
+msgstr "Gewinner-Pool"
+
+msgid "Losers pool"
+msgstr "Verlierer-Pool"
+
+msgid "Not available (lobby format)"
+msgstr "Nicht verfügbar (Lobby-Format)"
+
+msgid "Not available"
+msgstr "Nicht verfügbar"
+
+msgid "%(side)s ready since %(time)s"
+msgstr "%(side)s bereit seit %(time)s"
+
+msgid "%(side)s not ready"
+msgstr "%(side)s nicht bereit"
+
+msgid "Alert interval"
+msgstr "Alarmintervall"
+
+msgid "Alert interval, frozen"
+msgstr "Alarmintervall, eingefroren"
+
+msgid "Wait time frozen"
+msgstr "Wartezeit eingefroren"
+
+msgid "Upcoming"
+msgstr "Kommend"
+
+msgid "Not due yet · no tier"
+msgstr "Noch nicht fällig · keine Stufe"
+
+msgid "Incomplete"
+msgstr "Unvollständig"
+
+msgid "Opponent open · not playable"
+msgstr "Gegner offen · nicht spielbar"
+
+msgid "No match needed"
+msgstr "Kein Spiel nötig"
+
+msgid "Waiting for lobby"
+msgstr "Wartet auf Lobby"
+
+msgid "Lobby not complete yet"
+msgstr "Lobby noch nicht vollständig"
+
+msgid "Confirmed · no actions"
+msgstr "Bestätigt · keine Aktionen"
+
+msgid "Time unknown"
+msgstr "Zeit unbekannt"
+
+msgid "No tier without a time base"
+msgstr "Keine Stufe ohne Zeitbasis"
+
+msgid "Due since (this episode)"
+msgstr "Fällig seit (diese Episode)"
+
+msgid "Last match change"
+msgstr "Letzte Match-Änderung"
+
+msgid "%(time)s · age %(age)s"
+msgstr "%(time)s · Alter %(age)s"
+
+msgid "%(duration)s, frozen"
+msgstr "%(duration)s, eingefroren"
+
+msgid "Not due yet"
+msgstr "Noch nicht fällig"
+
+msgid "%(duration)s (until confirmation)"
+msgstr "%(duration)s (bis Bestätigung)"
+
+msgid "Historical time unknown"
+msgstr "Historischer Zeitpunkt unbekannt"
+
+msgid "Pinned by %(actor)s at %(time)s"
+msgstr "Angepinnt von %(actor)s um %(time)s"
+
+msgid "Conflict"
+msgstr "Konflikt"
+
+msgid "Review: not available"
+msgstr "Überprüfung: nicht verfügbar"
+
+msgid "New episode since %(time)s"
+msgstr "Neue Episode seit %(time)s"
+
+msgid "(member of %(team)s)"
+msgstr "(Mitglied von %(team)s)"
+
+msgid "is needed in another match at the same time:"
+msgstr "ist gleichzeitig in einer anderen Begegnung benötigt:"
+
+msgid "is needed in a match outside your tournaments at the same time."
+msgstr "wird gleichzeitig in einer Begegnung außerhalb deiner Turniere benötigt."
+
+msgid "as member of %(team)s"
+msgstr "als Mitglied von %(team)s"
+
+msgid "To the match"
+msgstr "Zur Begegnung"
+
+msgid "In this list: page %(page)d"
+msgstr "In dieser Liste: Seite %(page)d"
+
+msgid "Log a check…"
+msgstr "Prüfung erfassen…"
+
+msgid "Check again"
+msgstr "Nochmals prüfen"
+
+msgid "Record the check"
+msgstr "Prüfung festhalten"
+
+msgid "Delay checked – record it"
+msgstr "Verzögerung geprüft – festhalten"
+
+msgid "Delay checked again – record it"
+msgstr "Erneute Verzögerung geprüft – festhalten"
+
+msgid "Checks start at %(minutes)d min of alert interval."
+msgstr "Prüfen ab %(minutes)d min Alarmintervall."
+
+msgid "Just checked. Again from %(minutes)d min of alert interval."
+msgstr "Gerade geprüft. Erneut ab %(minutes)d min Alarmintervall."
+
+msgid "Paused – checking not possible."
+msgstr "Pausiert – Prüfen nicht möglich."
+
+msgid "Not due – no checking."
+msgstr "Nicht fällig – kein Prüfen."
+
+msgid "No time base, no checking."
+msgstr "Ohne Zeitbasis kein Prüfen."
+
+msgid "Completed – no actions."
+msgstr "Abgeschlossen – keine Aktionen."
+
+msgid "Records that you have checked the delay. Only resets the alert interval, not the total wait. Visible to all orgas of this tournament, not to players."
+msgstr "Hält fest, dass du die Verzögerung geprüft hast. Setzt nur das Alarmintervall zurück, nicht die gesamte Wartezeit. Sichtbar für alle Orgas dieses Turniers, nicht für Spielende."
+
+msgid "%(count)d / %(max)d characters · text only"
+msgstr "%(count)d / %(max)d Zeichen · nur Text"
+
+msgid "Saving…"
+msgstr "Wird gespeichert…"
+
+msgid "Check recorded (server time %(time)s). The alert interval restarts; total wait unchanged at %(wait)s."
+msgstr "Prüfung festgehalten (Server-Stand %(time)s). Alarmintervall läuft neu; Wartezeit gesamt unverändert %(wait)s."
+
+msgid "%(actor)s already recorded this delay at %(time)s. Your draft is kept below and was not sent."
+msgstr "%(actor)s hat diese Verzögerung um %(time)s bereits festgehalten. Dein Entwurf ist unten erhalten und wurde nicht gesendet."
+
+msgid "Refresh now · keep draft"
+msgstr "Jetzt aktualisieren · Entwurf behalten"
+
+msgid "Not recorded: %(reason)s"
+msgstr "Nicht festgehalten: %(reason)s"
+
+msgid "The row now shows the server state. Your draft stays available for copying."
+msgstr "Die Zeile zeigt jetzt den Server-Stand. Dein Entwurf bleibt zum Kopieren erhalten."
+
+msgid "Check recorded: %(match)s."
+msgstr "Prüfung festgehalten: %(match)s."
+
+msgid "As of %(time)s. The alert interval restarts."
+msgstr "Stand %(time)s. Alarmintervall läuft neu."
+
+msgid "Check recorded."
+msgstr "Prüfung festgehalten."
+
+msgid "Last checked by %(actor)s at %(time)s"
+msgstr "Zuletzt geprüft von %(actor)s um %(time)s"
+
+msgid "Delay again – check once more"
+msgstr "Erneute Verzögerung – nochmals prüfen"
+
+msgid "Show recent checks"
+msgstr "Letzte Prüfungen anzeigen"
+
+msgid "Hide recent checks"
+msgstr "Letzte Prüfungen ausblenden"
+
+msgid "(%(count)d in this episode)"
+msgstr "(%(count)d in dieser Episode)"
+
+msgid "no comment"
+msgstr "ohne Kommentar"
+
+msgid "Pin for the orga team"
+msgstr "Für das Orga-Team anpinnen"
+
+msgid "Remove pin"
+msgstr "Pin entfernen"
+
+msgid "Pinning…"
+msgstr "Wird angepinnt…"
+
+msgid "Removing…"
+msgstr "Wird entfernt…"
+
+msgid "Pin removed."
+msgstr "Pin entfernt."
+
+msgid "The state has changed. Please refresh and try again."
+msgstr "Der Stand hat sich geändert. Bitte aktualisieren und erneut versuchen."
+
+msgid "Pin not saved – connection failed. Try again."
+msgstr "Pin nicht gespeichert – Verbindung fehlgeschlagen. Erneut versuchen."
+
+msgid "You have no tournaments assigned at this party."
+msgstr "Dir sind auf dieser Party keine Turniere zugewiesen."
+
+msgid "As an administrator you can view all tournaments of this party."
+msgstr "Als Administrator kannst du alle Turniere dieser Party ansehen."
+
+msgid "Show all tournaments of this party"
+msgstr "Alle Turniere dieser Party anzeigen"
+
+msgid "To be assigned a tournament, the tournament team has to enter you as orga."
+msgstr "Wenn du ein Turnier betreuen sollst, muss dich die Turnierleitung als Orga eintragen."
+
+msgid "No match is due right now."
+msgstr "Gerade ist keine Begegnung fällig."
+
+msgid "No playable match is waiting in your tournaments at the moment."
+msgstr "In deinen Turnieren wartet derzeit keine spielbare Begegnung."
+
+msgid "Show upcoming matches"
+msgstr "Kommende Begegnungen anzeigen"
+
+msgid "No match is due at the moment."
+msgstr "Keine Begegnung ist aktuell fällig."
+
+msgid "Show all matches"
+msgstr "Alle Begegnungen anzeigen"
+
+msgid "No match fits these filters."
+msgstr "Keine Begegnung passt zu diesen Filtern."
+
+msgid "Reset filters"
+msgstr "Filter zurücksetzen"
+
+msgid "Page %(page)d is empty now."
+msgstr "Seite %(page)d ist jetzt leer."
+
+msgid "Matches have been confirmed since your last refresh."
+msgstr "Seit deinem letzten Stand sind Begegnungen bestätigt worden."
+
+msgid "To page 1"
+msgstr "Zu Seite 1"
+
+msgid "%(tournament)s · %(game)s"
+msgstr "%(tournament)s · %(game)s"
+
+msgid "Page %(page)d"
+msgstr "Seite %(page)d"
+
+msgid "Highscore tournament with a plain leaderboard – there are no matches and no readiness. Playoffs would appear in their actual format."
+msgstr "Highscore-Turnier mit reiner Rangliste – es gibt keine Begegnungen und keine Bereitschaft. Playoffs würden im tatsächlichen Format erscheinen."
+
+msgid "Open leaderboard"
+msgstr "Rangliste öffnen"
+
+msgid "Round %(round)d of %(group)s is still open. Future match, so no conflict."
+msgstr "Runde %(round)d der %(group)s ist noch offen. Künftige Begegnung, daher kein Konflikt."
+
+msgid "Round %(round)d is still open. Future match, so no conflict."
+msgstr "Runde %(round)d ist noch offen. Künftige Begegnung, daher kein Konflikt."
+
+msgid "%(name)s advances without a match."
+msgstr "%(name)s rückt ohne Spiel weiter."
+
+msgid "%(filled)d of %(size)d places filled."
+msgstr "%(filled)d von %(size)d Plätzen besetzt."
+
+msgid "The lobby is only created completely after round %(round)d."
+msgstr "Die Lobby wird erst nach Runde %(round)d vollständig erzeugt."
+
+msgid "Result %(score)s confirmed at %(time)s."
+msgstr "Ergebnis %(score)s bestätigt um %(time)s."
+
+msgid "Result %(score)s confirmed."
+msgstr "Ergebnis %(score)s bestätigt."
+
+msgid "The result was corrected and reopened at %(time)s. Earlier checks belong to the previous episode and do not apply here."
+msgstr "Ergebnis wurde um %(time)s korrigiert und wieder geöffnet. Frühere Prüfungen gehören zur vorherigen Episode und gelten hier nicht."
+
+msgid "The result was corrected and reopened. Earlier checks belong to the previous episode and do not apply here."
+msgstr "Ergebnis wurde korrigiert und wieder geöffnet. Frühere Prüfungen gehören zur vorherigen Episode und gelten hier nicht."
+
+msgid "This match is not available."
+msgstr "Diese Begegnung ist nicht verfügbar."
+
+msgid "It does not exist or you cannot see it."
+msgstr "Sie existiert nicht oder du kannst sie nicht sehen."
+
+msgid "Back to the orga dashboard"
+msgstr "Zurück zum Orga-Dashboard"
+
+msgid "← Back to the orga dashboard"
+msgstr "← Zurück zum Orga-Dashboard"
+
+msgid "Deleted orga"
+msgstr "Gelöschte Orga"
+
+msgid "dashboard_unauthenticated"
+msgstr "Deine Sitzung ist abgelaufen. Bitte melde dich erneut an."
+
+msgid "dashboard_forbidden"
+msgstr "Du hast keinen Zugriff auf das Orga-Dashboard dieser Party."
+
+msgid "dashboard_query_invalid"
+msgstr "Die Abfrage des Orga-Dashboards ist ungültig."
+
+msgid "dashboard_match_not_found"
+msgstr "Dieses Spiel wurde nicht gefunden."
+
+msgid "dashboard_match_terminal"
+msgstr "Dieses Spiel ist abgeschlossen und kann nicht mehr angepinnt werden."
+
+msgid "dashboard_pin_conflict"
+msgstr "Der Pin wurde inzwischen geändert. Bitte lade die Ansicht neu und versuche es erneut."
+
+msgid "dashboard_thresholds_stale"
+msgstr "Die Schwellenwerte wurden inzwischen geändert. Lade die Seite neu und versuche es erneut."
+
+msgid "lobby_not_free_for_all"
+msgstr "Diese Lobby gehört nicht zu einer Free-for-All-Phase."
+
+msgid "lobby_roster_incomplete"
+msgstr "Die Lobby ist noch nicht vollständig besetzt."
+
+msgid "dashboard_ack_conflict"
+msgstr "Der Stand hat sich geändert. Bitte aktualisieren und erneut prüfen."
+
+msgid "dashboard_ack_comment_invalid"
+msgstr "Der Kommentar ist ungültig: höchstens 500 Zeichen, nur Text."
+
+msgid "dashboard_ack_terminal"
+msgstr "Die Begegnung ist abgeschlossen."
+
+msgid "dashboard_ack_paused"
+msgstr "Das Turnier ist pausiert."
+
+msgid "dashboard_ack_not_due"
+msgstr "Die Begegnung ist derzeit nicht fällig."
+
+msgid "dashboard_ack_clock_unknown"
+msgstr "Für dieses Turnier ist keine aktive Zeit bekannt."
+
+msgid "dashboard_ack_below_threshold"
+msgstr "Die Verzögerung hat die Schwelle noch nicht erreicht."
+
+msgid "dashboard_ack_recently_acknowledged"
+msgstr "Die Verzögerung wurde bereits geprüft. Das Alarmintervall läuft noch."
+
+msgid "%(count)d match"
+msgid_plural "%(count)d matches"
+msgstr[0] "%(count)d Begegnung"
+msgstr[1] "%(count)d Begegnungen"
+
+msgid "%(count)d match: %(tier)s (%(range)s)."
+msgid_plural "%(count)d matches: %(tier)s (%(range)s)."
+msgstr[0] "%(count)d Begegnung: %(tier)s (%(range)s)."
+msgstr[1] "%(count)d Begegnungen: %(tier)s (%(range)s)."
+
+msgid "%(count)d participant"
+msgid_plural "%(count)d participants"
+msgstr[0] "%(count)d teilnehmende Person"
+msgstr[1] "%(count)d Teilnehmende"
+
+msgid "There is only %(count)d page left."
+msgid_plural "There are only %(count)d pages left."
+msgstr[0] "Es gibt nur noch %(count)d Seite."
+msgstr[1] "Es gibt nur noch %(count)d Seiten."
+
+msgid "%(count)d match in your tournaments has no current demand: %(paused)d paused, %(pre_start)d before the tournament start, %(partial)d incomplete."
+msgid_plural "%(count)d matches in your tournaments have no current demand: %(paused)d paused, %(pre_start)d before the tournament start, %(partial)d incomplete."
+msgstr[0] "%(count)d Begegnung in deinen Turnieren hat keinen aktuellen Bedarf: %(paused)d pausiert, %(pre_start)d vor dem Turnierstart, %(partial)d unvollständig."
+msgstr[1] "%(count)d Begegnungen in deinen Turnieren haben keinen aktuellen Bedarf: %(paused)d pausiert, %(pre_start)d vor dem Turnierstart, %(partial)d unvollständig."
+
+msgid "%(filled)d place filled."
+msgid_plural "%(filled)d places filled."
+msgstr[0] "%(filled)d Platz besetzt."
+msgstr[1] "%(filled)d Plätze besetzt."
+
+msgid "Match pinned for the orga team."
+msgstr "Begegnung für das Orga-Team angepinnt."
+
+msgid "Orga dashboard: warning thresholds"
+msgstr "Orga-Dashboard: Warnschwellen"
+
+msgid "Applies to all tournaments of this party."
+msgstr "Gilt für alle Turniere dieser Party."
+
+msgid "Yellow from (minutes)"
+msgstr "Gelb ab (Minuten)"
+
+msgid "Red from (minutes)"
+msgstr "Rot ab (Minuten)"
+
+msgid "Reset to default"
+msgstr "Auf Standard zurücksetzen"
+
+msgid "Installation default: %(yellow)d/%(red)d min"
+msgstr "Standard der Installation: %(yellow)d/%(red)d min"
+
+msgid "Set for this party by %(actor)s on %(date)s"
+msgstr "Für diese Party gesetzt von %(actor)s am %(date)s"
+
+msgid "Yellow must be at least 1 minute."
+msgstr "Gelb muss mindestens 1 Minute sein."
+
+msgid "Red must be greater than yellow."
+msgstr "Rot muss größer als Gelb sein."
+
+msgid "At most 1440 minutes."
+msgstr "Höchstens 1440 Minuten."
+
+msgid "The thresholds were changed in the meantime. Please reload."
+msgstr "Die Schwellen wurden inzwischen geändert. Bitte neu laden."
+
+msgid "The dashboard thresholds were saved."
+msgstr "Die Warnschwellen wurden gespeichert."
+
+msgid "The dashboard thresholds were reset to the default."
+msgstr "Die Warnschwellen wurden auf den Standard zurückgesetzt."
+
+msgid "only for orgas"
+msgstr "nur für Orgas"
+
+msgid "Filtered to %(tier)s: %(count)s."
+msgstr "Gefiltert auf %(tier)s: %(count)s."
+
+msgid "Filter removed. %(count)s."
+msgstr "Filter aufgehoben. %(count)s."
+
+msgid "Check not saved – connection failed. Try again."
+msgstr "Prüfung nicht gespeichert – Verbindung fehlgeschlagen. Erneut versuchen."
+
+msgid "Green does not mean ready to play. Readiness is shown separately."
+msgstr "Grün bedeutet nicht spielbereit. Bereitschaft steht separat."
+
+msgid "Not confirmed yet."
+msgstr "Noch nicht bestätigt."
+
+msgid "Pinned (server time %(server)s)"
+msgstr "Angepinnt (Server-Stand %(server)s)"
+
+msgid "What is waiting right now – across all your tournaments."
+msgstr "Was gerade wartet – über alle deine Turniere."

@@ -7,6 +7,7 @@ in the same session. A fake identity-map session models SQLAlchemy
 not refreshing loaded instances without `populate_existing`.
 """
 
+from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -44,6 +45,7 @@ _MATCH_ATTRS = (
     'pairing_id',
     'invitation_hold_a',
     'invitation_hold_b',
+    'last_changed_at',
 )
 
 _REPO_DB = 'byceps.services.lan_tournament.tournament_repository.db'
@@ -73,6 +75,7 @@ def _row(**kw) -> SimpleNamespace:
         pairing_id=None,
         invitation_hold_a=False,
         invitation_hold_b=False,
+        last_changed_at=None,
     )
     for key, value in kw.items():
         setattr(row, key, value)
@@ -346,6 +349,7 @@ def test_fresh_mapper_roundtrips_readiness_facts():
         pairing_generation=2**40, readiness_revision=2**41,
         pairing_id=MatchPairingID(generate_uuid()),
         invitation_hold_a=True, invitation_hold_b=True,
+        last_changed_at=datetime(2026, 10, 7, 12, 30),
     )
     with patch(_REPO_DB, _FakeDb(session)):
         before = tournament_repository.find_match(match_id)

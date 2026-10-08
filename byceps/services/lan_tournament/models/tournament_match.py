@@ -63,6 +63,7 @@ class TournamentMatch:
     pairing_id: MatchPairingID | None = None
     invitation_hold_a: bool = False
     invitation_hold_b: bool = False
+    last_changed_at: datetime | None = None
 
 
 @dataclass(frozen=True, kw_only=True)

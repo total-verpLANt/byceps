@@ -175,7 +175,7 @@ def test_release_unrelease_closes_phase_two_work(make_tournament, users, monkeyp
     real_delete = repo.delete_match_flush
     checked = []
 
-    def delete(mid):
+    def delete(mid, **kwargs):
         if mid == match_id:
             assert repo.get_match_pairing(mid) is None
             assert repo.get_match_pairing_history(mid)[-1].ended_at is not None
@@ -183,7 +183,7 @@ def test_release_unrelease_closes_phase_two_work(make_tournament, users, monkeyp
             expected = status if status in {'accepted', 'sending', 'delivery_unknown'} else 'suppressed'
             assert work.status.value == expected
             checked.append(mid)
-        real_delete(mid)
+        real_delete(mid, **kwargs)
 
     monkeypatch.setattr(repo, 'delete_match_flush', delete)
     result = qualification.unrelease_playoffs(tournament.id, reason='New playoff draw', initiator_id=users[0].id)

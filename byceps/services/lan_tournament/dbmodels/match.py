@@ -114,6 +114,7 @@ class DbTournamentMatch(db.Model):
         db.SmallInteger, nullable=False, default=1, server_default='1'
     )
     seeding_target: Mapped[str | None] = mapped_column(db.String(40))
+    last_changed_at: Mapped[datetime | None]
 
     def __init__(
         self,
@@ -141,6 +142,7 @@ class DbTournamentMatch(db.Model):
         pairing_id: MatchPairingID | None = None,
         invitation_hold_a: bool = False,
         invitation_hold_b: bool = False,
+        last_changed_at: datetime | None = None,
     ) -> None:
         self.id = match_id
         self.tournament_id = tournament_id
@@ -165,6 +167,7 @@ class DbTournamentMatch(db.Model):
         self.pairing_id = pairing_id
         self.invitation_hold_a = invitation_hold_a
         self.invitation_hold_b = invitation_hold_b
+        self.last_changed_at = last_changed_at
 
     def __repr__(self) -> str:
         return (

@@ -15,6 +15,10 @@
 
   {{ render_tournament_subnav(tournament, active_tab) }}
 
+  {%- if dashboard_back_link|default(none) %}
+  <p class="ltd-back"><a href="{{ dashboard_back_link.url }}">{{ dashboard_back_link.label }}</a> <span class="dimmed">{{ dashboard_back_link.context }}</span></p>
+  {%- endif %}
+
   <div class="tournament-header">
     <div class="row is-vcentered">
       <div class="tournament-icon">

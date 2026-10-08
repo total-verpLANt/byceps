@@ -34,8 +34,11 @@ from .models.tournament_participant import (
 from .models.tournament_status import TournamentStatus
 from .models.tournament_team import TournamentTeam, TournamentTeamID
 from .tournament_participant_service import (
+    _changed,
     _dispatch_roster_invitations_after_signals,
     _lock_roster_matches_flush,
+    _operation_time_of,
+    _reconcile_roster_timing_flush,
     _refresh_roster_matches_flush,
 )
 
@@ -58,12 +61,22 @@ def _rollback_roster_on_failure(operation):
 
 
 def _find_locked_team(team_id: TournamentTeamID) -> TournamentTeam | None:
-    """Discover scope without locking; reload the team after tournament lock."""
+    """Discover scope without locking; reload the team after tournament lock.
+
+    Return `None` if a cleanup deleted the team while this call waited for
+    the tournament lock.
+    """
     team = tournament_repository.find_team(team_id)
     if team is None:
         return None
     tournament_repository.get_tournament_for_update(team.tournament_id)
-    return tournament_repository.get_team_for_update(team_id)
+    try:
+        locked = tournament_repository.get_team_for_update(team_id)
+    except ValueError:
+        return None
+    if locked.tournament_id != team.tournament_id:
+        return None
+    return locked
 
 
 def _is_acting_captain(team: TournamentTeam, user_id: UserID) -> bool:
@@ -88,7 +101,10 @@ def _clear_team_winner_flush(team: TournamentTeam) -> None:
 
 
 def _remove_team_contestants_flush(
-    team_id: TournamentTeamID, match_ids: Collection[TournamentMatchID],
+    team_id: TournamentTeamID,
+    match_ids: Collection[TournamentMatchID],
+    *,
+    changed_at: datetime | None = None,
 ) -> None:
     """Keep the existing all-assignment cleanup and audit its backstop changes."""
     from . import tournament_match_service
@@ -97,7 +113,9 @@ def _remove_team_contestants_flush(
         tournament_repository.get_match_for_update(mid)
         for mid in sorted(set(match_ids))
     ]
-    tournament_repository.remove_team_from_contestants_flush(team_id)
+    tournament_repository.remove_team_from_contestants_flush(
+        team_id, **_changed(changed_at)
+    )
     for match in before:
         tournament_match_service._audit_engine_pairing_change_flush(match)
 
@@ -348,11 +366,17 @@ def delete_team(
         return Err('Only the team captain can delete this team.')
 
     affected = _lock_roster_matches_flush(team.tournament_id, team_ids=[team_id])
+    changed_at = _operation_time_of(
+        tournament_repository.get_tournament(team.tournament_id, fresh=True)
+    )
     # Remove references without committing before pairing/history cleanup.
     tournament_repository.remove_team_from_participants_flush(team_id)
-    _remove_team_contestants_flush(team_id, affected)
+    _remove_team_contestants_flush(team_id, affected, changed_at=changed_at)
     _clear_team_winner_flush(team)
     tournament_repository.delete_team_flush(team_id)
+    timed = _reconcile_roster_timing_flush(team.tournament_id, changed_at)
+    if timed.is_err():
+        return Err(timed.unwrap_err())
     refreshed = _refresh_roster_matches_flush(affected, occurred_at=datetime.now(UTC))
     if refreshed.is_err():
         return Err(refreshed.unwrap_err())
@@ -726,6 +750,7 @@ def remove_team_member(
     remaining_members = tournament_repository.get_participants_for_team(team_id)
     if len(remaining_members) == 0:
         tournament = tournament_repository.get_tournament(team.tournament_id, fresh=True)
+        changed_at = _operation_time_of(tournament)
         bracket_is_active = tournament.tournament_status in (
             TournamentStatus.ONGOING,
             TournamentStatus.PAUSED,
@@ -738,15 +763,22 @@ def remove_team_member(
             defwin = tournament_match_service.handle_defwin_for_removed_team(
                 team.tournament_id, team_id,
                 initiator_id=initiator_id,
+                **_changed(changed_at),
             )
             tournament_repository.remove_team_from_participants_flush(team_id)
             tournament_repository.soft_delete_team_flush(team_id, now)
             release_due = tournament.has_playoffs
         else:
             tournament_repository.remove_team_from_participants_flush(team_id)
-            _remove_team_contestants_flush(team_id, affected)
+            _remove_team_contestants_flush(
+                team_id, affected, changed_at=changed_at
+            )
             _clear_team_winner_flush(team)
             tournament_repository.delete_team_flush(team_id)
+
+        timed = _reconcile_roster_timing_flush(team.tournament_id, changed_at)
+        if timed.is_err():
+            return Err(timed.unwrap_err())
 
         team_deleted_event = TeamDeletedEvent(
             occurred_at=now,

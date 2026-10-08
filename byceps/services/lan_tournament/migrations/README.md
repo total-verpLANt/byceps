@@ -555,6 +555,225 @@ Actual isolated PostgreSQL checks (serialize with the integration lock):
 flock /tmp/opencode/f04-execution/integration.lock bash -c 'source /tmp/opencode/f04-execution/verification-preflight.env; "$PY" -m pytest tests/integration/services/lan_tournament/test_migration_match_readiness.py -q -o addopts="" -p no:cacheprovider'
 ```
 
+### 023_add_dashboard_operational_timing.sql
+
+Persistent facts of the cross-tournament orga dashboard (PRD F-03).
+
+On `lan_tournaments`:
+
+- **`operational_clock_elapsed_us BIGINT NOT NULL DEFAULT 0`** -- microseconds
+  of active time; `ck_lan_tournaments_operational_clock_elapsed_us` requires
+  `>= 0`
+- **`operational_clock_running_since` / `operational_clock_activated_at
+  TIMESTAMP NULL`** -- naive timestamps, like every timestamp of this module
+
+On `lan_tournament_matches`: **`last_changed_at TIMESTAMP NULL`**, the
+domain-only last-change time of a match.
+
+Four new tables. Their tournament, match, party and actor IDs are snapshots
+**without a foreign key**, so the history survives the deletion or
+regeneration of the live rows:
+
+1. **`lan_tournament_match_due_episodes`** -- one row per uninterrupted period
+   of due demand. `opened_clock_us` / `closed_clock_us` are `BIGINT` (checked
+   `>= 0`), `closed_at` and `closed_clock_us` are both NULL or both set
+   (`ck_lan_tournament_due_episodes_close_pair`), and the partial unique index
+   `uq_lan_tournament_due_episodes_open_match` (`match_id WHERE closed_at IS
+   NULL`) allows one open episode per match. History is retained without
+   limit, so two more partial indexes keep the hot reads off a sequential
+   scan:
+   `ix_lan_tournament_due_episodes_open_tournament` (`tournament_id WHERE
+   closed_at IS NULL`) serves `list_open_due_episodes`, which every result
+   write calls while it holds the tournament row lock, and
+   `ix_lan_tournament_due_episodes_closed_match` (`match_id WHERE closed_at IS
+   NOT NULL`) serves the per-fixture prior-episode facts of every dashboard
+   snapshot and poll. `rollback_023.sql` needs no index statement: dropping
+   the table drops its indexes
+2. **`lan_tournament_match_escalation_acks`** -- one row per acknowledged
+   episode revision (`uq_lan_tournament_escalation_ack_episode_revision`,
+   `clock_us BIGINT`). `fk_lan_tournament_escalation_acks_episode_id` is the
+   only foreign key of the four tables, without `ON DELETE`
+3. **`lan_tournament_match_dashboard_annotations`** -- the shared pin of a
+   live match, keyed by the match ID (`pin_pair` check: `pinned_at` and
+   `pinned_by` are both NULL or both set)
+4. **`lan_tournament_dashboard_party_thresholds`** -- the Wartung override of
+   the traffic thresholds of one party, keyed by the party ID. Whole minutes:
+   `1 <= yellow_minutes < red_minutes <= 1440`, each a named check. No row
+   means the deployment default
+
+Every microsecond column is `BIGINT`: an `INTEGER` holds only 35 min 47 s,
+below the 45 min default red threshold.
+
+**Unknown history stays unknown.** 023 backfills nothing: existing
+tournaments keep an elapsed time of 0 and NULL timestamps, existing matches
+keep a NULL `last_changed_at`. The dashboard shows such timing as unavailable.
+
+**Cleanup contract.** There is no database cascade. The application removes
+the pin row together with its match; due episodes, acknowledgements and party
+thresholds are retained. No index is added for unconfirmed match frontiers or
+active team memberships: no query needs one yet.
+
+**Human approval is required before deployment, activation or rollback.**
+Local verification is not server authorization. Recheck the highest migration
+number in the integration base and sibling branches first; if 023 is occupied,
+renumber apply, rollback, README and test together:
+
+```bash
+ls byceps/services/lan_tournament/migrations/[0-9][0-9][0-9]_*.sql | sort
+```
+
+Prerequisites: schema through 022, PostgreSQL 13+, reviewed backup and a
+maintenance window. Both scripts use `BEGIN`/`COMMIT` and
+`SET LOCAL lock_timeout = '5s'`: lock contention aborts atomically, re-run in a
+quiet window. They are idempotent and every guard is scoped to its relation.
+Apply before the tournaments start: 023 does not reconstruct the operational
+clock of a tournament that already ran.
+
+```bash
+docker compose stop web worker
+docker compose exec -T db psql -v ON_ERROR_STOP=1 -U byceps byceps < \
+  byceps/services/lan_tournament/migrations/023_add_dashboard_operational_timing.sql
+docker compose start web worker
+```
+
+Native equivalent (after backup/approval, with matching code installed):
+
+```bash
+systemctl stop byceps-web byceps-worker
+psql -v ON_ERROR_STOP=1 -U byceps -h localhost byceps -f \
+  /opt/byceps/byceps/services/lan_tournament/migrations/023_add_dashboard_operational_timing.sql
+systemctl start byceps-web byceps-worker
+```
+
+**Rollback is data-losing:** it drops the four tables with every episode,
+acknowledgement, pin and threshold override, then the three clock columns, the
+elapsed check and `last_changed_at`. Nothing else is touched. Back up first,
+obtain separate human approval, stop the dashboard code and install code that
+predates 023 before restarting.
+
+```bash
+docker compose stop web worker
+docker compose exec -T db psql -v ON_ERROR_STOP=1 -U byceps byceps < \
+  byceps/services/lan_tournament/migrations/rollback_023.sql
+# Install code that predates 023 before restarting web/worker.
+docker compose start web worker
+```
+
+Native rollback while services are stopped:
+
+```bash
+psql -v ON_ERROR_STOP=1 -U byceps -h localhost byceps -f \
+  /opt/byceps/byceps/services/lan_tournament/migrations/rollback_023.sql
+```
+
+Isolated PostgreSQL checks (the test creates and drops its own schemas on the
+configured `byceps_test*` database; it refuses any other database name):
+
+```bash
+POSTGRES_DB=byceps_test pytest tests/integration/services/lan_tournament/test_migration_dashboard_timing.py -q -o addopts="" -p no:cacheprovider
+```
+
+#### 023: Pre-start requirement
+
+The operational clock of a tournament starts when it goes from
+`REGISTRATION_CLOSED` to `ONGOING` while 023 and the matching code are live,
+runs only while it is `ONGOING`, and freezes on a pause. A tournament that
+started earlier has no clock and never gets one, so a supported target party is
+one **without a tournament that has already started** when 023 and the code go
+live. Check it before applying, and record the database, the party and the time
+of the check in the human report:
+
+```sql
+SELECT id, name, tournament_status
+FROM lan_tournaments
+WHERE party_id = '<party_id>'
+  AND tournament_status IN ('ONGOING', 'PAUSED', 'COMPLETED', 'CANCELLED');
+```
+
+No row means the party is a supported target. A `CANCELLED` row alone does not
+say whether that tournament ever ran: look at its matches. Any tournament found
+makes the party an unsupported target for the full feature. Its tournaments
+keep running, but their timing is unavailable (below). Support for such a party
+needs a new authorization. A tournament created or moved straight into a
+started status through service input has no clock history either.
+
+#### 023: Unknown history
+
+023 backfills nothing and the application invents nothing:
+
+- A tournament with `operational_clock_activated_at IS NULL` has an unknown
+  clock. The dashboard shows its timing as unavailable (tier unknown), refuses
+  every acknowledgement for it (reason: clock unknown) and keeps its due matches
+  in the conflict detection. Pause and resume never create time for it.
+- A match with `last_changed_at IS NULL` has an unknown last change. It shows as
+  unavailable until an actual domain change of that match (score, confirmation,
+  contestants, readiness, walkover, removal) stamps it. A repeat of the same
+  value, comments, pins and acknowledgements never do.
+- The audit log and `updated_at` are not a clock authority and are never used
+  to reconstruct either.
+
+#### 023: Dashboard configuration
+
+The deployment settings are read by `dashboard_config.py` when a request is
+handled, never at import. `test_dashboard_config.py` pins this table.
+
+| Key | Default | Allowed | Meaning |
+|-----|---------|---------|---------|
+| `LAN_TOURNAMENT_DASHBOARD_YELLOW_MINUTES` | `15` | whole minutes, 1 to 1440, below red | yellow from this alert interval |
+| `LAN_TOURNAMENT_DASHBOARD_RED_MINUTES` | `45` | whole minutes, 1 to 1440, above yellow | red from this alert interval |
+| `LAN_TOURNAMENT_DASHBOARD_POLL_SECONDS` | `30` | whole seconds, 5 to 300 | refresh interval the page and the poll announce |
+| `LAN_TOURNAMENT_DASHBOARD_PAGE_SIZE` | `50` | whole number, 1 to 100 | rows per page; never a query parameter |
+
+Per key the order is: app config key of that name, else the environment
+variable of that name, else the default. The core assembles no such key into the
+app config, so on a deployment the environment variable of the web processes
+(admin and every site app) is the way to set it; restart them after a change.
+The environment value is parsed as JSON: `20` is a number, while `20.0`, `true`,
+`"20"`, `20s` and an empty value are refused. A value that is set but invalid
+is an error, never a fallback to the next source. The checks run in a fixed
+order (yellow, red, their order, poll, page size) with the error codes
+`invalid_dashboard_yellow_minutes`, `invalid_dashboard_red_minutes`,
+`invalid_dashboard_threshold_order`, `invalid_dashboard_poll_seconds` and
+`invalid_dashboard_page_size`. A broken value is an operator error: the
+dashboard routes answer `500`, while the Wartung card shows the error instead of
+its form and the admin back link is hidden. The site back link reads no
+settings and is unaffected.
+
+A party override in the Wartung tab (permission `lan_tournament.maintain`)
+replaces only yellow and red for that party, on both dashboards. Poll interval
+and page size always come from the deployment. No row means the deployment
+default. Changes are logged to the application log, not to the audit log.
+
+#### 023: History retention
+
+- Episodes, acknowledgements and party thresholds keep their tournament, match,
+  party and actor IDs as snapshots, without a foreign key. They survive the
+  deletion of a tournament, the regeneration of a bracket and an un-release;
+  open episodes of removed matches are closed at the operation time and clock.
+  The pin row of a match is removed with the match.
+- They do not depend on the audit log. `purge_lan_tournament_log_entries` only
+  deletes log entries. The audit entries `match-pinned`, `match-unpinned` and
+  `match-acknowledged` can be purged and hold no comment: the acknowledgement
+  row is the durable record of actor, time and comment.
+- No application path or CLI removes episodes or acknowledgements. They stay
+  until a human removes them, or until `rollback_023.sql` drops the tables. A
+  party override is removed by a reset in the Wartung tab.
+
+#### 023: Manual release responsibilities
+
+The agent work ends at reviewed code, tests and documentation. These steps stay
+with the human:
+
+1. Approving and applying `023_add_dashboard_operational_timing.sql` (and any
+   `rollback_023.sql`) on the target database, after a backup and with the
+   pre-start check above.
+2. Compiling the German message catalogue (`.mo`) on the server. The repository
+   carries only `.po` files, and a new msgid stays English until the catalogue
+   is compiled.
+3. Staging QA with real data, including 360 px and the totalverplant theme, and
+   the visual sign-off against the accepted design.
+4. Git publication: commit, push and merge.
+
 ## Pre-Application Checklist
 
 Before applying any migration, complete these steps:

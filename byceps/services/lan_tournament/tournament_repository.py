@@ -1,12 +1,27 @@
 import json
 import logging
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Iterable, Sequence
 from datetime import UTC, datetime, timedelta
 from enum import Enum
-from typing import TYPE_CHECKING, TypeVar, cast
+from typing import cast, NamedTuple, TYPE_CHECKING, TypeVar
 from uuid import UUID
 
-from sqlalchemy import and_, case, delete, func, or_, select, tuple_, update
+from sqlalchemy import (
+    and_,
+    BigInteger,
+    case,
+    ColumnElement,
+    delete,
+    extract,
+    func,
+    literal,
+    or_,
+    select,
+    tuple_,
+    update,
+)
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.sql.base import Executable
 
 from byceps.database import db
 from byceps.services.party.models import PartyID
@@ -14,6 +29,12 @@ from byceps.services.user.models import UserID
 from byceps.util.result import Err, Ok, Result
 from byceps.util.uuid import uuid7
 
+from .dbmodels.dashboard import (
+    DbDashboardPartyThresholds,
+    DbMatchDashboardAnnotation,
+    DbMatchDueEpisode,
+    DbMatchEscalationAck,
+)
 from .dbmodels.match import DbTournamentMatch
 from .dbmodels.match_comment import DbTournamentMatchComment
 from .dbmodels.match_contestant import DbTournamentMatchToContestant
@@ -31,7 +52,14 @@ from .models.match_readiness import (
     MatchInvitation,
     MatchPairing,
 )
+from .models.operational_timing import (
+    MatchDueEpisode,
+    MatchEscalationAcknowledgement,
+    MatchPinState,
+    OperationalClock,
+)
 from .models.tournament import Tournament, TournamentID
+from .models.tournament_dashboard import PartyDashboardThresholds
 from .models.tournament_image import TournamentImageID
 from .models.tournament_log_entry import TournamentLogEntry
 from .models.tournament_match import (
@@ -61,6 +89,7 @@ from .models.tournament_participant import (
 )
 from .models.tournament_status import TournamentStatus
 from .models.tournament_team import TournamentTeam, TournamentTeamID
+from .tournament_operational_domain_service import transition_clock
 
 if TYPE_CHECKING:
     from .models.tournament_request import TournamentRequestID
@@ -183,6 +212,15 @@ def create_tournament(tournament: Tournament, *, commit: bool = True) -> None:
     )
 
     db_tournament.position = tournament.position
+    db_tournament.operational_clock_elapsed_us = (
+        tournament.operational_clock_elapsed_us
+    )
+    db_tournament.operational_clock_running_since = _naive_utc_or_none(
+        tournament.operational_clock_running_since
+    )
+    db_tournament.operational_clock_activated_at = _naive_utc_or_none(
+        tournament.operational_clock_activated_at
+    )
 
     db.session.add(db_tournament)
     if commit:
@@ -505,17 +543,70 @@ def set_tournament_winner(
     return Ok(None)
 
 
+class StatusClockEdge(NamedTuple):
+    """The operational clock after a status write, and when it moved."""
+
+    at: datetime
+    clock: OperationalClock
+
+
 def set_tournament_status_flush(
     tournament_id: TournamentID,
     status: TournamentStatus,
-) -> Result[None, str]:
-    """Update tournament status (flush only)."""
-    db_tournament = db.session.get(DbTournament, tournament_id)
+    *,
+    changed_at: datetime | None = None,
+) -> Result[StatusClockEdge | None, str]:
+    """Update the tournament status and its operational clock (flush only).
+
+    Every status writer ends here, so the clock follows each of them:
+    the start activates it, leaving `ONGOING` freezes it and a resume
+    continues it. Call it under the tournament lock. The status is read
+    from the row, never from a caller's view of it.
+
+    Return the clock and the time it moved at, or `None` for a tournament
+    without a known clock history, whose history is never invented. An
+    edge the clock cannot follow refuses only a tournament whose clock
+    is known: for the others there is no clock to protect, and an
+    ordinary status write is not refused for want of one.
+    """
+    db_tournament = db.session.get(
+        DbTournament, tournament_id, populate_existing=True
+    )
     if db_tournament is None:
         return Err(f'Unknown tournament ID "{tournament_id}"')
+
+    at = (
+        _naive_utc(changed_at)
+        if changed_at is not None
+        else get_operation_time()
+    )
+    clock = OperationalClock(
+        elapsed_us=db_tournament.operational_clock_elapsed_us,
+        running_since=db_tournament.operational_clock_running_since,
+        activated_at=db_tournament.operational_clock_activated_at,
+    )
+    moved = transition_clock(
+        clock,
+        _safe_enum_lookup(TournamentStatus, db_tournament.tournament_status),
+        status,
+        at,
+    )
+    if moved.is_ok():
+        new_clock = moved.unwrap()
+    elif clock.activated_at is not None:
+        return Err(moved.unwrap_err())
+    else:
+        new_clock = clock
+
     db_tournament.tournament_status = status.name
+    db_tournament.operational_clock_elapsed_us = new_clock.elapsed_us
+    db_tournament.operational_clock_running_since = new_clock.running_since
+    db_tournament.operational_clock_activated_at = new_clock.activated_at
     db.session.flush()
-    return Ok(None)
+
+    if new_clock.activated_at is None:
+        return Ok(None)
+    return Ok(StatusClockEdge(at=at, clock=new_clock))
 
 
 def get_participant_count(
@@ -607,6 +698,15 @@ def _db_tournament_to_tournament(
         playoff_released_at=db_tournament.playoff_released_at,
         playoff_released_by=db_tournament.playoff_released_by,
         leaderboard_closed_at=db_tournament.leaderboard_closed_at,
+        operational_clock_elapsed_us=(
+            db_tournament.operational_clock_elapsed_us
+        ),
+        operational_clock_running_since=(
+            db_tournament.operational_clock_running_since
+        ),
+        operational_clock_activated_at=(
+            db_tournament.operational_clock_activated_at
+        ),
     )
 
 
@@ -1249,8 +1349,14 @@ def rollback_session() -> None:
     db.session.rollback()
 
 
-def create_match(match: TournamentMatch) -> None:
-    """Persist a match."""
+def create_match(
+    match: TournamentMatch, *, changed_at: datetime | None = None
+) -> None:
+    """Persist a match and initialize its last-change fact.
+
+    The fact is the match's own `last_changed_at`, else `changed_at`,
+    else the server operation time.
+    """
     db_match = DbTournamentMatch(
         match.id,
         match.tournament_id,
@@ -1264,6 +1370,7 @@ def create_match(match: TournamentMatch) -> None:
         confirmed_by=match.confirmed_by,
         phase=match.phase,
         seeding_target=match.seeding_target,
+        last_changed_at=_initial_last_changed_at(match, changed_at),
     )
 
     db.session.add(db_match)
@@ -1299,9 +1406,31 @@ def get_matches_for_seeding_target(
     return [_db_match_to_match(m) for m in db_matches]
 
 
-def delete_match_flush(match_id: TournamentMatchID) -> None:
-    """Delete a match (flush only - caller owns commit)."""
+def _retire_dashboard_state_flush(
+    match_ids: Collection[TournamentMatchID], changed_at: datetime | None
+) -> None:
+    """Close the episodes and drop the pins of matches that are going away.
+
+    Call it with the tournament locked, before the matches are deleted,
+    so that no live annotation outlives its match. The server clock is
+    sampled only if there is something to retire.
+    """
+    if match_ids:
+        retire_dashboard_matches_flush(
+            match_ids, occurred_at=_resolve_changed_at(changed_at)
+        )
+
+
+def delete_match_flush(
+    match_id: TournamentMatchID, *, changed_at: datetime | None = None
+) -> None:
+    """Delete a match (flush only - caller owns commit).
+
+    Its open due episode closes as history, and its live pin goes with it.
+    An owner with an operation time passes it as `changed_at`.
+    """
     _retire_match_pairing_flush(match_id)
+    _retire_dashboard_state_flush([match_id], changed_at)
     db.session.execute(
         delete(DbTournamentMatch).filter_by(id=match_id)
     )
@@ -1324,12 +1453,16 @@ def null_self_referential_fks(tournament_id: TournamentID) -> None:
 def delete_matches_for_tournament(
     tournament_id: TournamentID, *, commit: bool = True
 ) -> None:
-    """Delete all matches for a tournament."""
+    """Delete all matches for a tournament.
+
+    Their open due episodes close as history, and their live pins go.
+    """
     lock_tournament_for_update(tournament_id)
     matches = get_matches_for_tournament_ordered_fresh(tournament_id)
     lock_matches_for_update([match.id for match in matches])
     for match in sorted(matches, key=lambda match: str(match.id)):
         _retire_match_pairing_flush(match.id)
+    _retire_dashboard_state_flush([match.id for match in matches], None)
     null_self_referential_fks(tournament_id)
     db.session.execute(
         delete(DbTournamentMatch).filter_by(tournament_id=tournament_id)
@@ -1517,24 +1650,37 @@ def get_matches_for_round(
 def confirm_match(
     match_id: TournamentMatchID,
     confirmed_by: UserID,
+    *,
+    changed_at: datetime | None = None,
 ) -> None:
     """Set the confirmed_by field on a match."""
     db_match = db.session.get(DbTournamentMatch, match_id)
     if db_match is None:
         raise ValueError(f'Unknown match ID "{match_id}"')
 
+    _touch_match_if(
+        match_id,
+        changed_at,
+        DbTournamentMatch.confirmed_by.is_distinct_from(confirmed_by),
+    )
     db_match.confirmed_by = confirmed_by
     db.session.flush()
 
 
 def unconfirm_match(
-    match_id: TournamentMatchID, *, reset_readiness: bool = True,
+    match_id: TournamentMatchID,
+    *,
+    reset_readiness: bool = True,
+    changed_at: datetime | None = None,
 ) -> None:
     """Reset the confirmed_by field on a match."""
     db_match = db.session.get(DbTournamentMatch, match_id)
     if db_match is None:
         raise ValueError(f'Unknown match ID "{match_id}"')
 
+    _touch_match_if(
+        match_id, changed_at, DbTournamentMatch.confirmed_by.is_not(None)
+    )
     db_match.confirmed_by = None
     if reset_readiness:
         clear_match_readiness_flush(match_id, increment_revision=True)
@@ -1653,6 +1799,7 @@ def _db_match_to_match(
         pairing_id=db_match.pairing_id,
         invitation_hold_a=db_match.invitation_hold_a,
         invitation_hold_b=db_match.invitation_hold_b,
+        last_changed_at=db_match.last_changed_at,
     )
 
 
@@ -2551,6 +2698,8 @@ def set_side_ready_flush(
     side: MatchSide,
     ready_at: datetime,
     ready_by: UserID,
+    *,
+    changed_at: datetime | None = None,
 ) -> None:
     """Record a per-side readiness claim (flush only)."""
     if side not in (MatchSide.A, MatchSide.B):
@@ -2559,9 +2708,25 @@ def set_side_ready_flush(
     if db_match is None:
         raise ValueError(f'Unknown match ID "{match_id}"')
     if side == MatchSide.A:
+        _touch_match_if(
+            match_id,
+            changed_at,
+            or_(
+                DbTournamentMatch.ready_at_a.is_distinct_from(ready_at),
+                DbTournamentMatch.ready_by_a.is_distinct_from(ready_by),
+            ),
+        )
         db_match.ready_at_a = ready_at
         db_match.ready_by_a = ready_by
     else:
+        _touch_match_if(
+            match_id,
+            changed_at,
+            or_(
+                DbTournamentMatch.ready_at_b.is_distinct_from(ready_at),
+                DbTournamentMatch.ready_by_b.is_distinct_from(ready_by),
+            ),
+        )
         db_match.ready_at_b = ready_at
         db_match.ready_by_b = ready_by
     db.session.flush()
@@ -2570,6 +2735,8 @@ def set_side_ready_flush(
 def clear_side_ready_flush(
     match_id: TournamentMatchID,
     side: MatchSide,
+    *,
+    changed_at: datetime | None = None,
 ) -> None:
     """Remove a per-side readiness claim (flush only)."""
     if side not in (MatchSide.A, MatchSide.B):
@@ -2578,9 +2745,25 @@ def clear_side_ready_flush(
     if db_match is None:
         raise ValueError(f'Unknown match ID "{match_id}"')
     if side == MatchSide.A:
+        _touch_match_if(
+            match_id,
+            changed_at,
+            or_(
+                DbTournamentMatch.ready_at_a.is_not(None),
+                DbTournamentMatch.ready_by_a.is_not(None),
+            ),
+        )
         db_match.ready_at_a = None
         db_match.ready_by_a = None
     else:
+        _touch_match_if(
+            match_id,
+            changed_at,
+            or_(
+                DbTournamentMatch.ready_at_b.is_not(None),
+                DbTournamentMatch.ready_by_b.is_not(None),
+            ),
+        )
         db_match.ready_at_b = None
         db_match.ready_by_b = None
     db.session.flush()
@@ -2607,6 +2790,7 @@ def set_occupied_since_if_unset_flush(
 ) -> bool:
     """Set ``occupied_since`` unless already set; flush only.
 
+    The column is naive UTC, so an aware value is converted first.
     Return ``True`` if the value was set by this call.
     """
     db_match = db.session.get(DbTournamentMatch, match_id)
@@ -2614,9 +2798,28 @@ def set_occupied_since_if_unset_flush(
         raise ValueError(f'Unknown match ID "{match_id}"')
     if db_match.occupied_since is not None:
         return False
-    db_match.occupied_since = occupied_since
+    db_match.occupied_since = _naive_utc(occupied_since)
     db.session.flush()
     return True
+
+
+def set_ffa_lobby_occupied_since_if_unset_flush(
+    match_id: TournamentMatchID,
+    occupied_since: datetime,
+) -> bool:
+    """Set `occupied_since` of a completed free-for-all lobby; flush only.
+
+    This is the one way a free-for-all lobby becomes occupied. The
+    caller has checked that the roster is complete and passes the
+    operation time. An occupancy that is already set is never reset.
+
+    Return `True` if the value was set by this call. Raise `ValueError`
+    for an unknown match or one whose phase is not free-for-all.
+    """
+    if _phase_game_format_name(match_id) != GameFormat.FREE_FOR_ALL.name:
+        raise ValueError(f'Match "{match_id}" is not a free-for-all lobby')
+
+    return set_occupied_since_if_unset_flush(match_id, occupied_since)
 
 
 def get_both_ready_unnotified_match_ids(
@@ -2790,6 +2993,8 @@ def _db_comment_to_comment(
 
 def create_match_contestant(
     contestant: TournamentMatchToContestant,
+    *,
+    changed_at: datetime | None = None,
 ) -> None:
     """Persist a match contestant."""
     db_contestant = DbTournamentMatchToContestant(
@@ -2810,16 +3015,28 @@ def create_match_contestant(
 
     db.session.add(db_contestant)
     db.session.flush()
+    operation_time = _resolve_changed_at(changed_at)
+    _touch_changed_matches_flush(
+        [contestant.tournament_match_id], operation_time
+    )
 
-    # Occupancy starts once both sides of the match are fixed.
-    _mark_occupied_if_fully_occupied(db_contestant.tournament_match_id)
+    # Occupancy of a 1v1 match starts once both sides are fixed.
+    _mark_occupied_if_fully_occupied(
+        db_contestant.tournament_match_id, operation_time
+    )
 
 
 def _mark_occupied_if_fully_occupied(
     match_id: TournamentMatchID,
+    occupied_since: datetime,
 ) -> None:
-    """Set ``occupied_since`` on a match that just became fully
-    occupied (exactly 2 real contestants, marker still unset)."""
+    """Set `occupied_since` on a 1v1 match that just became fully occupied.
+
+    That is exactly 2 real contestants with the marker still unset.
+    A free-for-all lobby is never marked here: its roster is complete
+    only when the generator says so, through
+    `set_ffa_lobby_occupied_since_if_unset_flush`.
+    """
     count = (
         db.session.execute(
             select(func.count())
@@ -2831,41 +3048,90 @@ def _mark_occupied_if_fully_occupied(
             )
         ).scalar_one()
     )
-    if count == 2:
-        set_occupied_since_if_unset_flush(match_id, datetime.now(UTC))
+    if count != 2:
+        return
+
+    if _phase_game_format_name(match_id) == GameFormat.ONE_V_ONE.name:
+        set_occupied_since_if_unset_flush(match_id, occupied_since)
+
+
+def _phase_game_format_name(match_id: TournamentMatchID) -> str | None:
+    """Return the name of the game format that the match's phase runs.
+
+    The database answers, so a cached row cannot.
+    """
+    row = db.session.execute(
+        select(
+            DbTournamentMatch.phase,
+            DbTournament.game_format,
+            DbTournament.playoff_game_format,
+        )
+        .select_from(DbTournamentMatch)
+        .join(DbTournament, DbTournament.id == DbTournamentMatch.tournament_id)
+        .where(DbTournamentMatch.id == match_id)
+    ).one_or_none()
+    if row is None:
+        raise ValueError(f'Unknown match ID "{match_id}"')
+
+    if row.phase == 1:
+        return row.game_format
+    if row.phase == 2:
+        return row.playoff_game_format
+    return None
 
 
 def update_contestant_score(
     contestant_id: TournamentMatchToContestantID,
     score: int,
+    *,
+    changed_at: datetime | None = None,
+    commit: bool = True,
 ) -> None:
-    """Update a contestant's score."""
+    """Update a contestant's score.
+
+    Commit unless `commit` is false: the caller then owns the transaction.
+    """
     db_contestant = db.session.get(DbTournamentMatchToContestant, contestant_id)
     if db_contestant is None:
         raise ValueError(f'Unknown contestant ID "{contestant_id}"')
 
+    changed = db_contestant.score != score
     db_contestant.score = score
-    db.session.commit()
+    if changed:
+        db.session.flush()
+        _touch_changed_matches_flush(
+            [db_contestant.tournament_match_id], changed_at
+        )
+    if commit:
+        db.session.commit()
 
 
 def update_contestant_scores(
     scores: dict[TournamentMatchToContestantID, int],
+    *,
+    changed_at: datetime | None = None,
 ) -> None:
     """Update multiple contestant scores in a single flush.
 
     Caller is responsible for committing the session.
     """
+    changed_match_ids = []
     for contestant_id, score in scores.items():
         db_contestant = db.session.get(
             DbTournamentMatchToContestant, contestant_id
         )
         if db_contestant is None:
             raise ValueError(f'Unknown contestant ID "{contestant_id}"')
+        if db_contestant.score != score:
+            changed_match_ids.append(db_contestant.tournament_match_id)
         db_contestant.score = score
     db.session.flush()
+    _touch_changed_matches_flush(changed_match_ids, changed_at)
 
 
-def clear_contestant_scores(match_id: TournamentMatchID) -> None:
+def clear_contestant_scores(
+    match_id: TournamentMatchID, *, changed_at: datetime | None = None
+) -> None:
     """Clear all contestant scores for a match.
 
     Caller is responsible for committing the session.
@@ -2875,28 +3141,40 @@ def clear_contestant_scores(match_id: TournamentMatchID) -> None:
         .filter_by(tournament_match_id=match_id)
         .all()
     )
+    changed = any(contestant.score is not None for contestant in contestants)
     for contestant in contestants:
         contestant.score = None
     db.session.flush()
+    if changed:
+        _touch_changed_matches_flush([match_id], changed_at)
 
 
 def update_contestant_placement_and_points(
     updates: dict[TournamentMatchToContestantID, tuple[int, int]],
+    *,
+    changed_at: datetime | None = None,
 ) -> None:
     """Update placement and points for multiple contestants in a single flush.
 
     *updates* maps contestant ID to ``(placement, points)``.
     Caller is responsible for committing the session.
     """
+    changed_match_ids = []
     for contestant_id, (placement, points) in updates.items():
         db_contestant = db.session.get(
             DbTournamentMatchToContestant, contestant_id
         )
         if db_contestant is None:
             raise ValueError(f'Unknown contestant ID "{contestant_id}"')
+        if (db_contestant.placement, db_contestant.points) != (
+            placement,
+            points,
+        ):
+            changed_match_ids.append(db_contestant.tournament_match_id)
         db_contestant.placement = placement
         db_contestant.points = points
     db.session.flush()
+    _touch_changed_matches_flush(changed_match_ids, changed_at)
 
 
 def get_contestants_for_match(
@@ -3030,6 +3308,8 @@ def delete_match_contestant(
 
 def delete_match_contestant_flush(
     contestant_id: TournamentMatchToContestantID,
+    *,
+    changed_at: datetime | None = None,
 ) -> None:
     """Delete a contestant; caller owns pairing cleanup and commit."""
     match_ids = db.session.scalars(
@@ -3043,6 +3323,7 @@ def delete_match_contestant_flush(
     for match_id in match_ids:
         _retire_match_pairing_flush(match_id)
     db.session.flush()
+    _touch_changed_matches_flush(match_ids, changed_at)
 
 
 def find_contestant_entries_for_participant_in_tournament(
@@ -3106,6 +3387,7 @@ def delete_contestant_from_match(
     *,
     team_id: TournamentTeamID | None = None,
     participant_id: TournamentParticipantID | None = None,
+    changed_at: datetime | None = None,
 ) -> None:
     """Delete a specific contestant from a match."""
     query = delete(DbTournamentMatchToContestant).filter_by(
@@ -3122,6 +3404,8 @@ def delete_contestant_from_match(
     if deleted:
         _retire_match_pairing_flush(match_id)
     db.session.flush()
+    if deleted:
+        _touch_changed_matches_flush([match_id], changed_at)
 
 
 def delete_contestants_for_match(match_id: TournamentMatchID) -> None:
@@ -3132,15 +3416,21 @@ def delete_contestants_for_match(match_id: TournamentMatchID) -> None:
 
 def delete_contestants_for_match_flush(
     match_id: TournamentMatchID,
+    *,
+    changed_at: datetime | None = None,
 ) -> None:
     """Delete all contestants for a match (flush only)."""
     _retire_match_pairing_flush(match_id)
-    db.session.execute(
-        delete(DbTournamentMatchToContestant).filter_by(
-            tournament_match_id=match_id
-        )
+    deleted = list(
+        db.session.execute(
+            delete(DbTournamentMatchToContestant)
+            .filter_by(tournament_match_id=match_id)
+            .returning(DbTournamentMatchToContestant.id)
+        ).scalars()
     )
     db.session.flush()
+    if deleted:
+        _touch_changed_matches_flush([match_id], changed_at)
 
 
 def delete_contestants_for_tournament(
@@ -3177,7 +3467,9 @@ def remove_team_from_contestants(team_id: TournamentTeamID) -> None:
     db.session.commit()
 
 
-def remove_team_from_contestants_flush(team_id: TournamentTeamID) -> None:
+def remove_team_from_contestants_flush(
+    team_id: TournamentTeamID, *, changed_at: datetime | None = None
+) -> None:
     """Delete team slots; caller owns pairing cleanup and commit."""
     team = get_team(team_id)
     lock_tournament_for_update(team.tournament_id)
@@ -3193,6 +3485,7 @@ def remove_team_from_contestants_flush(team_id: TournamentTeamID) -> None:
         db.delete(DbTournamentMatchToContestant).filter_by(team_id=team_id)
     )
     db.session.flush()
+    _touch_changed_matches_flush(match_ids, changed_at)
 
 
 # -- score submission --
@@ -3352,3 +3645,496 @@ def delete_log_entries_older_than(occurred_before: datetime) -> int:
 
     num_deleted = result.rowcount
     return num_deleted
+
+
+# -- operational timing and dashboard coordination --
+
+
+def _naive_utc(value: datetime) -> datetime:
+    """Return the moment as naive UTC, the plain `TIMESTAMP` convention.
+
+    A naive value already is UTC. An aware value would otherwise be
+    shifted by the session time zone on its way into a naive column.
+    """
+    if value.tzinfo is None:
+        return value
+
+    return value.astimezone(UTC).replace(tzinfo=None)
+
+
+def _naive_utc_or_none(value: datetime | None) -> datetime | None:
+    return _naive_utc(value) if value is not None else None
+
+
+def get_operation_time() -> datetime:
+    """Return the server wall time as naive UTC.
+
+    Sample it once per operation, after the locks are taken, and share
+    the value between all facts of that operation. `clock_timestamp()`
+    moves while a statement waits for a lock, which a transaction
+    start time would not.
+    """
+    return db.session.execute(
+        select(func.timezone('UTC', func.clock_timestamp()))
+    ).scalar_one()
+
+
+def _initial_last_changed_at(
+    match: TournamentMatch, changed_at: datetime | None
+) -> datetime:
+    value = (
+        changed_at if match.last_changed_at is None else match.last_changed_at
+    )
+    return _naive_utc(value) if value is not None else get_operation_time()
+
+
+def _resolve_changed_at(changed_at: datetime | None) -> datetime:
+    """Return the operation's shared time, sampling the server if none."""
+    return get_operation_time() if changed_at is None else changed_at
+
+
+def _touch_matches(
+    match_ids: Collection[TournamentMatchID],
+    changed_at: datetime,
+    *conditions: ColumnElement[bool],
+) -> None:
+    db.session.execute(
+        update(DbTournamentMatch)
+        .where(DbTournamentMatch.id.in_(list(match_ids)), *conditions)
+        .values(
+            last_changed_at=func.greatest(
+                DbTournamentMatch.last_changed_at, _naive_utc(changed_at)
+            )
+        )
+    )
+
+
+def touch_matches_last_changed_flush(
+    match_ids: Collection[TournamentMatchID], *, changed_at: datetime
+) -> None:
+    """Record a domain change of those matches (flush only).
+
+    The stored time never moves backwards, and a match with unknown
+    history (NULL) takes `changed_at`.
+    """
+    if not match_ids:
+        return
+
+    _touch_matches(match_ids, changed_at)
+    db.session.flush()
+
+
+def _touch_changed_matches_flush(
+    match_ids: Iterable[TournamentMatchID], changed_at: datetime | None
+) -> None:
+    """Record a domain change of the matches a writer really changed.
+
+    The server clock is sampled only if there is a change, and once for
+    all of them.
+    """
+    ids = sorted(set(match_ids), key=str)
+    if ids:
+        touch_matches_last_changed_flush(
+            ids, changed_at=_resolve_changed_at(changed_at)
+        )
+
+
+def _touch_match_if(
+    match_id: TournamentMatchID,
+    changed_at: datetime | None,
+    differs: ColumnElement[bool],
+) -> None:
+    """Record a domain change of the match if `differs` holds for its row.
+
+    The database compares, so the locked row decides, not a cached copy.
+    Call it before the new value is assigned.
+    """
+    _touch_matches([match_id], _resolve_changed_at(changed_at), differs)
+
+
+def _db_episode_to_episode(row: DbMatchDueEpisode) -> MatchDueEpisode:
+    return MatchDueEpisode(
+        id=row.id,
+        tournament_id=row.tournament_id,
+        match_id=row.match_id,
+        pairing_key=row.pairing_key,
+        opened_at=row.opened_at,
+        opened_clock_us=row.opened_clock_us,
+        closed_at=row.closed_at,
+        closed_clock_us=row.closed_clock_us,
+        ack_revision=row.ack_revision,
+    )
+
+
+def list_open_due_episodes(
+    tournament_id: TournamentID,
+) -> list[MatchDueEpisode]:
+    """Return the open due episodes of a tournament, freshly loaded."""
+    rows = db.session.scalars(
+        select(DbMatchDueEpisode)
+        .where(
+            DbMatchDueEpisode.tournament_id == tournament_id,
+            DbMatchDueEpisode.closed_at.is_(None),
+        )
+        .order_by(DbMatchDueEpisode.opened_at, DbMatchDueEpisode.id)
+        .execution_options(populate_existing=True)
+    ).all()
+    return [_db_episode_to_episode(row) for row in rows]
+
+
+def open_due_episode_flush(episode: MatchDueEpisode) -> None:
+    """Persist a due episode (flush only).
+
+    The database allows one open episode per match.
+    """
+    db.session.add(
+        DbMatchDueEpisode(
+            episode.id,
+            episode.tournament_id,
+            episode.match_id,
+            episode.pairing_key,
+            _naive_utc(episode.opened_at),
+            episode.opened_clock_us,
+            closed_at=_naive_utc_or_none(episode.closed_at),
+            closed_clock_us=episode.closed_clock_us,
+            ack_revision=episode.ack_revision,
+        )
+    )
+    db.session.flush()
+
+
+def close_due_episodes_flush(
+    match_ids: Collection[TournamentMatchID],
+    *,
+    occurred_at: datetime,
+    clock_us: int,
+) -> None:
+    """Close the open episodes of those matches (flush only)."""
+    if not match_ids:
+        return
+
+    db.session.execute(
+        update(DbMatchDueEpisode)
+        .where(
+            DbMatchDueEpisode.match_id.in_(list(match_ids)),
+            DbMatchDueEpisode.closed_at.is_(None),
+        )
+        .values(closed_at=_naive_utc(occurred_at), closed_clock_us=clock_us)
+    )
+    db.session.flush()
+
+
+def _tournament_clock_us_at(at: datetime) -> ColumnElement[int]:
+    """Return the SQL twin of `clock_value_us` for a tournament row.
+
+    `at` is naive UTC. A moment before `running_since` adds nothing.
+    """
+    since = DbTournament.operational_clock_running_since
+    running_us = func.greatest(
+        (extract('epoch', literal(at) - since) * 1_000_000).cast(BigInteger),
+        0,
+    )
+    return DbTournament.operational_clock_elapsed_us + case(
+        (since.is_(None), 0), else_=running_us
+    )
+
+
+def retire_dashboard_matches_flush(
+    match_ids: Collection[TournamentMatchID], *, occurred_at: datetime
+) -> None:
+    """Close the episodes of matches that are going away (flush only).
+
+    The closed episodes stay as history, closed at the tournament clock
+    of `occurred_at`. The live pins are deleted, because they must not
+    block the removal of their match. Call it before the matches are
+    deleted.
+    """
+    if not match_ids:
+        return
+
+    ids = list(match_ids)
+    at = _naive_utc(occurred_at)
+    clock_us = (
+        select(_tournament_clock_us_at(at))
+        .where(DbTournament.id == DbMatchDueEpisode.tournament_id)
+        .scalar_subquery()
+    )
+    db.session.execute(
+        update(DbMatchDueEpisode)
+        .where(
+            DbMatchDueEpisode.match_id.in_(ids),
+            DbMatchDueEpisode.closed_at.is_(None),
+        )
+        .values(
+            closed_at=at,
+            closed_clock_us=func.greatest(
+                DbMatchDueEpisode.opened_clock_us, clock_us
+            ),
+        )
+    )
+    db.session.execute(
+        delete(DbMatchDashboardAnnotation).where(
+            DbMatchDashboardAnnotation.match_id.in_(ids)
+        )
+    )
+    db.session.flush()
+
+
+def _db_ack_to_ack(row: DbMatchEscalationAck) -> MatchEscalationAcknowledgement:
+    return MatchEscalationAcknowledgement(
+        id=row.id,
+        episode_id=row.episode_id,
+        tournament_id=row.tournament_id,
+        match_id=row.match_id,
+        revision=row.revision,
+        occurred_at=row.occurred_at,
+        clock_us=row.clock_us,
+        actor_id=row.actor_id,
+        comment=row.comment,
+    )
+
+
+def create_escalation_ack_flush(ack: MatchEscalationAcknowledgement) -> None:
+    """Append an immutable acknowledgement (flush only).
+
+    The database allows one acknowledgement per episode revision.
+    """
+    db.session.add(
+        DbMatchEscalationAck(
+            ack.id,
+            ack.episode_id,
+            ack.tournament_id,
+            ack.match_id,
+            ack.actor_id,
+            ack.revision,
+            _naive_utc(ack.occurred_at),
+            ack.clock_us,
+            comment=ack.comment,
+        )
+    )
+    db.session.flush()
+
+
+def find_open_due_episode(
+    match_id: TournamentMatchID,
+) -> MatchDueEpisode | None:
+    """Return the freshly loaded open episode of a match, or `None`."""
+    row = db.session.scalars(
+        select(DbMatchDueEpisode)
+        .where(
+            DbMatchDueEpisode.match_id == match_id,
+            DbMatchDueEpisode.closed_at.is_(None),
+        )
+        .execution_options(populate_existing=True)
+    ).one_or_none()
+    return _db_episode_to_episode(row) if row is not None else None
+
+
+def find_latest_escalation_ack(
+    episode_id: UUID,
+) -> MatchEscalationAcknowledgement | None:
+    """Return the freshly loaded latest acknowledgement of an episode."""
+    row = db.session.scalars(
+        select(DbMatchEscalationAck)
+        .where(DbMatchEscalationAck.episode_id == episode_id)
+        .order_by(DbMatchEscalationAck.revision.desc())
+        .limit(1)
+        .execution_options(populate_existing=True)
+    ).one_or_none()
+    return _db_ack_to_ack(row) if row is not None else None
+
+
+def advance_episode_ack_revision_flush(
+    episode_id: UUID, *, expected_revision: int
+) -> bool:
+    """Raise the acknowledgement revision of an open episode by one.
+
+    This happens only if the episode is still open at `expected_revision`.
+    Return whether it did (flush only).
+    """
+    advanced = db.session.execute(
+        update(DbMatchDueEpisode)
+        .where(
+            DbMatchDueEpisode.id == episode_id,
+            DbMatchDueEpisode.closed_at.is_(None),
+            DbMatchDueEpisode.ack_revision == expected_revision,
+        )
+        .values(ack_revision=DbMatchDueEpisode.ack_revision + 1)
+        .returning(DbMatchDueEpisode.id)
+    ).one_or_none()
+    db.session.flush()
+    return advanced is not None
+
+
+def _db_pin_to_pin_state(row: DbMatchDashboardAnnotation) -> MatchPinState:
+    return MatchPinState(
+        match_id=row.match_id,
+        tournament_id=row.tournament_id,
+        revision=row.revision,
+        pinned_at=row.pinned_at,
+        pinned_by=row.pinned_by,
+        updated_at=row.updated_at,
+        updated_by=row.updated_by,
+    )
+
+
+def find_match_pin_state(match_id: TournamentMatchID) -> MatchPinState | None:
+    """Return the freshly loaded pin of a match, or `None` if never set."""
+    row = db.session.scalars(
+        select(DbMatchDashboardAnnotation)
+        .filter_by(match_id=match_id)
+        .execution_options(populate_existing=True)
+    ).one_or_none()
+    return _db_pin_to_pin_state(row) if row is not None else None
+
+
+def save_match_pin_flush(
+    match_id: TournamentMatchID,
+    tournament_id: TournamentID,
+    *,
+    pinned_at: datetime | None,
+    pinned_by: UserID | None,
+    updated_at: datetime,
+    updated_by: UserID,
+    expected_revision: int,
+) -> MatchPinState | None:
+    """Store the pin of a match if its revision is `expected_revision`.
+
+    Revision 0 means never annotated and inserts. Return the new state,
+    or `None` if another writer got there first (flush only). A pin
+    without `pinned_at` and `pinned_by` is an unpin.
+    """
+    values = {
+        'pinned_at': _naive_utc_or_none(pinned_at),
+        'pinned_by': pinned_by,
+        'updated_at': _naive_utc(updated_at),
+        'updated_by': updated_by,
+    }
+    statement: Executable
+    if expected_revision == 0:
+        statement = (
+            pg_insert(DbMatchDashboardAnnotation)
+            .values(
+                match_id=match_id,
+                tournament_id=tournament_id,
+                revision=1,
+                **values,
+            )
+            .on_conflict_do_nothing(index_elements=['match_id'])
+            .returning(DbMatchDashboardAnnotation)
+        )
+    else:
+        statement = (
+            update(DbMatchDashboardAnnotation)
+            .where(
+                DbMatchDashboardAnnotation.match_id == match_id,
+                DbMatchDashboardAnnotation.revision == expected_revision,
+            )
+            .values(revision=DbMatchDashboardAnnotation.revision + 1, **values)
+            .returning(DbMatchDashboardAnnotation)
+        )
+    row = db.session.scalars(
+        statement, execution_options={'populate_existing': True}
+    ).one_or_none()
+    db.session.flush()
+    return _db_pin_to_pin_state(row) if row is not None else None
+
+
+def _db_thresholds_to_thresholds(
+    row: DbDashboardPartyThresholds,
+) -> PartyDashboardThresholds:
+    return PartyDashboardThresholds(
+        party_id=row.party_id,
+        yellow_minutes=row.yellow_minutes,
+        red_minutes=row.red_minutes,
+        revision=row.revision,
+        updated_at=row.updated_at,
+        updated_by=row.updated_by,
+    )
+
+
+def find_party_thresholds(
+    party_id: PartyID,
+) -> PartyDashboardThresholds | None:
+    """Return the freshly loaded party override, or `None` if unset."""
+    row = db.session.scalars(
+        select(DbDashboardPartyThresholds)
+        .filter_by(party_id=party_id)
+        .execution_options(populate_existing=True)
+    ).one_or_none()
+    return _db_thresholds_to_thresholds(row) if row is not None else None
+
+
+def set_party_thresholds_flush(
+    party_id: PartyID,
+    *,
+    yellow_minutes: int,
+    red_minutes: int,
+    expected_revision: int,
+    expected_updated_at: datetime | None,
+    updated_at: datetime,
+    updated_by: UserID,
+) -> PartyDashboardThresholds | None:
+    """Store the party override if it is the one that was read.
+
+    The override is identified by its revision and its `updated_at`: a
+    reset and a new save restart the revision, the time tells them
+    apart. Revision 0 means no override yet, inserts and takes no
+    `expected_updated_at`. Return the new row, or `None` if another
+    writer got there first (flush only). The caller validates the
+    values; the database checks are the backstop.
+    """
+    values = {
+        'yellow_minutes': yellow_minutes,
+        'red_minutes': red_minutes,
+        'updated_at': _naive_utc(updated_at),
+        'updated_by': updated_by,
+    }
+    statement: Executable
+    if expected_revision == 0:
+        statement = (
+            pg_insert(DbDashboardPartyThresholds)
+            .values(party_id=party_id, revision=1, **values)
+            .on_conflict_do_nothing(index_elements=['party_id'])
+            .returning(DbDashboardPartyThresholds)
+        )
+    else:
+        statement = (
+            update(DbDashboardPartyThresholds)
+            .where(
+                DbDashboardPartyThresholds.party_id == party_id,
+                DbDashboardPartyThresholds.revision == expected_revision,
+                DbDashboardPartyThresholds.updated_at
+                == _naive_utc_or_none(expected_updated_at),
+            )
+            .values(revision=DbDashboardPartyThresholds.revision + 1, **values)
+            .returning(DbDashboardPartyThresholds)
+        )
+    row = db.session.scalars(
+        statement, execution_options={'populate_existing': True}
+    ).one_or_none()
+    db.session.flush()
+    return _db_thresholds_to_thresholds(row) if row is not None else None
+
+
+def delete_party_thresholds_flush(
+    party_id: PartyID, *, expected_revision: int, expected_updated_at: datetime
+) -> bool:
+    """Delete the party override if it is the one that was read.
+
+    The override is identified by its revision and its `updated_at`, as
+    in `set_party_thresholds_flush`. Return whether a row was deleted
+    (flush only).
+    """
+    deleted = db.session.execute(
+        delete(DbDashboardPartyThresholds)
+        .where(
+            DbDashboardPartyThresholds.party_id == party_id,
+            DbDashboardPartyThresholds.revision == expected_revision,
+            DbDashboardPartyThresholds.updated_at
+            == _naive_utc(expected_updated_at),
+        )
+        .returning(DbDashboardPartyThresholds.party_id)
+    ).one_or_none()
+    db.session.flush()
+    return deleted is not None

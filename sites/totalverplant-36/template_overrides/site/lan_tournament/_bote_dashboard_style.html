@@ -1,0 +1,204 @@
+<style>
+  {# ============================================================
+     ORGA-DASHBOARD -- "Turnierbuero" treatment.
+
+     Used by site/lan_tournament/dashboard.html, the orga-only
+     dashboard. The panel, its rows, forms and script are the module's
+     own (lt-dashboard, ltd-*); the module stylesheet draws the
+     structure and is loaded before this partial.
+
+     This partial only does four things:
+       1. PALETTE -- the inks of the page, once for the Tagesausgabe
+                     (light) and once for html[data-theme="dark"]
+                     (Spaetausgabe), declared on the page itself.
+       2. SLIP    -- the breadcrumbs and the page header on the sheet,
+                     in the same reading-slip treatment as the seeding
+                     and qualification pages.
+       3. TOKENS  -- every --ltd-* token of the module stylesheet, set
+                     from that palette, and the optional font tokens
+                     over the site's own --body, --display and --mono.
+       4. RULES   -- the few presentation rules that tokens cannot
+                     carry: ruled filters, hard edges, mono labels.
+
+     The palette is the dashboard's own, not the site's: the site's
+     muted and red inks in the Spaetausgabe stay below 4.5:1 on the card
+     ground, so the lifted inks are declared here, below the dashboard
+     page, and the global tokens are left alone.
+     ============================================================ #}
+
+  /* ---------------------------------------------------------- */
+  /* 1. PALETTE                                                   */
+  /* ---------------------------------------------------------- */
+
+  /* The light muted ink and the light amber are a little darker than the
+     paper sheet's own so that text on the stale row ground and on the
+     yellow tier ground reaches 4.5:1. */
+
+  .orga-dashboard-page {
+    --paper: #f1ead4;
+    --paperDark: #e6dec0;
+    --paperLite: #f7f1dc;
+    --ink: #1a1812;
+    --inkSoft: #4a4435;
+    --inkMute: #6a5f47;
+    --red: #a8281c;
+    --redDeep: #74170f;
+    --blue: #1f3a64;
+    --green: #3b5a2a;
+    --amber: #755803;
+  }
+
+  html[data-theme="dark"] .orga-dashboard-page {
+    --paper: #1c1914;
+    --paperDark: #14110d;
+    --paperLite: #262219;
+    --ink: #ece3cd;
+    --inkSoft: #c9bfa3;
+    --inkMute: #a39779;
+    --red: #ee7a63;
+    --redDeep: #f08a72;
+    --blue: #9fb7dc;
+    --green: #a9c78c;
+    --amber: #e3b655;
+  }
+
+  /* ---------------------------------------------------------- */
+  /* 2. SLIP                                                      */
+  /* ---------------------------------------------------------- */
+
+  .orga-dashboard-page {
+    font: 400 18px/1.4 var(--body);
+  }
+
+  .orga-dashboard-page .crumbs {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--inkMute);
+  }
+  .orga-dashboard-page .crumbs a {
+    color: var(--redDeep); text-decoration: none; background-image: none !important;
+  }
+  .orga-dashboard-page .crumbs a:hover { color: var(--ink); text-decoration: underline; }
+
+  .orga-dashboard-page .page-folio { margin: 12px 0 22px; }
+
+  .orga-dashboard-page .head {
+    font-family: var(--body); font-size: 18px; font-weight: 400; letter-spacing: normal;
+    line-height: 1.4;
+    padding: 0 0 14px; border-bottom: 3px double var(--ink); margin-bottom: 20px;
+  }
+  .orga-dashboard-page .head .kick {
+    font-family: var(--mono); font-size: 10.5px; font-weight: 700; letter-spacing: .22em;
+    text-transform: uppercase; color: var(--redDeep); margin-bottom: 8px;
+  }
+  .orga-dashboard-page .head h1 {
+    font: 900 52px/.98 var(--display); letter-spacing: -.02em; margin: 0;
+    text-wrap: balance; color: var(--ink);
+  }
+  .orga-dashboard-page .head .sub {
+    font-style: italic; font-size: 21px; color: var(--inkSoft); margin: 6px 0 0;
+  }
+  @media (max-width: 47rem) {
+    .orga-dashboard-page { padding-left: 12px; padding-right: 12px; }
+    .orga-dashboard-page .head h1 { font-size: 34px; }
+  }
+
+  /* ---------------------------------------------------------- */
+  /* 3. TOKENS                                                    */
+  /* ---------------------------------------------------------- */
+
+  .lt-dashboard.is-site {
+    --ltd-font: var(--body);
+    --ltd-head: var(--display);
+    --ltd-meta: var(--mono);
+    --ltd-num: var(--mono);
+    --ltd-bfont: var(--mono);
+
+    --ltd-fs: 18px;
+    --ltd-h2: 26px;
+    --ltd-h3: 23px;
+    --ltd-hw: 900;
+    --ltd-ks: 10.5px;
+    --ltd-kls: 0.16em;
+    --ltd-locs: 10.5px;
+    --ltd-bs: 11px;
+    --ltd-bls: 0.12em;
+    --ltd-btt: uppercase;
+    --ltd-bw: 1.5px;
+    --ltd-r: 0px;
+    --ltd-rgap: 16px;
+    --ltd-shadow: 4px 4px 0 var(--ink);
+
+    --ltd-bg: var(--paper);
+    --ltd-surf: var(--paperLite);
+    --ltd-surf-2: var(--paper);
+    --ltd-field: var(--paperLite);
+    --ltd-stale: var(--paperDark);
+    --ltd-ink: var(--ink);
+    --ltd-soft: var(--inkSoft);
+    --ltd-mute: var(--inkMute);
+    --ltd-line: color-mix(in srgb, var(--inkMute) 45%, transparent);
+    --ltd-line-s: var(--ink);
+    --ltd-link: var(--redDeep);
+    --ltd-focus: var(--redDeep);
+    --ltd-acc: var(--redDeep);
+    --ltd-btn: var(--paperLite);
+    --ltd-btn-h: var(--paperDark);
+    --ltd-pri: var(--ink);
+    --ltd-pri-ink: var(--paper);
+
+    --ltd-g-bg: var(--paperLite);
+    --ltd-g-ink: var(--green);
+    --ltd-y-bg: color-mix(in srgb, var(--amber) 16%, var(--paperLite));
+    --ltd-y-ink: var(--amber);
+    --ltd-r-bg: color-mix(in srgb, var(--red) 14%, var(--paperLite));
+    --ltd-r-ink: var(--red);
+
+    --ltd-ready: var(--blue);
+    --ltd-pin: var(--blue);
+    --ltd-conf: var(--redDeep);
+    --ltd-conf-bg: var(--paper);
+    --ltd-rev: var(--red);
+    --ltd-info: var(--blue);
+    --ltd-info-bg: var(--paper);
+    --ltd-err: var(--red);
+    --ltd-err-bg: var(--paper);
+    --ltd-ok: var(--green);
+    --ltd-ok-bg: var(--paper);
+    --ltd-warn-ink: var(--amber);
+
+    max-width: none;
+  }
+
+  /* ---------------------------------------------------------- */
+  /* 4. RULES                                                     */
+  /* ---------------------------------------------------------- */
+
+  /* The site draws links without a rule and adds one on hover; here the
+     links in running text keep their rule and nothing is drawn on hover. */
+  .lt-dashboard.is-site a { background-image: none !important; }
+  .lt-dashboard.is-site :is(.ltd-ctx, .ltd-cl, .ltd-links) a {
+    text-decoration: underline !important;
+  }
+
+  .lt-dashboard.is-site .ltd-tier { border-right: 1.5px solid var(--ltd-ink); }
+  .lt-dashboard.is-site .ltd-tn {
+    font-family: var(--ltd-meta); font-size: 11px; letter-spacing: .12em;
+    text-transform: uppercase;
+  }
+  .lt-dashboard.is-site .ltd-filters {
+    background: transparent; border: 0; padding: 10px 0;
+    border-top: 1px solid var(--ltd-ink); border-bottom: 1px solid var(--ltd-ink);
+  }
+  .lt-dashboard.is-site .ltd-sig {
+    font-family: var(--ltd-meta); font-size: 10px; letter-spacing: .12em;
+    text-transform: uppercase; border-width: 2px;
+  }
+  .lt-dashboard.is-site .ltd-empty {
+    border: 1.5px solid var(--ltd-ink); box-shadow: 5px 5px 0 var(--ltd-ink);
+  }
+  .lt-dashboard.is-site .ltd-times dd,
+  .lt-dashboard.is-site .ltd-fresh b { font-size: .82em; }
+  .lt-dashboard.is-site .ltd-times .is-key dd { font-size: .95em; }
+  .lt-dashboard.is-site .ltd-tv b { font-size: 1.25em; }
+</style>

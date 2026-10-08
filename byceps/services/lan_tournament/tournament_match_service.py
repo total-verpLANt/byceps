@@ -3,7 +3,7 @@ from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from functools import cache, partial
 from datetime import UTC, datetime
-from typing import NamedTuple
+from typing import Any, NamedTuple
 from uuid import UUID
 
 from byceps.services.user.models import UserID
@@ -11,6 +11,7 @@ from byceps.util.result import Err, Ok, Result
 from byceps.util.uuid import generate_uuid7
 
 from . import (
+    tournament_operational_service,
     tournament_qualification_domain_service as qualification_domain,
     tournament_qualification_repository,
     tournament_repository,
@@ -280,6 +281,187 @@ def _elimination_mode_of(
     return tournament.elimination_mode
 
 
+_UNSTARTED_STATUSES = frozenset(
+    {
+        TournamentStatus.DRAFT,
+        TournamentStatus.REGISTRATION_OPEN,
+        TournamentStatus.REGISTRATION_CLOSED,
+    }
+)
+
+
+def _changed(changed_at: datetime | None) -> dict[str, Any]:
+    """Return the `changed_at` keyword of a stamping writer, if any.
+
+    Only a tournament with a known clock has a shared operation time. The
+    writers of any other tournament sample their own, as they always did.
+    """
+    return {} if changed_at is None else {'changed_at': changed_at}
+
+
+def _has_known_clock(tournament: Tournament) -> bool:
+    """Tell whether the tournament has a recorded clock history."""
+    return isinstance(tournament.operational_clock_activated_at, datetime)
+
+
+def _lock_round_robin_group(
+    tournament: Tournament, match: TournamentMatch
+) -> None:
+    """Lock the group of a round-robin match, in ID order.
+
+    A result moves the frontier of its group, and with it the due state
+    of siblings that no `next_match_id` links to the match.
+    """
+    mode = _elimination_mode_of(tournament, match)
+    if mode is not EliminationMode.ROUND_ROBIN:
+        return
+
+    matches = tournament_repository.get_matches_for_tournament_ordered_fresh(
+        tournament.id
+    )
+    group = [
+        m.id
+        for m in matches
+        if m.phase == match.phase and m.group_order == match.group_order
+    ]
+    tournament_repository.lock_matches_for_update(sorted(group))
+
+
+def _begin_operation(match_id: TournamentMatchID) -> datetime | None:
+    """Return the operation time of a result, or `None` without a clock.
+
+    Call it once the caller holds the tournament and match locks. A
+    tournament without known clock history has no episodes to keep and
+    gets no time. Otherwise the whole group of a round-robin match is
+    locked, and one server time is sampled for every fact of the
+    operation.
+    """
+    match = tournament_repository.find_match_fresh(_as_match_id(match_id))
+    if match is None:
+        return None
+
+    tournament = tournament_repository.get_tournament(
+        match.tournament_id, fresh=True
+    )
+    if not _has_known_clock(tournament):
+        return None
+
+    _lock_round_robin_group(tournament, match)
+    return tournament_repository.get_operation_time()
+
+
+def _rollback_on_failure(
+    flush: Callable[[], Result[None, str]],
+) -> Result[None, str]:
+    """Run a flush-only step; on `Err` or an exception, roll back."""
+    try:
+        result = flush()
+    except Exception:
+        tournament_repository.rollback_session()
+        raise
+
+    if result.is_err():
+        tournament_repository.rollback_session()
+    return result
+
+
+def _reconcile_timing_flush(
+    tournament_id: TournamentID, changed_at: datetime | None
+) -> Result[None, str]:
+    """Bring the due episodes in line with the result, before the commit.
+
+    On `Err` or an exception the session has been rolled back.
+    """
+    if changed_at is None:
+        return Ok(None)
+
+    return _rollback_on_failure(
+        partial(
+            tournament_operational_service.reconcile_due_matches_flush,
+            tournament_id,
+            occurred_at=changed_at,
+        )
+    )
+
+
+def _invalidate_timing_flush(
+    match_ids: Collection[TournamentMatchID], changed_at: datetime | None
+) -> Result[None, str]:
+    """Close the episodes of matches whose matchup a correction replaces.
+
+    Call it before the destructive step, so that a restored pairing is a
+    new demand. On `Err` or an exception the session has been rolled back.
+    """
+    if changed_at is None:
+        return Ok(None)
+
+    return _rollback_on_failure(
+        partial(
+            tournament_operational_service.invalidate_due_matches_flush,
+            match_ids,
+            occurred_at=changed_at,
+        )
+    )
+
+
+def _operation_time_of(tournament: Tournament) -> datetime | None:
+    """Return the operation time of an owner, or `None` without a clock.
+
+    Pass the tournament the owner read once it held the tournament lock,
+    and call it before the first write. A tournament without known
+    clock history gets no time, and so no timing facts.
+    """
+    if not _has_known_clock(tournament):
+        return None
+
+    return tournament_repository.get_operation_time()
+
+
+def _records_lobby_timing(tournament: Tournament) -> bool:
+    """Tell whether the occupancy of its lobbies is a fact to record.
+
+    A tournament that has not started yet records it, because its start
+    reads the occupancy of the lobbies generated before. A started one
+    without clock history is never tracked, so nothing would read it.
+    """
+    return (
+        _has_known_clock(tournament)
+        or tournament.tournament_status in _UNSTARTED_STATUSES
+    )
+
+
+def _mark_lobbies_occupied_flush(
+    tournament: Tournament,
+    match_ids: Collection[TournamentMatchID],
+    *,
+    changed_at: datetime | None = None,
+    allow_undersized: bool = False,
+) -> Result[None, str]:
+    """Record the occupancy of the lobbies a generator assembled.
+
+    Call it once per generated roster, before the owner reconciles. A
+    lobby is occupied when its roster is complete, not when its second
+    contestant is inserted. On `Err` or an exception the session has
+    been rolled back.
+    """
+    if not match_ids or not _records_lobby_timing(tournament):
+        return Ok(None)
+
+    occurred_at = (
+        tournament_repository.get_operation_time()
+        if changed_at is None
+        else changed_at
+    )
+    return _rollback_on_failure(
+        partial(
+            tournament_operational_service.mark_completed_lobbies_occupied_flush,
+            match_ids,
+            occurred_at=occurred_at,
+            allow_undersized=allow_undersized,
+        )
+    )
+
+
 class DefwinResult(NamedTuple):
     """Events produced by defwin processing, for post-commit dispatch."""
 
@@ -296,6 +478,8 @@ def has_matches(tournament_id: TournamentID) -> bool:
 
 def _create_match_contestant_flush(
     contestant: TournamentMatchToContestant,
+    *,
+    changed_at: datetime | None = None,
 ) -> None:
     """Engine insert plus pairing/audit in the owner's transaction.
 
@@ -306,7 +490,9 @@ def _create_match_contestant_flush(
     from . import tournament_readiness_service
 
     try:
-        tournament_repository.create_match_contestant(contestant)
+        tournament_repository.create_match_contestant(
+            contestant, **_changed(changed_at)
+        )
         result = tournament_readiness_service.refresh_pairing_and_invitations_flush(
             contestant.tournament_match_id,
             occurred_at=datetime.now(UTC).replace(tzinfo=None),
@@ -345,28 +531,38 @@ def _delete_contestant_from_match_flush(
     *,
     team_id: TournamentTeamID | None = None,
     participant_id: TournamentParticipantID | None = None,
+    changed_at: datetime | None = None,
 ) -> None:
     before = tournament_repository.find_match(match_id)
     if before is None:
         return  # A dangling destination has no assignment to retract.
     tournament_repository.delete_contestant_from_match(
         match_id, team_id=team_id, participant_id=participant_id,
+        **_changed(changed_at),
     )
     _audit_engine_pairing_change_flush(before)
 
 
-def _delete_contestants_for_match_flush(match_id: TournamentMatchID) -> None:
+def _delete_contestants_for_match_flush(
+    match_id: TournamentMatchID, *, changed_at: datetime | None = None
+) -> None:
     before = tournament_repository.get_match(match_id)
-    tournament_repository.delete_contestants_for_match_flush(match_id)
+    tournament_repository.delete_contestants_for_match_flush(
+        match_id, **_changed(changed_at)
+    )
     _audit_engine_pairing_change_flush(before)
 
 
-def _reset_match_readiness_flush(match_id: TournamentMatchID) -> None:
+def _reset_match_readiness_flush(
+    match_id: TournamentMatchID, *, changed_at: datetime | None = None
+) -> None:
     """Same-pair replay invalidates revision, never acceptance or occupancy."""
     from . import tournament_readiness_service
 
     before = tournament_repository.get_match(match_id)
-    tournament_repository.unconfirm_match(match_id, reset_readiness=False)
+    tournament_repository.unconfirm_match(
+        match_id, reset_readiness=False, **_changed(changed_at)
+    )
     result = tournament_readiness_service.reset_readiness_flush(
         match_id, occurred_at=datetime.now(UTC).replace(tzinfo=None),
     )
@@ -399,10 +595,12 @@ def clear_bracket(
     *,
     phase: int | None = None,
     initiator_id: UserID | None = None,
+    changed_at: datetime | None = None,
 ) -> list[MatchDeletedEvent]:
     """Delete the bracket, or one *phase* of it (flush only).
 
-    Return the events to dispatch.
+    Return the events to dispatch. An owner with an operation time passes
+    it as *changed_at*, and the episodes of the matches close at it.
     """
     tournament_repository.lock_tournament_for_update(tournament_id)
     all_matches = tournament_repository.get_matches_for_tournament_ordered_fresh(
@@ -453,8 +651,10 @@ def clear_bracket(
     # Delete children (comments, contestants) then matches.
     for match_id in match_ids:
         tournament_repository.delete_comments_for_match_flush(match_id)
-        _delete_contestants_for_match_flush(match_id)
-        tournament_repository.delete_match_flush(match_id)
+        _delete_contestants_for_match_flush(match_id, **_changed(changed_at))
+        tournament_repository.delete_match_flush(
+            match_id, **_changed(changed_at)
+        )
 
     return [
         MatchDeletedEvent(
@@ -475,6 +675,7 @@ def _prepare_bracket_generation(
     check: Callable[[Tournament, list[str]], Result[None, str]] | None = None,
     phase: int = 1,
     roster: Sequence[str] | None = None,
+    changed_at: datetime | None = None,
 ) -> Result[tuple[Tournament, list[str], list[MatchDeletedEvent]], str]:
     """Shared preamble for bracket generation functions.
 
@@ -560,6 +761,7 @@ def _prepare_bracket_generation(
             tournament_id,
             phase=2 if phase == 2 else None,
             initiator_id=initiator_id,
+            **_changed(changed_at),
         )
 
     return Ok((tournament, contestant_ids, deleted_events))
@@ -745,6 +947,7 @@ def _generate_single_elimination_impl(
     phase: int = 1,
     roster: Sequence[str] | None = None,
     seeding_target: str | None = None,
+    changed_at: datetime | None = None,
 ) -> Result[GenerationOutcome, str]:
     """Generate single elimination bracket without committing.
 
@@ -772,6 +975,7 @@ def _generate_single_elimination_impl(
         ),
         phase=phase,
         roster=roster,
+        **_changed(changed_at),
     )
     if prep_result.is_err():
         return Err(prep_result.unwrap_err())
@@ -808,7 +1012,7 @@ def _generate_single_elimination_impl(
             phase=phase,
             seeding_target=seeding_target,
         )
-        tournament_repository.create_match(p3_match)
+        tournament_repository.create_match(p3_match, **_changed(changed_at))
         match_events.append(
             MatchCreatedEvent(
                 occurred_at=now,
@@ -853,7 +1057,7 @@ def _generate_single_elimination_impl(
                 phase=phase,
                 seeding_target=seeding_target,
             )
-            tournament_repository.create_match(match)
+            tournament_repository.create_match(match, **_changed(changed_at))
             rounds_matches[r].append(match_id)
 
             match_events.append(
@@ -899,7 +1103,7 @@ def _generate_single_elimination_impl(
                 score=None,
                 created_at=now,
             )
-        _create_match_contestant_flush(contestant)
+        _create_match_contestant_flush(contestant, **_changed(changed_at))
 
     # Auto-advance DEFWIN matches: if a round 0 match has only
     # 1 contestant, advance that contestant to the next match
@@ -918,11 +1122,11 @@ def _generate_single_elimination_impl(
                 score=None,
                 created_at=now,
             )
-            _create_match_contestant_flush(advanced)
+            _create_match_contestant_flush(advanced, **_changed(changed_at))
             # Auto-confirm the DEFWIN match
             if initiator_id is not None:
                 tournament_repository.confirm_match(
-                    match_id, initiator_id
+                    match_id, initiator_id, **_changed(changed_at)
                 )
 
     all_match_ids: set[TournamentMatchID] = set()
@@ -979,6 +1183,7 @@ def _generate_double_elimination_impl(
     phase: int = 1,
     roster: Sequence[str] | None = None,
     seeding_target: str | None = None,
+    changed_at: datetime | None = None,
 ) -> Result[GenerationOutcome, str]:
     """Generate double elimination bracket without committing.
 
@@ -1011,6 +1216,7 @@ def _generate_double_elimination_impl(
         ),
         phase=phase,
         roster=roster,
+        **_changed(changed_at),
     )
     if prep_result.is_err():
         return Err(prep_result.unwrap_err())
@@ -1093,7 +1299,7 @@ def _generate_double_elimination_impl(
         phase=phase,
         seeding_target=seeding_target,
     )
-    tournament_repository.create_match(gf_match)
+    tournament_repository.create_match(gf_match, **_changed(changed_at))
     match_events.append(
         MatchCreatedEvent(
             occurred_at=now,
@@ -1125,7 +1331,7 @@ def _generate_double_elimination_impl(
                 phase=phase,
                 seeding_target=seeding_target,
             )
-            tournament_repository.create_match(match)
+            tournament_repository.create_match(match, **_changed(changed_at))
 
             match_events.append(
                 MatchCreatedEvent(
@@ -1164,7 +1370,7 @@ def _generate_double_elimination_impl(
                 phase=phase,
                 seeding_target=seeding_target,
             )
-            tournament_repository.create_match(match)
+            tournament_repository.create_match(match, **_changed(changed_at))
 
             match_events.append(
                 MatchCreatedEvent(
@@ -1208,7 +1414,7 @@ def _generate_double_elimination_impl(
                 score=None,
                 created_at=now,
             )
-        _create_match_contestant_flush(contestant)
+        _create_match_contestant_flush(contestant, **_changed(changed_at))
 
     # ---- Auto-advance DEFWIN in WBR0 ----
     for match_idx, match_id in enumerate(wb_ids[0]):
@@ -1225,11 +1431,11 @@ def _generate_double_elimination_impl(
                 score=None,
                 created_at=now,
             )
-            _create_match_contestant_flush(advanced)
+            _create_match_contestant_flush(advanced, **_changed(changed_at))
             # Auto-confirm the DEFWIN match
             if initiator_id is not None:
                 tournament_repository.confirm_match(
-                    match_id, initiator_id
+                    match_id, initiator_id, **_changed(changed_at)
                 )
 
     # ---- Null loser_next_match_id for WBR0 DEFWIN matches ----
@@ -1642,6 +1848,7 @@ def _generate_round_robin_impl(
     group_sizes: Sequence[int] | None = None,
     initiator_id: UserID | None = None,
     seeding_target: str | None = None,
+    changed_at: datetime | None = None,
 ) -> Result[GenerationOutcome, str]:
     """Generate round-robin pairings without committing.
 
@@ -1669,6 +1876,7 @@ def _generate_round_robin_impl(
             if seed_list is not None and group_sizes is not None
             else None
         ),
+        **_changed(changed_at),
     )
     if prep_result.is_err():
         return Err(prep_result.unwrap_err())
@@ -1725,7 +1933,9 @@ def _generate_round_robin_impl(
                     created_at=now,
                     seeding_target=seeding_target,
                 )
-                tournament_repository.create_match(match)
+                tournament_repository.create_match(
+                    match, **_changed(changed_at)
+                )
 
                 # Create contestants for both sides.
                 for cid in (p1, p2):
@@ -1750,7 +1960,9 @@ def _generate_round_robin_impl(
                             score=None,
                             created_at=now,
                         )
-                    _create_match_contestant_flush(contestant)
+                    _create_match_contestant_flush(
+                        contestant, **_changed(changed_at)
+                    )
 
                 match_events.append(
                     MatchCreatedEvent(
@@ -1832,13 +2044,15 @@ def handle_defwin_for_removed_participant(
     participant_id: TournamentParticipantID,
     *,
     initiator_id: UserID | None = None,
+    changed_at: datetime | None = None,
 ) -> DefwinResult:
     """Handle defwin logic when removing a participant from an
     active tournament. Removes their contestant entries from
     unconfirmed matches and auto-advances sole remaining opponents.
 
     Does NOT commit — caller must call commit_session().
-    Returns events to dispatch after commit.
+    Returns events to dispatch after commit. `changed_at` is the
+    operation time of the caller, shared by every write of the walkover.
     """
     entries = tournament_repository.find_contestant_entries_for_participant_in_tournament(
         tournament_id, participant_id
@@ -1849,11 +2063,14 @@ def handle_defwin_for_removed_participant(
 
     for _contestant, match in entries:
         _delete_contestant_from_match_flush(
-            match.id, participant_id=participant_id
+            match.id, participant_id=participant_id, **_changed(changed_at)
         )
 
     return _process_defwin_entries(
-        tournament_id, entries, initiator_id=initiator_id
+        tournament_id,
+        entries,
+        initiator_id=initiator_id,
+        **_changed(changed_at),
     )
 
 
@@ -1862,6 +2079,7 @@ def handle_defwin_for_removed_team(
     team_id: TournamentTeamID,
     *,
     initiator_id: UserID | None = None,
+    changed_at: datetime | None = None,
 ) -> DefwinResult:
     """Handle defwin logic when removing a team from an active
     tournament.
@@ -1869,6 +2087,8 @@ def handle_defwin_for_removed_team(
     Removes team's contestant entries from unconfirmed matches and
     auto-advances sole remaining opponents.
     Does NOT commit — caller must call commit_session().
+    `changed_at` is the operation time of the caller, shared by every
+    write of the walkover.
     """
     entries = (
         tournament_repository.find_contestant_entries_for_team_in_tournament(
@@ -1881,11 +2101,14 @@ def handle_defwin_for_removed_team(
 
     for _contestant, match in entries:
         _delete_contestant_from_match_flush(
-            match.id, team_id=team_id
+            match.id, team_id=team_id, **_changed(changed_at)
         )
 
     return _process_defwin_entries(
-        tournament_id, entries, initiator_id=initiator_id
+        tournament_id,
+        entries,
+        initiator_id=initiator_id,
+        **_changed(changed_at),
     )
 
 
@@ -1894,6 +2117,7 @@ def _process_defwin_entries(
     entries: list[tuple[TournamentMatchToContestant, TournamentMatch]],
     *,
     initiator_id: UserID | None = None,
+    changed_at: datetime | None = None,
 ) -> DefwinResult:
     """Shared defwin advancement and confirmation logic for removed
     contestants.
@@ -1911,7 +2135,8 @@ def _process_defwin_entries(
     ``_try_auto_complete_tournament()``.
 
     Does NOT commit — caller handles the transaction and dispatches
-    the returned events post-commit.
+    the returned events post-commit. `changed_at` is the operation time
+    of the caller, handed to every writer that stamps a match.
     """
     now = datetime.now(UTC)
     advanced_events: list[ContestantAdvancedEvent] = []
@@ -1951,7 +2176,7 @@ def _process_defwin_entries(
                     score=None,
                     created_at=now,
                 )
-                _create_match_contestant_flush(advanced)
+                _create_match_contestant_flush(advanced, **_changed(changed_at))
 
                 advanced_events.append(
                     ContestantAdvancedEvent(
@@ -1968,7 +2193,7 @@ def _process_defwin_entries(
         # --- Confirmation (always for sole-opponent defwins) ---
         if initiator_id is not None:
             tournament_repository.confirm_match(
-                match.id, initiator_id
+                match.id, initiator_id, **_changed(changed_at)
             )
 
             confirmed_events.append(
@@ -1987,7 +2212,9 @@ def _process_defwin_entries(
                 tournament = tournament_repository.get_tournament(
                     tournament_id
                 )
-                result = _try_auto_complete_tournament(match, tournament, sole)
+                result = _try_auto_complete_tournament(
+                    match, tournament, sole, **_changed(changed_at)
+                )
                 if result.is_err():
                     logger.warning(
                         'Auto-complete failed for tournament %s '
@@ -2007,7 +2234,9 @@ def _process_defwin_entries(
                         )
                     )
                 elif not completed_events:
-                    plain = try_complete_plain_round_robin(tournament)
+                    plain = try_complete_plain_round_robin(
+                        tournament, **_changed(changed_at)
+                    )
                     if plain.is_err():
                         logger.warning(
                             'Auto-complete failed for tournament %s '
@@ -2198,11 +2427,16 @@ def set_match_scores(
     if validation.is_err():
         return _reject(validation.unwrap_err())
 
+    changed_at = _begin_operation(match_id)
+
     # Atomic write — all scores flushed together.
-    tournament_repository.update_contestant_scores(validation.unwrap())
+    tournament_repository.update_contestant_scores(
+        validation.unwrap(), **_changed(changed_at)
+    )
     # Auto-confirm: loser submitted scores → match is resolved.
+    confirm_kwargs = {} if changed_at is None else {'_changed_at': changed_at}
     confirm_result = confirm_match(
-        match_id, initiator_id, _locks_held=True
+        match_id, initiator_id, _locks_held=True, **confirm_kwargs
     )
     if confirm_result.is_err():
         return _reject(confirm_result.unwrap_err())
@@ -2404,6 +2638,7 @@ def _admin_set_and_confirm_match_impl(
     scores: dict[TournamentParticipantID | TournamentTeamID, int],
     *,
     _locks_held: bool = False,
+    changed_at: datetime | None = None,
 ) -> Result[
     tuple[
         MatchConfirmedEvent,
@@ -2418,6 +2653,8 @@ def _admin_set_and_confirm_match_impl(
 
     The caller commits and dispatches the events. `_locks_held` says
     the caller already locked the reachable set in this transaction.
+    `changed_at` is the operation time the caller sampled; the caller
+    reconciles the due episodes.
     """
     # Lock the match rows before the score write locks contestant rows,
     # or this deadlocks against a concurrent correction.
@@ -2448,11 +2685,15 @@ def _admin_set_and_confirm_match_impl(
     id_to_score = validation.unwrap()
 
     # Flush-only write — all scores flushed together.
-    tournament_repository.update_contestant_scores(id_to_score)
+    tournament_repository.update_contestant_scores(
+        id_to_score, **_changed(changed_at)
+    )
 
     # Auto-confirm: admin submitted scores → match is resolved.
     # _confirm_match_impl will see the flushed scores.
-    return _confirm_match_impl(match_id, admin_id, _locks_held=True)
+    return _confirm_match_impl(
+        match_id, admin_id, _locks_held=True, **_changed(changed_at)
+    )
 
 
 def admin_set_and_confirm_match(
@@ -2472,7 +2713,12 @@ def admin_set_and_confirm_match(
     must NOT access attributes on those objects after receiving an
     ``Err`` result.
     """
-    result = _admin_set_and_confirm_match_impl(match_id, admin_id, scores)
+    _lock_reachable_matches(match_id)
+    changed_at = _begin_operation(match_id)
+
+    result = _admin_set_and_confirm_match_impl(
+        match_id, admin_id, scores, _locks_held=True, **_changed(changed_at)
+    )
     if result.is_err():
         tournament_repository.rollback_session()
         return Err(result.unwrap_err())
@@ -2499,6 +2745,12 @@ def admin_set_and_confirm_match(
     except Exception:
         tournament_repository.rollback_session()
         raise
+
+    timing = _reconcile_timing_flush(
+        confirmed_event.tournament_id, changed_at
+    )
+    if timing.is_err():
+        return Err(timing.unwrap_err())
 
     pending = _pending_invitations_flush(
         {event.match_id for event in ready_events}, confirmed_event.occurred_at,
@@ -2548,6 +2800,8 @@ def _confirm_draw_impl(
     match_id: TournamentMatchID,
     initiator_id: UserID,
     tournament: Tournament,
+    *,
+    changed_at: datetime | None = None,
 ) -> Result[
     tuple[
         MatchConfirmedEvent,
@@ -2569,10 +2823,12 @@ def _confirm_draw_impl(
         )
 
     tournament_repository.confirm_match(
-        match_id, initiator_id,
+        match_id, initiator_id, **_changed(changed_at),
     )
 
-    completed = try_complete_plain_round_robin(tournament)
+    completed = try_complete_plain_round_robin(
+        tournament, **_changed(changed_at)
+    )
     if completed.is_err():
         return Err(completed.unwrap_err())
 
@@ -2611,6 +2867,8 @@ def _advance_winner(
     match: TournamentMatch,
     winner: TournamentMatchToContestant,
     now: datetime,
+    *,
+    changed_at: datetime | None = None,
 ) -> list[ContestantAdvancedEvent]:
     """Create winner entry in next match (flush only).
 
@@ -2630,7 +2888,7 @@ def _advance_winner(
         score=None,
         created_at=now,
     )
-    _create_match_contestant_flush(new_contestant)
+    _create_match_contestant_flush(new_contestant, changed_at=changed_at)
 
     return [
         ContestantAdvancedEvent(
@@ -2652,6 +2910,7 @@ def _advance_loser_to_lb(
     now: datetime,
     *,
     initiator_id: UserID | None = None,
+    changed_at: datetime | None = None,
 ) -> Result[list[ContestantAdvancedEvent], str]:
     """Route loser to losers bracket (flush only).
 
@@ -2676,7 +2935,7 @@ def _advance_loser_to_lb(
         score=None,
         created_at=now,
     )
-    _create_match_contestant_flush(loser_entry)
+    _create_match_contestant_flush(loser_entry, changed_at=changed_at)
 
     events: list[ContestantAdvancedEvent] = [
         ContestantAdvancedEvent(
@@ -2695,6 +2954,7 @@ def _advance_loser_to_lb(
         match.tournament_id,
         now,
         initiator_id=initiator_id,
+        changed_at=changed_at,
     )
 
     return Ok(events)
@@ -2706,6 +2966,7 @@ def _try_lb_defwin_advance(
     now: datetime,
     *,
     initiator_id: UserID | None = None,
+    changed_at: datetime | None = None,
 ) -> list[ContestantAdvancedEvent]:
     """Auto-advance if LB match is a structural DEFWIN (flush only).
 
@@ -2740,12 +3001,12 @@ def _try_lb_defwin_advance(
         score=None,
         created_at=now,
     )
-    _create_match_contestant_flush(advanced)
+    _create_match_contestant_flush(advanced, changed_at=changed_at)
 
     # Auto-confirm the structural DEFWIN match
     if initiator_id is not None:
         tournament_repository.confirm_match(
-            lb_match_id, initiator_id
+            lb_match_id, initiator_id, **_changed(changed_at)
         )
 
     return [
@@ -2803,6 +3064,8 @@ def _create_bracket_reset(
     winner: TournamentMatchToContestant,
     contestants: list[TournamentMatchToContestant],
     now: datetime,
+    *,
+    changed_at: datetime | None = None,
 ) -> tuple[TournamentMatchID, list]:
     """Create GF M2 bracket reset match and advance both contestants.
 
@@ -2830,7 +3093,7 @@ def _create_bracket_reset(
         created_at=now,
         phase=match.phase,
     )
-    tournament_repository.create_match(gf_m2)
+    tournament_repository.create_match(gf_m2, **_changed(changed_at))
 
     # Wire GF M1 → GF M2
     tournament_repository.set_next_match_id_flush(
@@ -2856,7 +3119,8 @@ def _create_bracket_reset(
             participant_id=wb_champ.participant_id,
             score=None,
             created_at=now,
-        )
+        ),
+        changed_at=changed_at,
     )
 
     # Insert LB champion as bottom slot (slot 1)
@@ -2869,7 +3133,8 @@ def _create_bracket_reset(
             participant_id=lb_champ.participant_id,
             score=None,
             created_at=now,
-        )
+        ),
+        changed_at=changed_at,
     )
 
     return gf_m2_id, events
@@ -3048,6 +3313,8 @@ def _try_auto_complete_tournament(
     match: TournamentMatch,
     tournament: Tournament,
     winner: TournamentMatchToContestant,
+    *,
+    changed_at: datetime | None = None,
 ) -> Result[bool, str]:
     """Complete the tournament if this match decides it (flush only).
 
@@ -3069,6 +3336,7 @@ def _try_auto_complete_tournament(
     status_set = tournament_repository.set_tournament_status_flush(
         match.tournament_id,
         TournamentStatus.COMPLETED,
+        **_changed(changed_at),
     )
     if status_set.is_err():
         return Err(status_set.unwrap_err())
@@ -3169,6 +3437,8 @@ def plain_round_robin_standing(
 
 def try_complete_plain_round_robin(
     tournament: Tournament,
+    *,
+    changed_at: datetime | None = None,
 ) -> Result[TournamentCompletedEvent | None, str]:
     """Complete a plain round robin that has a winner (flush only).
 
@@ -3208,6 +3478,7 @@ def try_complete_plain_round_robin(
     status_set = tournament_repository.set_tournament_status_flush(
         tournament.id,
         TournamentStatus.COMPLETED,
+        **_changed(changed_at),
     )
     if status_set.is_err():
         return Err(status_set.unwrap_err())
@@ -3231,10 +3502,26 @@ def complete_settled_plain_round_robin(tournament_id: TournamentID) -> None:
     """
     tournament_repository.lock_tournament_for_update(tournament_id)
     tournament = tournament_repository.get_tournament(tournament_id)
-    completed = try_complete_plain_round_robin(tournament)
+    changed_at = (
+        tournament_repository.get_operation_time()
+        if _has_known_clock(tournament)
+        else None
+    )
+    completed = try_complete_plain_round_robin(
+        tournament, **_changed(changed_at)
+    )
     event = completed.unwrap() if completed.is_ok() else None
     if event is None:
         tournament_repository.rollback_session()
+        return
+    timing = _reconcile_timing_flush(tournament_id, changed_at)
+    if timing.is_err():
+        logger.error(
+            'Tournament %s was not completed, its due matches could not be '
+            'reconciled: %s',
+            tournament_id,
+            timing.unwrap_err(),
+        )
         return
     tournament_repository.commit_session()
     tournament_completed.send(None, event=event)
@@ -3333,6 +3620,7 @@ def _confirm_match_impl(
     initiator_id: UserID,
     *,
     _locks_held: bool = False,
+    changed_at: datetime | None = None,
 ) -> Result[
     tuple[
         MatchConfirmedEvent,
@@ -3348,7 +3636,8 @@ def _confirm_match_impl(
     Lock the reachable bracket in ID order first, so this cannot
     deadlock against a concurrent retraction. The caller commits and
     dispatches the events. `_locks_held` says the caller already locked
-    the reachable set in this transaction.
+    the reachable set in this transaction. `changed_at` is the operation
+    time its owner sampled; the owner reconciles the due episodes.
     """
     if not _locks_held:
         _lock_reachable_matches(match_id)
@@ -3392,16 +3681,18 @@ def _confirm_match_impl(
     if winner is None:
         return _confirm_draw_impl(
             match, match_id, initiator_id, tournament,
+            **_changed(changed_at),
         )
     tournament_repository.confirm_match(
-        match_id, initiator_id,
+        match_id, initiator_id, **_changed(changed_at),
     )
     now = datetime.now(UTC)
-    adv_events = _advance_winner(match, winner, now)
+    adv_events = _advance_winner(match, winner, now, changed_at=changed_at)
     if match.loser_next_match_id is not None:
         lb = _advance_loser_to_lb(
             match, contestants, winner, now,
             initiator_id=initiator_id,
+            changed_at=changed_at,
         )
         if lb.is_err():
             return Err(lb.unwrap_err())
@@ -3420,20 +3711,22 @@ def _confirm_match_impl(
         and _is_lb_champion_winner(match, winner)
     ):
         gf_m2_id, reset_events = _create_bracket_reset(
-            match, winner, contestants, now,
+            match, winner, contestants, now, changed_at=changed_at,
         )
         bracket_reset_events = reset_events
         # Re-read match after wiring so _try_auto_complete sees next_match_id
         match = tournament_repository.get_match(match_id)
     comp = _try_auto_complete_tournament(
-        match, tournament, winner,
+        match, tournament, winner, **_changed(changed_at),
     )
     if comp.is_err():
         return comp
     tournament_was_completed = comp.unwrap()
     plain_completed = None
     if not tournament_was_completed:
-        plain = try_complete_plain_round_robin(tournament)
+        plain = try_complete_plain_round_robin(
+            tournament, **_changed(changed_at)
+        )
         if plain.is_err():
             return Err(plain.unwrap_err())
         plain_completed = plain.unwrap()
@@ -3477,14 +3770,21 @@ def confirm_match(
     initiator_id: UserID,
     *,
     _locks_held: bool = False,
+    _changed_at: datetime | None = None,
 ) -> Result[None, str]:
     """Confirm a match result.
 
-    On `Err`, the session has been rolled back. `_locks_held` is
-    internal; external callers must not pass it.
+    On `Err`, the session has been rolled back. `_locks_held` and
+    `_changed_at` are internal; external callers must not pass them.
     """
+    if not _locks_held:
+        _lock_reachable_matches(match_id)
+    changed_at = (
+        _begin_operation(match_id) if _changed_at is None else _changed_at
+    )
+
     result = _confirm_match_impl(
-        match_id, initiator_id, _locks_held=_locks_held
+        match_id, initiator_id, _locks_held=True, **_changed(changed_at)
     )
     if result.is_err():
         # Roll back writes flushed before the failure.
@@ -3498,6 +3798,12 @@ def confirm_match(
         created_events,
         ready_events,
     ) = result.unwrap()
+
+    timing = _reconcile_timing_flush(
+        confirmed_event.tournament_id, changed_at
+    )
+    if timing.is_err():
+        return Err(timing.unwrap_err())
 
     pending = _pending_invitations_flush(
         {event.match_id for event in ready_events}, confirmed_event.occurred_at,
@@ -3521,6 +3827,8 @@ def _unconfirm_match_impl(
     initiator_id: UserID,
     _visited: set[TournamentMatchID] | None = None,
     _match: TournamentMatch | None = None,
+    *,
+    changed_at: datetime | None = None,
 ) -> Result[tuple[list[MatchUnconfirmedEvent], list[MatchDeletedEvent], bool], str]:
     """Flush-only, event-collecting helper for unconfirm_match.
 
@@ -3538,6 +3846,9 @@ def _unconfirm_match_impl(
     is used directly.  Recursive calls acquire their own row
     locks via ``get_match_for_update`` to prevent TOCTOU races
     on concurrent unconfirmations.
+
+    ``changed_at`` is the operation time the owner sampled; the owner
+    reconciles the due episodes.
     """
     if _visited is None:
         _visited = set()
@@ -3585,6 +3896,7 @@ def _unconfirm_match_impl(
                 match.next_match_id,
                 initiator_id,
                 _visited=_visited,
+                changed_at=changed_at,
             )
             if cascade_result.is_err():
                 return cascade_result
@@ -3602,6 +3914,7 @@ def _unconfirm_match_impl(
             match.next_match_id,
             team_id=winner.team_id,
             participant_id=winner.participant_id,
+            changed_at=changed_at,
         )
 
     # Retract loser from losers bracket (DE only)
@@ -3628,6 +3941,7 @@ def _unconfirm_match_impl(
                 match.loser_next_match_id,
                 initiator_id,
                 _visited=_visited,
+                changed_at=changed_at,
             )
             if cascade_result.is_err():
                 return cascade_result
@@ -3645,6 +3959,7 @@ def _unconfirm_match_impl(
             match.loser_next_match_id,
             team_id=loser.team_id,
             participant_id=loser.participant_id,
+            changed_at=changed_at,
         )
 
         # Retract LB auto-advance (structural DEFWIN undo).
@@ -3666,6 +3981,7 @@ def _unconfirm_match_impl(
                     loser_next_match.next_match_id,
                     team_id=loser.team_id,
                     participant_id=loser.participant_id,
+                    changed_at=changed_at,
                 )
 
     # ---- Bracket Reset cleanup (DE Grand Final) ----
@@ -3691,13 +4007,20 @@ def _unconfirm_match_impl(
                 gf_m2.id
             )
             _delete_contestants_for_match_flush(
-                gf_m2.id
+                gf_m2.id, changed_at=changed_at
             )
             # Null out GF M1's next_match_id BEFORE deleting GF M2 (FK)
             tournament_repository.set_next_match_id_flush(
                 match_id, None
             )
-            tournament_repository.delete_match_flush(gf_m2.id)
+            if changed_at is not None:
+                # Keep its episodes as history and drop its live pin.
+                tournament_repository.retire_dashboard_matches_flush(
+                    [gf_m2.id], occurred_at=changed_at
+                )
+            tournament_repository.delete_match_flush(
+                gf_m2.id, **_changed(changed_at)
+            )
 
             deleted_events.append(MatchDeletedEvent(
                 occurred_at=datetime.now(UTC),
@@ -3729,15 +4052,18 @@ def _unconfirm_match_impl(
                 tournament_repository.set_tournament_status_flush(
                     match.tournament_id,
                     TournamentStatus.ONGOING,
+                    **_changed(changed_at),
                 )
             )
             if status_result.is_err():
                 return Err(status_result.unwrap_err())
             tournament_was_uncompleted = True
 
-    _reset_match_readiness_flush(match_id)
+    _reset_match_readiness_flush(match_id, changed_at=changed_at)
     # Clear scores to prevent stale data from being re-confirmed.
-    tournament_repository.clear_contestant_scores(match_id)
+    tournament_repository.clear_contestant_scores(
+        match_id, **_changed(changed_at)
+    )
 
     now = datetime.now(UTC)
     collected_events.append(
@@ -3761,6 +4087,7 @@ def _unconfirm_match_flush(
     _classification: (
         tuple[CorrectionCase, list[TournamentMatchID]] | None
     ) = None,
+    changed_at: datetime | None = None,
 ) -> Result[
     tuple[
         list[MatchUnconfirmedEvent],
@@ -3775,7 +4102,8 @@ def _unconfirm_match_flush(
     The caller must hold the reachable-set lock, commit, dispatch the
     events, and roll back on an exception as well as on `Err`. With a
     `reason`, stage a `match-result-retracted` log entry with the
-    destroyed scores.
+    destroyed scores. `changed_at` is the operation time the caller
+    sampled; the caller reconciles the due episodes.
     """
     # Lock the match row to prevent TOCTOU races.
     match = tournament_repository.get_match_for_update(match_id)
@@ -3807,7 +4135,7 @@ def _unconfirm_match_flush(
         )
 
     result = _unconfirm_match_impl(
-        match_id, initiator_id, _match=match,
+        match_id, initiator_id, _match=match, **_changed(changed_at),
     )
     if result.is_err():
         return result
@@ -3856,9 +4184,12 @@ def unconfirm_match(
     in the same transaction.
     """
     _lock_reachable_matches(match_id)
+    changed_at = _begin_operation(match_id)
 
     try:
-        result = _unconfirm_match_flush(match_id, initiator_id, reason=reason)
+        result = _unconfirm_match_flush(
+            match_id, initiator_id, reason=reason, **_changed(changed_at)
+        )
     except Exception:
         # Roll back flushed writes; this also runs outside a request.
         tournament_repository.rollback_session()
@@ -3871,6 +4202,10 @@ def unconfirm_match(
     events, deleted_events, tournament_was_uncompleted, tournament_id = (
         result.unwrap()
     )
+
+    timing = _reconcile_timing_flush(tournament_id, changed_at)
+    if timing.is_err():
+        return Err(timing.unwrap_err())
 
     pending = _pending_invitations_flush(
         {event.match_id for event in events}
@@ -4165,13 +4500,14 @@ def _correct_result_in_place(
     *,
     reason: str,
     corrected_scores: dict[TournamentParticipantID | TournamentTeamID, int],
+    changed_at: datetime | None = None,
 ) -> Result[tuple[CorrectionCase, bool], str]:
     """Write the corrected scores to a match that stays confirmed.
 
     The corrector becomes the confirmer. The advanced contestants, and
     with them the next matches' pairings and Ready claims, stay as they
     are. Under the locks the caller holds; commit and signals happen
-    here.
+    here. `changed_at` is the operation time the caller sampled.
     """
     match = plan.match
     case = CorrectionCase.NO_DOWNSTREAM
@@ -4195,8 +4531,21 @@ def _correct_result_in_place(
             },
             commit=False,
         )
-        tournament_repository.update_contestant_scores(plan.id_to_score)
-        tournament_repository.confirm_match(match.id, initiator_id)
+        tournament_repository.update_contestant_scores(
+            plan.id_to_score, **_changed(changed_at)
+        )
+        tournament_repository.confirm_match(
+            match.id, initiator_id, **_changed(changed_at)
+        )
+    except Exception:
+        tournament_repository.rollback_session()
+        raise
+
+    timing = _reconcile_timing_flush(match.tournament_id, changed_at)
+    if timing.is_err():
+        return Err(timing.unwrap_err())
+
+    try:
         tournament_repository.commit_session()
     except Exception:
         tournament_repository.rollback_session()
@@ -4291,6 +4640,7 @@ def correct_match_result(
 
     # From here on, every early return must roll back to release the
     # locks.
+    changed_at = _begin_operation(match_id)
 
     # A walkover has no winner, so it could never be confirmed again.
     contestants = tournament_repository.get_contestants_for_match(match_id)
@@ -4316,6 +4666,7 @@ def correct_match_result(
                 initiator_id,
                 reason=reason,
                 corrected_scores=corrected_scores,
+                **_changed(changed_at),
             )
 
     classification_result = classify_result_correction(match_id)
@@ -4388,6 +4739,13 @@ def correct_match_result(
 
     tournament_id = subject.tournament_id
 
+    # The retraction strips the downstream matches and the correction may
+    # put the same pairing back. Close their episodes first, so a
+    # restored pairing is a new demand that no old acknowledgement covers.
+    invalidated = _invalidate_timing_flush([match_id, *affected], changed_at)
+    if invalidated.is_err():
+        return Err(invalidated.unwrap_err())
+
     # Retract, flush only, under the locks taken above.
     try:
         retract_result = _unconfirm_match_flush(
@@ -4396,6 +4754,7 @@ def correct_match_result(
             reason=reason,
             # Reuse the classification the acknowledgement gate decided on.
             _classification=classification,
+            **_changed(changed_at),
         )
     except Exception:
         tournament_repository.rollback_session()
@@ -4449,6 +4808,7 @@ def correct_match_result(
                 corrected_scores,
                 # Locked once, above, for the whole correction.
                 _locks_held=True,
+                **_changed(changed_at),
             )
         except Exception:
             tournament_repository.rollback_session()
@@ -4468,6 +4828,10 @@ def correct_match_result(
         ) = apply_result.unwrap()
         confirmed_events = [confirmed_event]
         scores_applied = True
+
+    timing = _reconcile_timing_flush(tournament_id, changed_at)
+    if timing.is_err():
+        return Err(timing.unwrap_err())
 
     pending = _pending_invitations_flush(
         ({event.match_id for event in retract_events}
@@ -4518,29 +4882,39 @@ def set_score(
     contestant_id: TournamentParticipantID | TournamentTeamID,
     score: int,
 ) -> Result[None, str]:
-    """Set the score for a contestant in a match."""
+    """Set the score for a contestant in an unconfirmed match.
+
+    Lock the tournament first, write flush-only and commit once. On `Err`
+    after the lock, the session has been rolled back.
+    """
     if score < 0:
         return Err('Score cannot be negative.')
+    if score > MAX_MATCH_SCORE:
+        return Err(MAX_MATCH_SCORE_ERROR)
+
+    not_found = f'Contestant "{contestant_id}" not found in match "{match_id}"'
+
+    def _reject(error_message: str) -> Result[None, str]:
+        tournament_repository.rollback_session()
+        return Err(error_message)
 
     match = tournament_repository.find_match(match_id)
-    holds_lock = False
-    if match is not None:
-        tournament = tournament_repository.get_tournament(match.tournament_id)
-        if _has_playoffs(tournament) and match.phase == 1:
-            # Re-read the release under the tournament lock, or a release
-            # can commit between the check and the score write.
-            tournament_repository.lock_tournament_for_update(
-                match.tournament_id
-            )
-            tournament = tournament_repository.get_tournament(
-                match.tournament_id
-            )
-            holds_lock = True
-        locked = _refuse_phase1_change_after_release(tournament, match)
-        if locked.is_err():
-            if holds_lock:
-                tournament_repository.rollback_session()
-            return locked
+    if match is None:
+        return Err(not_found)
+
+    # The tournament row before any match row, then a fresh read.
+    tournament_repository.lock_tournament_for_update(match.tournament_id)
+    tournament_repository.lock_matches_for_update([match_id])
+    match = tournament_repository.find_match_fresh(match_id)
+    if match is None:
+        return _reject(not_found)
+
+    locked = _refuse_phase1_change_after_release(
+        tournament_repository.get_tournament(match.tournament_id, fresh=True),
+        match,
+    )
+    if locked.is_err():
+        return _reject(locked.unwrap_err())
 
     # Find the contestant entry for this match.
     # Try as participant first, then as team.
@@ -4554,13 +4928,19 @@ def set_score(
             team_id=contestant_id,  # type: ignore[arg-type]
         )
     if contestant is None:
-        if holds_lock:
-            tournament_repository.rollback_session()
-        return Err(
-            f'Contestant "{contestant_id}" not found in match "{match_id}"'
-        )
+        return _reject(not_found)
 
-    tournament_repository.update_contestant_score(contestant.id, score)
+    if match.confirmed_by is not None:
+        return _reject('Cannot modify scores of a confirmed match.')
+
+    try:
+        tournament_repository.update_contestant_score(
+            contestant.id, score, commit=False
+        )
+        tournament_repository.commit_session()
+    except Exception:
+        tournament_repository.rollback_session()
+        raise
 
     return Ok(None)
 
@@ -4712,15 +5092,24 @@ def generate_ffa_round(
 
     Returns ``Ok(match_count)`` on success.  Commits the session.
     """
+    tournament_repository.lock_tournament_for_update(tournament_id)
     tournament = tournament_repository.get_tournament(tournament_id)
     if _ffa_phase(tournament) == 2:
         return Err(PLAYOFF_ROUNDS_FROM_DRAFT_ERROR)
+    changed_at = _operation_time_of(tournament)
     result = _generate_ffa_round_impl(
         tournament_id, round_number, contestant_ids,
         bracket=bracket, initiator_id=initiator_id,
+        **_changed(changed_at),
     )
-    if result.is_ok():
-        tournament_repository.commit_session()
+    if result.is_err():
+        return result
+
+    timing = _reconcile_timing_flush(tournament_id, changed_at)
+    if timing.is_err():
+        return Err(timing.unwrap_err())
+
+    tournament_repository.commit_session()
     return result
 
 
@@ -4734,6 +5123,7 @@ def _generate_ffa_round_impl(
     groups: Sequence[Sequence[str]] | None = None,
     seeding_target: str | None = None,
     allow_undersized: bool = False,
+    changed_at: datetime | None = None,
 ) -> Result[int, str]:
     """Internal: generate FFA round matches without committing.
 
@@ -4745,6 +5135,10 @@ def _generate_ffa_round_impl(
 
     The matches of a highscore tournament's playoffs are phase 2 and
     need the *contestant_ids* (the qualifiers) from the caller.
+
+    Once the lobbies are assembled they are marked occupied at
+    *changed_at*, the operation time of a tracked tournament. The
+    caller reconciles the due episodes.
 
     Returns ``Ok(match_count)`` on success.
     Caller is responsible for committing the session.
@@ -4852,9 +5246,11 @@ def _generate_ffa_round_impl(
 
     now = datetime.now(UTC)
     match_count = 0
+    lobby_ids: list[TournamentMatchID] = []
 
     for group_idx, group in enumerate(groups):
         match_id = TournamentMatchID(generate_uuid7())
+        lobby_ids.append(match_id)
         match = TournamentMatch(
             id=match_id,
             tournament_id=tournament_id,
@@ -4867,6 +5263,7 @@ def _generate_ffa_round_impl(
             bracket=bracket,
             phase=phase,
             seeding_target=seeding_target,
+            last_changed_at=changed_at,
         )
         tournament_repository.create_match(match)
         match_count += 1
@@ -4894,7 +5291,16 @@ def _generate_ffa_round_impl(
                     score=None,
                     created_at=now,
                 )
-            _create_match_contestant_flush(contestant)
+            _create_match_contestant_flush(contestant, **_changed(changed_at))
+
+    marked = _mark_lobbies_occupied_flush(
+        tournament,
+        lobby_ids,
+        changed_at=changed_at,
+        allow_undersized=allow_undersized,
+    )
+    if marked.is_err():
+        return Err(marked.unwrap_err())
 
     return Ok(match_count)
 
@@ -4907,13 +5313,15 @@ def _generate_ffa_initial_impl(
     initiator_id: UserID | None = None,
     roster: Sequence[str] | None = None,
     seeding_target: str | None = None,
+    changed_at: datetime | None = None,
 ) -> Result[GenerationOutcome, str]:
     """Generate the first FFA round without committing.
 
     Replaces an existing bracket when *force_regenerate* is set. On Err
     the caller must roll back, as the old bracket is already cleared.
     The playoffs of a highscore tournament are built for the *roster*
-    of qualifiers. The caller owns commit and dispatch.
+    of qualifiers. The caller owns commit and dispatch, and reconciles
+    the due episodes at *changed_at*, its operation time.
     """
     tournament_repository.lock_tournament_for_update(tournament_id)
     existing = tournament_repository.get_matches_for_tournament(tournament_id)
@@ -4934,7 +5342,9 @@ def _generate_ffa_initial_impl(
 
     deleted_events: list[MatchDeletedEvent] = []
     if existing:
-        deleted_events = clear_bracket(tournament_id, initiator_id=initiator_id)
+        deleted_events = clear_bracket(
+            tournament_id, initiator_id=initiator_id, **_changed(changed_at)
+        )
 
     # A release with fewer qualifiers than configured plays smaller lobbies.
     short_release = (
@@ -4952,6 +5362,7 @@ def _generate_ffa_initial_impl(
         groups=groups,
         seeding_target=seeding_target,
         allow_undersized=short_release,
+        **_changed(changed_at),
     )
     if result.is_err():
         return Err(result.unwrap_err())
@@ -4997,10 +5408,16 @@ def set_ffa_placements(
             tournament_repository.lock_tournament_for_update(match.tournament_id)
         match = tournament_repository.get_match_for_update(match_id)
         tournament = tournament_repository.get_tournament(match.tournament_id)
-        result = _set_ffa_placements_impl(match, tournament, placements)
+        changed_at = _operation_time_of(tournament)
+        result = _set_ffa_placements_impl(
+            match, tournament, placements, **_changed(changed_at)
+        )
         if result.is_err():
             tournament_repository.rollback_session()
             return Err(result.unwrap_err())
+        timing = _reconcile_timing_flush(match.tournament_id, changed_at)
+        if timing.is_err():
+            return Err(timing.unwrap_err())
         tournament_repository.commit_session()
     except Exception:
         tournament_repository.rollback_session()
@@ -5013,6 +5430,8 @@ def _set_ffa_placements_impl(
     match: TournamentMatch,
     tournament: Tournament,
     placements: dict[str, int],
+    *,
+    changed_at: datetime | None = None,
 ) -> Result[None, str]:
     """Validate and write placements for an already locked match; flush only."""
 
@@ -5073,7 +5492,9 @@ def _set_ffa_placements_impl(
         points = map_placement_to_points(placement, point_table)
         updates[c.id] = (placement, points)
 
-    tournament_repository.update_contestant_placement_and_points(updates)
+    tournament_repository.update_contestant_placement_and_points(
+        updates, **_changed(changed_at)
+    )
     return Ok(None)
 
 
@@ -5106,10 +5527,16 @@ def confirm_ffa_match(
             tournament_repository.lock_tournament_for_update(match.tournament_id)
         match = tournament_repository.get_match_for_update(match_id)
         tournament = tournament_repository.get_tournament(match.tournament_id)
-        result = _confirm_ffa_match_impl(match, tournament, initiator_id)
+        changed_at = _operation_time_of(tournament)
+        result = _confirm_ffa_match_impl(
+            match, tournament, initiator_id, **_changed(changed_at)
+        )
         if result.is_err():
             tournament_repository.rollback_session()
             return Err(result.unwrap_err())
+        timing = _reconcile_timing_flush(match.tournament_id, changed_at)
+        if timing.is_err():
+            return Err(timing.unwrap_err())
         tournament_repository.commit_session()
     except Exception:
         tournament_repository.rollback_session()
@@ -5123,8 +5550,14 @@ def _confirm_ffa_match_impl(
     match: TournamentMatch,
     tournament: Tournament,
     initiator_id: UserID,
+    *,
+    changed_at: datetime | None = None,
 ) -> Result[_FfaConfirmationOutcome, str]:
-    """Confirm an already locked FFA match and stage completion/audit; flush only."""
+    """Confirm an already locked FFA match and stage completion/audit; flush only.
+
+    A completion freezes the clock at *changed_at*, the operation time
+    of the owner, which reconciles the due episodes.
+    """
 
     # Reject already-confirmed matches. Checked before the format
     # guard below so a confirmed match keeps reporting the more
@@ -5153,7 +5586,9 @@ def _confirm_ffa_match_impl(
             f'{len(missing)} contestant(s) lack placements.'
         )
 
-    tournament_repository.confirm_match(match.id, initiator_id)
+    tournament_repository.confirm_match(
+        match.id, initiator_id, **_changed(changed_at)
+    )
 
     tournament_was_completed = False
     winner = None
@@ -5193,7 +5628,9 @@ def _confirm_ffa_match_impl(
             ]
             if first_place:
                 winner = first_place[0]
-                comp = _try_auto_complete_tournament(match, tournament, winner)
+                comp = _try_auto_complete_tournament(
+                    match, tournament, winner, **_changed(changed_at)
+                )
                 if comp.is_err():
                     return Err(comp.unwrap_err())
                 tournament_was_completed = comp.unwrap()
@@ -5201,7 +5638,9 @@ def _confirm_ffa_match_impl(
         elif tournament.tournament_status is TournamentStatus.ONGOING:
             plan = _single_survivor_source_plan(match, tournament)
             if plan is not None:
-                completed = complete_ffa_single_survivor(tournament, plan, initiator_id)
+                completed = complete_ffa_single_survivor(
+                    tournament, plan, initiator_id, **_changed(changed_at)
+                )
                 if completed.is_err():
                     return Err(completed.unwrap_err())
                 single_survivor_event = completed.unwrap()
@@ -5225,7 +5664,9 @@ def _confirm_ffa_match_impl(
             ]
             if first_place:
                 winner = first_place[0]
-                comp = _try_auto_complete_tournament(match, tournament, winner)
+                comp = _try_auto_complete_tournament(
+                    match, tournament, winner, **_changed(changed_at)
+                )
                 if comp.is_err():
                     return Err(comp.unwrap_err())
                 tournament_was_completed = comp.unwrap()
@@ -5305,16 +5746,25 @@ def set_and_confirm_ffa_match(
             tournament_repository.lock_tournament_for_update(match.tournament_id)
         match = tournament_repository.get_match_for_update(match_id)
         tournament = tournament_repository.get_tournament(match.tournament_id)
+        changed_at = _operation_time_of(tournament)
 
-        placements_result = _set_ffa_placements_impl(match, tournament, placements)
+        placements_result = _set_ffa_placements_impl(
+            match, tournament, placements, **_changed(changed_at)
+        )
         if placements_result.is_err():
             tournament_repository.rollback_session()
             return Err(placements_result.unwrap_err())
 
-        result = _confirm_ffa_match_impl(match, tournament, initiator_id)
+        result = _confirm_ffa_match_impl(
+            match, tournament, initiator_id, **_changed(changed_at)
+        )
         if result.is_err():
             tournament_repository.rollback_session()
             return Err(result.unwrap_err())
+
+        timing = _reconcile_timing_flush(match.tournament_id, changed_at)
+        if timing.is_err():
+            return Err(timing.unwrap_err())
 
         tournament_repository.commit_session()
     except Exception:
@@ -5418,8 +5868,14 @@ def complete_ffa_single_survivor(
     tournament: Tournament,
     plan: FfaAdvancePlan,
     initiator_id: UserID | None,
+    *,
+    changed_at: datetime | None = None,
 ) -> Result[TournamentCompletedEvent, str]:
-    """Persist the sole single-track survivor as winner without committing."""
+    """Persist the sole single-track survivor as winner without committing.
+
+    The clock freezes at *changed_at*, the operation time of the owner,
+    which reconciles the due episodes.
+    """
     if (
         not is_single_survivor(plan)
         or tournament.tournament_status is not TournamentStatus.ONGOING
@@ -5445,7 +5901,7 @@ def complete_ffa_single_survivor(
     if winner_set.is_err():
         return Err(winner_set.unwrap_err())
     status_set = tournament_repository.set_tournament_status_flush(
-        tournament.id, TournamentStatus.COMPLETED
+        tournament.id, TournamentStatus.COMPLETED, **_changed(changed_at)
     )
     if status_set.is_err():
         return Err(status_set.unwrap_err())
@@ -5880,6 +6336,7 @@ def advance_ffa_round(
     # Lock tournament.
     tournament_repository.lock_tournament_for_update(tournament_id)
     tournament = tournament_repository.get_tournament(tournament_id)
+    changed_at = _operation_time_of(tournament)
 
     plan_result = plan_ffa_advance(tournament, pool)
     if plan_result.is_err():
@@ -5893,10 +6350,15 @@ def advance_ffa_round(
         return Err(FFA_LONE_SURVIVOR_ERROR)
 
     if is_single_survivor(plan):
-        completed = complete_ffa_single_survivor(tournament, plan, initiator_id)
+        completed = complete_ffa_single_survivor(
+            tournament, plan, initiator_id, **_changed(changed_at)
+        )
         if completed.is_err():
             tournament_repository.rollback_session()
             return Err(completed.unwrap_err())
+        timing = _reconcile_timing_flush(tournament_id, changed_at)
+        if timing.is_err():
+            return Err(timing.unwrap_err())
         tournament_repository.commit_session()
         tournament_completed.send(None, event=completed.unwrap())
         return Ok('completed')
@@ -5908,10 +6370,15 @@ def advance_ffa_round(
             ffa_round_seeding_target(pool, plan.round_number)
             if is_waiting_winners_round(plan) else None
         ),
+        **_changed(changed_at),
     )
     if created.is_err():
         tournament_repository.rollback_session()
         return Err(created.unwrap_err())
+
+    timing = _reconcile_timing_flush(tournament_id, changed_at)
+    if timing.is_err():
+        return Err(timing.unwrap_err())
 
     tournament_repository.commit_session()
     if pool is None:
@@ -6207,6 +6674,7 @@ def _create_planned_ffa_rounds(
     seeding_target: str | None = None,
     log_waiting: bool = True,
     log_natural_shortfall: bool = True,
+    changed_at: datetime | None = None,
 ) -> Result[int, str]:
     """Create the round of a plan, and its losers round, without committing.
 
@@ -6214,6 +6682,7 @@ def _create_planned_ffa_rounds(
     derive from the standing order. The losers round always derives and
     carries the same *seeding_target*. A losers pool of one has no round:
     it is logged as ``bracket-lobby-bye`` and the contestant carries over.
+    Both pools are created at *changed_at*, one operation.
     """
     if is_lone_losers_round(plan):
         return Err(FFA_LONE_SURVIVOR_ERROR)
@@ -6239,6 +6708,7 @@ def _create_planned_ffa_rounds(
         groups=groups,
         seeding_target=seeding_target,
         allow_undersized=(plan.pool, plan.round_number) in undersized,
+        **_changed(changed_at),
     )
     if created.is_err():
         return created
@@ -6256,6 +6726,7 @@ def _create_planned_ffa_rounds(
             seeding_target=seeding_target,
             allow_undersized=(Bracket.LOSERS, plan.lb_round_number)
             in undersized,
+            **_changed(changed_at),
         )
         if created_lb.is_err():
             return created_lb
@@ -6334,13 +6805,15 @@ def _generate_ffa_advance_impl(
     *,
     groups: Sequence[Sequence[str]],
     initiator_id: UserID | None = None,
+    changed_at: datetime | None = None,
 ) -> Result[GenerationOutcome, str]:
     """Generate one later FFA round from a draft without committing.
 
     Replaces the round, and the losers round a winners round came with,
     while none of them has a confirmed result; the survivors must still
     be the ones it was made for. Every created match carries the
-    round's seeding target. The caller owns commit and dispatch.
+    round's seeding target. The caller owns commit and dispatch, and
+    reconciles the due episodes at *changed_at*, its operation time.
     """
     tournament_repository.lock_tournament_for_update(tournament_id)
     tournament = tournament_repository.get_tournament(tournament_id)
@@ -6366,7 +6839,7 @@ def _generate_ffa_advance_impl(
     }
     # The plan reads the matches, so the round goes before it is planned.
     deleted_events = _delete_matches_flush(
-        tournament_id, list(to_delete.values())
+        tournament_id, list(to_delete.values()), **_changed(changed_at)
     )
 
     plan_result = plan_ffa_advance(tournament, pool, next_round=round_number)
@@ -6388,6 +6861,7 @@ def _generate_ffa_advance_impl(
             pool is Bracket.WINNERS and not existing and to_delete
         ),
         log_natural_shortfall=not bool(to_delete),
+        **_changed(changed_at),
     )
     if created.is_err():
         return Err(created.unwrap_err())
@@ -6426,7 +6900,10 @@ def _generate_ffa_advance_impl(
 
 
 def _delete_matches_flush(
-    tournament_id: TournamentID, matches: Iterable[TournamentMatch]
+    tournament_id: TournamentID,
+    matches: Iterable[TournamentMatch],
+    *,
+    changed_at: datetime | None = None,
 ) -> list[MatchDeletedEvent]:
     """Delete matches without links, with their children (flush only)."""
     matches = list(matches)
@@ -6436,8 +6913,10 @@ def _delete_matches_flush(
     events = []
     for match in matches:
         tournament_repository.delete_comments_for_match_flush(match.id)
-        _delete_contestants_for_match_flush(match.id)
-        tournament_repository.delete_match_flush(match.id)
+        _delete_contestants_for_match_flush(match.id, **_changed(changed_at))
+        tournament_repository.delete_match_flush(
+            match.id, **_changed(changed_at)
+        )
         events.append(
             MatchDeletedEvent(
                 occurred_at=now,
@@ -6931,6 +7410,7 @@ def generate_ffa_grand_final(
     lb_survivors = inputs.lb_survivors
     all_survivors = wb_survivors + wb_dropped + lb_survivors
     is_team = tournament.contestant_type == ContestantType.TEAM
+    changed_at = _operation_time_of(tournament)
 
     # Build per-bracket round groupings for standings computation.
     wb_round_matches: list[list[list[TournamentMatchToContestant]]] = []
@@ -7004,6 +7484,7 @@ def generate_ffa_grand_final(
         created_at=now,
         bracket=Bracket.GRAND_FINAL,
         phase=_ffa_phase(tournament) or 1,
+        last_changed_at=changed_at,
     )
     tournament_repository.create_match(gf_match)
 
@@ -7027,7 +7508,14 @@ def generate_ffa_grand_final(
                 score=None,
                 created_at=now,
             )
-        _create_match_contestant_flush(contestant)
+        _create_match_contestant_flush(contestant, **_changed(changed_at))
+
+    # The Grand Final is exempt from the minimum lobby size.
+    marked = _mark_lobbies_occupied_flush(
+        tournament, [match_id], changed_at=changed_at, allow_undersized=True
+    )
+    if marked.is_err():
+        return Err(marked.unwrap_err())
 
     create_log_entry(
         'bracket-generated',
@@ -7036,6 +7524,10 @@ def generate_ffa_grand_final(
         data={'target': FFA_GRAND_FINAL_TARGET, 'contestants': member_ids},
         commit=False,
     )
+    timing = _reconcile_timing_flush(tournament_id, changed_at)
+    if timing.is_err():
+        return Err(timing.unwrap_err())
+
     tournament_repository.commit_session()
     dispatch_generation_events(
         tournament_id,

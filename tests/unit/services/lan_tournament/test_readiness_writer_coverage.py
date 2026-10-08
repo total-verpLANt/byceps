@@ -12,6 +12,17 @@ import pytest
 from byceps.services.lan_tournament import tournament_match_service as engine
 from byceps.services.lan_tournament import tournament_readiness_service as readiness
 from byceps.services.lan_tournament import tournament_repository as repository
+from byceps.services.lan_tournament.dbmodels import (
+    dashboard as dashboard_dbmodels,
+)
+from byceps.services.lan_tournament.dbmodels.match import DbTournamentMatch
+from byceps.services.lan_tournament.dbmodels.match_contestant import (
+    DbTournamentMatchToContestant,
+)
+from byceps.services.lan_tournament.dbmodels.match_readiness import (
+    DbMatchInvitation,
+    DbMatchPairing,
+)
 from byceps.util.result import Err, Ok
 from byceps.util.uuid import uuid7
 
@@ -331,6 +342,7 @@ APPLICATION = ROOT / 'byceps'
 PACKAGE = 'services/lan_tournament/'
 MATCH = PACKAGE + 'tournament_match_service.py'
 REPOSITORY = PACKAGE + 'tournament_repository.py'
+OPERATIONAL = PACKAGE + 'tournament_operational_service.py'
 READINESS = PACKAGE + 'tournament_readiness_service.py'
 INVITATION = PACKAGE + 'tournament_invitation_service.py'
 HANDLERS = PACKAGE + 'notification_handlers.py'
@@ -449,6 +461,8 @@ WRITER_CALLERS = {
     'set_both_ready_notified_flush': set(),
     'mark_matches_both_ready_notified': set(),
     'set_occupied_since_if_unset_flush': set(),
+    'set_ffa_lobby_occupied_since_if_unset_flush': {
+        (OPERATIONAL, 'mark_completed_lobbies_occupied_flush')},
     # Reset and pairing writers.
     'unconfirm_match': {(MATCH, '_reset_match_readiness_flush')},
     'clear_match_readiness_flush': {
@@ -545,18 +559,321 @@ def test_readiness_columns_are_written_only_by_the_pinned_repository_functions()
     assert found == {(REPOSITORY, name) for name in REPOSITORY_COLUMN_WRITERS}
 
 
-def test_only_the_repository_touches_the_pairing_work_and_occupancy_tables():
-    models = {
-        'DbTournamentMatchToContestant', 'DbMatchPairing', 'DbMatchInvitation',
-        'DbTournamentMatch',
-    }
-    files = {
+# fmt: off
+PROTECTED_TABLE_MODELS = (
+    DbTournamentMatch, DbTournamentMatchToContestant, DbMatchPairing,
+    DbMatchInvitation,
+)
+PROTECTED_CLASS_NAMES = {model.__name__ for model in PROTECTED_TABLE_MODELS}
+DASHBOARD_MODELS = tuple(
+    value
+    for value in vars(dashboard_dbmodels).values()
+    if isinstance(value, type) and hasattr(value, '__table__')
+)
+DASHBOARD_CLASS_NAMES = {model.__name__ for model in DASHBOARD_MODELS}
+# The dashboard repository may read these tables. The gate does not need it
+# to exist.
+DASHBOARD_REPOSITORY = PACKAGE + 'tournament_dashboard_repository.py'
+STATEMENT_WRITERS = {'insert', 'pg_insert', 'update', 'delete'}
+SESSION_WRITERS = {
+    'add', 'add_all', 'merge', 'delete', 'bulk_save_objects',
+    'bulk_insert_mappings', 'bulk_update_mappings',
+}
+# fmt: on
+
+
+def _column_names(models):
+    return {name for model in models for name in model.__table__.c.keys()}
+
+
+# A column name the dashboard tables share (`id`, `tournament_id`, ...) says
+# nothing about the table, so only the other names identify a protected write.
+PROTECTED_COLUMNS = _column_names(PROTECTED_TABLE_MODELS) - _column_names(
+    DASHBOARD_MODELS
+)
+
+
+def _table_referrers(trees):
+    return {
         relative
-        for relative, tree in _application().items()
+        for relative, tree in trees.items()
         if not relative.startswith(PACKAGE + 'dbmodels/')
-        and any(True for _ in _references(tree, models))
+        and any(True for _ in _references(tree, PROTECTED_CLASS_NAMES))
     }
-    assert files == {REPOSITORY}
+
+
+def test_only_the_repository_touches_the_pairing_work_and_occupancy_tables():
+    # The dashboard repository may read them; the next tests pin that it
+    # only reads. Any other referrer, existing or new, still fails here.
+    referrers = _table_referrers(_application())
+    assert referrers - {DASHBOARD_REPOSITORY} == {REPOSITORY}
+
+
+# fmt: off
+@pytest.mark.parametrize('extra', [
+    PACKAGE + 'tournament_operational_service.py',
+    PACKAGE + 'tournament_dashboard_service.py',
+    PACKAGE + 'blueprints/admin/dashboard_views.py',
+    'services/tourney/some_module.py',
+])
+@pytest.mark.parametrize('source', [
+    'from .dbmodels.match import DbTournamentMatch',
+    'from .dbmodels import match_readiness as m\nx = m.DbMatchPairing',
+    'select(DbMatchInvitation.id)',
+    'session.get(DbTournamentMatchToContestant, 1)',
+])
+# fmt: on
+def test_a_new_referrer_of_the_protected_tables_is_detected(extra, source):
+    trees = {**_application(), extra: ast.parse(source)}
+    assert _table_referrers(trees) - {DASHBOARD_REPOSITORY} == {REPOSITORY, extra}
+
+
+def test_the_dashboard_allowance_does_not_cover_a_lookalike_path():
+    lookalike = PACKAGE + 'blueprints/tournament_dashboard_repository.py'
+    trees = {**_application(), lookalike: ast.parse('DbTournamentMatch')}
+    assert lookalike in _table_referrers(trees) - {DASHBOARD_REPOSITORY}
+
+
+def test_the_dashboard_repository_allowance_holds_either_way():
+    present = {
+        **_application(), DASHBOARD_REPOSITORY: ast.parse('DbTournamentMatch'),
+    }
+    absent = {
+        relative: tree
+        for relative, tree in _application().items()
+        if relative != DASHBOARD_REPOSITORY
+    }
+    for trees in (present, absent):
+        assert _table_referrers(trees) - {DASHBOARD_REPOSITORY} == {REPOSITORY}
+
+
+def _leaf(func):
+    return func.attr if isinstance(func, ast.Attribute) else getattr(func, 'id', '')
+
+
+def _names_in(node):
+    for leaf in ast.walk(node):
+        if isinstance(leaf, ast.Name):
+            yield leaf.id
+        elif isinstance(leaf, ast.Attribute):
+            yield leaf.attr
+
+
+def _bindings(scope):
+    """Yield (bound names, value) for each assignment-like binding."""
+    for node in ast.walk(scope):
+        if isinstance(node, ast.Assign):
+            targets, value = node.targets, node.value
+        elif isinstance(node, (ast.AnnAssign, ast.NamedExpr)):
+            targets, value = [node.target], node.value
+        elif isinstance(node, (ast.For, ast.comprehension)):
+            targets, value = [node.target], node.iter
+        elif isinstance(node, ast.withitem) and node.optional_vars:
+            targets, value = [node.optional_vars], node.context_expr
+        else:
+            continue
+        if value is not None:
+            yield {
+                leaf.id
+                for target in targets
+                for leaf in ast.walk(target)
+                if isinstance(leaf, ast.Name) and isinstance(leaf.ctx, ast.Store)
+            }, value
+
+
+def _protected_rows(scope, classes):
+    """Return names bound to values built from the protected classes alone.
+
+    A value that also mentions a dashboard class is left out: a dashboard row
+    loaded through a join with a match is the dashboard's own to change.
+    """
+    rows, grew = set(), True
+    while grew:
+        grew = False
+        for names, value in _bindings(scope):
+            used = set(_names_in(value))
+            if (
+                used & (classes | rows)
+                and not used & DASHBOARD_CLASS_NAMES
+                and not names <= rows
+            ):
+                rows |= names
+                grew = True
+    return rows
+
+
+def _table_writes(tree):
+    """Return (line, kind) of each write to a protected table, by syntax.
+
+    It sees statements on the classes, instances of them, session writes of
+    them and assignments to their own columns. A row reached through some
+    other path under a shared column name (`id`, `tournament_id`) is beyond it.
+    """
+    found = []
+    if tree is None:
+        return found
+
+    classes = PROTECTED_CLASS_NAMES | {
+        alias.asname
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        for alias in node.names
+        if alias.name in PROTECTED_CLASS_NAMES and alias.asname
+    }
+    for _, scope in _top_level_scopes(tree):
+        rows = _protected_rows(scope, classes)
+        mine = classes | rows
+        for node in ast.walk(scope):
+            if isinstance(node, ast.Call):
+                leaf = _leaf(node.func)
+                arguments = {
+                    name
+                    for argument in (*node.args, *(k.value for k in node.keywords))
+                    for name in _names_in(argument)
+                }
+                on_session = (
+                    ast.unparse(node.func).rpartition('.')[0].endswith('session')
+                )
+                if leaf in classes:
+                    found.append((node.lineno, 'instance'))
+                if leaf in STATEMENT_WRITERS and not on_session and (
+                    arguments & mine
+                ):
+                    found.append((node.lineno, 'statement'))
+                if leaf in SESSION_WRITERS and on_session and arguments & mine:
+                    found.append((node.lineno, 'session'))
+                if leaf == 'values' and any(
+                    keyword.arg in PROTECTED_COLUMNS for keyword in node.keywords
+                ):
+                    found.append((node.lineno, 'values'))
+                if leaf == 'setattr' and len(node.args) > 1 and (
+                    set(_names_in(node.args[0])) & rows
+                    or ast.unparse(node.args[1]).strip('\'"') in PROTECTED_COLUMNS
+                ):
+                    found.append((node.lineno, 'setattr'))
+            targets = []
+            if isinstance(node, ast.Assign):
+                targets = node.targets
+            elif isinstance(node, (ast.AugAssign, ast.AnnAssign)):
+                targets = [node.target]
+            for target in targets:
+                for leaf in ast.walk(target):
+                    if isinstance(leaf, ast.Attribute) and (
+                        leaf.attr in PROTECTED_COLUMNS
+                        or set(_names_in(leaf.value)) & rows
+                    ):
+                        found.append((node.lineno, 'attribute'))
+    return sorted(set(found))
+
+
+def _in_function(source):
+    body = ''.join(f'    {line}\n' for line in source.splitlines())
+    return ast.parse(f'def work():\n{body}')
+
+
+def test_the_dashboard_repository_only_reads_the_protected_tables():
+    # Writes to the dashboard tables are its business; these four are not.
+    assert _table_writes(_application().get(DASHBOARD_REPOSITORY)) == []
+
+
+# fmt: off
+@pytest.mark.parametrize('source, kinds', [
+    ('update(DbTournamentMatch).values(round=1)', {'statement', 'values'}),
+    ('db.update(DbMatchPairing)', {'statement'}),
+    ('pg_insert(DbMatchInvitation).values(x=1)', {'statement'}),
+    ('delete(DbTournamentMatchToContestant)', {'statement'}),
+    ('db.session.add(DbTournamentMatch(id=1))', {'instance', 'session'}),
+    ('row = DbMatchPairing(id=1)', {'instance'}),
+    ('session.add_all([DbMatchInvitation(id=1)])', {'instance', 'session'}),
+    ('x = update(anything).values(occupied_since=None)', {'values'}),
+    ('m = db.session.get(DbTournamentMatch, 1)\nm.occupied_since = None', {'attribute'}),
+    ('m = db.session.get(DbTournamentMatch, 1)\nm.tournament_id = 2', {'attribute'}),
+    ('m = db.session.get(DbTournamentMatch, 1)\nm.round += 1', {'attribute'}),
+    (
+        (
+            'rows = db.session.scalars(select(DbMatchPairing))\n'
+            'for r in rows:\n    r.ended_at = None'
+        ),
+        {'attribute'},
+    ),
+    (
+        (
+            'stmt = select(DbTournamentMatch)\n'
+            'rows = db.session.scalars(stmt)\n'
+            'for r in rows:\n    db.session.delete(r)'
+        ),
+        {'session'},
+    ),
+    ('m = db.session.get(DbTournamentMatch, 1)\nsetattr(m, "x", 1)', {'setattr'}),
+    ('setattr(anything, "ready_at_a", None)', {'setattr'}),
+    ('anything.invitation_hold_a = True', {'attribute'}),
+])
+# fmt: on
+def test_protected_table_writes_are_detected(source, kinds):
+    assert {kind for _, kind in _table_writes(_in_function(source))} == kinds
+
+
+# fmt: off
+@pytest.mark.parametrize('source', [
+    (
+        'select(DbTournamentMatch.id, DbTournamentMatch.phase)'
+        '.join(DbTournament, DbTournament.id == DbTournamentMatch.tournament_id)'
+    ),
+    'select(func.count()).select_from(DbTournamentMatchToContestant)',
+    (
+        'update(DbMatchDueEpisode).where(DbMatchDueEpisode.match_id.in_('
+        'select(DbTournamentMatch.id))).values(closed_at=now)'
+    ),
+    'delete(DbMatchDashboardAnnotation).where(DbMatchDashboardAnnotation.match_id == 1)',
+    'ep = DbMatchDueEpisode(id=1)\ndb.session.add(ep)',
+    'ep = db.session.get(DbMatchDueEpisode, 1)\nep.ack_revision = 3\nep.tournament_id = 1',
+    (
+        'stmt = select(DbMatchDueEpisode).join(DbTournamentMatch, '
+        'DbTournamentMatch.id == DbMatchDueEpisode.match_id)\n'
+        'for ep in db.session.scalars(stmt):\n    ep.closed_at = now'
+    ),
+    'seen = set()\nseen.add(DbTournamentMatch)',
+    'ids = db.session.scalars(select(DbTournamentMatch.id)).all()\nprint(ids)',
+])
+# fmt: on
+def test_dashboard_table_writes_and_protected_reads_are_not_flagged(source):
+    assert _table_writes(_in_function(source)) == []
+
+
+# fmt: off
+@pytest.mark.parametrize('source, kinds', [
+    (
+        (
+            'from x import DbTournamentMatch as Match\n'
+            'def f():\n    update(Match)'
+        ),
+        {'statement'},
+    ),
+    (
+        (
+            'from x import DbMatchPairing as Pair\n'
+            'def f():\n    db.session.add(Pair(id=1))'
+        ),
+        {'instance', 'session'},
+    ),
+    (
+        (
+            'from x import DbTournamentMatch as Match\n'
+            'def f():\n    m = db.session.get(Match, 1)\n'
+            '    m.tournament_id = 2'
+        ),
+        {'attribute'},
+    ),
+    ('def f():\n    Match = DbTournamentMatch\n    update(Match)', {'statement'}),
+])
+# fmt: on
+def test_an_aliased_protected_class_is_still_seen(source, kinds):
+    assert {kind for _, kind in _table_writes(ast.parse(source))} == kinds
+
+
+def test_only_distinctive_columns_identify_a_protected_write():
+    assert {'occupied_since', 'ready_at_a', 'pairing_id', 'phase'} <= PROTECTED_COLUMNS
+    assert not {'id', 'tournament_id', 'match_id'} & PROTECTED_COLUMNS
 
 
 ROSTER_WRITERS = {

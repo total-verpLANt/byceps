@@ -3,6 +3,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, UTC
 from functools import wraps
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
@@ -19,6 +20,7 @@ from . import (
     tournament_domain_service,
     tournament_log_service,
     tournament_match_service,
+    tournament_operational_service,
     tournament_repository,
 )
 from .events import (
@@ -123,6 +125,42 @@ def _refresh_roster_matches_flush(
             return Err(refreshed.unwrap_err())
         pending.update(refreshed.unwrap().pending_invitation_ids)
     return Ok(tuple(sorted(pending, key=str)))
+
+
+def _operation_time_of(tournament: Tournament) -> datetime | None:
+    """Return the shared time of a roster change, or `None` without a clock.
+
+    Pass the tournament the owner read under its lock, and call it before
+    the first change of a match entry. A tournament without known clock
+    history has no timing facts to keep, so its writers sample their own
+    time as they always did.
+    """
+    if not isinstance(tournament.operational_clock_activated_at, datetime):
+        return None
+
+    return tournament_repository.get_operation_time()
+
+
+def _changed(changed_at: datetime | None) -> dict[str, Any]:
+    """Return the `changed_at` keyword of a stamping writer, if any."""
+    return {} if changed_at is None else {'changed_at': changed_at}
+
+
+def _reconcile_roster_timing_flush(
+    tournament_id: TournamentID, changed_at: datetime | None
+) -> Result[None, str]:
+    """Bring the due episodes in line with a removal, before the commit.
+
+    Call it after the last match entry changed. The owner rolls back on
+    `Err` or an exception, so the removal, its stamps and the episodes
+    stay or go together.
+    """
+    if changed_at is None:
+        return Ok(None)
+
+    return tournament_operational_service.reconcile_due_matches_flush(
+        tournament_id, occurred_at=changed_at
+    )
 
 
 @contextmanager
@@ -484,6 +522,7 @@ def _remove_single_participant_bracket_aware(
     *,
     initiator_id: UserID | None = None,
     soft_deleted: bool = False,
+    changed_at: datetime | None = None,
 ) -> tuple[tournament_match_service.DefwinResult, TournamentTeamID | None]:
     """Remove one participant, handling bracket defwins if needed.
 
@@ -519,6 +558,7 @@ def _remove_single_participant_bracket_aware(
         result = tournament_match_service.handle_defwin_for_removed_participant(
             tournament.id, participant.id,
             initiator_id=initiator_id,
+            **_changed(changed_at),
         )
         defwin.advanced.extend(result.advanced)
         defwin.confirmed.extend(result.confirmed)
@@ -536,6 +576,7 @@ def _remove_single_participant_bracket_aware(
             result = tournament_match_service.handle_defwin_for_removed_team(
                 tournament.id, participant.team_id,
                 initiator_id=initiator_id,
+                **_changed(changed_at),
             )
             defwin.advanced.extend(result.advanced)
             defwin.confirmed.extend(result.confirmed)
@@ -605,11 +646,12 @@ def admin_remove_participant(
         team_ids=[team_id] if team_id else [],
     )
     handovers: list[_CaptaincyHandover] = []
+    emptied = False
     if team_id is not None:
         # The members were locked above. A removed captain must not keep the
         # role: the team could not claim Ready and the ex-captain would keep
         # their kick rights.
-        _emptied, handover = _hand_over_captaincy_flush(
+        emptied, handover = _hand_over_captaincy_flush(
             tournament_repository.get_team(team_id),
             [participant],
             tournament_repository.get_participants_for_team(team_id),
@@ -617,12 +659,22 @@ def admin_remove_participant(
         if handover is not None:
             handovers.append(handover)
 
+    # A team that keeps a member stays the same contestant.
+    changed_at = (
+        _operation_time_of(tournament)
+        if tournament.contestant_type != ContestantType.TEAM or emptied
+        else None
+    )
     now = datetime.now(UTC)
     roster_before = tournament_repository.get_participant_count(tournament_id)
     defwin, deleted_team_id = _remove_single_participant_bracket_aware(
         tournament, participant, now,
         initiator_id=initiator.id if initiator is not None else None,
+        changed_at=changed_at,
     )
+    timed = _reconcile_roster_timing_flush(tournament_id, changed_at)
+    if timed.is_err():
+        return Err(timed.unwrap_err())
     affected.extend(event.match_id for event in defwin.advanced)
     refreshed = _refresh_roster_matches_flush(affected, occurred_at=now)
     if refreshed.is_err():
@@ -757,6 +809,13 @@ def remove_participants_without_tickets(
             tournament_id, ticketless, participants
         )
 
+    # A team that keeps a member stays the same contestant.
+    changed_at = (
+        _operation_time_of(tournament)
+        if not is_team_tournament or teams_to_delete
+        else None
+    )
+
     defwin = tournament_match_service.DefwinResult([], [], [])
 
     bracket_is_active = tournament.tournament_status in (
@@ -776,6 +835,7 @@ def remove_participants_without_tickets(
                 tournament, p, now,
                 initiator_id=initiator_id,
                 soft_deleted=bracket_is_active,
+                changed_at=changed_at,
             )
             defwin.advanced.extend(p_defwin.advanced)
             defwin.confirmed.extend(p_defwin.confirmed)
@@ -805,6 +865,7 @@ def remove_participants_without_tickets(
                 result = tournament_match_service.handle_defwin_for_removed_team(
                     tournament_id, team_id,
                     initiator_id=initiator_id,
+                    **_changed(changed_at),
                 )
                 defwin.advanced.extend(result.advanced)
                 defwin.confirmed.extend(result.confirmed)
@@ -813,6 +874,9 @@ def remove_participants_without_tickets(
             if not bracket_is_active:
                 tournament_repository.delete_team_flush(team_id)
 
+    timed = _reconcile_roster_timing_flush(tournament_id, changed_at)
+    if timed.is_err():
+        return Err(timed.unwrap_err())
     affected.extend(event.match_id for event in defwin.advanced)
     refreshed = _refresh_roster_matches_flush(affected, occurred_at=now)
     if refreshed.is_err():

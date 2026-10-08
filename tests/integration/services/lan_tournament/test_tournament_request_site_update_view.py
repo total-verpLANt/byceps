@@ -27,6 +27,7 @@ through to the blueprint's own `propose_form.html`) and one bound to
 the fix covers both surfaces.
 """
 
+from collections.abc import Iterator
 from datetime import datetime, timedelta, UTC
 import re
 
@@ -72,19 +73,48 @@ def base_site(party) -> Site:
     )
 
 
-@pytest.fixture(scope='module')
-def bote_site(party) -> Site:
-    """Bound to the real `totalverplant-36` override directory."""
-    site = site_service.find_site(_BOTE_SITE_ID)
-    if site is not None:
-        return site
-
-    return create_site(
-        _BOTE_SITE_ID,
-        party.brand_id,
-        server_name='lt-test-update-form-bote.test',
-        party_id=party.id,
+def _bound_to(site: Site, party_id: PartyID | None) -> Site:
+    """Bind the site to that party, keeping every other field."""
+    return site_service.update_site(
+        site.id,
+        site.title,
+        site.server_name,
+        party_id,
+        site.enabled,
+        site.user_account_creation_enabled,
+        site.login_enabled,
+        site.board_id,
+        site.storefront_id,
+        site.is_intranet,
+        site.check_in_on_login,
+        site.archived,
     )
+
+
+@pytest.fixture(scope='module')
+def bote_site(party) -> Iterator[Site]:
+    """Bound to the real `totalverplant-36` override directory.
+
+    The id exists once per database, so a module that found the site
+    of another one binds it to its own party and gives it back.
+    """
+    previous = site_service.find_site(_BOTE_SITE_ID)
+    if previous is None:
+        site = create_site(
+            _BOTE_SITE_ID,
+            party.brand_id,
+            server_name='lt-test-update-form-bote.test',
+            party_id=party.id,
+        )
+    else:
+        site = _bound_to(previous, party.id)
+
+    yield site
+
+    if previous is None:
+        site_service.delete_site(_BOTE_SITE_ID)
+    else:
+        _bound_to(previous, previous.party_id)
 
 
 @pytest.fixture(scope='module')

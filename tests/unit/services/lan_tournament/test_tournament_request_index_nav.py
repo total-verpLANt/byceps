@@ -20,6 +20,7 @@ environment globals instead.
 """
 
 import pathlib
+import re
 from types import SimpleNamespace
 
 from jinja2 import DictLoader, Environment, StrictUndefined
@@ -139,3 +140,42 @@ def test_index_nav_links_render_alongside_a_populated_tournament_list(
     assert 'href="/propose_form"' in html
     assert 'href="/my_requests"' in html
     assert 'Cup' in html
+
+
+@pytest.mark.parametrize('env_name', ['base_env', 'bote_env'])
+@pytest.mark.parametrize('populated', [False, True], ids=['empty', 'populated'])
+def test_index_dashboard_link_adds_one_link_and_changes_nothing_else(
+    env_name, populated, request
+):
+    """An orga sees the same page as any user plus the one dashboard link."""
+    env = request.getfixturevalue(env_name)
+    tournaments = []
+    if populated:
+        tournaments = [
+            SimpleNamespace(
+                id='t-1',
+                name='Cup',
+                game=None,
+                image_url=None,
+                tournament_status=None,
+                contestant_type=None,
+                max_players=None,
+                max_teams=None,
+                start_time=None,
+            )
+        ]
+
+    plain = _render_index(env, authenticated=True, tournaments=tournaments)
+    orga = _render_index(
+        env,
+        authenticated=True,
+        tournaments=tournaments,
+        may_view_orga_dashboard=True,
+    )
+
+    link = re.search(
+        r'\s*<a [^>]*href="/orga_dashboard"[^>]*>.*?</a>', orga, re.S
+    )
+    assert link is not None
+    assert 'Orga dashboard' in link.group(0)
+    assert orga.replace(link.group(0), '', 1) == plain

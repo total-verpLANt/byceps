@@ -1502,11 +1502,16 @@ def test_set_score_with_valid_score(mock_repo):
     )
 
     mock_repo.find_contestant_for_match.return_value = contestant
+    match = _create_match(confirmed_by=None)
+    mock_repo.find_match.return_value = match
+    mock_repo.find_match_fresh.return_value = match
 
     result = tournament_match_service.set_score(MATCH_ID, contestant_id, 10)
 
     assert result.is_ok()
-    mock_repo.update_contestant_score.assert_called_once_with(contestant.id, 10)
+    mock_repo.update_contestant_score.assert_called_once_with(
+        contestant.id, 10, commit=False
+    )
 
 
 @patch(
@@ -1520,11 +1525,16 @@ def test_set_score_with_zero(mock_repo):
     )
 
     mock_repo.find_contestant_for_match.return_value = contestant
+    match = _create_match(confirmed_by=None)
+    mock_repo.find_match.return_value = match
+    mock_repo.find_match_fresh.return_value = match
 
     result = tournament_match_service.set_score(MATCH_ID, contestant_id, 0)
 
     assert result.is_ok()
-    mock_repo.update_contestant_score.assert_called_once_with(contestant.id, 0)
+    mock_repo.update_contestant_score.assert_called_once_with(
+        contestant.id, 0, commit=False
+    )
 
 
 def test_set_score_with_negative_score():
@@ -1551,11 +1561,16 @@ def test_set_score_for_team(mock_repo):
         None,
         contestant,
     ]
+    match = _create_match(confirmed_by=None)
+    mock_repo.find_match.return_value = match
+    mock_repo.find_match_fresh.return_value = match
 
     result = tournament_match_service.set_score(MATCH_ID, team_id, 5)
 
     assert result.is_ok()
-    mock_repo.update_contestant_score.assert_called_once_with(contestant.id, 5)
+    mock_repo.update_contestant_score.assert_called_once_with(
+        contestant.id, 5, commit=False
+    )
 
 
 @patch(
@@ -3876,6 +3891,8 @@ def test_set_score_by_participant_succeeds_when_caller_is_in_match(
     # get_match called twice: once in set_score_by_participant,
     # once in find_contestant_for_user
     mock_repo.get_match.return_value = match
+    mock_repo.find_match.return_value = match
+    mock_repo.find_match_fresh.return_value = match
     mock_repo.find_participant_by_user.return_value = participant
     mock_repo.get_contestants_for_match.return_value = [contestant]
     mock_repo.find_contestant_for_match.return_value = target_contestant

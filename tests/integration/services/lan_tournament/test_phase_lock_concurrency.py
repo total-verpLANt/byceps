@@ -13,6 +13,7 @@ import time
 from flask import current_app
 import pytest
 from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 
 from byceps.database import db
 from byceps.services.lan_tournament import (
@@ -350,23 +351,94 @@ def test_set_score_waits_for_a_release_then_is_refused(
     assert _scores(match) == before
 
 
-def test_set_score_takes_no_tournament_lock_without_playoffs(
-    make_group_tournament, users, monkeypatch
+def _waiting_queries():
+    """Return the statements that wait on a lock in another backend."""
+    with db.engine.connect().execution_options(
+        isolation_level='AUTOCOMMIT'
+    ) as connection:
+        return [
+            query
+            for (query,) in connection.execute(
+                text(
+                    'SELECT query FROM pg_stat_activity'
+                    ' WHERE datname = current_database()'
+                    " AND wait_event_type = 'Lock'"
+                    ' AND pid <> pg_backend_pid()'
+                )
+            )
+        ]
+
+
+def _match_row_is_free(match):
+    """Tell if no other transaction holds the lock of the match row."""
+    with db.engine.connect() as connection:
+        try:
+            connection.execute(
+                text(
+                    'SELECT id FROM lan_tournament_matches'
+                    ' WHERE id = :id FOR UPDATE NOWAIT'
+                ),
+                {'id': match.id},
+            )
+        except OperationalError:
+            return False
+        finally:
+            connection.rollback()
+    return True
+
+
+def test_set_score_without_playoffs_waits_on_the_tournament_row_first(
+    make_group_tournament, users
 ):
     tournament = make_group_tournament(playoffs=False)
     match, ids = _matches(tournament, 1)[0]
-    locks = []
-    monkeypatch.setattr(
-        tournament_repository,
-        'lock_tournament_for_update',
-        locks.append,
+    before = _scores(match)
+
+    # Another writer holds the tournament row; the score queues behind it.
+    tournament_repository.lock_tournament_for_update(tournament.id)
+
+    worker = _Worker(
+        lambda: tournament_match_service.set_score(match.id, ids[0], 7)
     )
+    _wait_until_blocked(worker)
 
-    result = tournament_match_service.set_score(match.id, ids[0], 7)
+    # The wait is on the tournament row, taken before any match row.
+    waiting = _waiting_queries()
+    assert any(
+        'lan_tournaments' in query and 'FOR UPDATE' in query
+        for query in waiting
+    ), waiting
+    assert _match_row_is_free(match)
+    assert _scores(match) == before
 
+    tournament_repository.commit_session()  # the holder lets go
+
+    result = worker.finish()
     assert result.is_ok(), result.unwrap_err()
     assert _scores(match)[ids[0]] == 7
-    assert locks == []
+
+
+def test_set_score_waits_for_a_confirmation_then_is_refused(
+    make_group_tournament, users
+):
+    tournament = make_group_tournament(playoffs=False)
+    match, ids = _matches(tournament, 1)[0]
+    before = _scores(match)
+
+    # The confirmation holds the tournament row and has not committed yet.
+    tournament_repository.lock_tournament_for_update(tournament.id)
+    tournament_repository.confirm_match(match.id, users[0].id)
+
+    worker = _Worker(
+        lambda: tournament_match_service.set_score(match.id, ids[0], 7)
+    )
+    _wait_until_blocked(worker)
+    tournament_repository.commit_session()  # the confirmation commits
+
+    result = worker.finish()
+    assert result.is_err()
+    assert result.unwrap_err() == 'Cannot modify scores of a confirmed match.'
+    assert _scores(match) == before
 
 
 # -------------------------------------------------------------------- #

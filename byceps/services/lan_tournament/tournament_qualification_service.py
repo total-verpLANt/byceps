@@ -962,8 +962,14 @@ def _unrelease_locked(
     suspend_auto = (
         tournament.playoff_release_mode is PlayoffReleaseMode.AUTOMATIC
     )
+    changed_at = tournament_match_service._operation_time_of(tournament)
+    if changed_at is not None:
+        _retire_phase_two_flush(tournament_id, changed_at)
     deleted_events = tournament_match_service.clear_bracket(
-        tournament_id, phase=2, initiator_id=initiator_id
+        tournament_id,
+        phase=2,
+        initiator_id=initiator_id,
+        **tournament_match_service._changed(changed_at),
     )
     tournament_repository.clear_playoff_release(
         tournament_id, suspend_auto=suspend_auto
@@ -975,7 +981,32 @@ def _unrelease_locked(
         data={'reason': reason, 'auto_release_suspended': suspend_auto},
         commit=False,
     )
+    timing = tournament_match_service._reconcile_timing_flush(
+        tournament_id, changed_at
+    )
+    if timing.is_err():
+        return Err(timing.unwrap_err())
     return Ok(deleted_events)
+
+
+def _retire_phase_two_flush(
+    tournament_id: TournamentID, changed_at: datetime
+) -> None:
+    """Close the phase-two episodes and drop the pins before the matches go.
+
+    The closed episodes and their acknowledgements stay as history.
+    """
+    match_ids = sorted(
+        m.id
+        for m in tournament_repository.get_matches_for_tournament_ordered_fresh(
+            tournament_id
+        )
+        if m.phase == 2
+    )
+    tournament_repository.lock_matches_for_update(match_ids)
+    tournament_repository.retire_dashboard_matches_flush(
+        match_ids, occurred_at=changed_at
+    )
 
 
 def _has_result(phase_two: list[TournamentMatch], contestants: dict) -> bool:

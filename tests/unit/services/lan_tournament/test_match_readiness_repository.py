@@ -90,8 +90,32 @@ def test_live_delete_helpers_flush_readiness_cleanup_without_committing(session,
     lock.assert_called_once_with(match.tournament_id)
     fresh.assert_called_once_with(match.id)
     # Work suppression, readiness cleanup, and the owning delete each flush.
-    assert session.flush.call_count == 3
-    assert session.execute.call_count == 2
+    # A deleted match first closes its episode and drops its pin: the clock
+    # reading, the close, the pin delete, and the flush that ends them.
+    statements = [
+        str(call.args[0].compile(dialect=postgresql.dialect()))
+        for call in session.execute.call_args_list
+    ]
+    if name == 'delete_match_flush':
+        assert session.flush.call_count == 4
+        assert session.execute.call_count == 5
+        expected = [
+            'UPDATE lan_tournament_match_invitations SET',
+            'SELECT timezone(',
+            'UPDATE lan_tournament_match_due_episodes SET closed_at=',
+            'DELETE FROM lan_tournament_match_dashboard_annotations WHERE',
+            'DELETE FROM lan_tournament_matches WHERE',
+        ]
+    else:
+        assert session.flush.call_count == 3
+        assert session.execute.call_count == 2
+        expected = [
+            'UPDATE lan_tournament_match_invitations SET',
+            'DELETE FROM lan_tournament_match_contestants WHERE',
+        ]
+    assert len(statements) == len(expected)
+    for statement, start in zip(statements, expected, strict=True):
+        assert statement.startswith(start), (statement, start)
     suppression = str(session.execute.call_args_list[0].args[0].compile(
         dialect=postgresql.dialect(), compile_kwargs={'literal_binds': True},
     ))

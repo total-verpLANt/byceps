@@ -2,9 +2,20 @@ from collections import Counter
 import dataclasses
 from datetime import datetime, UTC
 from enum import Enum
+from functools import wraps
 from uuid import UUID, uuid4, uuid5
 
-from flask import abort, current_app, g, jsonify, request, url_for
+from flask import (
+    abort,
+    current_app,
+    g,
+    jsonify,
+    make_response,
+    redirect,
+    render_template,
+    request,
+    url_for,
+)
 from flask_babel import (
     format_date,
     format_decimal,
@@ -24,7 +35,10 @@ from byceps.services.party import party_service
 from byceps.services.party.models import Party, PartyID
 from byceps.services.user import user_service
 from byceps.services.user.models import UserID
-from byceps.util.framework.blueprint import create_blueprint
+from byceps.util.framework.blueprint import (
+    create_blueprint,
+    register_blueprints,
+)
 from byceps.util.framework.flash import (
     flash_error,
     flash_notice,
@@ -32,7 +46,12 @@ from byceps.util.framework.flash import (
 )
 from byceps.util.framework.templating import templated
 from byceps.util.result import Err, Ok
-from byceps.util.views import permission_required, redirect_to, respond_no_content
+from byceps.util.views import (
+    login_required,
+    permission_required,
+    redirect_to,
+    respond_no_content,
+)
 
 from byceps.services.lan_tournament import (
     tournament_domain_service,
@@ -57,6 +76,10 @@ from byceps.services.lan_tournament import (
 from byceps.services.lan_tournament.models.tournament import (
     Tournament,
     TournamentID,
+)
+from byceps.services.lan_tournament.models.tournament_dashboard import (
+    DashboardQuery,
+    DashboardSettings,
 )
 from byceps.services.lan_tournament.models.tournament_image import (
     TournamentImage,
@@ -167,6 +190,66 @@ from byceps.services.lan_tournament.lan_tournament_view_helpers import (
     serialize_qualification,
     wants_json,
 )
+from byceps.services.lan_tournament.blueprints.dashboard_csrf import (
+    CSRF_INVALID_ERROR,
+    CSRF_INVALID_NOTICE,
+    get_dashboard_csrf_token,
+    validate_dashboard_csrf,
+)
+from byceps.services.lan_tournament.blueprints.dashboard_forms import (
+    DashboardAcknowledgementForm,
+    DashboardPinForm,
+    MAX_COMMENT_LENGTH,
+    parse_dashboard_revision,
+)
+from byceps.services.lan_tournament.dashboard_config import (
+    INVALID_RED_MINUTES_ERROR,
+    INVALID_THRESHOLD_ORDER_ERROR,
+    INVALID_YELLOW_MINUTES_ERROR,
+    MAX_THRESHOLD_MINUTES,
+    get_dashboard_settings,
+)
+from byceps.services.lan_tournament.dashboard_view_helpers import (
+    TRANSPORT_ERROR_ACCESS_REVOKED,
+    TRANSPORT_ERROR_CSRF_INVALID,
+    TRANSPORT_ERROR_INVALID,
+    TRANSPORT_ERROR_REFUSED,
+    TRANSPORT_ERROR_SESSION_EXPIRED,
+    TRANSPORT_ERROR_STALE,
+    TRANSPORT_ERROR_UNAVAILABLE,
+    TRANSPORT_ERRORS,
+    build_dashboard_context,
+    build_dashboard_list_url,
+    dashboard_labels,
+    describe_dashboard_return,
+    format_comment_counter,
+    format_freshness_time,
+    format_wall_time,
+    parse_dashboard_query,
+    parse_dashboard_return,
+    serialize_dashboard_error,
+    serialize_dashboard_fragment,
+    serialize_dashboard_success,
+)
+from byceps.services.lan_tournament.tournament_dashboard_coordination_service import (
+    DASHBOARD_ACK_CONFLICT_ERROR,
+    acknowledge_match,
+    set_match_pin,
+)
+from byceps.services.lan_tournament.tournament_dashboard_service import (
+    DASHBOARD_FORBIDDEN_ERROR,
+    DASHBOARD_QUERY_INVALID_ERROR,
+    DASHBOARD_UNAUTHENTICATED_ERROR,
+    get_dashboard_page,
+    resolve_dashboard_scope,
+)
+from byceps.services.lan_tournament.tournament_dashboard_settings_service import (
+    THRESHOLDS_STALE_ERROR,
+    get_effective_dashboard_settings,
+    get_party_thresholds,
+    reset_party_thresholds,
+    set_party_thresholds,
+)
 from byceps.services.more.blueprints.admin import item_service
 from byceps.services.more.blueprints.admin.item_service import MoreItem
 
@@ -190,6 +273,9 @@ from .forms import (
 
 
 blueprint = create_blueprint('lan_tournament_admin', __name__)
+register_blueprints(
+    blueprint, [('services.lan_tournament.blueprints.common', None)]
+)
 
 
 # --- Monkey-patch "More" party items to include LAN Tournaments ---
@@ -391,6 +477,7 @@ def view(tournament_id):
             else None
         ),
         'active_tab': 'overview',
+        'dashboard_back': _dashboard_back_link(tournament),
     }
 
 
@@ -3560,6 +3647,14 @@ def maintenance(party_id):
     """Show the maintenance actions of the party."""
     party = _get_party_or_404(party_id)
 
+    return {
+        'party': party,
+        'rows': _maintenance_rows(party),
+        'thresholds': _dashboard_thresholds_card(party),
+    }
+
+
+def _maintenance_rows(party) -> list[dict]:
     now = datetime.now(UTC)
     rows = []
     for action in tournament_maintenance_service.get_actions():
@@ -3580,7 +3675,7 @@ def maintenance(party_id):
             }
         )
 
-    return {'party': party, 'rows': rows}
+    return rows
 
 
 @blueprint.get('/for_party/<party_id>/maintenance/<action_id>')
@@ -3648,6 +3743,285 @@ def run_maintenance_action(party_id, action_id):
     _flash_maintenance_report(action.id, report)
 
     return redirect_to('.maintenance', party_id=party.id)
+
+
+_THRESHOLD_ACTIONS = frozenset({'save', 'reset'})
+_THRESHOLD_ECHO_LENGTH = 64
+_THRESHOLD_MAX_DIGITS = 9
+_THRESHOLD_TIME_FORMAT = '%Y-%m-%dT%H:%M:%S.%f'
+_THRESHOLD_TIME_LENGTH = 26
+
+
+@blueprint.post('/for_party/<party_id>/maintenance/dashboard-thresholds')
+@permission_required('lan_tournament.maintain')
+def update_dashboard_thresholds(party_id):
+    """Save or reset the dashboard thresholds of the party.
+
+    The party comes from the URL. Every field is untrusted, the hidden
+    version included: one that does not parse is stale, never an error page.
+    """
+    party = _get_party_or_404(party_id)
+    submitted = _submitted_thresholds()
+
+    csrf_result = validate_dashboard_csrf(
+        g.user, _single_form_value('csrf_token')
+    )
+    if csrf_result.is_err():
+        return _thresholds_page(
+            party,
+            submitted,
+            403,
+            notice=_threshold_notice(
+                TRANSPORT_ERROR_CSRF_INVALID, str(CSRF_INVALID_NOTICE)
+            ),
+        )
+
+    action = _single_form_value('action')
+    if action not in _THRESHOLD_ACTIONS:
+        return _thresholds_page(
+            party,
+            submitted,
+            422,
+            notice=_threshold_notice(
+                TRANSPORT_ERROR_INVALID, gettext('Invalid form data.')
+            ),
+        )
+
+    version = _parse_threshold_version(
+        _single_form_value('expected_revision'),
+        _single_form_value('expected_updated_at'),
+    )
+    if version is None:
+        return _thresholds_stale_page(party, submitted)
+    expected_revision, expected_updated_at = version
+
+    if action == 'reset':
+        result = reset_party_thresholds(
+            party.id,
+            expected_revision=expected_revision,
+            expected_updated_at=expected_updated_at,
+            initiator_id=g.user.id,
+        )
+        done_text = gettext(
+            'The dashboard thresholds were reset to the default.'
+        )
+    else:
+        yellow = _parse_threshold_minutes(_single_form_value('yellow_minutes'))
+        red = _parse_threshold_minutes(_single_form_value('red_minutes'))
+        if yellow is None or red is None:
+            errors = {}
+            if yellow is None:
+                errors['yellow'] = gettext(INVALID_YELLOW_MINUTES_ERROR)
+            if red is None:
+                errors['red'] = gettext(INVALID_RED_MINUTES_ERROR)
+            return _thresholds_page(party, submitted, 422, errors=errors)
+
+        result = set_party_thresholds(
+            party.id,
+            yellow_minutes=yellow,
+            red_minutes=red,
+            expected_revision=expected_revision,
+            expected_updated_at=expected_updated_at,
+            initiator_id=g.user.id,
+        )
+        done_text = gettext('The dashboard thresholds were saved.')
+
+    if result.is_err():
+        return _thresholds_refusal(party, submitted, result.unwrap_err())
+
+    flash_success(done_text)
+
+    return redirect(url_for('.maintenance', party_id=party.id), code=303)
+
+
+def _single_form_value(name: str) -> str | None:
+    """Return the value of a field that was sent exactly once."""
+    values = request.form.getlist(name)
+    return values[0] if len(values) == 1 else None
+
+
+def _submitted_thresholds() -> dict[str, str]:
+    """Return what the card sent, bounded, to show it again."""
+    return {
+        key: request.form.get(name, '')[:_THRESHOLD_ECHO_LENGTH]
+        for key, name in (
+            ('yellow', 'yellow_minutes'),
+            ('red', 'red_minutes'),
+            ('revision', 'expected_revision'),
+            ('updated_at', 'expected_updated_at'),
+        )
+    }
+
+
+def _parse_threshold_minutes(raw: str | None) -> int | None:
+    """Accept only a short run of ASCII digits."""
+    text = (raw or '').strip()
+    if (
+        1 <= len(text) <= _THRESHOLD_MAX_DIGITS
+        and text.isascii()
+        and text.isdigit()
+    ):
+        return int(text)
+
+    return None
+
+
+def _parse_threshold_version(
+    revision_raw: str | None, updated_at_raw: str | None
+) -> tuple[int, datetime | None] | None:
+    """Return the version the card was rendered from, or `None` if unusable.
+
+    The time is the exact shape the card renders: naive UTC with six
+    fractional digits, empty while no override exists.
+    """
+    try:
+        revision = parse_dashboard_revision(revision_raw)
+    except ValueError:
+        return None
+
+    if updated_at_raw is None:
+        return None
+
+    if updated_at_raw == '':
+        return revision, None
+
+    if len(updated_at_raw) != _THRESHOLD_TIME_LENGTH:
+        return None
+
+    try:
+        return revision, datetime.strptime(
+            updated_at_raw, _THRESHOLD_TIME_FORMAT
+        )
+    except ValueError:
+        return None
+
+
+def _threshold_notice(code: str, text: str) -> dict[str, str]:
+    return {'code': code, 'text': text}
+
+
+def _thresholds_stale_page(party, submitted):
+    return _thresholds_page(
+        party,
+        submitted,
+        409,
+        notice=_threshold_notice(
+            TRANSPORT_ERROR_STALE,
+            gettext(
+                'The thresholds were changed in the meantime. Please reload.'
+            ),
+        ),
+    )
+
+
+def _thresholds_refusal(party, submitted, error: str):
+    """Answer a save or reset that the service refused."""
+    if error == THRESHOLDS_STALE_ERROR:
+        return _thresholds_stale_page(party, submitted)
+
+    errors = _threshold_field_errors(error, submitted)
+    notice = (
+        None
+        if errors
+        else _threshold_notice(TRANSPORT_ERROR_INVALID, gettext(error))
+    )
+
+    return _thresholds_page(party, submitted, 422, notice=notice, errors=errors)
+
+
+def _threshold_field_errors(error: str, submitted) -> dict[str, str]:
+    """Map the service's threshold errors to the field they belong to."""
+    yellow = _parse_threshold_minutes(submitted['yellow']) or 0
+    red = _parse_threshold_minutes(submitted['red']) or 0
+
+    if error == INVALID_YELLOW_MINUTES_ERROR:
+        if yellow > MAX_THRESHOLD_MINUTES:
+            return {'yellow': gettext('At most 1440 minutes.')}
+        return {'yellow': gettext('Yellow must be at least 1 minute.')}
+
+    if error == INVALID_RED_MINUTES_ERROR and red > MAX_THRESHOLD_MINUTES:
+        return {'red': gettext('At most 1440 minutes.')}
+
+    if error in (INVALID_RED_MINUTES_ERROR, INVALID_THRESHOLD_ORDER_ERROR):
+        return {'red': gettext('Red must be greater than yellow.')}
+
+    return {}
+
+
+def _thresholds_page(party, submitted, status, *, notice=None, errors=None):
+    """Render the tab again, with what the card sent and why it was refused."""
+    html = render_template(
+        'admin/lan_tournament/maintenance.html',
+        party=party,
+        rows=_maintenance_rows(party),
+        thresholds=_dashboard_thresholds_card(
+            party, submitted=submitted, notice=notice, errors=errors
+        ),
+    )
+
+    return make_response(html, status)
+
+
+def _dashboard_thresholds_card(
+    party, *, submitted=None, notice=None, errors=None
+) -> dict:
+    """Return the Wartung card of the dashboard thresholds.
+
+    The values, the source line and the version come from one read of the
+    override, so a save is compared with what the card says. A refused card
+    shows what it sent, version included: sending it again stays refused
+    until the page is reloaded.
+    """
+    deployment = get_dashboard_settings()
+    if deployment.is_err():
+        return {'unavailable': gettext(deployment.unwrap_err())}
+
+    override = get_party_thresholds(party.id)
+    if override is None:
+        settings = deployment.unwrap()
+        yellow, red = settings.yellow_minutes, settings.red_minutes
+        source = 'deployment'
+        source_line = gettext(
+            'Installation default: %(yellow)d/%(red)d min',
+            yellow=yellow,
+            red=red,
+        )
+        revision, updated_at = '0', ''
+    else:
+        yellow, red = override.yellow_minutes, override.red_minutes
+        source = 'party'
+        actor = user_service.find_user(override.updated_by)
+        source_line = gettext(
+            'Set for this party by %(actor)s on %(date)s',
+            actor=(actor.screen_name if actor else None)
+            or gettext('Deleted orga'),
+            date=format_date(override.updated_at, format='medium'),
+        )
+        revision = str(override.revision)
+        updated_at = override.updated_at.isoformat(timespec='microseconds')
+
+    sent = submitted or {
+        'yellow': str(yellow),
+        'red': str(red),
+        'revision': revision,
+        'updated_at': updated_at,
+    }
+
+    return {
+        'unavailable': None,
+        'action_url': url_for(
+            '.update_dashboard_thresholds', party_id=party.id
+        ),
+        'csrf_token': get_dashboard_csrf_token(g.user),
+        'source': source,
+        'source_line': source_line,
+        'yellow': sent['yellow'],
+        'red': sent['red'],
+        'revision': sent['revision'],
+        'updated_at': sent['updated_at'],
+        'notice': notice,
+        'errors': errors or {},
+    }
 
 
 def _flash_maintenance_report(
@@ -4140,6 +4514,7 @@ def view_match(match_id):
         'affected_downstream_matches': affected_downstream_matches,
         'readiness': readiness,
         'readiness_contestants_by_side': readiness_contestants_by_side,
+        'dashboard_back': _dashboard_back_link(tournament, match),
     }
 
 
@@ -5125,3 +5500,523 @@ def _build_ffa_de_pool_data(tournament_id, ffa_match_data):
         gf_match_data=gf_match_entries,
         pool_status=pool_status,
     )
+
+
+# -------------------------------------------------------------------- #
+# orga dashboard
+
+_DASHBOARD_PERMISSION = 'lan_tournament.administrate'
+_DASHBOARD_PAGE_TEMPLATE = 'admin/lan_tournament/dashboard.html'
+_DASHBOARD_PANEL_TEMPLATE = 'common/lan_tournament/_dashboard_panel.html'
+
+# The transport code (`invalid`, 422) of a form the server refuses, whatever
+# field is at fault. The message is the form's own.
+_DASHBOARD_FORM_INVALID_ERROR = DASHBOARD_QUERY_INVALID_ERROR
+
+# Refusals that say nothing about the list: no rows and no fragment.
+_DASHBOARD_BARE_CODES = frozenset(
+    {
+        TRANSPORT_ERROR_SESSION_EXPIRED,
+        TRANSPORT_ERROR_ACCESS_REVOKED,
+        TRANSPORT_ERROR_UNAVAILABLE,
+    }
+)
+
+
+def _dashboard_access(*, json_only: bool = False):
+    """Gate a dashboard route and refuse so that its client can read it.
+
+    The core decorators answer an anonymous request with a redirect to the
+    login form and a missing permission with an HTML page. A poll or a JSON
+    request needs the status and the stable `error` code instead.
+    """
+
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            json_wanted = json_only or wants_json(request)
+
+            if not g.user.authenticated:
+                if json_wanted:
+                    return _dashboard_json_error(
+                        DASHBOARD_UNAUTHENTICATED_ERROR
+                    )
+                return _dashboard_login_redirect(kwargs['party_id'])
+
+            if not g.user.has_permission(_DASHBOARD_PERMISSION):
+                if json_wanted:
+                    return _dashboard_json_error(DASHBOARD_FORBIDDEN_ERROR)
+                abort(403)
+
+            return func(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
+
+def _dashboard_login_redirect(party_id):
+    flash_notice(gettext('Please log in.'))
+    return _dashboard_no_store(
+        redirect_to(
+            'authn_login_admin.log_in_form',
+            next=url_for(
+                'lan_tournament_admin.dashboard_for_party', party_id=party_id
+            ),
+        )
+    )
+
+
+def _dashboard_no_store(response):
+    response.headers['Cache-Control'] = 'private, no-store'
+    return response
+
+
+def _dashboard_json(body, status: int = 200):
+    return _dashboard_no_store(make_response(jsonify(body), status))
+
+
+def _dashboard_json_error(
+    error: str,
+    *,
+    message: str | None = None,
+    fragment=None,
+    draft_target: bool | None = None,
+    detail: str | None = None,
+):
+    body, status = serialize_dashboard_error(
+        error, fragment=fragment, draft_target=draft_target
+    )
+    if message is not None:
+        body['message'] = message
+    if detail is not None:
+        body['detail'] = detail
+
+    return _dashboard_json(body, status)
+
+
+def _dashboard_page(
+    party, context, *, status=200, action=None, unavailable=None
+):
+    html = render_template(
+        _DASHBOARD_PAGE_TEMPLATE,
+        dashboard=context,
+        party=party,
+        action=action,
+        unavailable=unavailable,
+    )
+    return _dashboard_no_store(make_response(html, status))
+
+
+def _dashboard_fragment(context, page, settings: DashboardSettings):
+    html = render_template(
+        _DASHBOARD_PANEL_TEMPLATE, dashboard=context, action=None
+    )
+    return serialize_dashboard_fragment(
+        html, as_of=page.as_of, poll_seconds=settings.poll_seconds
+    )
+
+
+def _dashboard_settings(party_id) -> DashboardSettings:
+    """Return the effective settings. A broken configuration raises."""
+    return get_effective_dashboard_settings(party_id).unwrap()
+
+
+def _read_dashboard(party_id, settings, query, query_errors):
+    """Return the page and its render context from one fresh snapshot."""
+    page_result = get_dashboard_page(g.user, party_id, query, settings=settings)
+    if page_result.is_err():
+        return Err(page_result.unwrap_err())
+    page = page_result.unwrap()
+
+    context = build_dashboard_context(
+        page,
+        query,
+        settings,
+        surface='admin',
+        party_id=party_id,
+        csrf_token=get_dashboard_csrf_token(g.user),
+        query_errors=query_errors,
+    )
+    return Ok((page, context))
+
+
+def _read_requested_dashboard(party_id, settings):
+    """Read the list that the query string of the request asks for.
+
+    The scope is resolved from the validated query and read again by the
+    page itself, which stays the authority. It only decides whether a
+    tournament filter lies inside it.
+    """
+    first, _ = parse_dashboard_query(
+        request.args, surface='admin', per_page=settings.page_size
+    )
+    scope_result = resolve_dashboard_scope(g.user, party_id, first.scope)
+    if scope_result.is_err():
+        return Err(scope_result.unwrap_err())
+
+    query, errors = parse_dashboard_query(
+        request.args,
+        surface='admin',
+        per_page=settings.page_size,
+        scope_tournament_ids=scope_result.unwrap().tournament_ids,
+    )
+    return _read_dashboard(party_id, settings, query, errors)
+
+
+@blueprint.get('/for_party/<party_id>/dashboard')
+@login_required
+@permission_required('lan_tournament.administrate')
+def dashboard_for_party(party_id):
+    """Show the orga dashboard of a party across its tournaments."""
+    party = _get_party_or_404(party_id)
+    settings = _dashboard_settings(party.id)
+
+    read = _read_requested_dashboard(party.id, settings)
+    if read.is_err():
+        abort(TRANSPORT_ERRORS[read.unwrap_err()][1])
+    _, context = read.unwrap()
+
+    return _dashboard_page(party, context)
+
+
+@blueprint.get('/for_party/<party_id>/dashboard/poll')
+@_dashboard_access(json_only=True)
+def dashboard_poll_for_party(party_id):
+    """Answer the rendered dashboard panel as JSON, for the refresh."""
+    settings = _dashboard_settings(party_id)
+
+    read = _read_requested_dashboard(party_id, settings)
+    if read.is_err():
+        return _dashboard_json_error(read.unwrap_err())
+    page, context = read.unwrap()
+
+    return _dashboard_json(_dashboard_fragment(context, page, settings))
+
+
+@blueprint.post('/for_party/<party_id>/dashboard/matches/<match_id>/pin')
+@_dashboard_access()
+def dashboard_pin(party_id, match_id):
+    """Pin a match for every orga, or take the pin away."""
+    return _dashboard_action(party_id, match_id, 'pin')
+
+
+@blueprint.post('/for_party/<party_id>/dashboard/matches/<match_id>/ack')
+@_dashboard_access()
+def dashboard_ack(party_id, match_id):
+    """Record that an orga checked the delay of a due match."""
+    return _dashboard_action(party_id, match_id, 'ack')
+
+
+def _dashboard_action(party_id, match_id, kind: str):
+    """Check the request, run the pin or acknowledgement, answer it.
+
+    The party comes from the URL and is bound to the match by the service.
+    Every hidden field is untrusted; the service checks authority and the
+    expected revision again under its locks.
+    """
+    if kind == 'ack':
+        form = DashboardAcknowledgementForm(request.form)
+    else:
+        form = DashboardPinForm(request.form)
+
+    if validate_dashboard_csrf(g.user, form.csrf_token.data).is_err():
+        return _dashboard_refused(
+            party_id, match_id, kind, form, CSRF_INVALID_ERROR
+        )
+
+    if not form.validate():
+        return _dashboard_refused(
+            party_id, match_id, kind, form, _DASHBOARD_FORM_INVALID_ERROR
+        )
+
+    if kind == 'ack':
+        result = acknowledge_match(
+            g.user,
+            party_id,
+            match_id,
+            expected_episode_id=form.episode.data,
+            expected_ack_revision=form.revision.data,
+            comment=form.comment.data,
+        )
+    else:
+        result = set_match_pin(
+            g.user,
+            party_id,
+            match_id,
+            pinned=form.pinned.data,
+            expected_revision=form.revision.data,
+        )
+
+    if result.is_err():
+        return _dashboard_refused(
+            party_id, match_id, kind, form, result.unwrap_err()
+        )
+
+    return _dashboard_accepted(party_id, match_id, kind, form, result.unwrap())
+
+
+def _dashboard_accepted(party_id, match_id, kind, form, outcome):
+    settings = _dashboard_settings(party_id)
+    query = _dashboard_return_query(form, settings)
+
+    if not wants_json(request):
+        flash_success(_dashboard_success_text(kind, outcome))
+        url = build_dashboard_list_url(
+            'admin', party_id, query, anchor_match_id=match_id
+        )
+        return _dashboard_no_store(redirect(url, code=303))
+
+    read = _read_dashboard(party_id, settings, query, {})
+    if read.is_err():
+        return _dashboard_json_error(read.unwrap_err())
+    page, context = read.unwrap()
+
+    if kind == 'ack':
+        committed_at = outcome.occurred_at
+    else:
+        committed_at = outcome.updated_at if outcome is not None else page.as_of
+
+    return _dashboard_json(
+        serialize_dashboard_success(
+            committed_at=committed_at,
+            fragment=_dashboard_fragment(context, page, settings),
+        )
+    )
+
+
+def _dashboard_success_text(kind: str, outcome) -> str:
+    labels = dashboard_labels()
+
+    if kind == 'ack':
+        detail = labels['ack_banner_detail_template'] % {
+            'time': format_freshness_time(outcome.occurred_at)
+        }
+        return f'{labels["ack_announce"]} {detail}'
+
+    if outcome is None or outcome.pinned_at is None:
+        return labels['pin_removed']
+
+    return labels['pin_ok_template'] % {
+        'actor': g.user.screen_name,
+        'time': format_wall_time(
+            outcome.pinned_at, snapshot=outcome.updated_at
+        ),
+        'server': format_freshness_time(outcome.updated_at),
+    }
+
+
+def _dashboard_refused(party_id, match_id, kind, form, error):
+    """Answer a refused pin or acknowledgement.
+
+    A stale, refused or invalid request carries the list as it is now, so
+    the client sees the server state next to its draft. A refusal about
+    access or about the match says nothing of the list.
+    """
+    code = TRANSPORT_ERRORS[error][0]
+    json_wanted = wants_json(request)
+
+    if code in _DASHBOARD_BARE_CODES or (
+        json_wanted and code == TRANSPORT_ERROR_CSRF_INVALID
+    ):
+        return _dashboard_bare_refusal(party_id, form, error)
+
+    settings = _dashboard_settings(party_id)
+    query = _dashboard_return_query(form, settings)
+    read = _read_dashboard(party_id, settings, query, {})
+    if read.is_err():
+        return _dashboard_bare_refusal(party_id, form, read.unwrap_err())
+    page, context = read.unwrap()
+
+    key = _dashboard_match_key(match_id)
+    row = next((r for r in context['rows'] if r['match_id'] == key), None)
+    draft_target = row is not None and bool(row[kind]['offered'])
+    field, field_text = None, None
+    if error == _DASHBOARD_FORM_INVALID_ERROR:
+        field, field_text = _dashboard_form_error(form)
+
+    if json_wanted:
+        return _dashboard_json_error(
+            error,
+            message=field_text,
+            fragment=_dashboard_fragment(context, page, settings),
+            draft_target=draft_target,
+            detail=_dashboard_json_action_detail(error, kind, code, row),
+        )
+
+    labels = dashboard_labels()
+    draft = form.comment.data if kind == 'ack' else None
+    action = {
+        'kind': kind,
+        'match_id': key if row is not None else None,
+        'error': code,
+        'message': _dashboard_action_message(
+            error, kind, code, labels, field_text
+        ),
+        'detail': _dashboard_action_detail(error, kind, code, labels, row),
+        'draft': draft,
+        'draft_target': draft_target,
+        'field_error': (
+            {'field': field, 'text': field_text} if field is not None else None
+        ),
+    }
+    if draft_target and kind == 'ack':
+        text = draft or ''
+        row['ack']['form'].update(
+            {
+                'open': True,
+                'draft': text,
+                'counter_text': format_comment_counter(len(text)),
+                'is_over': len(text) > MAX_COMMENT_LENGTH,
+                'error_text': field_text if field == 'comment' else None,
+            }
+        )
+
+    return _dashboard_page(
+        _get_party_or_404(party_id),
+        context,
+        status=TRANSPORT_ERRORS[error][1],
+        action=action,
+    )
+
+
+def _dashboard_bare_refusal(party_id, form, error):
+    if wants_json(request):
+        return _dashboard_json_error(error)
+
+    code, status = TRANSPORT_ERRORS[error]
+    if code == TRANSPORT_ERROR_SESSION_EXPIRED:
+        return _dashboard_login_redirect(party_id)
+    if code == TRANSPORT_ERROR_UNAVAILABLE:
+        return _dashboard_unavailable_page(party_id, form)
+
+    abort(status)
+
+
+def _dashboard_unavailable_page(party_id, form):
+    """Answer a missing and a hidden match with one and the same page."""
+    settings = _dashboard_settings(party_id)
+    query = _dashboard_return_query(form, settings)
+    party = _get_party_or_404(party_id)
+    labels = dashboard_labels()
+
+    return _dashboard_page(
+        party,
+        None,
+        status=404,
+        unavailable={
+            'heading': labels['missing_heading'],
+            'detail': labels['missing_detail'],
+            'back_label': labels['link_back_plain'],
+            'back_url': build_dashboard_list_url('admin', party.id, query),
+        },
+    )
+
+
+def _dashboard_return_query(
+    form, settings: DashboardSettings
+) -> DashboardQuery:
+    """Return the list the form came from, the default one if unusable."""
+    query = parse_dashboard_return(
+        form.return_to.data, surface='admin', per_page=settings.page_size
+    )
+    if query is None:
+        return DashboardQuery(per_page=settings.page_size)
+
+    return query
+
+
+def _dashboard_back_link(tournament, match=None) -> dict[str, str] | None:
+    """Return the link back to the list a page was opened from, if any.
+
+    Only a viewer who may open the dashboard gets it. The `return` value is
+    read, never followed: the URL is rebuilt from the tournament's party and
+    the validated query, and a broken configuration leaves the page as it was.
+    """
+    raw = request.args.get('return')
+    if not raw or not g.user.has_permission(_DASHBOARD_PERMISSION):
+        return None
+
+    settings_result = get_dashboard_settings()
+    if settings_result.is_err():
+        return None
+
+    query = parse_dashboard_return(
+        raw,
+        surface='admin',
+        per_page=settings_result.unwrap().page_size,
+    )
+    if query is None:
+        return None
+
+    return {
+        'url': build_dashboard_list_url(
+            'admin',
+            tournament.party_id,
+            query,
+            anchor_match_id=match.id if match is not None else None,
+        ),
+        'label': dashboard_labels()['link_back'],
+        'context': describe_dashboard_return(query),
+    }
+
+
+def _dashboard_match_key(raw) -> str | None:
+    """Return the canonical text of a match ID from a URL, if it is one."""
+    try:
+        return str(UUID(str(raw)))
+    except ValueError:
+        return None
+
+
+def _dashboard_form_error(form) -> tuple[str, str]:
+    """Return the field and text of the error to show, the comment first."""
+    errors = form.errors
+    field = 'comment' if 'comment' in errors else next(iter(errors))
+
+    return field, str(errors[field][0])
+
+
+def _dashboard_action_message(error, kind, code, labels, field_text) -> str:
+    if error == CSRF_INVALID_ERROR:
+        return str(CSRF_INVALID_NOTICE)
+
+    if error == _DASHBOARD_FORM_INVALID_ERROR:
+        return field_text
+
+    reason = gettext(error)
+    if kind == 'ack' and code == TRANSPORT_ERROR_REFUSED:
+        return labels['ack_refused_template'] % {'reason': reason}
+
+    return reason
+
+
+def _dashboard_json_action_detail(error, kind, code, row) -> str | None:
+    """Return the sentence a script shows under a stale check, if any.
+
+    It is the sentence of the browser page, from the same re-read row, so
+    both name the other orga's record or neither does.
+    """
+    if code != TRANSPORT_ERROR_STALE:
+        return None
+
+    return _dashboard_action_detail(error, kind, code, dashboard_labels(), row)
+
+
+def _dashboard_action_detail(error, kind, code, labels, row) -> str | None:
+    if kind != 'ack':
+        return None
+
+    if error == DASHBOARD_ACK_CONFLICT_ERROR:
+        record = row['ack']['record'] if row is not None else None
+        if record is None:
+            return None
+        return labels['ack_stale_detail_template'] % {
+            'actor': record['actor'],
+            'time': record['time'],
+        }
+
+    if code == TRANSPORT_ERROR_REFUSED:
+        return labels['ack_refused_detail']
+
+    return None

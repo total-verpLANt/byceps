@@ -1,0 +1,37 @@
+{% extends 'layout/site/lan_tournament.html' %}
+{% set page_title = [_('Orga dashboard'), party.title] %}
+
+{% block head %}{{ super() }}
+  <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_dashboard.css') }}">
+{%- endblock %}
+
+{% block body %}
+  {%- set starts_on = party.starts_at|dateformat('long') %}
+  {%- set ends_on = party.ends_at|dateformat('long') %}
+
+  <nav class="breadcrumbs is-compact">
+    <ol>
+      <li><a href="{{ url_for('.index') }}">{{ _('Tournaments') }}</a></li>
+      <li>{{ _('Orga dashboard') }}</li>
+    </ol>
+  </nav>
+
+  <h1 class="title">{{ _('Orga dashboard') }}</h1>
+  <div class="subtitle dimmed">{{ party.title }} · {{ starts_on if starts_on == ends_on else starts_on ~ ' – ' ~ ends_on }} · {{ _('only for orgas') }}</div>
+
+  {%- if unavailable|default(none) %}
+  <div class="lt-dashboard is-site">
+    <div class="ltd-empty">
+      <h2>{{ unavailable.heading }}</h2>
+      <p>{{ unavailable.detail }}</p>
+      <div class="ltd-frow"><a class="ltd-btn pri" href="{{ unavailable.back_url }}">{{ unavailable.back_label }}</a></div>
+    </div>
+  </div>
+  {%- else %}
+  {% include 'common/lan_tournament/_dashboard_panel.html' %}
+  {%- endif %}
+{% endblock %}
+
+{% block scripts %}{{ super() }}
+<script src="{{ url_for('static', filename='behavior/lan_tournament_dashboard.js') }}" defer></script>
+{% endblock %}

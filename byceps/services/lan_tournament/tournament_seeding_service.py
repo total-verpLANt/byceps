@@ -803,7 +803,7 @@ def _generate_locked(
             return Err(plan_result.unwrap_err())
         plan = plan_result.unwrap()
         if tournament_match_service.is_single_survivor(plan):
-            completed = tournament_match_service.complete_ffa_single_survivor(
+            completed = _complete_single_survivor_flush(
                 tournament, plan, initiator_id
             )
             if completed.is_err():
@@ -871,6 +871,7 @@ def _generate_locked(
         and _has_confirmed_result(tournament_id)
     ):
         return Err(ERR_RESULTS_EXIST)
+    changed_at = tournament_match_service._operation_time_of(tournament)
     outcome_result = _run_generator(
         tournament_id,
         state,
@@ -878,6 +879,7 @@ def _generate_locked(
         confirmer_id or initiator_id,
         playoff=is_playoff,
         ffa_round=ffa_round,
+        changed_at=changed_at,
     )
     if outcome_result.is_err():
         return outcome_result
@@ -904,9 +906,42 @@ def _generate_locked(
         },
         commit=False,
     )
+    timing = tournament_match_service._reconcile_timing_flush(
+        tournament_id, changed_at
+    )
+    if timing.is_err():
+        return Err(timing.unwrap_err())
     return Ok(tournament_match_service.collect_generation_invitations_flush(
         outcome_result.unwrap(),
     ))
+
+
+def _complete_single_survivor_flush(
+    tournament: Tournament,
+    plan: tournament_match_service.FfaAdvancePlan,
+    initiator_id: UserID | None,
+) -> Result[tournament_match_service.TournamentCompletedEvent, str]:
+    """Complete the tournament for its sole survivor, and close the demand.
+
+    Flush only: the caller holds the tournament lock and owns commit and
+    rollback. A tournament without clock history gets no timing facts.
+    """
+    changed_at = tournament_match_service._operation_time_of(tournament)
+    completed = tournament_match_service.complete_ffa_single_survivor(
+        tournament,
+        plan,
+        initiator_id,
+        **tournament_match_service._changed(changed_at),
+    )
+    if completed.is_err():
+        return completed
+
+    timing = tournament_match_service._reconcile_timing_flush(
+        tournament.id, changed_at
+    )
+    if timing.is_err():
+        return Err(timing.unwrap_err())
+    return completed
 
 
 def _run_generator(
@@ -917,8 +952,15 @@ def _run_generator(
     *,
     playoff: bool = False,
     ffa_round: tuple[Bracket | None, int] | None = None,
+    changed_at: datetime | None = None,
 ) -> Result[tournament_match_service.GenerationOutcome, str]:
-    """Run the flush-only generator for the state's format."""
+    """Run the flush-only generator for the state's format.
+
+    `changed_at` is the operation time of a tournament with a clock. Every
+    generator takes it: the matches it replaces close their episodes at
+    it, and the matches it creates carry it.
+    """
+    stamp = tournament_match_service._changed(changed_at)
     if ffa_round is not None:
         pool, round_number = ffa_round
         return tournament_match_service._generate_ffa_advance_impl(
@@ -927,6 +969,7 @@ def _run_generator(
             round_number,
             groups=_split_groups(state),
             initiator_id=initiator_id,
+            **stamp,
         )
     # Phase 2 is built for the qualifiers, and only ever touches phase 2.
     phase_args: dict[str, Any] = (
@@ -942,6 +985,7 @@ def _run_generator(
                 initiator_id=initiator_id,
                 seeding_target=target,
                 **phase_args,
+                **stamp,
             )
         case SeedingFormat.DOUBLE_ELIMINATION:
             return tournament_match_service._generate_double_elimination_impl(
@@ -951,6 +995,7 @@ def _run_generator(
                 initiator_id=initiator_id,
                 seeding_target=target,
                 **phase_args,
+                **stamp,
             )
         case SeedingFormat.ROUND_ROBIN:
             return tournament_match_service._generate_round_robin_impl(
@@ -960,6 +1005,7 @@ def _run_generator(
                 group_sizes=_group_sizes(state),
                 initiator_id=initiator_id,
                 seeding_target=target,
+                **stamp,
             )
         case SeedingFormat.FREE_FOR_ALL:
             return tournament_match_service._generate_ffa_initial_impl(
@@ -969,6 +1015,7 @@ def _run_generator(
                 initiator_id=initiator_id,
                 roster=state.roster if playoff else None,
                 seeding_target=target,
+                **stamp,
             )
 
 
@@ -1272,7 +1319,7 @@ def _prepare_ffa_draft_locked(
     if tournament_match_service.is_lone_losers_round(plan):
         return Err(tournament_match_service.FFA_LONE_SURVIVOR_ERROR)
     if tournament_match_service.is_single_survivor(plan):
-        completed = tournament_match_service.complete_ffa_single_survivor(
+        completed = _complete_single_survivor_flush(
             tournament, plan, initiator_id
         )
         if completed.is_err():

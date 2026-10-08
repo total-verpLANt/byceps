@@ -1,10 +1,23 @@
+from dataclasses import dataclass
 from datetime import datetime, UTC
 import re
 import uuid
-from flask import abort, g, jsonify, request
+from flask import (
+    abort,
+    g,
+    jsonify,
+    make_response,
+    redirect,
+    render_template,
+    request,
+)
 from flask_babel import gettext, to_user_timezone, to_utc
 
 from byceps.services.lan_tournament import (
+    dashboard_view_helpers,
+    tournament_dashboard_coordination_service,
+    tournament_dashboard_service,
+    tournament_dashboard_settings_service,
     tournament_domain_service,
     tournament_match_service,
     tournament_orga_service,
@@ -21,10 +34,21 @@ from byceps.services.lan_tournament import (
     tournament_service,
     tournament_team_service,
 )
+from byceps.services.lan_tournament.blueprints.dashboard_csrf import (
+    CSRF_INVALID_ERROR,
+    get_dashboard_csrf_token,
+    validate_dashboard_csrf,
+)
+from byceps.services.lan_tournament.blueprints.dashboard_forms import (
+    DashboardAcknowledgementForm,
+    DashboardPinForm,
+    MAX_COMMENT_LENGTH,
+)
 from byceps.services.lan_tournament.blueprints.readiness_csrf import (
     get_readiness_csrf_token,
     validate_readiness_csrf_token,
 )
+from byceps.services.lan_tournament.dashboard_config import DEFAULT_PAGE_SIZE
 from byceps.services.lan_tournament.models.match_readiness import (
     derive_match_readiness,
     real_contestants,
@@ -34,6 +58,11 @@ from byceps.services.lan_tournament.models.bracket import Bracket
 from byceps.services.lan_tournament.models.tournament import (
     Tournament,
     TournamentID,
+)
+from byceps.services.lan_tournament.models.tournament_dashboard import (
+    DashboardPage,
+    DashboardQuery,
+    DashboardSettings,
 )
 from byceps.services.lan_tournament.models.tournament_match import (
     MatchSide,
@@ -100,6 +129,15 @@ from byceps.services.lan_tournament.lan_tournament_view_helpers import (
     serialize_qualification,
     wants_json,
 )
+from byceps.services.lan_tournament.tournament_dashboard_coordination_service import (
+    DASHBOARD_ACK_COMMENT_INVALID_ERROR,
+    DASHBOARD_MATCH_NOT_FOUND_ERROR,
+)
+from byceps.services.lan_tournament.tournament_dashboard_service import (
+    DASHBOARD_FORBIDDEN_ERROR,
+    DASHBOARD_QUERY_INVALID_ERROR,
+    DASHBOARD_UNAUTHENTICATED_ERROR,
+)
 from byceps.services.lan_tournament.tournament_match_service import (
     acknowledgement_match_ids,
 )
@@ -113,11 +151,15 @@ from byceps.services.lan_tournament.models.game_format import (
     GameFormat,
 )
 from byceps.services.party import party_service
+from byceps.services.party.models import PartyID
 from byceps.services.ticketing import ticket_service
 from byceps.services.user import user_service
 from byceps.services.user.models import UserID
 from byceps.util.authz import get_permissions_for_user
-from byceps.util.framework.blueprint import create_blueprint
+from byceps.util.framework.blueprint import (
+    create_blueprint,
+    register_blueprints,
+)
 from byceps.util.framework.flash import (
     flash_error,
     flash_notice,
@@ -145,6 +187,9 @@ from .forms import (
 
 
 blueprint = create_blueprint('lan_tournament', __name__)
+register_blueprints(
+    blueprint, [('services.lan_tournament.blueprints.common', None)]
+)
 
 
 @blueprint.get('/')
@@ -298,7 +343,37 @@ def view(tournament_id):
             if tournament.elimination_mode
             else None
         ),
+        'dashboard_back_link': _dashboard_back_link(tournament),
         'active_tab': 'overview',
+    }
+
+
+def _dashboard_back_link(tournament, match=None):
+    """Return the link back to the dashboard list, or `None`.
+
+    It needs a `return` value and the viewer's dashboard authority. The
+    value is only parsed, never followed: the URL is rebuilt from the
+    validated query, so no input reaches the page.
+    """
+    query = dashboard_view_helpers.parse_dashboard_return(
+        request.args.get('return'),
+        surface='site',
+        # The URL has no page size, so the settings stay unread: a broken
+        # dashboard configuration must not break a public page.
+        per_page=DEFAULT_PAGE_SIZE,
+    )
+    if query is None or not may_view_orga_dashboard():
+        return None
+
+    return {
+        'url': dashboard_view_helpers.build_dashboard_list_url(
+            'site',
+            tournament.party_id,
+            query,
+            anchor_match_id=None if match is None else match.id,
+        ),
+        'label': dashboard_view_helpers.dashboard_labels()['link_back'],
+        'context': dashboard_view_helpers.describe_dashboard_return(query),
     }
 
 
@@ -1268,6 +1343,7 @@ def view_match(match_id):
         'readiness_csrf_token': csrf_token,
         'claim_form': MatchReadyClaimForm(data=form_data),
         'revoke_form': MatchReadyRevokeForm(data=form_data),
+        'dashboard_back_link': _dashboard_back_link(tournament, match),
         'active_tab': 'matches',
     }
 
@@ -3227,3 +3303,621 @@ def _get_own_request_or_404(party, request_id) -> TournamentRequest:
             return tournament_request
 
     abort(404)
+
+
+# -------------------------------------------------------------------- #
+# orga dashboard
+
+
+_DASHBOARD_TEMPLATE = 'site/lan_tournament/dashboard.html'
+_DASHBOARD_PANEL_TEMPLATE = 'common/lan_tournament/_dashboard_panel.html'
+
+
+@dataclass(frozen=True)
+class _DashboardSnapshot:
+    """One authorized, consistent read of the dashboard."""
+
+    settings: DashboardSettings
+    query: DashboardQuery
+    page: DashboardPage
+    dashboard: dict[str, object]
+
+
+@dataclass(frozen=True)
+class _DashboardAction:
+    """A pin or acknowledgement request, as far as it has been checked."""
+
+    kind: str
+    party_id: PartyID
+    match_id: str | None
+    form: DashboardPinForm | DashboardAcknowledgementForm
+    json_mode: bool
+
+
+def _resolve_orga_collection(party_id):
+    """Return the viewer's assigned tournaments of the current party.
+
+    The site dashboard needs at least one assignment here; a global
+    permission alone is not enough. Without one there is no collection to
+    show, so the answer is a refusal, never an empty page.
+    """
+    scope_result = tournament_dashboard_service.resolve_dashboard_scope(
+        g.user, party_id, 'assigned'
+    )
+    if scope_result.is_ok() and not scope_result.unwrap().tournament_ids:
+        return Err(DASHBOARD_FORBIDDEN_ERROR)
+
+    return scope_result
+
+
+def may_view_orga_dashboard() -> bool:
+    """Return `True` if the viewer may open the site's orga dashboard.
+
+    This is the check of the dashboard routes themselves, so a link and the
+    route behind it cannot disagree.
+    """
+    if not g.user.authenticated or not g.party:
+        return False
+
+    return _resolve_orga_collection(g.party.id).is_ok()
+
+
+class _OrgaDashboardAuthority:
+    """Answer lazily whether to offer the link to the orga dashboard.
+
+    A page that never asks costs no statement.
+    """
+
+    def __init__(self) -> None:
+        self._answer: bool | None = None
+
+    def __bool__(self) -> bool:
+        if self._answer is None:
+            self._answer = may_view_orga_dashboard()
+
+        return self._answer
+
+
+@blueprint.context_processor
+def _provide_orga_dashboard_authority():
+    return {'may_view_orga_dashboard': _OrgaDashboardAuthority()}
+
+
+@blueprint.get('/orga-dashboard')
+@login_required
+def orga_dashboard():
+    """Show the due matches of the viewer's assigned tournaments."""
+    party = _get_current_party_or_404()
+
+    snapshot_result = _read_orga_dashboard(party.id, args=request.args)
+    if snapshot_result.is_err():
+        return _dashboard_access_failure(
+            snapshot_result.unwrap_err(), json_mode=False
+        )
+
+    return _dashboard_page(snapshot_result.unwrap(), party)
+
+
+@blueprint.get('/orga-dashboard/poll')
+def orga_dashboard_poll():
+    """Answer the rendered panel with its snapshot time, as JSON."""
+    if not g.user.authenticated:
+        return _dashboard_access_failure(
+            DASHBOARD_UNAUTHENTICATED_ERROR, json_mode=True
+        )
+
+    party_id = _dashboard_party_id()
+    if party_id is None:
+        return _dashboard_access_failure(
+            DASHBOARD_FORBIDDEN_ERROR, json_mode=True
+        )
+
+    snapshot_result = _read_orga_dashboard(party_id, args=request.args)
+    if snapshot_result.is_err():
+        return _dashboard_access_failure(
+            snapshot_result.unwrap_err(), json_mode=True
+        )
+
+    return _dashboard_json(_panel_fragment(snapshot_result.unwrap()))
+
+
+@blueprint.post('/orga-dashboard/matches/<match_id>/pin')
+def orga_dashboard_pin(match_id):
+    """Pin or unpin a match for the orga team."""
+    return _handle_dashboard_action('pin', match_id)
+
+
+@blueprint.post('/orga-dashboard/matches/<match_id>/ack')
+def orga_dashboard_ack(match_id):
+    """Record that a delayed match has been checked."""
+    return _handle_dashboard_action('ack', match_id)
+
+
+def _handle_dashboard_action(kind, match_id):
+    """Check a dashboard POST step by step, then call the service.
+
+    The party is the current site's, the authority is the viewer's
+    assignments, and the match comes from the URL alone. The order is
+    fixed: session, collection, CSRF, match, form, service. No step tells
+    a missing match from one the viewer may not see.
+    """
+    json_mode = wants_json(request)
+
+    if not g.user.authenticated:
+        return _dashboard_access_failure(
+            DASHBOARD_UNAUTHENTICATED_ERROR, json_mode=json_mode
+        )
+
+    party_id = _dashboard_party_id()
+    if party_id is None:
+        return _dashboard_access_failure(
+            DASHBOARD_FORBIDDEN_ERROR, json_mode=json_mode
+        )
+
+    scope_result = _resolve_orga_collection(party_id)
+    if scope_result.is_err():
+        return _dashboard_access_failure(
+            scope_result.unwrap_err(), json_mode=json_mode
+        )
+
+    form_class = (
+        DashboardPinForm if kind == 'pin' else DashboardAcknowledgementForm
+    )
+    action = _DashboardAction(
+        kind=kind,
+        party_id=party_id,
+        match_id=_uuid_text(match_id),
+        form=form_class(request.form),
+        json_mode=json_mode,
+    )
+
+    if validate_dashboard_csrf(g.user, action.form.csrf_token.data).is_err():
+        return _refuse_dashboard_action(action, CSRF_INVALID_ERROR)
+
+    if not _is_dashboard_match(match_id, scope_result.unwrap()):
+        return _dashboard_unavailable(action)
+
+    if not action.form.validate():
+        return _refuse_invalid_dashboard_form(action)
+
+    # End the reads: the service takes its locks in a transaction of its own.
+    tournament_repository.rollback_session()
+
+    result = _perform_dashboard_action(action)
+    if result.is_err():
+        return _refuse_dashboard_service_error(action, result.unwrap_err())
+
+    return _answer_dashboard_success(action, result.unwrap())
+
+
+def _perform_dashboard_action(action):
+    form = action.form
+    match_id = TournamentMatchID(uuid.UUID(action.match_id))
+
+    if action.kind == 'pin':
+        return tournament_dashboard_coordination_service.set_match_pin(
+            g.user,
+            action.party_id,
+            match_id,
+            pinned=form.pinned.data,
+            expected_revision=form.revision.data,
+        )
+
+    return tournament_dashboard_coordination_service.acknowledge_match(
+        g.user,
+        action.party_id,
+        match_id,
+        expected_episode_id=form.episode.data,
+        expected_ack_revision=form.revision.data,
+        comment=form.comment.data,
+    )
+
+
+def _is_dashboard_match(match_id, scope) -> bool:
+    """Tell if the match belongs to a tournament the viewer is assigned to.
+
+    A malformed ID, a missing match, a match of another party and a match
+    of a tournament outside the assignments all give the same answer.
+    """
+    match_id_text = _uuid_text(match_id)
+    if match_id_text is None:
+        return False
+
+    found = tournament_match_service.find_match(
+        TournamentMatchID(uuid.UUID(match_id_text))
+    )
+    if found is None:
+        return False
+
+    return str(found.tournament_id) in {
+        str(tournament_id) for tournament_id in scope.tournament_ids
+    }
+
+
+def _uuid_text(raw) -> str | None:
+    try:
+        return str(uuid.UUID(str(raw)))
+    except ValueError:
+        return None
+
+
+def _dashboard_party_id():
+    """Return the current site's party. It never comes from the request."""
+    return g.party.id if g.party else None
+
+
+def _get_dashboard_settings(party_id) -> DashboardSettings:
+    settings_result = (
+        tournament_dashboard_settings_service.get_effective_dashboard_settings(
+            party_id
+        )
+    )
+    if settings_result.is_err():
+        # A broken deployment configuration is for the operator to fix.
+        raise RuntimeError(
+            f'Invalid orga dashboard settings: {settings_result.unwrap_err()}'
+        )
+
+    return settings_result.unwrap()
+
+
+def _read_orga_dashboard(party_id, *, args=None, return_value=None):
+    """Read one page of the dashboard for the viewer, in one snapshot.
+
+    The query comes from the request's arguments, or from the validated
+    `return` value of a form. The scope is resolved afresh every time.
+    """
+    scope_result = _resolve_orga_collection(party_id)
+    if scope_result.is_err():
+        return Err(scope_result.unwrap_err())
+    scope = scope_result.unwrap()
+
+    settings = _get_dashboard_settings(party_id)
+
+    errors: dict[str, str] = {}
+    if args is not None:
+        query, errors = dashboard_view_helpers.parse_dashboard_query(
+            args,
+            surface='site',
+            per_page=settings.page_size,
+            scope_tournament_ids=scope.tournament_ids,
+        )
+    else:
+        query = dashboard_view_helpers.parse_dashboard_return(
+            return_value, surface='site', per_page=settings.page_size
+        ) or DashboardQuery(per_page=settings.page_size)
+
+    page_result = tournament_dashboard_service.get_dashboard_page(
+        g.user, party_id, query, settings=settings
+    )
+    if page_result.is_err():
+        return Err(page_result.unwrap_err())
+    page = page_result.unwrap()
+
+    dashboard = dashboard_view_helpers.build_dashboard_context(
+        page,
+        query,
+        settings,
+        surface='site',
+        csrf_token=get_dashboard_csrf_token(g.user),
+        query_errors=errors,
+    )
+
+    return Ok(
+        _DashboardSnapshot(
+            settings=settings, query=query, page=page, dashboard=dashboard
+        )
+    )
+
+
+def _find_dashboard_row(dashboard, match_id_text):
+    """Return the context of the row of that match, if it is on the page."""
+    for row in dashboard['rows']:
+        if row['match_id'] == match_id_text:
+            return row
+
+    return None
+
+
+def _dashboard_page(snapshot, party, *, action=None, status=200):
+    html = render_template(
+        _DASHBOARD_TEMPLATE,
+        dashboard=snapshot.dashboard,
+        party=party,
+        action=action,
+        unavailable=None,
+    )
+
+    return _dashboard_response(make_response(html), status)
+
+
+def _panel_fragment(snapshot):
+    html = render_template(
+        _DASHBOARD_PANEL_TEMPLATE, dashboard=snapshot.dashboard, action=None
+    )
+
+    return dashboard_view_helpers.serialize_dashboard_fragment(
+        html,
+        as_of=snapshot.page.as_of,
+        poll_seconds=snapshot.settings.poll_seconds,
+    )
+
+
+def _dashboard_response(response, status=200):
+    response.status_code = status
+    response.headers['Cache-Control'] = 'private, no-store'
+
+    return response
+
+
+def _dashboard_json(body, status=200):
+    return _dashboard_response(jsonify(body), status)
+
+
+def _dashboard_json_error(error):
+    body, status = dashboard_view_helpers.serialize_dashboard_error(error)
+
+    return _dashboard_json(body, status)
+
+
+@login_required
+def _log_in_first():
+    """Pass a viewer who has logged in; send anyone else to the login form."""
+
+
+def _dashboard_access_failure(error, *, json_mode):
+    """Answer a viewer without a session or without authority.
+
+    A script gets a JSON answer with a stable code, never the login
+    redirect. A browser keeps the redirect for a lost session.
+    """
+    if json_mode:
+        return _dashboard_json_error(error)
+
+    if error == DASHBOARD_UNAUTHENTICATED_ERROR:
+        login_redirect = _log_in_first()
+        if login_redirect is not None:
+            return login_redirect
+
+    abort(dashboard_view_helpers.TRANSPORT_ERRORS[error][1])
+
+
+def _dashboard_unavailable(action):
+    """Answer for a match that is missing or hidden: one answer for both."""
+    if action.json_mode:
+        return _dashboard_json_error(DASHBOARD_MATCH_NOT_FOUND_ERROR)
+
+    settings = _get_dashboard_settings(action.party_id)
+    query = dashboard_view_helpers.parse_dashboard_return(
+        action.form.return_to.data,
+        surface='site',
+        per_page=settings.page_size,
+    ) or DashboardQuery(per_page=settings.page_size)
+    labels = dashboard_view_helpers.dashboard_labels()
+    html = render_template(
+        _DASHBOARD_TEMPLATE,
+        dashboard=None,
+        party=_get_current_party_or_404(),
+        action=None,
+        unavailable={
+            'heading': labels['missing_heading'],
+            'detail': labels['missing_detail'],
+            'back_label': labels['link_back_plain'],
+            'back_url': dashboard_view_helpers.build_dashboard_list_url(
+                'site', action.party_id, query
+            ),
+        },
+    )
+
+    return _dashboard_response(make_response(html), 404)
+
+
+def _refuse_invalid_dashboard_form(action):
+    """Refuse a form with a field error, the comment's first."""
+    errors = action.form.errors
+    field = 'comment' if 'comment' in errors else next(iter(errors))
+
+    return _refuse_dashboard_action(
+        action,
+        DASHBOARD_QUERY_INVALID_ERROR,
+        field=field,
+        field_text=str(errors[field][0]),
+    )
+
+
+def _refuse_dashboard_service_error(action, error):
+    if error in (DASHBOARD_UNAUTHENTICATED_ERROR, DASHBOARD_FORBIDDEN_ERROR):
+        return _dashboard_access_failure(error, json_mode=action.json_mode)
+
+    if error == DASHBOARD_MATCH_NOT_FOUND_ERROR:
+        return _dashboard_unavailable(action)
+
+    if error == DASHBOARD_ACK_COMMENT_INVALID_ERROR:
+        return _refuse_dashboard_action(
+            action, error, field='comment', field_text=gettext(error)
+        )
+
+    return _refuse_dashboard_action(action, error)
+
+
+def _refuse_dashboard_action(action, error, *, field=None, field_text=None):
+    """Answer a refused action with the whole list, read once, afresh.
+
+    The list may have moved on (a refused row may have left the view, and
+    tiles, counts and pages with it), so a script gets the whole panel and
+    `draft_target`, whether the target row is still there with the action
+    offered. A browser gets the list again with the form of that row open
+    and the draft kept, or, if the row is gone, the draft as a note.
+    """
+    if action.json_mode and error == CSRF_INVALID_ERROR:
+        return _dashboard_json_error(error)
+
+    snapshot_result = _read_orga_dashboard(
+        action.party_id, return_value=action.form.return_to.data
+    )
+    if snapshot_result.is_err():
+        return _dashboard_access_failure(
+            snapshot_result.unwrap_err(), json_mode=action.json_mode
+        )
+    snapshot = snapshot_result.unwrap()
+
+    row = _find_dashboard_row(snapshot.dashboard, action.match_id)
+    draft_target = row is not None and bool(row[action.kind]['offered'])
+
+    body, status = dashboard_view_helpers.serialize_dashboard_error(
+        error,
+        fragment=_panel_fragment(snapshot) if action.json_mode else None,
+        draft_target=draft_target,
+    )
+    if field_text is not None:
+        body['message'] = field_text
+
+    code = body['error']
+    if action.json_mode:
+        detail = _json_refusal_detail(action.kind, code, row)
+        if detail is not None:
+            body['detail'] = detail
+
+        return _dashboard_json(body, status)
+
+    labels = dashboard_view_helpers.dashboard_labels()
+    comment = action.form.comment.data if action.kind == 'ack' else None
+    if draft_target and action.kind == 'ack':
+        _reopen_acknowledgement_form(
+            row, comment, field_text if field == 'comment' else None
+        )
+
+    return _dashboard_page(
+        snapshot,
+        _get_current_party_or_404(),
+        action={
+            'kind': action.kind,
+            'match_id': action.match_id if row is not None else None,
+            'error': code,
+            'message': _refusal_message(action.kind, code, body, labels),
+            'detail': _refusal_detail(action.kind, code, row, labels),
+            'draft': comment,
+            'draft_target': draft_target,
+            'field_error': (
+                {'field': field, 'text': field_text}
+                if field is not None
+                else None
+            ),
+        },
+        status=status,
+    )
+
+
+def _reopen_acknowledgement_form(row, comment, error_text) -> None:
+    """Put the draft back into the row's form, on the server's state."""
+    text = comment or ''
+    form = row['ack']['form']
+    form['open'] = True
+    form['draft'] = text
+    form['counter_text'] = dashboard_view_helpers.format_comment_counter(
+        len(text)
+    )
+    form['is_over'] = len(text) > MAX_COMMENT_LENGTH
+    form['error_text'] = error_text
+
+
+def _refusal_message(kind, code, body, labels) -> str:
+    """Return the headline of a refusal; a refused check names its reason."""
+    if kind == 'ack' and code == dashboard_view_helpers.TRANSPORT_ERROR_REFUSED:
+        return labels['ack_refused_template'] % {'reason': body['message']}
+
+    return body['message']
+
+
+def _json_refusal_detail(kind, code, row) -> str | None:
+    """Return the sentence a script shows under a stale check, if any.
+
+    It is the sentence of the browser page, from the same re-read row, so
+    both name the other orga's record or neither does.
+    """
+    if code != dashboard_view_helpers.TRANSPORT_ERROR_STALE:
+        return None
+
+    return _refusal_detail(
+        kind, code, row, dashboard_view_helpers.dashboard_labels()
+    )
+
+
+def _refusal_detail(kind, code, row, labels) -> str | None:
+    """Return the sentence under the headline of a refused check."""
+    if kind != 'ack':
+        return None
+
+    if code == dashboard_view_helpers.TRANSPORT_ERROR_REFUSED:
+        return labels['ack_refused_detail']
+
+    if code == dashboard_view_helpers.TRANSPORT_ERROR_STALE and row:
+        record = row['ack']['record']
+        if record is not None:
+            return labels['ack_stale_detail_template'] % {
+                'actor': record['actor'],
+                'time': record['time'],
+            }
+
+    return None
+
+
+def _answer_dashboard_success(action, outcome):
+    """Answer an accepted action, after the commit, from a fresh read."""
+    snapshot_result = _read_orga_dashboard(
+        action.party_id, return_value=action.form.return_to.data
+    )
+    if snapshot_result.is_err():
+        return _dashboard_access_failure(
+            snapshot_result.unwrap_err(), json_mode=action.json_mode
+        )
+    snapshot = snapshot_result.unwrap()
+
+    if action.json_mode:
+        if action.kind == 'ack':
+            committed_at = outcome.occurred_at
+        else:
+            committed_at = (
+                outcome.updated_at if outcome else snapshot.page.as_of
+            )
+
+        return _dashboard_json(
+            dashboard_view_helpers.serialize_dashboard_success(
+                committed_at=committed_at,
+                fragment=_panel_fragment(snapshot),
+            )
+        )
+
+    _flash_dashboard_success(action, snapshot)
+
+    return redirect(
+        dashboard_view_helpers.build_dashboard_list_url(
+            'site',
+            action.party_id,
+            snapshot.query,
+            anchor_match_id=action.match_id,
+        ),
+        303,
+    )
+
+
+def _flash_dashboard_success(action, snapshot) -> None:
+    if action.kind == 'pin':
+        flash_success(
+            gettext('Match pinned for the orga team.')
+            if action.form.pinned.data
+            else gettext('Pin removed.')
+        )
+        return
+
+    row = _find_dashboard_row(snapshot.dashboard, action.match_id)
+    if row is None:
+        flash_success(gettext('Check recorded.'))
+        return
+
+    flash_success(
+        gettext(
+            'Check recorded: %(match)s.',
+            match=f'{row["tournament"]["name"]} · {row["location"]}',
+        )
+    )

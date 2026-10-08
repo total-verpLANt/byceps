@@ -1,0 +1,223 @@
+{#- Canonical panel of the orga dashboard, shared by the admin, the site and
+    the themed site wrapper. A wrapper includes it with its own context;
+    the poll renders it alone, with `action` set to none:
+
+      include 'common/lan_tournament/_dashboard_panel.html'
+
+    It reads only `dashboard` (the context of `build_dashboard_context`) and
+    the optional `action` (the refusal of a native POST). Every text arrives
+    final and localized; nothing here translates and nothing is marked safe.
+
+    Top to bottom: scope and freshness, the tier tiles (they are the legend),
+    the filters with the view links, the notices, the count (or an empty
+    state), the rows, the note cards, the pager and a polite live region.
+    One element carries `data-lt-dashboard-root`; the script reads its data
+    attributes. Every control is a native form or link, so the panel works
+    without a script and keeps the validated query.
+
+    `tiles` and `pager` have a key named `items`: read it by subscript, since
+    the attribute lookup finds the dict method first. -#}
+{% from 'common/lan_tournament/_dashboard_rows.html' import render_rows %}
+
+{%- set action = action|default(none) -%}
+{%- set labels = dashboard.labels -%}
+{%- set is_admin = dashboard.surface == 'admin' -%}
+{%- set query = dashboard.query -%}
+{%- set freshness = dashboard.freshness -%}
+{%- set tiles = dashboard.tiles -%}
+{%- set filters = dashboard.filters -%}
+{%- set empty = dashboard.empty -%}
+{#- Every view link has the list path; a native refusal is rendered at the
+    URL of its POST, so the GET forms need the path explicitly. -#}
+{%- set list_path = dashboard.views[0].url.split('?')[0] -%}
+{%- set login_url = url_for('authn_login_admin.log_in_form') if is_admin else url_for('authn_login.log_in_form') -%}
+{%- set is_bare = empty and empty.bare -%}
+{%- set keeps_count = empty is none or empty.kind == 'page_empty' -%}
+
+{%- macro _hidden(name, value) -%}
+<input type="hidden" name="{{ name }}" value="{{ value }}">
+{%- endmacro -%}
+
+{%- macro _tile(tile) -%}
+<span class="ltd-sti" aria-hidden="true">{{ tile.icon }}</span><b class="ltd-stc">{{ tile.count }}</b><span class="ltd-stn">{{ tile.name }}</span><small>{{ tile['range'] }}</small>
+{%- endmacro -%}
+
+{%- macro _empty(card) -%}
+<div class="ltd-empty">
+<h2>{{ card.heading }}</h2>
+{%- if card.body or card.context %}
+<p>{{ card.body or card.context }}</p>
+{%- endif %}
+{%- if card.actions %}
+<div class="ltd-frow">
+{%- for item in card.actions %}
+<a class="ltd-btn{% if item.primary %} pri{% endif %}" href="{{ item.url }}">{{ item.label }}</a>
+{%- endfor %}
+</div>
+{%- endif %}
+</div>
+{%- endmacro -%}
+
+{%- macro _banner(kind, heading, details) -%}
+<div class="ltd-ban b-{{ kind }}" role="{{ 'alert' if kind == 'err' else 'status' }}">
+<p class="ltd-banh"><i aria-hidden="true">{{ 'i' if kind == 'info' else '✓' if kind == 'ok' else '!' }}</i>{{ heading }}</p>
+{%- if details %}
+<div class="ltd-banb">
+{%- for detail in details %}
+<p>{{ detail }}</p>
+{%- endfor %}
+</div>
+{%- endif %}
+</div>
+{%- endmacro -%}
+
+<section class="lt-dashboard{% if not is_admin %} is-site{% endif %}" data-lt-dashboard-root data-surface="{{ dashboard.surface }}" data-poll-url="{{ dashboard.poll.url }}" data-poll-seconds="{{ dashboard.poll.seconds }}" data-as-of="{{ freshness.as_of }}" data-login-url="{{ login_url }}" data-labels='{{ labels|tojson }}' aria-label="{{ labels.title }}">
+<div class="ltd-top">
+{%- if is_admin %}
+<form class="ltd-scope" method="get" action="{{ list_path }}">
+<fieldset>
+<legend class="ltd-k">{{ labels.scope }}</legend>
+{%- for option in dashboard.scope.options %}
+<label><input type="radio" name="scope" value="{{ option.value }}"{% if option.checked %} checked{% endif %}> {{ option.label }}</label>
+{%- endfor %}
+</fieldset>
+{%- for name, value in dashboard.scope.hidden %}
+{{ _hidden(name, value) }}
+{%- endfor %}
+<button class="ltd-btn" type="submit">{{ labels.scope_apply }}</button>
+</form>
+{%- else %}
+<p class="ltd-scope is-fixed"><span class="ltd-k">{{ labels.scope }}</span> <b>{{ dashboard.scope.label }}</b> <span class="ltd-na">{{ labels.scope_fixed }}</span></p>
+{%- endif %}
+<div class="ltd-fresh">
+<p><span class="ltd-k">{{ labels.as_of }}</span> <b>{{ freshness.time }}</b> <span class="ltd-tz">{{ freshness.zone }}</span></p>
+<p class="ltd-fst" aria-live="polite"><span class="ltd-fst-auto">{{ freshness.status_text }}</span><span class="ltd-fst-manual">{{ labels.fresh_nojs }}</span></p>
+<form class="ltd-refresh" method="get" action="{{ list_path }}">
+{%- if is_admin %}
+{{ _hidden('scope', query.scope) }}
+{%- endif %}
+{{ _hidden('view', query.view) }}
+{{ _hidden('state', query.state) }}
+{{ _hidden('sort', query.sort) }}
+{%- if query.tournament %}
+{{ _hidden('tournament', query.tournament) }}
+{%- endif %}
+{{ _hidden('page', query.page) }}
+<button class="ltd-btn" type="submit" data-refresh>{{ labels.refresh_now }}</button>
+</form>
+</div>
+</div>
+{%- if not is_bare %}
+<section class="ltd-sum" aria-labelledby="ltd-sum-heading">
+<h2 class="ltd-k" id="ltd-sum-heading">{{ tiles.heading }} <span class="ltd-sumsc">{{ tiles.scope_note }}</span></h2>
+<ul>
+{%- for tile in tiles['items'] %}
+<li class="ltd-st t-{{ tile.letter }}{% if tile.is_zero %} is-zero{% endif %}{% if tile.is_active %} is-on{% endif %}">
+{%- if tile.url %}
+<a href="{{ tile.url }}" aria-label="{{ tile.aria_label }}"{% if tile.is_active %} aria-current="true"{% endif %}>{{ _tile(tile) }}</a>
+{%- else %}
+<span>{{ _tile(tile) }}</span>
+{%- endif %}
+</li>
+{%- endfor %}
+</ul>
+<p class="ltd-lgn">{{ tiles.note }}</p>
+</section>
+<form class="ltd-filters" method="get" action="{{ list_path }}" role="search" aria-label="{{ filters.aria_label }}">
+<nav class="ltd-views" aria-label="{{ labels.views_nav }}">
+{%- for view in dashboard.views %}
+<a href="{{ view.url }}"{% if view.current %} aria-current="page"{% endif %}>{{ view.label }}</a>
+{%- endfor %}
+</nav>
+{%- for name, value in filters.hidden %}
+{{ _hidden(name, value) }}
+{%- endfor %}
+<div class="ltd-fl">
+{%- for field in [filters.tournament, filters.state, filters.sort] %}
+<div class="ltd-fld">
+<label class="ltd-lbl" for="{{ field.id }}">{{ field.label }}</label>
+<select id="{{ field.id }}" name="{{ field.name }}"{% if field.is_invalid %} aria-invalid="true" aria-describedby="{{ field.error_id }}"{% endif %}>
+{%- for option in field.options %}
+<option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
+{%- endfor %}
+</select>
+{%- if field.is_invalid %}
+<p class="ltd-err" id="{{ field.error_id }}">{{ field.error }}</p>
+{%- endif %}
+</div>
+{%- endfor %}
+<div class="ltd-fb"><button class="ltd-btn pri" type="submit">{{ labels.apply }}</button>
+{%- if filters.reset_url %}<a class="ltd-btn" href="{{ filters.reset_url }}">{{ labels.reset }}</a>{% endif -%}
+</div>
+</div>
+{%- if filters.has_applied %}
+<p class="ltd-applied"><span class="ltd-k">{{ labels.applied }}</span>
+{%- for chip in filters.applied -%}
+<span class="ltd-chip">{{ chip }}</span>
+{%- endfor -%}
+</p>
+{%- endif %}
+</form>
+{%- endif %}
+{%- if dashboard.banner %}
+{{ _banner(dashboard.banner.kind, dashboard.banner.heading, dashboard.banner.details) }}
+{%- endif %}
+{#- A refusal whose row (or action) is gone from the list: the notice and,
+    for a check, the unsent draft. A refusal that can be shown in its row is
+    shown there, by the row. -#}
+{%- if action and not action.draft_target %}
+{{ _banner('err', action.message, [action.detail] if action.detail else []) }}
+{%- if action.kind == 'ack' and action.draft %}
+<div class="ltd-empty ltd-draft">
+<h2>{{ labels.draft_heading }}</h2>
+<p>{{ labels.draft_detail }}</p>
+<label class="ltd-lbl" for="ltd-draft">{{ labels.draft_readonly }}</label>
+<textarea id="ltd-draft" readonly rows="2">{{ action.draft }}</textarea>
+</div>
+{%- endif %}
+{%- endif %}
+{%- if empty and not keeps_count %}
+{{ _empty(empty) }}
+{%- else %}
+{%- if keeps_count %}
+<div class="ltd-count">
+<h2 id="ltd-count">{{ dashboard.count.heading }}</h2>
+<p>{{ dashboard.count.context }}</p>
+</div>
+{%- endif %}
+{%- if empty %}
+{{ _empty(empty) }}
+{%- endif %}
+{{ render_rows(dashboard, 'ltd-count', action) }}
+{%- endif %}
+{%- for card in dashboard.cards %}
+<div class="ltd-empty">
+<h2>{{ card.title }}</h2>
+<p>{{ card.text }}</p>
+<div class="ltd-frow"><a class="ltd-btn" href="{{ card.url }}">{{ card.link_label }}</a></div>
+</div>
+{%- endfor %}
+{%- if dashboard.pager %}
+{%- set pager = dashboard.pager %}
+<nav class="ltd-pager" aria-label="{{ pager.aria_label }}">
+{%- if pager.previous.url %}
+<a class="ltd-btn" href="{{ pager.previous.url }}" rel="prev">{{ pager.previous.label }}</a>
+{%- else %}
+<span class="ltd-btn" aria-disabled="true">{{ pager.previous.label }}</span>
+{%- endif %}
+{%- for item in pager['items'] %}
+{%- if item.gap %}
+<span class="ltd-gap" aria-hidden="true">…</span>
+{%- else %}
+<a class="ltd-btn{% if item.current %} is-cur{% endif %}" href="{{ item.url }}"{% if item.current %} aria-current="page"{% endif %}>{{ item.number }}</a>
+{%- endif %}
+{%- endfor %}
+{%- if pager.next.url %}
+<a class="ltd-btn" href="{{ pager.next.url }}" rel="next">{{ pager.next.label }}</a>
+{%- else %}
+<span class="ltd-btn" aria-disabled="true">{{ pager.next.label }}</span>
+{%- endif %}
+</nav>
+{%- endif %}
+<div class="ltd-sr" aria-live="polite" data-live></div>
+</section>

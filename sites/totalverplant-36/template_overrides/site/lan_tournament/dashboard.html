@@ -1,0 +1,47 @@
+{% extends 'layout/base.html' %}
+{% set current_page = 'tournaments' %}
+{% set page_title = [_('Orga dashboard'), party.title] %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_dashboard.css') }}">
+{% include 'site/lan_tournament/_bote_dashboard_style.html' %}
+{%- endblock %}
+
+{% block body %}
+  {%- set starts_on = party.starts_at|dateformat('long') %}
+  {%- set ends_on = party.ends_at|dateformat('long') %}
+<div class="bote-page orga-dashboard-page">
+
+  <nav class="crumbs">
+    <a href="{{ url_for('.index') }}">{{ _('Tournaments') }}</a><span>»</span><span>{{ _('Orga dashboard') }}</span>
+  </nav>
+
+  <div class="page-folio">
+    <span>{{ party.title }}</span>
+    <span>{{ starts_on if starts_on == ends_on else starts_on ~ ' – ' ~ ends_on }}</span>
+  </div>
+
+  <header class="head">
+    <div class="kick">{{ _('Tournament office') }} · {{ _('only for orgas') }}</div>
+    <h1>{{ _('Orga dashboard') }}</h1>
+    <p class="sub">{{ _('What is waiting right now – across all your tournaments.') }}</p>
+  </header>
+
+  {%- if unavailable|default(none) %}
+  <div class="lt-dashboard is-site">
+    <div class="ltd-empty">
+      <h2>{{ unavailable.heading }}</h2>
+      <p>{{ unavailable.detail }}</p>
+      <div class="ltd-frow"><a class="ltd-btn pri" href="{{ unavailable.back_url }}">{{ unavailable.back_label }}</a></div>
+    </div>
+  </div>
+  {%- else %}
+  {% include 'common/lan_tournament/_dashboard_panel.html' %}
+  {%- endif %}
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='behavior/lan_tournament_dashboard.js') }}" defer></script>
+{% endblock %}

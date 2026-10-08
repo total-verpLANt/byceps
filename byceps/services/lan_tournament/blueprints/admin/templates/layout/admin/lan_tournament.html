@@ -20,6 +20,11 @@
         id='overview',
         required_permission='lan_tournament.view')
       .add_item(
+        url_for('lan_tournament_admin.dashboard_for_party', party_id=party.id),
+        _('Dashboard'),
+        id='dashboard',
+        required_permission='lan_tournament.administrate')
+      .add_item(
         url_for('lan_tournament_admin.index', party_id=party.id),
         _('Tournaments'),
         id='tournaments',

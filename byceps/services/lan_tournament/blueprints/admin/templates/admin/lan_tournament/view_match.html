@@ -18,6 +18,9 @@
 {% block before_body %}
 {{ render_backlink(url_for('.matches_for_tournament',
                            tournament_id=tournament.id), _('Matches')) }}
+{%- if dashboard_back|default(none) %}
+<p class="block" data-dashboard-return><a href="{{ dashboard_back.url }}">{{ dashboard_back.label }}</a> <span class="dimmed">{{ dashboard_back.context }}</span></p>
+{%- endif %}
 {%- endblock %}
 
 {% block body %}

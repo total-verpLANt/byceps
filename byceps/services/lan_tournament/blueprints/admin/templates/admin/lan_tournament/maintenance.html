@@ -4,6 +4,16 @@
 {% set current_tab = 'maintenance' %}
 {% set page_title = [_('Maintenance'), party.title] %}
 
+{% macro render_threshold_field(name, label, value, error) -%}
+<div class="form-control-block{% if error %} invalid{% endif %}">
+  <label class="form-label" for="lt-threshold-{{ name }}">{{ label }}</label>
+  <input class="form-control" type="text" inputmode="numeric" autocomplete="off" id="lt-threshold-{{ name }}" name="{{ name }}_minutes" value="{{ value }}"{% if error %} aria-invalid="true" aria-describedby="lt-threshold-{{ name }}-error"{% endif %}>
+  {%- if error %}
+  <ol class="form-errors" id="lt-threshold-{{ name }}-error"><li><strong>{{ _('Error') }}:</strong> <span>{{ error }}</span></li></ol>
+  {%- endif %}
+</div>
+{%- endmacro %}
+
 {% block head %}{{ super() }}
   <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_maintenance.css') }}">
 {%- endblock %}
@@ -30,6 +40,37 @@
       {%- endif %}
     </article>
     {%- endfor %}
+
+    {%- set card = thresholds|default(none) %}
+    {%- if card %}
+    <article class="lt-maint-action" id="dashboard-thresholds" data-dashboard-thresholds>
+      <h3>{{ _('Orga dashboard: warning thresholds') }}</h3>
+      <p class="what">{{ _('Applies to all tournaments of this party.') }}</p>
+      {%- if card.get('unavailable') %}
+      <p class="finding">{{ card.unavailable }}</p>
+      {%- else %}
+      <p class="finding" data-threshold-source="{{ card.source }}">{{ card.source_line }}</p>
+      <form method="post" action="{{ card.action_url }}">
+        <input type="hidden" name="csrf_token" value="{{ card.csrf_token }}">
+        <input type="hidden" name="expected_revision" value="{{ card.revision }}">
+        <input type="hidden" name="expected_updated_at" value="{{ card.updated_at }}">
+        {%- if card.notice %}
+        <div class="form-form-errors" role="alert" data-error-code="{{ card.notice.code }}">
+          <ol class="form-errors"><li><strong>{{ _('Error') }}:</strong> <span>{{ card.notice.text }}</span></li></ol>
+        </div>
+        {%- endif %}
+        {{ render_threshold_field('yellow', _('Yellow from (minutes)'), card.yellow, card.errors.get('yellow')) }}
+        {{ render_threshold_field('red', _('Red from (minutes)'), card.red, card.errors.get('red')) }}
+        <div class="button-row">
+          <button type="submit" name="action" value="save" class="button color-primary">{{ _('Save') }}</button>
+          {%- if card.source == 'party' %}
+          <button type="submit" name="action" value="reset" class="button is-outlined">{{ _('Reset to default') }}</button>
+          {%- endif %}
+        </div>
+      </form>
+      {%- endif %}
+    </article>
+    {%- endif %}
   </div>
 
 </div>

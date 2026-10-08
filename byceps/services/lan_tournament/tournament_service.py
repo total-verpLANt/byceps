@@ -1,6 +1,6 @@
 import dataclasses
 from datetime import datetime, UTC
-from typing import TYPE_CHECKING
+from typing import NamedTuple, TYPE_CHECKING
 from urllib.parse import urlparse
 from uuid import UUID
 
@@ -16,6 +16,7 @@ from . import (
     tournament_domain_service,
     tournament_match_service,
     tournament_image_service,
+    tournament_operational_service,
     tournament_orga_repository,
     tournament_participant_service,
     tournament_repository,
@@ -42,6 +43,7 @@ from .models.tournament_image import TournamentImageID
 from .models.score_ordering import ScoreOrdering
 from .models.game_format import GameFormat, is_valid_combination
 from .models.elimination_mode import EliminationMode
+from .models.operational_timing import OperationalClock
 from .models.playoff import PlayoffReleaseMode
 from .models.tournament_status import TournamentStatus
 from .models.validation_message import ValidationMessage
@@ -1159,13 +1161,36 @@ def change_status(
 
     from . import tournament_readiness_service
 
+    change = persisted.unwrap()
     try:
         _dispatch_status_change_effects(tournament, event, initiator_id)
     finally:
         tournament_readiness_service.dispatch_pending_invitations(
-            persisted.unwrap(),
+            change.pending_invitation_ids,
         )
-    return Ok((updated, event))
+    return Ok((_with_clock(updated, change.clock), event))
+
+
+class _PersistedStatusChange(NamedTuple):
+    """What a flushed status change leaves for its owner to hand on."""
+
+    pending_invitation_ids: tuple[MatchInvitationID, ...]
+    clock: OperationalClock | None
+
+
+def _with_clock(
+    tournament: Tournament, clock: OperationalClock | None
+) -> Tournament:
+    """Return the tournament with the clock the status change persisted."""
+    if clock is None:
+        return tournament
+
+    return dataclasses.replace(
+        tournament,
+        operational_clock_elapsed_us=clock.elapsed_us,
+        operational_clock_running_since=clock.running_since,
+        operational_clock_activated_at=clock.activated_at,
+    )
 
 
 def _persist_status_change_flush(
@@ -1173,7 +1198,7 @@ def _persist_status_change_flush(
     updated: Tournament,
     event: TournamentStatusChangedEvent,
     initiator_id: UserID | None,
-) -> Result[tuple[MatchInvitationID, ...], str]:
+) -> Result[_PersistedStatusChange, str]:
     """Persist status/work/audit; the owning caller commits and emits effects."""
     tournament_id = tournament.id
     new_status = updated.tournament_status
@@ -1203,6 +1228,16 @@ def _persist_status_change_flush(
     )
     if status_result.is_err():
         return Err(status_result.unwrap_err())
+    clock_edge = status_result.unwrap()
+    clock = clock_edge.clock if clock_edge is not None else None
+
+    # A pause freezes the clock and keeps every open episode as it is.
+    if clock_edge is not None and new_status is not TournamentStatus.PAUSED:
+        reconciled = tournament_operational_service.reconcile_due_matches_flush(
+            tournament_id, occurred_at=clock_edge.at
+        )
+        if reconciled.is_err():
+            return Err(reconciled.unwrap_err())
 
     if new_status in {
         TournamentStatus.ONGOING, TournamentStatus.PAUSED,
@@ -1213,9 +1248,9 @@ def _persist_status_change_flush(
         )
         if work_result.is_err():
             return Err(work_result.unwrap_err())
-        return work_result
+        return Ok(_PersistedStatusChange(work_result.unwrap(), clock))
 
-    return Ok(())
+    return Ok(_PersistedStatusChange((), clock))
 
 
 def _dispatch_status_change_effects(

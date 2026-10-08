@@ -508,6 +508,8 @@ def test_delete_team_removes_references_before_deletion(
         call.find_team(team_id),
         call.get_tournament_for_update(tournament_id),
         call.get_team_for_update(team_id),
+        # The owner reads the tournament once for its operation time.
+        call.get_tournament(tournament_id, fresh=True),
         call.remove_team_from_participants_flush(team_id),
         call.remove_team_from_contestants_flush(team_id),
         call.get_tournament(tournament_id, fresh=True),
@@ -972,3 +974,298 @@ def test_signals_exist():
 
     assert hasattr(signals, 'match_created')
     assert hasattr(signals, 'match_deleted')
+
+
+# Central retirement of the dashboard state
+
+
+DELETION_TIME = datetime(2031, 5, 6, 18, 30, 0)
+GIVEN_TIME = datetime(2031, 5, 6, 19, 45, 0)
+
+
+def _statements(session):
+    """Return (SQL, parameters) of every statement executed, in order."""
+    from sqlalchemy.dialects import postgresql
+
+    found = []
+    for executed in session.execute.call_args_list:
+        compiled = executed.args[0].compile(dialect=postgresql.dialect())
+        found.append((str(compiled), compiled.params))
+    return found
+
+
+@pytest.fixture
+def deletion_session():
+    from byceps.services.lan_tournament import tournament_repository as repo
+
+    session = MagicMock()
+    with (
+        patch.object(repo.db, 'session', session),
+        patch.object(repo, '_retire_match_pairing_flush') as pairing,
+        patch.object(repo, 'lock_tournament_for_update'),
+        patch.object(repo, 'lock_matches_for_update'),
+        patch.object(repo, 'null_self_referential_fks'),
+        patch.object(
+            repo, 'get_operation_time', return_value=DELETION_TIME
+        ) as clock,
+    ):
+        session.pairing = pairing
+        session.clock = clock
+        yield session
+
+
+def _delete_one(match_ids, **kwargs):
+    from byceps.services.lan_tournament import tournament_repository as repo
+
+    repo.delete_match_flush(match_ids[0], **kwargs)
+
+
+def _delete_all(match_ids, **kwargs):
+    from byceps.services.lan_tournament import tournament_repository as repo
+
+    matches = [MagicMock(id=match_id) for match_id in match_ids]
+    with patch.object(
+        repo, 'get_matches_for_tournament_ordered_fresh', return_value=matches
+    ):
+        repo.delete_matches_for_tournament(
+            TournamentID(generate_uuid()), commit=False
+        )
+
+
+# fmt: off
+@pytest.mark.parametrize('delete, count', [(_delete_one, 1), (_delete_all, 3)])
+# fmt: on
+def test_match_deletion_retires_the_dashboard_state_before_the_row_goes(
+    deletion_session, delete, count
+):
+    match_ids = [TournamentMatchID(generate_uuid()) for _ in range(count)]
+
+    delete(match_ids)
+
+    statements = _statements(deletion_session)
+    episodes = [
+        i for i, (sql, _) in enumerate(statements)
+        if sql.startswith('UPDATE lan_tournament_match_due_episodes')
+    ]
+    pins = [
+        i for i, (sql, _) in enumerate(statements)
+        if sql.startswith('DELETE FROM lan_tournament_match_dashboard_annotations')
+    ]
+    rows = [
+        i for i, (sql, _) in enumerate(statements)
+        if sql.startswith('DELETE FROM lan_tournament_matches')
+    ]
+    # One close and one drop for all matches, both before the one delete.
+    assert len(episodes) == len(pins) == len(rows) == 1
+    assert episodes[0] < pins[0] < rows[0]
+    # The history is closed, never deleted.
+    assert not [
+        sql for sql, _ in statements
+        if sql.startswith('DELETE')
+        and ('due_episodes' in sql or 'escalation_acks' in sql)
+    ]
+    closed = statements[episodes[0]][1]
+    assert closed['closed_at'] == DELETION_TIME
+    assert deletion_session.commit.call_count == 0
+
+
+# fmt: off
+@pytest.mark.parametrize('delete', [_delete_one, _delete_all])
+# fmt: on
+def test_a_deletion_samples_the_server_clock_once_after_the_locks(
+    deletion_session, delete
+):
+    match_ids = [TournamentMatchID(generate_uuid()) for _ in range(3)]
+
+    delete(match_ids)
+
+    deletion_session.clock.assert_called_once_with()
+    # The pairing backstop took the locks before the time was read.
+    assert deletion_session.pairing.call_count >= 1
+
+
+def test_an_owner_time_closes_the_episodes_without_a_second_reading(
+    deletion_session,
+):
+    match_ids = [TournamentMatchID(generate_uuid())]
+
+    _delete_one(match_ids, changed_at=GIVEN_TIME)
+
+    deletion_session.clock.assert_not_called()
+    (closed,) = [
+        params for sql, params in _statements(deletion_session)
+        if sql.startswith('UPDATE lan_tournament_match_due_episodes')
+    ]
+    assert closed['closed_at'] == GIVEN_TIME
+
+
+def test_a_tournament_without_matches_retires_and_samples_nothing(
+    deletion_session,
+):
+    _delete_all([])
+
+    deletion_session.clock.assert_not_called()
+    assert not [
+        sql for sql, _ in _statements(deletion_session)
+        if 'due_episodes' in sql or 'dashboard_annotations' in sql
+    ]
+
+
+def test_the_pairing_backstop_runs_before_the_dashboard_retirement(
+    deletion_session,
+):
+    order = []
+    deletion_session.pairing.side_effect = lambda _: order.append('pairing')
+    deletion_session.execute.side_effect = lambda _: order.append('statement')
+
+    _delete_one([TournamentMatchID(generate_uuid())])
+
+    assert order[0] == 'pairing'
+    assert 'statement' in order
+
+
+def _clearing_world():
+    from byceps.services.lan_tournament import tournament_match_service as engine
+
+    matches = [
+        MagicMock(id=TournamentMatchID(generate_uuid()), phase=1, confirmed_by=None)
+        for _ in range(2)
+    ]
+    repository = MagicMock()
+    repository.get_matches_for_tournament_ordered_fresh.return_value = matches
+    repository.get_contestants_for_matches.return_value = {}
+    return engine, repository, matches
+
+
+# fmt: off
+@pytest.mark.parametrize('given', [None, GIVEN_TIME])
+# fmt: on
+def test_clearing_the_bracket_hands_its_operation_time_to_every_deletion(given):
+    engine, repository, matches = _clearing_world()
+    tournament_id = TournamentID(generate_uuid())
+    keyword = {} if given is None else {'changed_at': given}
+
+    with (
+        patch.object(engine, 'tournament_repository', repository),
+        patch.object(engine, 'create_log_entry'),
+        patch.object(engine, '_delete_contestants_for_match_flush') as cleanup,
+    ):
+        events = engine.clear_bracket(tournament_id, **keyword)
+
+    assert len(events) == 2
+    assert repository.delete_match_flush.call_args_list == [
+        call(match.id, **keyword) for match in matches
+    ]
+    assert cleanup.call_args_list == [
+        call(match.id, **keyword) for match in matches
+    ]
+
+
+# fmt: off
+@pytest.mark.parametrize('given', [None, GIVEN_TIME])
+# fmt: on
+def test_the_lobby_deletion_hands_its_operation_time_to_every_deletion(given):
+    engine, repository, matches = _clearing_world()
+    tournament_id = TournamentID(generate_uuid())
+    keyword = {} if given is None else {'changed_at': given}
+
+    with (
+        patch.object(engine, 'tournament_repository', repository),
+        patch.object(engine, '_delete_contestants_for_match_flush') as cleanup,
+    ):
+        events = engine._delete_matches_flush(tournament_id, matches, **keyword)
+
+    assert len(events) == 2
+    assert repository.delete_match_flush.call_args_list == [
+        call(match.id, **keyword) for match in matches
+    ]
+    assert cleanup.call_args_list == [
+        call(match.id, **keyword) for match in matches
+    ]
+
+
+# fmt: off
+@pytest.mark.parametrize('given', [None, GIVEN_TIME])
+# fmt: on
+def test_the_first_round_regeneration_hands_its_operation_time_to_the_clearing(
+    given,
+):
+    from byceps.services.lan_tournament import tournament_match_service as engine
+    from byceps.util.result import Err
+
+    tournament_id = TournamentID(generate_uuid())
+    repository = MagicMock()
+    repository.get_matches_for_tournament.return_value = [MagicMock()]
+    keyword = {} if given is None else {'changed_at': given}
+
+    with (
+        patch.object(engine, 'tournament_repository', repository),
+        patch.object(engine, '_ffa_elimination_mode'),
+        patch.object(engine, '_ffa_phase', return_value=1),
+        patch.object(engine, 'clear_bracket', return_value=[]) as clear,
+        patch.object(
+            engine, '_generate_ffa_round_impl', return_value=Err('stop')
+        ),
+    ):
+        result = engine._generate_ffa_initial_impl(
+            tournament_id, True, **keyword
+        )
+
+    assert result == Err('stop')
+    clear.assert_called_once_with(tournament_id, initiator_id=None, **keyword)
+
+
+# fmt: off
+@pytest.mark.parametrize('given', [None, GIVEN_TIME])
+# fmt: on
+def test_the_preamble_hands_its_operation_time_to_the_clearing(given):
+    from types import SimpleNamespace
+
+    from byceps.services.lan_tournament import tournament_match_service as engine
+
+    tournament_id = TournamentID(generate_uuid())
+    team = SimpleNamespace(id=generate_uuid(), tournament_id=tournament_id)
+    repository = MagicMock()
+    repository.get_matches_for_tournament.return_value = [MagicMock(phase=2)]
+    repository.get_tournament.return_value = _tournament_with_winning_team(team)
+    keyword = {} if given is None else {'changed_at': given}
+
+    with (
+        patch.object(engine, 'tournament_repository', repository),
+        patch.object(engine, 'clear_bracket', return_value=[]) as clear,
+    ):
+        result = engine._prepare_bracket_generation(
+            tournament_id, True, phase=2, roster=['a', 'b'], **keyword
+        )
+
+    assert result.is_ok(), result
+    clear.assert_called_once_with(
+        tournament_id, phase=2, initiator_id=None, **keyword
+    )
+
+
+# fmt: off
+@pytest.mark.parametrize('given', [None, GIVEN_TIME])
+@pytest.mark.parametrize('name', [
+    '_generate_single_elimination_impl', '_generate_double_elimination_impl',
+    '_generate_round_robin_impl',
+])
+# fmt: on
+def test_the_bracket_generators_hand_their_operation_time_to_the_preamble(
+    name, given
+):
+    from byceps.services.lan_tournament import tournament_match_service as engine
+    from byceps.util.result import Err
+
+    keyword = {} if given is None else {'changed_at': given}
+
+    with patch.object(
+        engine, '_prepare_bracket_generation', return_value=Err('stop')
+    ) as prepare:
+        result = getattr(engine, name)(
+            TournamentID(generate_uuid()), True, **keyword
+        )
+
+    assert result == Err('stop')
+    assert prepare.call_args.kwargs.get('changed_at') == given
+    assert ('changed_at' in prepare.call_args.kwargs) == (given is not None)

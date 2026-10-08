@@ -67,6 +67,9 @@ class Tournament:
     playoff_released_at: datetime | None = None
     playoff_released_by: 'UserID | None' = None
     leaderboard_closed_at: datetime | None = None
+    operational_clock_elapsed_us: int = 0
+    operational_clock_running_since: datetime | None = None
+    operational_clock_activated_at: datetime | None = None
 
     @property
     def has_playoffs(self) -> bool:
