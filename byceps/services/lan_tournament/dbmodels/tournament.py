@@ -50,7 +50,7 @@ class DbTournament(db.Model):
             " AND playoff_game_format = 'ONE_V_ONE'"
             " AND playoff_elimination_mode IN"
             " ('SINGLE_ELIMINATION', 'DOUBLE_ELIMINATION')"
-            ' AND playoff_group_count >= 2'
+            ' AND playoff_group_count >= 1'
             ' AND playoff_qualifiers_per_group >= 1'
             ' AND playoff_qualifier_count IS NULL'
             ' AND playoff_release_mode IS NOT NULL'

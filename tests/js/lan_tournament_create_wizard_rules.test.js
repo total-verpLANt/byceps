@@ -889,9 +889,13 @@ test('round robin playoff rules', async (t) => {
     });
   });
 
-  await t.test('at least two groups', () => {
-    assert.deepStrictEqual(check({playoff_group_count: '1'}), {
-      playoff_group_count: 'At least two groups are needed.',
+  await t.test('a single group is valid', () => {
+    assert.deepStrictEqual(check({playoff_group_count: '1'}), {});
+  });
+
+  await t.test('a single group needs two qualifiers in total', () => {
+    assert.deepStrictEqual(check({playoff_group_count: '1', playoff_qualifiers_per_group: '1'}), {
+      playoff_qualifiers_per_group: 'Playoffs need at least 2 qualifiers in total.',
     });
   });
 
@@ -938,15 +942,15 @@ test('round robin playoff rules', async (t) => {
     }), {playoff_qualifiers_per_group: 'Fewer must advance from each group than the smallest group holds.'});
   });
 
-  await t.test('double knockout needs four qualifiers', () => {
+  await t.test('double knockout takes the same two qualifiers as single knockout', () => {
     assert.deepStrictEqual(check({
       min_players: '', playoff_elimination_mode: 'DOUBLE_ELIMINATION',
       playoff_group_count: '2', playoff_qualifiers_per_group: '1',
-    }), {playoff_qualifiers_per_group: 'Double elimination playoffs need at least 4 qualifiers in total.'});
+    }), {});
     assert.deepStrictEqual(check({
       min_players: '', playoff_elimination_mode: 'DOUBLE_ELIMINATION',
-      playoff_group_count: '2', playoff_qualifiers_per_group: '2',
-    }), {});
+      playoff_group_count: '1', playoff_qualifiers_per_group: '1',
+    }), {playoff_qualifiers_per_group: 'Playoffs need at least 2 qualifiers in total.'});
   });
 
   await t.test('single knockout takes two qualifiers in total', () => {
@@ -1021,6 +1025,14 @@ test('stepSummary of the playoffs step', () => {
     ['3 groups, the best one each']
   );
   assert.deepStrictEqual(summaryOf(4, Object.assign({}, RR_PLAYOFFS, {playoff_group_count: ''})), ['Playoffs']);
+  assert.deepStrictEqual(
+    summaryOf(4, Object.assign({}, RR_PLAYOFFS, {playoff_group_count: '1'})),
+    ['One group, top 2']
+  );
+  assert.deepStrictEqual(
+    summaryOf(4, Object.assign({}, RR_PLAYOFFS, {playoff_group_count: '1', playoff_qualifiers_per_group: '1'})),
+    ['One group, the best one']
+  );
   assert.deepStrictEqual(summaryOf(4, HS_PLAYOFFS), ['Top 16 of the leaderboard']);
   assert.deepStrictEqual(summaryOf(4, Object.assign({}, HS_PLAYOFFS, {playoff_qualifier_count: 'x'})), ['Playoffs']);
 });
@@ -1070,9 +1082,20 @@ test('playoffPreview of a round robin phase', async (t) => {
     );
   });
 
+  await t.test('one group is named in the singular', () => {
+    assert.strictEqual(
+      previewOf(Object.assign({}, RR_PLAYOFFS, {playoff_group_count: '1'})),
+      '12 players · One group of 12 · the best 2 → 2 qualifiers → bracket with 2 places, no byes'
+    );
+    assert.strictEqual(
+      previewOf(Object.assign({}, RR_PLAYOFFS, {playoff_group_count: '1', max_players: ''})),
+      'One group · the best 2 → 2 qualifiers → bracket with 2 places, no byes'
+    );
+  });
+
   await t.test('incomplete settings give no preview', () => {
     assert.strictEqual(previewOf(Object.assign({}, RR_PLAYOFFS, {playoff_group_count: ''})), null);
-    assert.strictEqual(previewOf(Object.assign({}, RR_PLAYOFFS, {playoff_group_count: '1'})), null);
+    assert.strictEqual(previewOf(Object.assign({}, RR_PLAYOFFS, {playoff_group_count: '0'})), null);
     assert.strictEqual(previewOf(Object.assign({}, RR_PLAYOFFS, {playoff_enabled: false})), null);
   });
 });
@@ -1084,13 +1107,17 @@ test('playoffPreview: double elimination with too few qualifiers', async (t) => 
     playoff_elimination_mode: 'DOUBLE_ELIMINATION',
   });
 
-  await t.test('counts the qualifiers and names the minimum', () => {
+  await t.test('double knockout below four previews the single elimination fallback', () => {
     assert.strictEqual(
       previewOf(DE),
-      '2 qualifiers – too few for double knockout (at least 4)'
+      '12 players · 2 groups of 6 · the best one → 2 qualifiers → bracket with 2 places, no byes · double knockout runs as single knockout (fewer than 4)'
     );
     const segments = rules.playoffPreview(DE);
-    assert.strictEqual(segments[segments.length - 1].bad, true);
+    assert.strictEqual(
+      segments[segments.length - 1].msgid,
+      'double knockout runs as single knockout (fewer than 4)'
+    );
+    assert.strictEqual(segments.some((s) => s.bad), false);
   });
 
   await t.test('four qualifiers give the normal sentence', () => {
@@ -1099,11 +1126,13 @@ test('playoffPreview: double elimination with too few qualifiers', async (t) => 
       previewOf(four),
       '12 players · 2 groups of 6 · the best 2 → 4 qualifiers → bracket with 4 places, no byes'
     );
+    assert.strictEqual(rules.playoffPreview(four).some((s) => s.bad), false);
   });
 
   await t.test('single elimination is not affected', () => {
     const single = Object.assign({}, DE, {playoff_elimination_mode: 'SINGLE_ELIMINATION'});
     assert.match(previewOf(single), /bracket with 2 places, no byes$/);
+    assert.doesNotMatch(previewOf(single), /single knockout/);
   });
 });
 

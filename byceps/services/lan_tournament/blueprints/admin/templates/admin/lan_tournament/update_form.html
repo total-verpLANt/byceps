@@ -100,7 +100,7 @@
       <h3>{{ _('Playoffs') }}</h3>
       {{ form_field(form.playoff_enabled, **switch_lock) }}
       <div id="playoff-rr-fields" style="display: none;">
-        {{ form_field(form.playoff_group_count, min=2, style='width: 5rem;', **group_lock) }}
+        {{ form_field(form.playoff_group_count, min=1, style='width: 5rem;', **group_lock) }}
         {{ form_field(form.playoff_qualifiers_per_group, min=1, style='width: 5rem;', **playoff_lock) }}
       </div>
       <div id="playoff-hs-fields" style="display: none;">

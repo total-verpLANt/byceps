@@ -17187,3 +17187,27 @@ msgstr "Das Turnier „%(name)s“ wurde als Entwurf importiert."
 
 msgid "Export configuration"
 msgstr "Konfiguration exportieren"
+
+msgid "At least 1; each group needs at least 2 players."
+msgstr "Mindestens 1; jede Gruppe mindestens 2 Spieler."
+
+msgid "Fewer than the smallest group. Groups × qualifiers: at least 2. Double knockout with fewer than 4 runs as single knockout."
+msgstr "Weniger als die kleinste Gruppe. Gruppen × Qualifizierte ≥ 2. Doppeltes K.-o. mit weniger als 4 läuft als Einfaches K.-o."
+
+msgid "At least one group is needed."
+msgstr "Es wird mindestens eine Gruppe benötigt."
+
+msgid "One group, the best one"
+msgstr "Eine Gruppe, der Beste"
+
+msgid "One group, top %(q)s"
+msgstr "Eine Gruppe, die besten %(q)s"
+
+msgid "One group of %(s)s"
+msgstr "Eine Gruppe à %(s)s"
+
+msgid "One group"
+msgstr "Eine Gruppe"
+
+msgid "double knockout runs as single knockout (fewer than 4)"
+msgstr "Doppeltes K.-o. läuft als Einfaches K.-o. (weniger als 4)"

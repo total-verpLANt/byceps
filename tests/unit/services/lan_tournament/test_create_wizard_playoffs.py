@@ -289,12 +289,12 @@ def test_highscore_without_playoffs_ignores_the_free_for_all_fields(app):
 @pytest.mark.parametrize(
     ('overrides', 'field', 'message'),
     [
-        ({'playoff_group_count': '1'}, 'playoff_group_count',
-         'At least two groups are needed.'),
+        ({'playoff_group_count': '0'}, 'playoff_group_count',
+         'Whole numbers from 1 only.'),
         ({'playoff_elimination_mode': 'DOUBLE_ELIMINATION',
-          'playoff_group_count': '2', 'playoff_qualifiers_per_group': '1'},
+          'playoff_group_count': '1', 'playoff_qualifiers_per_group': '1'},
          'playoff_qualifiers_per_group',
-         'Double elimination playoffs need at least 4 qualifiers in total.'),
+         'Playoffs need at least 2 qualifiers in total.'),
         ({'playoff_release_mode': ''}, 'playoff_release_mode',
          'Please choose how the playoffs are released.'),
         ({'playoff_elimination_mode': ''}, 'playoff_elimination_mode',
@@ -663,7 +663,7 @@ def test_update_reports_a_playoff_rule_translated_on_the_field(app):
     data = {
         **_UPDATE_BASE,
         'playoff_enabled': 'y',
-        'playoff_group_count': '2',
+        'playoff_group_count': '1',
         'playoff_qualifiers_per_group': '1',
         'playoff_elimination_mode': 'DOUBLE_ELIMINATION',
         'playoff_release_mode': 'MANUAL',
@@ -674,9 +674,7 @@ def test_update_reports_a_playoff_rule_translated_on_the_field(app):
     )
 
     update_tournament.assert_not_called()
-    assert flashes == [
-        'Double elimination playoffs need at least 4 qualifiers in total.'
-    ]
+    assert flashes == ['Playoffs need at least 2 qualifiers in total.']
     form = update_form.call_args.args[1]
     assert isinstance(form, TournamentUpdateForm)
     assert form.playoff_qualifiers_per_group.errors == flashes
@@ -1089,6 +1087,11 @@ _PARITY_CASES = {
                       'playoff_elimination_mode': 'DOUBLE_ELIMINATION'},
     'rr double 2x2': {**_RR, 'min_players': '', 'playoff_group_count': '2',
                       'playoff_elimination_mode': 'DOUBLE_ELIMINATION'},
+    'rr one group de fallback': {**_RR, 'playoff_group_count': '1',
+                                 'playoff_elimination_mode': 'DOUBLE_ELIMINATION'},
+    'rr double one group one qualifier': {**_RR, 'playoff_group_count': '1',
+                                          'playoff_qualifiers_per_group': '1',
+                                          'playoff_elimination_mode': 'DOUBLE_ELIMINATION'},
     'rr team minimum': {**_RR, 'contestant_type': 'TEAM', 'min_teams': '6',
                         'min_players': '', 'max_players': '',
                         'playoff_qualifiers_per_group': '2'},
@@ -1132,11 +1135,10 @@ def test_the_parity_table_reaches_every_playoff_rule():
         'Please choose a playoff elimination mode.',
         'Please choose how the playoffs are released.',
         'Please enter the number of groups.',
-        'At least two groups are needed.',
         'Please enter how many advance from each group.',
         'The minimum number of contestants is too small for this many groups.',
         'Fewer must advance from each group than the smallest group holds.',
-        'Double elimination playoffs need at least 4 qualifiers in total.',
+        'Playoffs need at least 2 qualifiers in total.',
         'Please enter the number of qualifiers.',
         'Please enter how many advance per lobby.',
         'At least two qualifiers are needed.',
@@ -1186,6 +1188,13 @@ def test_every_playoff_msgid_the_rules_emit_is_served_with_german(app):
             {'max_players': ''},
             {'contestant_type': 'TEAM', 'max_teams': '12'},
             {'elimination_mode': 'SINGLE_ELIMINATION'},
+            {'playoff_group_count': '1'},
+            {'playoff_group_count': '1', 'playoff_qualifiers_per_group': '1'},
+            {'playoff_group_count': '1', 'max_players': ''},
+            {
+                'playoff_group_count': '1',
+                'playoff_elimination_mode': 'DOUBLE_ELIMINATION',
+            },
         )
     ] + [
         {**_HS, **over}

@@ -271,6 +271,10 @@ def test_migration_020_adds_columns_and_table():
     """The SQL adds exactly what the dbmodels create with `create_all`."""
     forward_sql = _strip_transaction_control(FORWARD_SQL_PATH.read_text())
     rollback_sql = _strip_transaction_control(ROLLBACK_SQL_PATH.read_text())
+    # 025 widens the playoff CHECK 020 creates; the dbmodels carry that state.
+    widen_sql = _strip_transaction_control(
+        (MIGRATIONS_DIR / '025_allow_single_group_playoffs.sql').read_text()
+    )
 
     # Release the session's locks, or the DDL below blocks.
     db.session.close()
@@ -290,6 +294,7 @@ def test_migration_020_adds_columns_and_table():
             assert not _table_exists(connection, DECISIONS_TABLE)
 
             connection.exec_driver_sql(forward_sql)
+            connection.exec_driver_sql(widen_sql)
 
             assert _table_exists(connection, DECISIONS_TABLE)
             assert _column_names(
@@ -306,6 +311,10 @@ def test_migration_020_adds_columns_and_table():
 def test_migration_020_is_idempotent():
     forward_sql = _strip_transaction_control(FORWARD_SQL_PATH.read_text())
     rollback_sql = _strip_transaction_control(ROLLBACK_SQL_PATH.read_text())
+    # 025 widens the playoff CHECK 020 creates; the dbmodels carry that state.
+    widen_sql = _strip_transaction_control(
+        (MIGRATIONS_DIR / '025_allow_single_group_playoffs.sql').read_text()
+    )
 
     db.session.close()
     _assert_isolated_test_database()
@@ -316,11 +325,13 @@ def test_migration_020_is_idempotent():
             # Re-running on the finished schema changes nothing.
             expected = _schema_signature(connection)
             connection.exec_driver_sql(forward_sql)
+            connection.exec_driver_sql(widen_sql)
             assert _schema_signature(connection) == expected
 
             connection.exec_driver_sql(rollback_sql)
             connection.exec_driver_sql(forward_sql)
             connection.exec_driver_sql(forward_sql)
+            connection.exec_driver_sql(widen_sql)
             assert _schema_signature(connection) == expected
             assert _constraint_count(connection) == len(ALL_CONSTRAINTS)
         finally:

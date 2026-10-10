@@ -248,8 +248,8 @@
 
     if (groups === null) {
       add('playoff_group_count', 'Please enter the number of groups.');
-    } else if (groups < 2) {
-      add('playoff_group_count', 'At least two groups are needed.');
+    } else if (groups < 1) {
+      add('playoff_group_count', 'At least one group is needed.');
     }
     if (perGroup === null) {
       add(
@@ -257,7 +257,7 @@
         'Please enter how many advance from each group.'
       );
     }
-    if (groups === null || perGroup === null || groups < 2) {
+    if (groups === null || perGroup === null || groups < 1) {
       return;
     }
 
@@ -295,14 +295,7 @@
       return;
     }
 
-    if (values.playoff_elimination_mode === 'DOUBLE_ELIMINATION') {
-      if (groups * perGroup < 4) {
-        add(
-          'playoff_qualifiers_per_group',
-          'Double elimination playoffs need at least 4 qualifiers in total.'
-        );
-      }
-    } else if (groups * perGroup < 2) {
+    if (groups * perGroup < 2) {
       add(
         'playoff_qualifiers_per_group',
         'Playoffs need at least 2 qualifiers in total.'
@@ -773,6 +766,14 @@
   function playoffWhat(values) {
     var plan = playoffPlan(values);
     if (plan.kind === 'rr' && plan.groups !== null && plan.perGroup !== null) {
+      if (plan.groups === 1) {
+        return [{
+          msgid: plan.perGroup === 1
+            ? 'One group, the best one'
+            : 'One group, top %(q)s',
+          params: {q: plan.perGroup}
+        }];
+      }
       return [{
         msgid: plan.perGroup === 1
           ? '%(g)s groups, the best one each'
@@ -829,7 +830,7 @@
     if (plan.kind === 'rr') {
       var groups = plan.groups;
       var per = plan.perGroup;
-      if (groups === null || per === null || groups < 2 || per < 1) {
+      if (groups === null || per === null || groups < 1 || per < 1) {
         return null;
       }
       if (top !== null && top >= groups) {
@@ -841,14 +842,18 @@
         var size = spread(top, groups);
         segments.push({
           sep: ' · ',
-          msgid: size.low === size.high
-            ? '%(g)s groups of %(s)s'
-            : '%(g)s groups of %(s)s to %(t)s',
+          msgid: groups === 1
+            ? 'One group of %(s)s'
+            : size.low === size.high
+              ? '%(g)s groups of %(s)s'
+              : '%(g)s groups of %(s)s to %(t)s',
           params: {g: groups, s: size.low, t: size.high}
         });
       } else {
         segments.push({
-          sep: '', msgid: '%(g)s groups', params: {g: groups}
+          sep: '',
+          msgid: groups === 1 ? 'One group' : '%(g)s groups',
+          params: {g: groups}
         });
       }
       segments.push({
@@ -857,18 +862,6 @@
         params: {q: per}
       });
       var total = groups * per;
-      if (values.playoff_elimination_mode === 'DOUBLE_ELIMINATION' &&
-          total < 4) {
-        return [
-          {sep: '', msgid: '%(n)s qualifiers', params: {n: total}},
-          {
-            sep: ' – ',
-            msgid: 'too few for double knockout (at least 4)',
-            params: {},
-            bad: true
-          }
-        ];
-      }
       var slots = bracketSlots(total);
       var byes = slots - total;
       segments.push({
@@ -883,6 +876,14 @@
             : 'bracket with %(slots)s places, %(byes)s byes',
         params: {slots: slots, byes: byes}
       });
+      if (values.playoff_elimination_mode === 'DOUBLE_ELIMINATION' &&
+          total < 4) {
+        segments.push({
+          sep: ' · ',
+          msgid: 'double knockout runs as single knockout (fewer than 4)',
+          params: {}
+        });
+      }
       return segments;
     }
 

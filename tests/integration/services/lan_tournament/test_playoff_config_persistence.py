@@ -145,7 +145,7 @@ def test_playoff_config_check_rejects_partial_config(party):
         EliminationMode.ROUND_ROBIN,
         playoff_game_format=GameFormat.ONE_V_ONE,
         playoff_elimination_mode=EliminationMode.SINGLE_ELIMINATION,
-        playoff_group_count=1,
+        playoff_group_count=0,
         playoff_qualifiers_per_group=2,
         playoff_release_mode=PlayoffReleaseMode.MANUAL,
     )

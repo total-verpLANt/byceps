@@ -46,8 +46,6 @@
   var PLAYOFF_QUALIFIERS_CAPTION =
     'At least 2 and at least the min. lobby size (%(min)s). ' +
     'The first phase ends with "Close qualification".';
-  var PLAYOFF_DE_MINIMUM =
-    'Double elimination playoffs need at least 4 qualifiers in total.';
   // The summary line of these errors shows the first sentence only.
   var LEAD_SENTENCE_ONLY = [
     'With at most %(n)s teams no group of at least %(min)s teams can form. ' +
@@ -1468,15 +1466,7 @@
           (state.touched[field] || state.shown[PLAYOFF_STEP]);
       });
       if (blocking.length) {
-        var tooFew = errors[blocking[0]].msgid === PLAYOFF_DE_MINIMUM
-          ? Rules.playoffPreview(validationValues(values))
-          : null;
-        return {
-          bad: true,
-          text: '▲ ' + (tooFew
-            ? previewSentence(tooFew) + '.'
-            : tMessage(errors[blocking[0]]))
-        };
+        return {bad: true, text: '▲ ' + tMessage(errors[blocking[0]])};
       }
       var segments = Rules.playoffPreview(validationValues(values));
       if (!segments || Object.keys(errors).some(function (field) {

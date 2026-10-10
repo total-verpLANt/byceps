@@ -790,14 +790,17 @@ def test_separate_refuses_when_nothing_pairs_one_group():
 
 def test_separate_refuses_when_no_swap_separates_all_pairs():
     state, roster = _playoff_state(swaps=[(1, 3)])
-    one_group = svc._Roster(
+    three_to_one = svc._Roster(
         roster.ids,
         roster.labels,
         (),
-        {cid: ('group:0', rank) for cid, (_, rank) in roster.origins.items()},
+        {
+            cid: ('group:1' if cid == 'd' else 'group:0', rank)
+            for cid, (_, rank) in roster.origins.items()
+        },
     )
 
-    result = svc._separate(state, one_group)
+    result = svc._separate(state, three_to_one)
 
     assert result == Err(svc.ERR_SEPARATE_STUCK)
 

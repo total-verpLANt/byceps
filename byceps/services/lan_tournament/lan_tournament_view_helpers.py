@@ -1421,6 +1421,8 @@ def build_create_wizard_strings() -> dict[str, str]:
         '%(g)s groups, the best one each': gettext(
             '%(g)s groups, the best one each'
         ),
+        'One group, the best one': gettext('One group, the best one'),
+        'One group, top %(q)s': gettext('One group, top %(q)s'),
         'Top %(k)s of the leaderboard': gettext('Top %(k)s of the leaderboard'),
         'Playoff mode': gettext('Playoff mode'),
         'Pools': gettext('Pools'),
@@ -1444,15 +1446,17 @@ def build_create_wizard_strings() -> dict[str, str]:
         '%(n)s teams': gettext('%(n)s teams'),
         '%(n)s players': gettext('%(n)s players'),
         '%(g)s groups': gettext('%(g)s groups'),
+        'One group': gettext('One group'),
         '%(g)s groups of %(s)s': gettext('%(g)s groups of %(s)s'),
+        'One group of %(s)s': gettext('One group of %(s)s'),
         '%(g)s groups of %(s)s to %(t)s': gettext(
             '%(g)s groups of %(s)s to %(t)s'
         ),
         'the best one': gettext('the best one'),
         'the best %(q)s': gettext('the best %(q)s'),
         '%(n)s qualifiers': gettext('%(n)s qualifiers'),
-        'too few for double knockout (at least 4)': gettext(
-            'too few for double knockout (at least 4)'
+        'double knockout runs as single knockout (fewer than 4)': gettext(
+            'double knockout runs as single knockout (fewer than 4)'
         ),
         (
             'At least 2 and at least the min. lobby size (%(min)s). The first'
@@ -1489,8 +1493,8 @@ def build_create_wizard_strings() -> dict[str, str]:
         'Please enter the number of groups.': gettext(
             'Please enter the number of groups.'
         ),
-        'At least two groups are needed.': gettext(
-            'At least two groups are needed.'
+        'At least one group is needed.': gettext(
+            'At least one group is needed.'
         ),
         'Please enter how many advance from each group.': gettext(
             'Please enter how many advance from each group.'
@@ -1503,9 +1507,6 @@ def build_create_wizard_strings() -> dict[str, str]:
         ),
         'Fewer must advance from each group than the smallest group holds.': gettext(
             'Fewer must advance from each group than the smallest group holds.'
-        ),
-        'Double elimination playoffs need at least 4 qualifiers in total.': gettext(
-            'Double elimination playoffs need at least 4 qualifiers in total.'
         ),
         'Playoffs need at least 2 qualifiers in total.': gettext(
             'Playoffs need at least 2 qualifiers in total.'

@@ -467,9 +467,33 @@ def test_separate_same_group_leaves_clean_layout_alone():
 
 def test_separate_same_group_gives_up_when_impossible():
     layout = ('s1', 's4', 's2', 's3')
-    origin = dict.fromkeys(layout, 'A')
+    origin = {'s1': 'A', 's4': 'A', 's2': 'A', 's3': 'B'}
 
+    assert q.same_group_matches(layout, origin) == [1]
     assert q.separate_same_group(layout, origin) is None
+
+
+def test_same_group_matches_ignores_a_single_scope():
+    layout = ('s1', 's4', 's2', 's3')
+    origin = dict.fromkeys(layout, 'group:0')
+
+    assert q.same_group_matches(layout, origin) == []
+
+
+def test_separate_same_group_is_a_no_op_for_a_single_scope():
+    layout = ('s1', 's4', 's2', 's3')
+    origin = dict.fromkeys(layout, 'group:0')
+
+    assert q.separate_same_group(layout, origin) == (layout, [])
+
+
+def test_same_group_matches_still_flags_two_scopes():
+    layout = ('s1', 's4', 's2', 's3')
+    origin = {
+        's1': 'group:0', 's4': 'group:0', 's2': 'group:1', 's3': 'group:1',
+    }  # fmt: skip
+
+    assert q.same_group_matches(layout, origin) == [1, 2]
 
 
 def test_separate_same_group_never_moves_a_bye():

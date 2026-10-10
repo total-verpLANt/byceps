@@ -517,7 +517,12 @@ def crossover_seed_list(
 def same_group_matches(
     layout: Sequence[str | None], origin: Mapping[str, str]
 ) -> list[int]:
-    """Return the 1-based first-round matches pairing two of one group."""
+    """Return the 1-based first-round matches pairing two of one group.
+
+    Return no conflicts when all contestants come from one group.
+    """
+    if len(set(origin.values())) < 2:
+        return []
     conflicts = []
     for index in range(len(layout) // 2):
         a, b = layout[2 * index], layout[2 * index + 1]

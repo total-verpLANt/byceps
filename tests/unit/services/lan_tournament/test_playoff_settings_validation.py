@@ -53,7 +53,7 @@ HS = GameFormat.HIGHSCORE
 GROUPS_TOO_MANY = (
     'The minimum number of contestants is too small for this many groups.'
 )
-DE_TOO_FEW = 'Double elimination playoffs need at least 4 qualifiers in total.'
+PLAYOFFS_TOO_FEW = 'Playoffs need at least 2 qualifiers in total.'
 _REPO = (
     'byceps.services.lan_tournament.tournament_service.tournament_repository'
 )
@@ -171,10 +171,10 @@ def test_more_groups_than_the_maximum_allows_is_refused():
     [
         ({'playoff_group_count': None}, 'playoff_group_count',
          'Please enter the number of groups.'),
-        ({'playoff_group_count': 1}, 'playoff_group_count',
-         'At least two groups are needed.'),
         ({'playoff_group_count': 0}, 'playoff_group_count',
-         'At least two groups are needed.'),
+         'At least one group is needed.'),
+        ({'playoff_group_count': -1}, 'playoff_group_count',
+         'At least one group is needed.'),
         ({'playoff_qualifiers_per_group': 0}, 'playoff_qualifiers_per_group',
          'At least one contestant must advance from each group.'),
         ({'playoff_qualifiers_per_group': 4}, 'playoff_qualifiers_per_group',
@@ -192,8 +192,48 @@ def test_more_groups_than_the_maximum_allows_is_refused():
     ],
 )
 # fmt: on
-def test_rr_playoffs_require_two_groups(overrides, field, msgid):
+def test_rr_playoff_config_rules(overrides, field, msgid):
     assert _msgids(_rr_settings(**overrides)) == {field: msgid}
+
+
+# fmt: off
+@pytest.mark.parametrize(
+    ('mode', 'per_group', 'min_players'),
+    [
+        (SE, 2, 4),
+        (DE, 4, 6),
+        (DE, 2, 4),
+    ],
+)
+# fmt: on
+def test_rr_playoffs_accept_one_group(mode, per_group, min_players):
+    settings = _rr_settings(
+        playoff_elimination_mode=mode,
+        playoff_group_count=1,
+        playoff_qualifiers_per_group=per_group,
+        min_players=min_players,
+    )
+    assert _msgids(settings) == {}
+
+
+# fmt: off
+@pytest.mark.parametrize(
+    ('overrides', 'field', 'msgid'),
+    [
+        ({'playoff_qualifiers_per_group': 4, 'min_players': 4},
+         'playoff_qualifiers_per_group',
+         'Fewer must advance from each group than the smallest group holds.'),
+        ({'playoff_qualifiers_per_group': 1, 'min_players': 4},
+         'playoff_qualifiers_per_group', PLAYOFFS_TOO_FEW),
+        ({'min_players': 1}, 'playoff_group_count', GROUPS_TOO_MANY),
+    ],
+)
+# fmt: on
+def test_rr_one_group_still_validates_qualifiers(overrides, field, msgid):
+    settings = _rr_settings(
+        playoff_elimination_mode=SE, playoff_group_count=1, **overrides
+    )
+    assert _msgids(settings) == {field: msgid}
 
 
 def test_rr_playoffs_use_the_team_minimum_for_team_tournaments():
@@ -216,15 +256,17 @@ def test_rr_playoffs_use_the_team_minimum_for_team_tournaments():
 @pytest.mark.parametrize(
     ('mode', 'groups', 'per_group', 'msgid'),
     [
-        (DE, 2, 1, DE_TOO_FEW),
-        (DE, 3, 1, DE_TOO_FEW),
+        (DE, 2, 1, None),
+        (DE, 3, 1, None),
+        (DE, 1, 1, PLAYOFFS_TOO_FEW),
         (DE, 2, 2, None),
-        (DE, 4, 1, None),
         (SE, 2, 1, None),
     ],
 )
 # fmt: on
-def test_de_playoffs_need_four_qualifiers(mode, groups, per_group, msgid):
+def test_de_playoffs_accept_the_single_elimination_fallback(
+    mode, groups, per_group, msgid
+):
     settings = _rr_settings(
         playoff_elimination_mode=mode,
         playoff_group_count=groups,
@@ -507,10 +549,10 @@ def test_update_rejects_an_invalid_playoff_config(repo, signals):
     result = tournament_service.update_tournament(
         repo.get_tournament.return_value.id,
         **_update_kwargs(repo.get_tournament.return_value),
-        playoff_group_count=1,
+        playoff_group_count=0,
     )
 
-    assert result == Err(ValidationMessage('At least two groups are needed.'))
+    assert result == Err(ValidationMessage('At least one group is needed.'))
     repo.update_tournament.assert_not_called()
 
 
@@ -868,16 +910,12 @@ def test_create_rejects_an_invalid_playoff_config(repo, signals):
         elimination_mode=RR,
         playoff_game_format=ONE,
         playoff_elimination_mode=DE,
-        playoff_group_count=2,
+        playoff_group_count=1,
         playoff_qualifiers_per_group=1,
         playoff_release_mode=PlayoffReleaseMode.MANUAL,
     )
 
-    assert result == Err(
-        ValidationMessage(
-            'Double elimination playoffs need at least 4 qualifiers in total.'
-        )
-    )
+    assert result == Err(ValidationMessage(PLAYOFFS_TOO_FEW))
     repo.create_tournament.assert_not_called()
 
 

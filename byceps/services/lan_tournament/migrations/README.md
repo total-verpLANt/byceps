@@ -788,6 +788,37 @@ Apply after 023; `create_all()` does not migrate existing tables.
 column. Category selections are lost; tournaments, requests, provenance,
 positions, images, creation tokens and orga assignments are preserved.
 
+### 025_allow_single_group_playoffs.sql
+
+Lets a round robin group phase with one group lead into playoffs. It drops and
+re-adds `ck_lan_tournaments_playoff_config` with the round robin branch
+changed from `playoff_group_count >= 2` to `playoff_group_count >= 1`. Every
+other term is identical to 020 (which stays untouched). The new constraint
+only widens the old one, so existing rows cannot violate it, and drop plus
+re-add makes a re-run a no-op. The script takes an `ACCESS EXCLUSIVE` lock on
+`lan_tournaments` for the length of its transaction. The dbmodel twin in
+`dbmodels/tournament.py` carries the same bound, so `create_all()` already
+builds the new constraint on a fresh schema. Apply after 024.
+
+Verify after applying:
+
+```sql
+SELECT pg_get_constraintdef(oid) FROM pg_constraint
+WHERE conname = 'ck_lan_tournaments_playoff_config';
+```
+
+The round robin branch must contain `playoff_group_count >= 1`.
+
+**Rollback:** `rollback_025.sql` restores the `>= 2` bound with the 020 body.
+It refuses (`rollback_025: N tournament(s) use one playoff group; change them
+first`) while any tournament has `playoff_group_count = 1`, because the old
+constraint would reject those rows. Change or remove such tournaments first,
+then re-run the rollback.
+
+Deployment requires human approval: apply 025 (and any rollback) on the target
+database yourself, after a backup. It is a schema change; the application
+does not apply it.
+
 ## Pre-Application Checklist
 
 Before applying any migration, complete these steps:

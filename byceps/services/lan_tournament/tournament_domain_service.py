@@ -456,8 +456,8 @@ def _check_round_robin_playoffs(
 
     if groups is None:
         add('playoff_group_count', 'Please enter the number of groups.')
-    elif groups < 2:
-        add('playoff_group_count', 'At least two groups are needed.')
+    elif groups < 1:
+        add('playoff_group_count', 'At least one group is needed.')
     elif groups > MAX_PLAYOFF_GROUP_COUNT:
         add(
             'playoff_group_count',
@@ -479,7 +479,7 @@ def _check_round_robin_playoffs(
     if (
         groups is None
         or per_group is None
-        or groups < 2
+        or groups < 1
         or groups > MAX_PLAYOFF_GROUP_COUNT
         or per_group < 1
     ):
@@ -518,14 +518,7 @@ def _check_round_robin_playoffs(
         )
         return
 
-    if settings.playoff_elimination_mode == EliminationMode.DOUBLE_ELIMINATION:
-        if groups * per_group < 4:
-            add(
-                'playoff_qualifiers_per_group',
-                'Double elimination playoffs need at least 4 qualifiers '
-                'in total.',
-            )
-    elif groups * per_group < 2:
+    if groups * per_group < 2:
         add(
             'playoff_qualifiers_per_group',
             'Playoffs need at least 2 qualifiers in total.',
