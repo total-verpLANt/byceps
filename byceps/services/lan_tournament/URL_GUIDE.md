@@ -397,11 +397,23 @@ All routes: `lan_tournament.administrate`. A seeding target is `initial` (defaul
 - **Example**: `/lan-tournaments/matches/abcdef01-2345-6789-abcd-ef0123456789/set_score`
 
 #### Confirm Match
-- **URL**: `/lan-tournaments/matches/<match_id>/confirm`
+- **URL**: `/lan-tournaments/matches/<match_id>/confirm_with_scores`
 - **Method**: POST
 - **Permission**: `lan_tournament.administrate`
-- **Description**: Confirms a match result as final
-- **Example**: `/lan-tournaments/matches/abcdef01-2345-6789-abcd-ef0123456789/confirm`
+- **Description**: Sets the scores of all contestants and confirms the match result as final. The comment is stored together with the confirmation in one transaction and marked in the comment history as a confirmation by the orga. A missing or blank comment refuses the confirmation and changes nothing
+- **Form Fields**:
+  - `score_<key>`: Integer score, one per contestant (`<key>` is the team ID or participant ID)
+  - `comment`: Comment text (required)
+- **Example**: `/lan-tournaments/matches/abcdef01-2345-6789-abcd-ef0123456789/confirm_with_scores`
+
+#### Confirm FFA Match
+- **URL**: `/lan-tournaments/matches/<match_id>/confirm_ffa`
+- **Method**: POST
+- **Permission**: `lan_tournament.administrate`
+- **Description**: Confirms a free-for-all match after its placements were set (`/lan-tournaments/matches/<match_id>/set_ffa_placements`). Same comment rule as Confirm Match
+- **Form Fields**:
+  - `comment`: Comment text (required)
+- **Example**: `/lan-tournaments/matches/abcdef01-2345-6789-abcd-ef0123456789/confirm_ffa`
 
 #### Add Match Comment
 - **URL**: `/lan-tournaments/matches/<match_id>/add_comment`
@@ -642,6 +654,52 @@ Each side of a one-versus-one match reports itself ready or not ready. Both rout
 - **Example**: `/lan-tournaments/matches/abcdef01-2345-6789-abcd-ef0123456789/ready/revoke`
 
 The admin has no readiness routes: the admin match view shows the state of both sides read-only.
+
+### Orga Match Actions (Site)
+
+Tournament orgas (and global administrators) enter, confirm and retract match results on the site. All routes need `@login_required` and `@scoped_orga_required` (403 for anyone who may not administrate the tournament of the match) and work only while the tournament is ONGOING. A confirmation needs a comment written in the same submission: the comment is stored together with the confirmation in one transaction and marked in the comment history as a confirmation by the orga. A missing or blank comment refuses the confirmation and changes nothing. The comment is separate from the `reason` of a correction or an unconfirm.
+
+#### Confirm Match With Scores (Orga)
+- **URL**: `/lan-tournaments/orga/matches/<match_id>/confirm_with_scores`
+- **Method**: POST
+- **Authentication**: Required (`@login_required`, `@scoped_orga_required`)
+- **Form Fields**:
+  - `score_<key>`: Integer score, one per contestant (`<key>` is the team ID or participant ID)
+  - `comment`: Comment text (required)
+- **Description**: Sets the scores of all contestants and confirms a bracket match. The button sits in the comment form of the match page; the score inputs are in the orga panel
+- **Example**: `/lan-tournaments/orga/matches/abcdef01-2345-6789-abcd-ef0123456789/confirm_with_scores`
+
+#### Submit FFA Result (Orga)
+- **URL**: `/lan-tournaments/orga/matches/<match_id>/submit_ffa_result`
+- **Method**: POST
+- **Authentication**: Required (`@login_required`, `@scoped_orga_required`)
+- **Form Fields**:
+  - `placement_<key>`: Integer placement, one per contestant (`<key>` is the team ID or participant ID)
+  - `comment`: Comment text (required)
+- **Description**: Sets the placements of a free-for-all match and confirms them in one step. Refused for bracket matches
+- **Example**: `/lan-tournaments/orga/matches/abcdef01-2345-6789-abcd-ef0123456789/submit_ffa_result`
+
+#### Unconfirm Match (Orga)
+- **URL**: `/lan-tournaments/orga/matches/<match_id>/unconfirm`
+- **Method**: POST
+- **Authentication**: Required (`@login_required`, `@scoped_orga_required`)
+- **Form Fields**:
+  - `reason`: Reason text (required; not the confirm comment)
+- **Description**: Retracts the result of a free-for-all match. Bracket matches are refused and are retracted through Correct Match Result
+- **Example**: `/lan-tournaments/orga/matches/abcdef01-2345-6789-abcd-ef0123456789/unconfirm`
+
+#### Correct Match Result (Orga)
+- **URL**: `/lan-tournaments/orga/matches/<match_id>/correct_result`
+- **Method**: POST
+- **Authentication**: Required (`@login_required`, `@scoped_orga_required`)
+- **Form Fields**:
+  - `reason`: Reason text (required; not the confirm comment)
+  - `corrected_score_<key>`: Integer score, one per contestant (all blank: retract only)
+  - `ack_critical`, `ack_match_ids`: Acknowledgement of the impact on confirmed downstream matches
+- **Description**: Retracts the result of a bracket match and optionally confirms new scores. Refused for free-for-all matches
+- **Example**: `/lan-tournaments/orga/matches/abcdef01-2345-6789-abcd-ef0123456789/correct_result`
+
+**Comments**: `/lan-tournaments/orga/matches/<match_id>/add_comment` was removed. The match page has one comment section, and orgas post to `/lan-tournaments/matches/<match_id>/add_comment` like contestants do (field `comment`); a scoped orga may comment in every tournament status, a contestant only while the tournament is ONGOING.
 
 ### Orga Seeding and Playoffs (Site)
 

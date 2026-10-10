@@ -71,6 +71,7 @@ from .models.tournament_match import (
     TournamentMatchID,
 )
 from .models.tournament_match_comment import (
+    MatchCommentContext,
     TournamentMatchComment,
     TournamentMatchCommentID,
 )
@@ -2913,10 +2914,28 @@ def create_match_comment(
         comment.created_by,
         comment.comment,
         comment.created_at,
+        comment.context.value if comment.context else None,
     )
 
     db.session.add(db_comment)
     db.session.commit()
+
+
+def create_match_comment_flush(
+    comment: TournamentMatchComment,
+) -> None:
+    """Persist a match comment (flush only — caller owns commit)."""
+    db_comment = DbTournamentMatchComment(
+        comment.id,
+        comment.tournament_match_id,
+        comment.created_by,
+        comment.comment,
+        comment.created_at,
+        comment.context.value if comment.context else None,
+    )
+
+    db.session.add(db_comment)
+    db.session.flush()
 
 
 def update_match_comment(
@@ -3004,6 +3023,11 @@ def _db_comment_to_comment(
         created_by=db_comment.created_by,
         comment=db_comment.comment,
         created_at=db_comment.created_at,
+        context=(
+            MatchCommentContext(db_comment.context)
+            if db_comment.context
+            else None
+        ),
     )
 
 

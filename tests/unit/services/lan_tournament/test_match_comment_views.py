@@ -55,6 +55,8 @@ PARTY_ID_STR = str(generate_uuid())
 CONTESTANT_USER_ID = generate_uuid()
 NON_CONTESTANT_USER_ID = generate_uuid()
 ADMIN_USER_ID = generate_uuid()
+ORGA_USER_ID = generate_uuid()
+OTHER_TOURNAMENT_ID = TournamentID(generate_uuid())
 
 _V = 'byceps.services.lan_tournament.blueprints.site.views'
 
@@ -122,8 +124,12 @@ def _patched_comment_view(
     authenticated=True,
     is_contestant=True,
     permissions=None,
+    orga_of=(),
 ):
-    """Patch view dependencies for add_comment route."""
+    """Patch view dependencies for add_comment route.
+
+    ``orga_of`` lists the tournament IDs the user may administrate.
+    """
     tournament = _make_tournament(status=tournament_status)
     match = _make_match()
     contestant = _make_contestant()
@@ -139,9 +145,13 @@ def _patched_comment_view(
             patch(f'{_V}.redirect_to') as mock_redirect_to,
             patch(f'{_V}.tournament_match_service') as mock_match_svc,
             patch(f'{_V}._get_tournament_or_404') as mock_get_tournament,
+            patch(f'{_V}.may_administrate_tournament') as mock_may_administrate,
             patch(f'{_V}.g') as mock_g,
         ):
             mock_get_tournament.return_value = tournament
+            mock_may_administrate.side_effect = lambda user, tournament_id: (
+                tournament_id in orga_of
+            )
             mock_match_svc.get_match.return_value = match
             mock_match_svc.get_contestants_for_match.return_value = [contestant]
             mock_match_svc.get_user_match_role.return_value = (
@@ -169,6 +179,7 @@ def _patched_comment_view(
                 'redirect_to': mock_redirect_to,
                 'match_svc': mock_match_svc,
                 'get_tournament': mock_get_tournament,
+                'may_administrate': mock_may_administrate,
                 'g': mock_g,
                 'tournament': tournament,
                 'match': match,
@@ -212,6 +223,7 @@ def test_add_comment_as_admin_succeeds(app):
         current_user_id=ADMIN_USER_ID,
         is_contestant=False,
         permissions=frozenset({'lan_tournament.administrate'}),
+        orga_of=(TOURNAMENT_ID,),
     ) as mocks:
         from byceps.services.lan_tournament.blueprints.site import views
 
@@ -290,6 +302,140 @@ def test_add_comment_tournament_not_ongoing_flashes_error(app):
             raw_fn(MATCH_ID_STR)
 
         mocks['flash_error'].assert_called_once()
+        mocks['match_svc'].add_comment.assert_not_called()
+
+
+def test_add_comment_as_contestant_refused_when_paused(app):
+    """A contestant may comment only while the tournament is ONGOING."""
+    with _patched_comment_view(
+        app,
+        tournament_status=TournamentStatus.PAUSED,
+        is_contestant=True,
+    ) as mocks:
+        from byceps.services.lan_tournament.blueprints.site import views
+
+        raw_fn = views.add_comment.__wrapped__
+
+        with app.test_request_context(
+            '/',
+            method='POST',
+            data={'comment': 'Too late'},
+        ):
+            raw_fn(MATCH_ID_STR)
+
+        mocks['flash_error'].assert_called_once_with(
+            'Tournament is not in progress.'
+        )
+        mocks['match_svc'].add_comment.assert_not_called()
+
+
+def test_add_comment_as_scoped_orga_succeeds_when_paused(app):
+    """A scoped orga may comment although the tournament is paused."""
+    with _patched_comment_view(
+        app,
+        tournament_status=TournamentStatus.PAUSED,
+        current_user_id=ORGA_USER_ID,
+        is_contestant=False,
+        orga_of=(TOURNAMENT_ID,),
+    ) as mocks:
+        from byceps.services.lan_tournament.blueprints.site import views
+
+        raw_fn = views.add_comment.__wrapped__
+
+        with app.test_request_context(
+            '/',
+            method='POST',
+            data={'comment': 'Orga note while paused'},
+        ):
+            raw_fn(MATCH_ID_STR)
+
+        mocks['match_svc'].add_comment.assert_called_once()
+        assert (
+            mocks['match_svc'].add_comment.call_args[0][2]
+            == 'Orga note while paused'
+        )
+        mocks['flash_error'].assert_not_called()
+        mocks['flash_success'].assert_called_once()
+
+
+@pytest.mark.parametrize('status', list(TournamentStatus), ids=lambda s: s.name)
+def test_add_comment_as_scoped_orga_succeeds_in_every_status(app, status):
+    with _patched_comment_view(
+        app,
+        tournament_status=status,
+        current_user_id=ORGA_USER_ID,
+        is_contestant=False,
+        orga_of=(TOURNAMENT_ID,),
+    ) as mocks:
+        from byceps.services.lan_tournament.blueprints.site import views
+
+        raw_fn = views.add_comment.__wrapped__
+
+        with app.test_request_context(
+            '/',
+            method='POST',
+            data={'comment': 'Orga note'},
+        ):
+            raw_fn(MATCH_ID_STR)
+
+        mocks['match_svc'].add_comment.assert_called_once()
+        mocks['flash_error'].assert_not_called()
+
+
+@pytest.mark.parametrize('status', list(TournamentStatus), ids=lambda s: s.name)
+def test_add_comment_as_orga_of_another_tournament_returns_403(app, status):
+    """Orga rights are per tournament, in every status."""
+    with _patched_comment_view(
+        app,
+        tournament_status=status,
+        current_user_id=ORGA_USER_ID,
+        is_contestant=False,
+        orga_of=(OTHER_TOURNAMENT_ID,),
+    ) as mocks:
+        from byceps.services.lan_tournament.blueprints.site import views
+
+        raw_fn = views.add_comment.__wrapped__
+
+        with app.test_request_context(
+            '/',
+            method='POST',
+            data={'comment': 'Not my tournament'},
+        ):
+            with pytest.raises(Forbidden):
+                raw_fn(MATCH_ID_STR)
+
+        mocks['may_administrate'].assert_called_once_with(
+            mocks['g'].user, TOURNAMENT_ID
+        )
+        mocks['match_svc'].add_comment.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    'status',
+    [s for s in TournamentStatus if s != TournamentStatus.ONGOING],
+    ids=lambda s: s.name,
+)
+def test_add_comment_non_member_outside_ongoing_returns_403(app, status):
+    """Check membership before the status, so a non-member gets 403."""
+    with _patched_comment_view(
+        app,
+        tournament_status=status,
+        current_user_id=NON_CONTESTANT_USER_ID,
+        is_contestant=False,
+    ) as mocks:
+        from byceps.services.lan_tournament.blueprints.site import views
+
+        raw_fn = views.add_comment.__wrapped__
+
+        with app.test_request_context(
+            '/',
+            method='POST',
+            data={'comment': 'Should not work'},
+        ):
+            with pytest.raises(Forbidden):
+                raw_fn(MATCH_ID_STR)
+
+        mocks['flash_error'].assert_not_called()
         mocks['match_svc'].add_comment.assert_not_called()
 
 

@@ -251,6 +251,49 @@ def test_orga_confirm_rejects_missing_score(app):
     mocks['flash_error'].assert_called_once()
 
 
+def test_orga_confirm_passes_comment_to_service(app):
+    form_data = {
+        f'score_{PARTICIPANT_A}': '3',
+        f'score_{PARTICIPANT_B}': '1',
+        'comment': 'ok',
+    }
+    contestants = [
+        _make_contestant(participant_id=PARTICIPANT_A),
+        _make_contestant(participant_id=PARTICIPANT_B),
+    ]
+
+    with _patched_orga_view(app, contestants=contestants) as mocks:
+        _call_confirm(app, form_data)
+
+    mocks['match_svc'].admin_set_and_confirm_match.assert_called_once_with(
+        MATCH_ID,
+        USER_ID,
+        {PARTICIPANT_A: 3, PARTICIPANT_B: 1},
+        confirmation_comment='ok',
+    )
+
+
+def test_orga_confirm_without_comment_passes_empty_string(app):
+    form_data = {
+        f'score_{PARTICIPANT_A}': '3',
+        f'score_{PARTICIPANT_B}': '1',
+    }
+    contestants = [
+        _make_contestant(participant_id=PARTICIPANT_A),
+        _make_contestant(participant_id=PARTICIPANT_B),
+    ]
+
+    with _patched_orga_view(app, contestants=contestants) as mocks:
+        _call_confirm(app, form_data)
+
+    mocks['match_svc'].admin_set_and_confirm_match.assert_called_once_with(
+        MATCH_ID,
+        USER_ID,
+        {PARTICIPANT_A: 3, PARTICIPANT_B: 1},
+        confirmation_comment='',
+    )
+
+
 # ------------------------------------------------------------------ #
 # unconfirm
 # ------------------------------------------------------------------ #
@@ -490,32 +533,6 @@ def test_orga_unconfirm_error_is_translated_whole(app):
     )
 
 
-def test_orga_comment_error_is_translated_whole(app):
-    from byceps.services.lan_tournament.blueprints.site import views
-
-    catalogue = {
-        'Error adding comment: %(error)s': (
-            'Fehler beim Hinzufügen des Kommentars: %(error)s'
-        ),
-        _SERVICE_ERROR: _SERVICE_ERROR_DE,
-    }
-
-    with (
-        _patched_orga_view(app) as mocks,
-        _translating(catalogue),
-    ):
-        mocks['match_svc'].add_comment.return_value = Err(_SERVICE_ERROR)
-        raw_fn = _raw(views.orga_add_match_comment)
-        with app.test_request_context(
-            '/', method='POST', data={'comment': 'hello'}
-        ):
-            raw_fn(MATCH_ID_STR)
-
-    _assert_flash_translated(
-        mocks, 'Fehler beim Hinzufügen des Kommentars: %(error)s'
-    )
-
-
 def test_orga_status_change_error_is_translated_whole(app):
     catalogue = {
         'Status change failed: %(error)s': (
@@ -627,7 +644,6 @@ def test_scoped_orga_cannot_trigger_random_defwin():
         'orga_unconfirm_match',
         'orga_correct_match_result',
         'orga_submit_ffa_result',
-        'orga_add_match_comment',
         'orga_change_tournament_status',
         'orga_seeding',
         'orga_seeding_action',
@@ -648,6 +664,23 @@ def test_scoped_orga_cannot_trigger_random_defwin():
         'orga_dashboard_ack',
     }
     assert not any('defwin' in endpoint for endpoint in orga_endpoints)
+
+
+def test_orga_add_match_comment_route_is_gone():
+    """Offer one shared comment route, and no orga-only twin."""
+    from byceps.services.lan_tournament.blueprints.site import views
+
+    test_app = Flask(__name__)
+    test_app.register_blueprint(views.blueprint, url_prefix='/lt')
+
+    assert 'lan_tournament.add_comment' in test_app.view_functions
+    assert 'lan_tournament.orga_add_match_comment' not in (
+        test_app.view_functions
+    )
+    assert not any(
+        rule.rule.endswith('/orga/matches/<match_id>/add_comment')
+        for rule in test_app.url_map.iter_rules()
+    )
 
 
 # ------------------------------------------------------------------ #
@@ -778,13 +811,34 @@ def test_orga_submit_ffa_result_binds_placements_by_contestant_key(app):
         _call_submit_ffa(app, form_data)
 
     mocks['match_svc'].set_and_confirm_ffa_match.assert_called_once_with(
-        MATCH_ID, {str(PARTICIPANT_A): 2, str(PARTICIPANT_B): 1}, USER_ID
+        MATCH_ID,
+        {str(PARTICIPANT_A): 2, str(PARTICIPANT_B): 1},
+        USER_ID,
+        confirmation_comment='',
     )
     mocks['match_svc'].set_ffa_placements.assert_not_called()
     mocks['match_svc'].confirm_ffa_match.assert_not_called()
     mocks['flash_error'].assert_not_called()
     mocks['flash_success'].assert_called_once_with(
         'FFA match has been confirmed.'
+    )
+
+
+def test_orga_submit_ffa_result_passes_comment_to_service(app):
+    form_data = {
+        f'placement_{PARTICIPANT_A}': '2',
+        f'placement_{PARTICIPANT_B}': '1',
+        'comment': 'ok',
+    }
+
+    with _patched_orga_view(app, tournament=_FFA) as mocks:
+        _call_submit_ffa(app, form_data)
+
+    mocks['match_svc'].set_and_confirm_ffa_match.assert_called_once_with(
+        MATCH_ID,
+        {str(PARTICIPANT_A): 2, str(PARTICIPANT_B): 1},
+        USER_ID,
+        confirmation_comment='ok',
     )
 
 
@@ -812,10 +866,15 @@ def test_orga_submit_ffa_result_rejects_empty_submission(app):
 
 def test_orga_confirm_ffa_records_the_orga_as_initiator(app):
     with _patched_orga_view(app, tournament=_FFA) as mocks:
-        _call_submit_ffa(app, {f'placement_{PARTICIPANT_A}': '1'})
+        _call_submit_ffa(
+            app, {f'placement_{PARTICIPANT_A}': '1', 'comment': 'ok'}
+        )
 
     mocks['match_svc'].set_and_confirm_ffa_match.assert_called_once_with(
-        MATCH_ID, {str(PARTICIPANT_A): 1}, USER_ID
+        MATCH_ID,
+        {str(PARTICIPANT_A): 1},
+        USER_ID,
+        confirmation_comment='ok',
     )
     mocks['flash_success'].assert_called_once_with(
         'FFA match has been confirmed.'
@@ -832,7 +891,10 @@ def test_orga_submit_ffa_result_does_not_confirm_when_placements_are_refused(
         _call_submit_ffa(app, {f'placement_{PARTICIPANT_A}': '1'})
 
     mocks['match_svc'].set_and_confirm_ffa_match.assert_called_once_with(
-        MATCH_ID, {str(PARTICIPANT_A): 1}, USER_ID
+        MATCH_ID,
+        {str(PARTICIPANT_A): 1},
+        USER_ID,
+        confirmation_comment='',
     )
     mocks['match_svc'].set_ffa_placements.assert_not_called()
     mocks['match_svc'].confirm_ffa_match.assert_not_called()

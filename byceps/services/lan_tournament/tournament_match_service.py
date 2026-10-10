@@ -45,6 +45,7 @@ from .models.match_readiness import (
 from .models.game_format import GameFormat
 from .models.elimination_mode import EliminationMode
 from .models.tournament_match_comment import (
+    MatchCommentContext,
     TournamentMatchComment,
     TournamentMatchCommentID,
 )
@@ -2697,10 +2698,58 @@ def _admin_set_and_confirm_match_impl(
     )
 
 
+def _check_confirmation_comment(
+    comment: str | None,
+) -> Result[str | None, str]:
+    """Return the stripped confirmation comment, or ``Err`` if unusable.
+
+    ``None`` means the caller records no comment.
+    """
+    if comment is None:
+        return Ok(None)
+
+    text = comment.strip()
+    if not text:
+        return Err('A comment is required to confirm the match.')
+
+    if len(text) > 1000:
+        return Err('Comment cannot exceed 1000 characters.')
+
+    if tournament_config_domain_service.has_unstorable_character(text):
+        return Err(tournament_config_domain_service.UNSTORABLE_CHARACTER_ERROR)
+
+    return Ok(text)
+
+
+def _stage_confirmation_comment_flush(
+    match_id: TournamentMatchID,
+    user_id: UserID,
+    text: str,
+    created_at: datetime,
+) -> TournamentMatchCommentID:
+    """Stage the orga confirmation comment; flush only, caller commits."""
+    comment_id = TournamentMatchCommentID(generate_uuid7())
+
+    tournament_repository.create_match_comment_flush(
+        TournamentMatchComment(
+            id=comment_id,
+            tournament_match_id=match_id,
+            created_by=user_id,
+            comment=text,
+            created_at=created_at,
+            context=MatchCommentContext.ORGA_CONFIRMATION,
+        )
+    )
+
+    return comment_id
+
+
 def admin_set_and_confirm_match(
     match_id: TournamentMatchID,
     admin_id: UserID,
     scores: dict[TournamentParticipantID | TournamentTeamID, int],
+    *,
+    confirmation_comment: str | None = None,
 ) -> Result[None, str]:
     """Set all contestant scores and confirm a match atomically.
 
@@ -2708,12 +2757,20 @@ def admin_set_and_confirm_match(
     check.  The admin supplies scores for every real contestant and
     the match is confirmed in one operation.
 
+    A non-``None`` ``confirmation_comment`` must be non-blank; it is
+    stored with the confirmation.
+
     Post-rollback note: when this function returns ``Err``, the
     database session has been rolled back.  Any ORM-managed objects
     fetched before this call may be expired or detached.  Callers
     must NOT access attributes on those objects after receiving an
     ``Err`` result.
     """
+    comment_result = _check_confirmation_comment(confirmation_comment)
+    if comment_result.is_err():
+        return Err(comment_result.unwrap_err())
+    comment_text = comment_result.unwrap()
+
     _lock_reachable_matches(match_id)
     changed_at = _begin_operation(match_id)
 
@@ -2733,14 +2790,20 @@ def admin_set_and_confirm_match(
     ) = result.unwrap()
 
     try:
+        log_data: dict[str, Any] = {
+            'match_id': str(match_id),
+            'scores': {str(key): score for key, score in scores.items()},
+        }
+        if comment_text is not None:
+            comment_id = _stage_confirmation_comment_flush(
+                match_id, admin_id, comment_text, confirmed_event.occurred_at
+            )
+            log_data['comment_id'] = str(comment_id)
         create_log_entry(
             'match-result-entered',
             confirmed_event.tournament_id,
             admin_id,
-            data={
-                'match_id': str(match_id),
-                'scores': {str(key): score for key, score in scores.items()},
-            },
+            data=log_data,
             commit=False,
         )
     except Exception:
@@ -5519,6 +5582,8 @@ class _FfaConfirmationOutcome:
 def confirm_ffa_match(
     match_id: TournamentMatchID,
     initiator_id: UserID,
+    *,
+    confirmation_comment: str | None = None,
 ) -> Result[None, str]:
     """Confirm an FFA match after placements are set.
 
@@ -5526,8 +5591,16 @@ def confirm_ffa_match(
     Does NOT trigger bracket advancement (FFA does not use
     ``next_match_id``).
 
+    A non-``None`` ``confirmation_comment`` must be non-blank; it is
+    stored with the confirmation.
+
     Returns ``Ok(None)`` on success.
     """
+    comment_result = _check_confirmation_comment(confirmation_comment)
+    if comment_result.is_err():
+        return Err(comment_result.unwrap_err())
+    comment_text = comment_result.unwrap()
+
     try:
         match = tournament_repository.find_match(match_id)
         if match is not None:
@@ -5541,6 +5614,10 @@ def confirm_ffa_match(
         if result.is_err():
             tournament_repository.rollback_session()
             return Err(result.unwrap_err())
+        if comment_text is not None:
+            _stage_confirmation_comment_flush(
+                match_id, initiator_id, comment_text, datetime.now(UTC)
+            )
         timing = _reconcile_timing_flush(match.tournament_id, changed_at)
         if timing.is_err():
             return Err(timing.unwrap_err())
@@ -5738,6 +5815,8 @@ def set_and_confirm_ffa_match(
     match_id: TournamentMatchID,
     placements: dict[str, int],
     initiator_id: UserID,
+    *,
+    confirmation_comment: str | None = None,
 ) -> Result[None, str]:
     """Set placements and confirm them in one locked result transaction.
 
@@ -5746,7 +5825,15 @@ def set_and_confirm_ffa_match(
     A commit exception is not proof that the server did not commit. Signals
     and qualification follow-up run outside that cleanup boundary, after a
     successful commit, and may own independent transactions.
+
+    A non-``None`` ``confirmation_comment`` must be non-blank; it is
+    stored with the confirmation.
     """
+    comment_result = _check_confirmation_comment(confirmation_comment)
+    if comment_result.is_err():
+        return Err(comment_result.unwrap_err())
+    comment_text = comment_result.unwrap()
+
     try:
         match = tournament_repository.find_match(match_id)
         if match is not None:
@@ -5768,6 +5855,11 @@ def set_and_confirm_ffa_match(
         if result.is_err():
             tournament_repository.rollback_session()
             return Err(result.unwrap_err())
+
+        if comment_text is not None:
+            _stage_confirmation_comment_flush(
+                match_id, initiator_id, comment_text, datetime.now(UTC)
+            )
 
         timing = _reconcile_timing_flush(match.tournament_id, changed_at)
         if timing.is_err():

@@ -192,7 +192,8 @@ WRITER_KINDS = {
         'record_invitation_outcome_flush', 'recover_expired_invitations_flush',
     },
     'comments': {
-        'create_match_comment', 'update_match_comment', 'delete_match_comment',
+        'create_match_comment', 'create_match_comment_flush',
+        'update_match_comment', 'delete_match_comment',
         'delete_comments_for_match', 'delete_comments_for_match_flush',
         'delete_comments_for_tournament',
     },

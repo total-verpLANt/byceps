@@ -4,6 +4,7 @@ tests.unit.services.lan_tournament.test_orga_panel_render
 """
 
 import pathlib
+import re
 from types import SimpleNamespace
 
 from jinja2 import DictLoader, Environment, StrictUndefined
@@ -60,9 +61,12 @@ def _render_match_actions(
     ffa_result_consumed=False,
     results_editable=True,
     contestants=None,
+    orga_confirm_available=None,
 ):
     if contestants is None:
         contestants = [_solo('u1', 3), _solo('u2', 1)]
+    if orga_confirm_available is None:
+        orga_confirm_available = confirmed is None
     tmpl = env.get_template('orga')
     return tmpl.module.render_orga_match_actions(
         match=SimpleNamespace(id='m0', confirmed_by=confirmed),
@@ -81,6 +85,7 @@ def _render_match_actions(
         is_walkover=is_walkover,
         ffa_result_consumed=ffa_result_consumed,
         results_editable=results_editable,
+        orga_confirm_available=orga_confirm_available,
     )
 
 
@@ -170,15 +175,19 @@ def test_ffa_match_offers_unconfirm_not_correction(env):
 
 
 def test_unconfirmed_ffa_match_offers_one_submit_for_the_whole_result(env):
-    """Placements and confirmation are a single form and a single button.
+    """Placements and confirmation are a single submission.
 
     The panel used to post the placements first and only then render a
     separate confirm form, which left a match sitting half-entered
-    between the two clicks.
+    between the two clicks. The selects now belong to the comment form,
+    which carries the one confirm button.
     """
     out = _render_match_actions(env, case=None, is_ffa=True, confirmed=None)
-    assert '.orga_submit_ffa_result' in out
-    assert out.count('<form') == 2  # the result form plus the comment form
+    assert out.count('<form') == 0
+    assert '.orga_submit_ffa_result' not in out
+    selects = re.findall(r'<select[^>]*>', out)
+    assert len(selects) == 2
+    assert all('form="lt-match-comment-form"' in tag for tag in selects)
     assert 'name="placement_u1"' in out
     assert 'name="placement_u2"' in out
     assert 'name="score_u1"' not in out
@@ -192,8 +201,8 @@ def test_ffa_placement_selects_preselect_the_stored_placements(env):
     assert '<option value="2" selected>' in out
 
 
-def test_ffa_submit_offered_while_a_placement_is_still_missing(env):
-    """One button, always offered.
+def test_ffa_selects_offered_while_a_placement_is_still_missing(env):
+    """Every select is offered, whatever is already placed.
 
     Completeness is enforced by `required` on the selects and, for
     anything that gets past the browser, by the service.
@@ -202,12 +211,13 @@ def test_ffa_submit_offered_while_a_placement_is_still_missing(env):
     out = _render_match_actions(
         env, case=None, is_ffa=True, confirmed=None, contestants=partial
     )
-    assert '.orga_submit_ffa_result' in out
+    assert 'name="placement_u1"' in out
+    assert 'name="placement_u2"' in out
 
 
 def test_confirmed_ffa_match_offers_no_placement_form(env):
     out = _render_match_actions(env, case=None, is_ffa=True)
-    assert '.orga_submit_ffa_result' not in out
+    assert 'name="placement_' not in out
 
 
 def test_ffa_placement_form_hidden_unless_editable(env):
@@ -218,7 +228,7 @@ def test_ffa_placement_form_hidden_unless_editable(env):
         confirmed=None,
         results_editable=False,
     )
-    assert '.orga_submit_ffa_result' not in out
+    assert 'name="placement_' not in out
 
 
 def test_consumed_ffa_result_shows_notice_instead_of_unconfirm(env):
@@ -248,7 +258,8 @@ def test_result_forms_hidden_unless_editable(env, confirmed):
     assert 'name="score_u1"' not in out
     assert 'orga_correction_reason' not in out
     assert 'orga_unconfirm_reason' not in out
-    assert 'orga_comment' in out
+    assert 'orga_comment' not in out
+    assert '<form' not in out
 
 
 def test_downstream_matches_are_listed(env):
@@ -261,10 +272,37 @@ def test_downstream_matches_are_listed(env):
     assert 'm2' in out
 
 
-def test_unconfirmed_match_renders_confirm_form_and_no_panel(env):
+def test_unconfirmed_match_renders_score_inputs_and_no_panel(env):
     out = _render_match_actions(env, case=None, confirmed=None)
     assert 'name="score_u1"' in out
     assert 'ack_critical' not in out
+
+
+def test_score_inputs_bind_to_comment_form(env):
+    out = _render_match_actions(env, case=None, confirmed=None)
+    inputs = re.findall(r'<input[^>]*name="score_[^"]*"[^>]*>', out)
+    assert len(inputs) == 2
+    assert all('form="lt-match-comment-form"' in tag for tag in inputs)
+    assert '.orga_confirm_match_with_scores' not in out
+    assert (
+        'Enter the result here, then confirm the match with a comment '
+        'in the comments section.'
+    ) in out
+
+
+@pytest.mark.parametrize('is_ffa', [False, True])
+def test_no_score_inputs_when_confirm_unavailable(env, is_ffa):
+    out = _render_match_actions(
+        env,
+        case=None,
+        is_ffa=is_ffa,
+        confirmed=None,
+        orga_confirm_available=False,
+    )
+    assert 'name="score_' not in out
+    assert 'name="placement_' not in out
+    assert 'lt-match-comment-form' not in out
+    assert 'Enter the result here' not in out
 
 
 def test_score_inputs_are_keyed_by_contestant_not_position(env):

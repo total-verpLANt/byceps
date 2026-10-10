@@ -750,11 +750,12 @@ def _check_free_for_all(
 
     max_contestants = settings.max_teams if is_team else settings.max_players
     need = group_min if group_min is not None else 2
-    if (
+    no_group_forms = (
         not group_min_too_large
         and max_contestants is not None
         and max_contestants < need
-    ):
+    )
+    if no_group_forms:
         if is_team:
             add(
                 'group_size_min',
@@ -775,11 +776,20 @@ def _check_free_for_all(
             )
 
     if advancement is not None:
-        smallest = (
-            group_min
-            if group_min is not None and not group_min_too_large
-            else group_max
+        # A roster that fits one lobby is never split, so the minimum
+        # group size cannot make a smaller group.
+        one_lobby = (
+            not no_group_forms
+            and max_contestants is not None
+            and group_max is not None
+            and max_contestants <= group_max
         )
+        use_group_min = (
+            group_min is not None
+            and not group_min_too_large
+            and not one_lobby
+        )
+        smallest = group_min if use_group_min else group_max
         if smallest is not None and advancement >= smallest:
             if is_team:
                 add(

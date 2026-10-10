@@ -289,19 +289,7 @@
     {%- endif %}
   </div>
 
-  {# FFA Confirm / Unconfirm buttons #}
-  {%- if not match.confirmed_by and
-         g.user.has_permission('lan_tournament.administrate') %}
-  <div class='block'>
-    <form action='{{ url_for('.confirm_ffa_match_action', match_id=match.id) }}'
-          method='post'>
-      <button type='submit' class='button color-success'>
-        {{ render_icon('success') }} {{ _('Confirm FFA Match') }}
-      </button>
-    </form>
-  </div>
-  {%- endif %}
-
+  {# FFA Unconfirm button; the confirm button sits in the comment form #}
   {%- if match.confirmed_by and
          g.user.has_permission('lan_tournament.administrate') %}
   <div class='block'>
@@ -330,12 +318,6 @@
   {# ── Standard 1v1 Score Entry ──────────────────────────────── #}
   <div class='box block'>
     <h2>{{ _('Contestants') }}</h2>
-
-    {%- if not match.confirmed_by and
-           g.user.has_permission('lan_tournament.administrate') %}
-    <form action='{{ url_for('.confirm_match_with_scores', match_id=match.id) }}'
-          method='post'>
-    {%- endif %}
 
     {%- for contestant in contestants %}
     <div class='row row--space-between' style='margin-bottom: 1rem; flex-wrap: nowrap;'>
@@ -366,6 +348,7 @@
         {%- if not match.confirmed_by and
                g.user.has_permission('lan_tournament.administrate') %}
         <input type='number' name='score_{{ contestant.team_id or contestant.participant_id }}'
+               form='lt-admin-match-comment-form'
                min='0' value='{{ contestant.score or 0 }}'
                style='width: 80px;' required>
         {%- else %}
@@ -375,16 +358,6 @@
       </div>
     </div>
     {%- endfor %}
-
-    {%- if not match.confirmed_by and
-           g.user.has_permission('lan_tournament.administrate') %}
-    <div style='margin-top: 1rem; text-align: right;'>
-      <button type='submit' class='button color-success'>
-        {{ render_icon('success') }} {{ _('Confirm Match') }}
-      </button>
-    </div>
-    </form>
-    {%- endif %}
   </div>
 
   {#- After the release, a group result is locked: the correction forms give way to a notice. #}
@@ -573,7 +546,8 @@
             {%- else -%}
               {{ comment.created_by|string }}
             {%- endif -%}
-          </strong></div>
+          </strong>
+          {%- if comment.context == 'orga_confirmation' %} · {{ render_icon('success') }} {{ _('Match confirmation by the tournament orga') }}{%- endif %}</div>
           <div style='margin-top: 0.25rem;'>{{ comment.comment }}</div>
           <div class='dimmed' style='margin-top: 0.25rem; font-size: 0.875rem;'>
             {{ comment.created_at|dateformat }},
@@ -599,10 +573,13 @@
     <p class='dimmed'>{{ _('No comments yet.') }}</p>
     {%- endif %}
 
-    {# Add comment form #}
-    {%- if g.user.has_permission('lan_tournament.update') %}
+    {# Add comment form; the orga confirm button sits in it too #}
+    {%- if g.user.has_permission('lan_tournament.update') or
+           (not match.confirmed_by and
+            g.user.has_permission('lan_tournament.administrate')) %}
     <div style='margin-top: 1rem;'>
-      <form action='{{ url_for('.add_match_comment', match_id=match.id) }}'
+      <form id='lt-admin-match-comment-form'
+            action='{{ url_for('.add_match_comment', match_id=match.id) }}'
             method='post'>
         <div class='form-group'>
           <label for='comment'>{{ _('Add Comment') }}</label>
@@ -610,9 +587,26 @@
                     maxlength='1000' required
                     style='width: 100%;'></textarea>
         </div>
-        <button type='submit' class='button'>
+        {#- The confirm button comes first: Enter in a score input submits it. #}
+        {%- if not match.confirmed_by and
+               g.user.has_permission('lan_tournament.administrate') %}
+        {%- if is_ffa %}
+        <button type='submit' class='button color-success'
+                formaction='{{ url_for('.confirm_ffa_match_action', match_id=match.id) }}'>
+          {{ render_icon('success') }} {{ _('Confirm FFA Match') }}
+        </button>
+        {%- else %}
+        <button type='submit' class='button color-success'
+                formaction='{{ url_for('.confirm_match_with_scores', match_id=match.id) }}'>
+          {{ render_icon('success') }} {{ _('Confirm Match') }}
+        </button>
+        {%- endif %}
+        {%- endif %}
+        {%- if g.user.has_permission('lan_tournament.update') %}
+        <button type='submit' class='button' formnovalidate>
           {{ _('Add Comment') }}
         </button>
+        {%- endif %}
       </form>
     </div>
     {%- endif %}

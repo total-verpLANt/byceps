@@ -311,7 +311,10 @@ def test_decorated_orga_ffa_submission_uses_atomic_operation(route_environment):
     env.is_orga.assert_called_once_with(env.user.id, env.tournament.id)
     env.find_tournament.assert_called_once_with(env.match.tournament_id)
     env.submit_ffa.assert_called_once_with(
-        env.match.id, {contestant_a: 1, contestant_b: 2}, env.user.id
+        env.match.id,
+        {contestant_a: 1, contestant_b: 2},
+        env.user.id,
+        confirmation_comment='',
     )
     env.set_placements.assert_not_called()
     env.confirm_ffa.assert_not_called()
@@ -471,7 +474,9 @@ def test_decorated_admin_ffa_keeps_separate_set_and_confirm_apis(
 
     assert confirm_response.status_code == 302
     env.set_placements.assert_called_once()
-    env.confirm_ffa.assert_called_once_with(env.match.id, env.user.id)
+    env.confirm_ffa.assert_called_once_with(
+        env.match.id, env.user.id, confirmation_comment=''
+    )
     env.submit_ffa.assert_not_called()
     assert _flashes(client) == [
         ('success', 'Placements have been set.'),

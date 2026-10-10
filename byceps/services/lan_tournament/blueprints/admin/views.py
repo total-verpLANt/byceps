@@ -4936,9 +4936,10 @@ def confirm_match_with_scores(match_id):
         return redirect_to('.view_match', match_id=match_id)
 
     scores = parse_result.unwrap()
+    comment = request.form.get('comment', '')
 
     match tournament_match_service.admin_set_and_confirm_match(
-        match_id_obj, g.user.id, scores
+        match_id_obj, g.user.id, scores, confirmation_comment=comment
     ):
         case Ok(_):
             flash_success(gettext('Match has been confirmed.'))
@@ -5608,10 +5609,12 @@ def confirm_ffa_match_action(match_id):
     """Confirm an FFA match after placements are set."""
     match_obj = _get_match_or_404(match_id)
     match_id_obj = TournamentMatchID(match_obj.id)
+    comment = request.form.get('comment', '')
 
     result = tournament_match_service.confirm_ffa_match(
         match_id_obj,
         g.user.id,
+        confirmation_comment=comment,
     )
 
     match result:

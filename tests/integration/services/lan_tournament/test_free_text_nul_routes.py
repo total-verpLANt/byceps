@@ -251,6 +251,15 @@ def ongoing_match(make_tournament, player, opponent):
     return tournament_match_service.get_matches_for_tournament(tournament.id)[0]
 
 
+@pytest.fixture
+def paused_match(ongoing_match):
+    tournament_service.change_status(
+        ongoing_match.tournament_id, TournamentStatus.PAUSED
+    ).unwrap()
+    db.session.rollback()
+    return ongoing_match
+
+
 def _comments(match):
     db.session.rollback()
     return tournament_match_service.get_comments_from_match(match.id)
@@ -290,12 +299,12 @@ def _post_flashed(app, user, url, **data):
 
 
 def test_orga_comment_with_nul_is_refused_with_a_flash(
-    site_app, orga, ongoing_match
+    site_app, orga, paused_match
 ):
     tournament_orga_service.assign_orga(
-        ongoing_match.tournament_id, orga.id, orga.id
+        paused_match.tournament_id, orga.id, orga.id
     ).unwrap()
-    url = f'{BASE_URL}/orga/matches/{ongoing_match.id}/add_comment'
+    url = f'{BASE_URL}/matches/{paused_match.id}/add_comment'
     control, control_flashes = _post_flashed(site_app, orga, url, comment='')
 
     response, flashes = _post_flashed(site_app, orga, url, comment=NUL_VALUE)
@@ -303,24 +312,24 @@ def test_orga_comment_with_nul_is_refused_with_a_flash(
     assert response.status_code == 302
     assert response.headers['Location'] == control.headers['Location']
     assert flashes == control_flashes == ['danger']
-    assert _comments(ongoing_match) == []
+    assert _comments(paused_match) == []
 
 
-def test_orga_comment_without_nul_is_stored(site_app, orga, ongoing_match):
+def test_orga_comment_without_nul_is_stored(site_app, orga, paused_match):
     tournament_orga_service.assign_orga(
-        ongoing_match.tournament_id, orga.id, orga.id
+        paused_match.tournament_id, orga.id, orga.id
     ).unwrap()
 
     response, flashes = _post_flashed(
         site_app,
         orga,
-        f'{BASE_URL}/orga/matches/{ongoing_match.id}/add_comment',
+        f'{BASE_URL}/matches/{paused_match.id}/add_comment',
         comment='Orga note',
     )
 
     assert response.status_code == 302
     assert flashes == ['success']
-    assert [c.comment for c in _comments(ongoing_match)] == ['Orga note']
+    assert [c.comment for c in _comments(paused_match)] == ['Orga note']
 
 
 def test_admin_comment_with_nul_is_refused_with_a_flash(

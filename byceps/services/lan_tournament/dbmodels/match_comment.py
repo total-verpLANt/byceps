@@ -21,6 +21,12 @@ class DbTournamentMatchComment(db.Model):
     """A comment on a LAN tournament match."""
 
     __tablename__ = 'lan_tournament_match_comments'
+    __table_args__ = (
+        db.CheckConstraint(
+            "context IS NULL OR context IN ('orga_confirmation')",
+            name='ck_lan_tournament_match_comments_context',
+        ),
+    )
 
     id: Mapped[TournamentMatchCommentID] = mapped_column(
         db.Uuid, default=generate_uuid7, primary_key=True
@@ -38,6 +44,7 @@ class DbTournamentMatchComment(db.Model):
     created_by_user: Mapped[DbUser] = relationship(DbUser)
     comment: Mapped[str] = mapped_column(db.UnicodeText)
     created_at: Mapped[datetime]
+    context: Mapped[str | None] = mapped_column(db.UnicodeText, nullable=True)
 
     def __init__(
         self,
@@ -46,12 +53,14 @@ class DbTournamentMatchComment(db.Model):
         created_by: UserID,
         comment: str,
         created_at: datetime,
+        context: str | None = None,
     ) -> None:
         self.id = comment_id
         self.tournament_match_id = tournament_match_id
         self.created_by = created_by
         self.comment = comment
         self.created_at = created_at
+        self.context = context
 
     def __repr__(self) -> str:
         return (

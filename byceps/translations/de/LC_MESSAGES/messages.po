@@ -17211,3 +17211,12 @@ msgstr "Eine Gruppe"
 
 msgid "double knockout runs as single knockout (fewer than 4)"
 msgstr "Doppeltes K.-o. läuft als Einfaches K.-o. (weniger als 4)"
+
+msgid "A comment is required to confirm the match."
+msgstr "Zum Bestätigen der Partie ist ein Kommentar erforderlich."
+
+msgid "Match confirmation by the tournament orga"
+msgstr "Partie-Bestätigung durch Turnier-Orga"
+
+msgid "Enter the result here, then confirm the match with a comment in the comments section."
+msgstr "Ergebnis hier eintragen und die Partie anschließend im Kommentarbereich mit einem Kommentar bestätigen."

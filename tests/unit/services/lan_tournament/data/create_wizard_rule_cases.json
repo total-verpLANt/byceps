@@ -770,5 +770,69 @@
     "expected": {
       "advancement_count": "Please enter how many advance per lobby."
     }
+  },
+  {
+    "name": "ffa_one_lobby_ignores_group_min_for_advancement",
+    "values": {
+      "contestant_type": "TEAM",
+      "game_format": "FREE_FOR_ALL",
+      "elimination_mode": "SINGLE_ELIMINATION",
+      "point_table": [
+        "10",
+        "8",
+        "6"
+      ],
+      "min_teams": "4",
+      "max_teams": "4",
+      "group_size_min": "2",
+      "group_size_max": "4",
+      "advancement_count": "2"
+    },
+    "require_structure": true,
+    "expected": {}
+  },
+  {
+    "name": "ffa_two_lobbies_possible_keeps_group_min_for_advancement",
+    "values": {
+      "contestant_type": "TEAM",
+      "game_format": "FREE_FOR_ALL",
+      "elimination_mode": "SINGLE_ELIMINATION",
+      "point_table": [
+        "10",
+        "8",
+        "6"
+      ],
+      "min_teams": "4",
+      "max_teams": "8",
+      "group_size_min": "2",
+      "group_size_max": "4",
+      "advancement_count": "2"
+    },
+    "require_structure": true,
+    "expected": {
+      "advancement_count": "Fewer than %(n)s must advance from the smallest group (%(n)s teams)."
+    }
+  },
+  {
+    "name": "ffa_one_lobby_advancing_the_whole_lobby_still_fails",
+    "values": {
+      "contestant_type": "TEAM",
+      "game_format": "FREE_FOR_ALL",
+      "elimination_mode": "SINGLE_ELIMINATION",
+      "point_table": [
+        "10",
+        "8",
+        "6"
+      ],
+      "min_teams": "4",
+      "max_teams": "4",
+      "group_size_min": "2",
+      "group_size_max": "4",
+      "advancement_count": "4"
+    },
+    "require_structure": true,
+    "expected": {
+      "advancement_count": "Fewer than %(n)s must advance from the smallest group (%(n)s teams)."
+    }
   }
 ]

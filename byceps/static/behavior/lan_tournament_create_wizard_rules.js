@@ -529,11 +529,10 @@
 
       var maxContestants = isTeam ? counts.max_teams : counts.max_players;
       var need = groupMin !== null ? groupMin : 2;
-      if (
-        !groupMinTooLarge &&
+      var noGroupForms = !groupMinTooLarge &&
         maxContestants !== null &&
-        maxContestants < need
-      ) {
+        maxContestants < need;
+      if (noGroupForms) {
         if (isTeam) {
           add(
             'group_size_min',
@@ -554,7 +553,13 @@
       }
 
       if (advancement !== null) {
-        var smallest = groupMin !== null && !groupMinTooLarge
+        // A roster that fits one lobby is never split, so the minimum
+        // group size cannot make a smaller group.
+        var oneLobby = !noGroupForms &&
+          maxContestants !== null &&
+          groupMax !== null &&
+          maxContestants <= groupMax;
+        var smallest = groupMin !== null && !groupMinTooLarge && !oneLobby
           ? groupMin
           : groupMax;
         if (smallest !== null && advancement >= smallest) {

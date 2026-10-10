@@ -495,7 +495,9 @@ def test_atomic_ffa_final_selects_submitted_winner(make_transaction, mode, brack
 def test_legacy_ffa_wrappers_keep_separate_transactions(make_transaction):
     tx = make_transaction()
     assert tuple(signature(service.set_ffa_placements).parameters) == ('match_id', 'placements')
-    assert tuple(signature(service.confirm_ffa_match).parameters) == ('match_id', 'initiator_id')
+    assert tuple(signature(service.confirm_ffa_match).parameters) == (
+        'match_id', 'initiator_id', 'confirmation_comment',
+    )
 
     assert service.set_ffa_placements(tx.initial.match.id, tx.placements).is_ok()
     tx.repo.commit_session.assert_called_once_with()

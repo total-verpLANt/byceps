@@ -1316,23 +1316,31 @@ def view_match(match_id):
     current_user_can_confirm = role.can_confirm
     current_user_can_submit = role.can_submit
 
-    # Comment auth: match contestants OR tournament admins, during ONGOING.
-    # get_user_match_role() returns contestant=None for confirmed matches,
-    # so resolve separately with match_confirmed=False.
-    if g.user.authenticated and tournament.tournament_status == TournamentStatus.ONGOING:
+    may_administrate = may_administrate_tournament(g.user, tournament.id)
+
+    # Comment auth: tournament orgas in any status, match contestants
+    # during ONGOING. get_user_match_role() returns contestant=None for
+    # confirmed matches, so resolve separately with match_confirmed=False.
+    is_contestant = False
+    if (
+        g.user.authenticated
+        and tournament.tournament_status == TournamentStatus.ONGOING
+    ):
         comment_role = tournament_match_service.get_user_match_role(
             match.tournament_id, g.user.id, contestants,
             match_confirmed=False,
         )
         is_contestant = comment_role.contestant is not None
-        is_admin = g.user.has_permission('lan_tournament.administrate')
-        current_user_can_comment = is_contestant or is_admin
-    else:
-        current_user_can_comment = False
+    current_user_can_comment = may_administrate or is_contestant
     comment_form = MatchCommentForm() if current_user_can_comment else None
 
-    may_administrate = may_administrate_tournament(g.user, tournament.id)
     results_editable = _orga_results_editable(tournament)
+    orga_confirm_available = (
+        may_administrate
+        and results_editable
+        and match.confirmed_by is None
+        and sum(1 for c in contestants if c.team_id or c.participant_id) >= 2
+    )
     is_ffa = match_uses_placements(tournament, match)
     is_walkover = is_walkover_match(contestants)
     ffa_result_consumed = (
@@ -1455,6 +1463,7 @@ def view_match(match_id):
         'comment_form': comment_form,
         'may_administrate': may_administrate,
         'results_editable': results_editable,
+        'orga_confirm_available': orga_confirm_available,
         'phase_lock': _phase_lock_of(tournament, match),
         'is_ffa': is_ffa,
         'is_walkover': is_walkover,
@@ -1615,7 +1624,7 @@ def _mutate_readiness(match_id, *, revoke):
 @blueprint.post('/matches/<match_id>/add_comment')
 @login_required
 def add_comment(match_id):
-    """Add a comment to a match (contestants or tournament admins)."""
+    """Add a comment to a match (tournament orgas or contestants)."""
     from byceps.services.lan_tournament.models.tournament_match import (
         TournamentMatchID,
     )
@@ -1627,21 +1636,23 @@ def add_comment(match_id):
         abort(404)
 
     tournament = _get_tournament_or_404(match.tournament_id)
-    if tournament.tournament_status != TournamentStatus.ONGOING:
-        flash_error(gettext('Tournament is not in progress.'))
-        return redirect_to('.view_match', match_id=match_id)
 
-    # Authorization: match contestants OR tournament admins.
-    is_admin = g.user.has_permission('lan_tournament.administrate')
-    contestants = tournament_match_service.get_contestants_for_match(
-        match_id_obj
-    )
-    role = tournament_match_service.get_user_match_role(
-        match.tournament_id, g.user.id, contestants,
-        match_confirmed=False,
-    )
-    if role.contestant is None and not is_admin:
-        abort(403)
+    # Authorization: orgas of this tournament in any status, match
+    # contestants only while the tournament is ONGOING.
+    if not may_administrate_tournament(g.user, tournament.id):
+        contestants = tournament_match_service.get_contestants_for_match(
+            match_id_obj
+        )
+        role = tournament_match_service.get_user_match_role(
+            match.tournament_id, g.user.id, contestants,
+            match_confirmed=False,
+        )
+        if role.contestant is None:
+            abort(403)
+
+        if tournament.tournament_status != TournamentStatus.ONGOING:
+            flash_error(gettext('Tournament is not in progress.'))
+            return redirect_to('.view_match', match_id=match_id)
 
     form = MatchCommentForm(request.form)
     if not form.validate():
@@ -1721,9 +1732,10 @@ def orga_confirm_match_with_scores(match_id):
         return redirect_to('.view_match', match_id=match_id)
 
     scores = parse_result.unwrap()
+    comment = request.form.get('comment', '')
 
     match tournament_match_service.admin_set_and_confirm_match(
-        match.id, g.user.id, scores
+        match.id, g.user.id, scores, confirmation_comment=comment
     ):
         case Ok(_):
             flash_success(gettext('Match has been confirmed.'))
@@ -1886,8 +1898,13 @@ def orga_submit_ffa_result(match_id):
         flash_error(parse_result.unwrap_err())
         return redirect_to('.view_match', match_id=match.id)
 
+    comment = request.form.get('comment', '')
+
     match tournament_match_service.set_and_confirm_ffa_match(
-        match.id, parse_result.unwrap(), g.user.id
+        match.id,
+        parse_result.unwrap(),
+        g.user.id,
+        confirmation_comment=comment,
     ):
         case Ok(_):
             flash_success(gettext('FFA match has been confirmed.'))
@@ -1900,33 +1917,6 @@ def orga_submit_ffa_result(match_id):
             )
 
     return redirect_to('.view_match', match_id=match.id)
-
-
-@blueprint.post('/orga/matches/<match_id>/add_comment')
-@login_required
-@scoped_orga_required
-def orga_add_match_comment(match_id):
-    """Add a comment to a match."""
-    match, _tournament = _get_orga_match_and_tournament_or_404(match_id)
-
-    comment = request.form.get('comment', '').strip()
-
-    if not comment:
-        flash_error(gettext('Comment cannot be empty.'))
-        return redirect_to('.view_match', match_id=match_id)
-
-    match tournament_match_service.add_comment(match.id, g.user.id, comment):
-        case Ok(_):
-            flash_success(gettext('Comment has been added.'))
-        case Err(error_message):
-            flash_error(
-                gettext(
-                    'Error adding comment: %(error)s',
-                    error=gettext(error_message),
-                )
-            )
-
-    return redirect_to('.view_match', match_id=match_id)
 
 
 # Other transitions, such as cancelling, are reserved for global admins.

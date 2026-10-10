@@ -304,7 +304,8 @@
       <div>
         {%- for comment in comments %}
         <div class='comment'>
-          <div class='comment-author'>{{ comment_users_by_id.get(comment.created_by, {}).screen_name|default(comment.created_by|string, true) }}</div>
+          <div class='comment-author'>{{ comment_users_by_id.get(comment.created_by, {}).screen_name|default(comment.created_by|string, true) }}
+            {%- if comment.context == 'orga_confirmation' %} · {{ render_icon('success') }} {{ _('Match confirmation by the tournament orga') }}{%- endif %}</div>
           <div class='comment-text'>{{ comment.comment }}</div>
           <div class='comment-timestamp'>
             {{ comment.created_at|dateformat }},
@@ -318,9 +319,13 @@
       {%- endif %}
 
       {%- if current_user_can_comment %}
-      <form method='post' action='{{ url_for('.add_comment', match_id=match.id) }}' class='comment-form'>
+      <form method='post' action='{{ url_for('.add_comment', match_id=match.id) }}' class='comment-form' id='lt-match-comment-form'>
         {{ comment_form.comment(class='form-control', rows='3', placeholder=_('Write a comment...'), maxlength='1000') }}
-        <button type='submit' class='button is-compact'>{{ _('Post Comment') }}</button>
+        {#- The confirm button comes first: Enter in a result control bound by `form=` submits the first submit button. #}
+        {%- if orga_confirm_available %}
+        <button type='submit' class='button is-compact color-success' formaction='{{ url_for('.orga_submit_ffa_result' if is_ffa else '.orga_confirm_match_with_scores', match_id=match.id) }}'>{{ render_icon('success') }} {{ _('Confirm FFA Match') if is_ffa else _('Confirm Match') }}</button>
+        {%- endif %}
+        <button type='submit' class='button is-compact' formnovalidate>{{ _('Post Comment') }}</button>
       </form>
       {%- endif %}
     </div>
@@ -343,6 +348,7 @@
          ffa_result_consumed=ffa_result_consumed,
          results_editable=results_editable,
          phase_lock=phase_lock,
+         orga_confirm_available=orga_confirm_available,
        ) }}
 
   </div>

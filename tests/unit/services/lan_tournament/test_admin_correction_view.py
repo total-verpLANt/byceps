@@ -1149,6 +1149,64 @@ def test_confirm_with_scores_error_is_translated_whole(app):
     assert 'Cannot confirm match' not in flashed
 
 
+# fmt: off
+@pytest.mark.parametrize('posted, passed', [
+    ({'comment': 'Ergebnis per Screenshot'}, 'Ergebnis per Screenshot'),
+    ({}, ''),
+])
+# fmt: on
+def test_admin_confirm_with_scores_passes_comment(app, posted, passed):
+    contestants = [
+        _make_contestant(participant_id=PARTICIPANT_A),
+        _make_contestant(participant_id=PARTICIPANT_B),
+    ]
+    form_data = {
+        f'score_{PARTICIPANT_A}': '3',
+        f'score_{PARTICIPANT_B}': '1',
+        **posted,
+    }
+
+    from byceps.services.lan_tournament.blueprints.admin import views
+
+    raw_fn = views.confirm_match_with_scores.__wrapped__
+
+    with _patched_match_action_view(Ok(None), _translator({})) as mocks:
+        mocks['match_svc'].get_contestants_for_match.return_value = (
+            contestants
+        )
+        with app.test_request_context('/', method='POST', data=form_data):
+            with patch(f'{_V}.g') as mock_g:
+                mock_g.user.id = USER_ID
+                raw_fn(MATCH_ID_STR)
+
+    confirm = mocks['match_svc'].admin_set_and_confirm_match
+    confirm.assert_called_once()
+    assert confirm.call_args.kwargs == {'confirmation_comment': passed}
+
+
+# fmt: off
+@pytest.mark.parametrize('posted, passed', [
+    ({'comment': 'Platzierungen stimmen'}, 'Platzierungen stimmen'),
+    ({}, ''),
+])
+# fmt: on
+def test_admin_confirm_ffa_passes_comment(app, posted, passed):
+    from byceps.services.lan_tournament.blueprints.admin import views
+
+    raw_fn = views.confirm_ffa_match_action.__wrapped__
+
+    with _patched_match_action_view(Ok(None), _translator({})) as mocks:
+        mocks['match_svc'].confirm_ffa_match.return_value = Ok(None)
+        with app.test_request_context('/', method='POST', data=posted):
+            with patch(f'{_V}.g') as mock_g:
+                mock_g.user.id = USER_ID
+                raw_fn(MATCH_ID_STR)
+
+    confirm = mocks['match_svc'].confirm_ffa_match
+    confirm.assert_called_once()
+    assert confirm.call_args.kwargs == {'confirmation_comment': passed}
+
+
 def test_unconfirm_error_is_translated_whole(app):
     """``unconfirm_match`` must not flash a half-German sentence."""
     service_error = 'Match is not confirmed.'

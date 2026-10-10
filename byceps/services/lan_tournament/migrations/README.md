@@ -819,6 +819,34 @@ Deployment requires human approval: apply 025 (and any rollback) on the target
 database yourself, after a backup. It is a schema change; the application
 does not apply it.
 
+### 026_add_match_comment_context.sql
+
+Adds the nullable `lan_tournament_match_comments.context TEXT` column, guarded
+by `ck_lan_tournament_match_comments_context` (`context IS NULL OR context IN
+('orga_confirmation')`). A comment written together with a manual orga match
+confirmation carries `orga_confirmation`; every other comment keeps `NULL`.
+Existing rows get `NULL`, so the new constraint cannot reject them. The column
+uses `ADD COLUMN IF NOT EXISTS`, and the constraint is dropped and re-added,
+so a re-run is a no-op. The dbmodel twin in `dbmodels/match_comment.py` names
+the constraint the same, so `create_all()` already builds it on a fresh schema.
+Apply after 025.
+
+Verify after applying:
+
+```sql
+SELECT pg_get_constraintdef(oid) FROM pg_constraint
+WHERE conname = 'ck_lan_tournament_match_comments_context';
+```
+
+The definition must allow `NULL` and `'orga_confirmation'` only.
+
+**Rollback:** `rollback_026.sql` drops the constraint, then the column. The
+orga confirmation markers are lost; the comments themselves are kept.
+
+Deployment requires human approval: apply 026 (and any rollback) on the target
+database yourself, after a backup. It is a schema change; the application
+does not apply it.
+
 ## Pre-Application Checklist
 
 Before applying any migration, complete these steps:

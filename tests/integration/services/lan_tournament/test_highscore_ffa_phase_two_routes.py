@@ -187,6 +187,7 @@ def test_site_orga_submit_confirms_a_phase_two_lobby(
         f'placement_{cid}': str(i + 1)
         for i, cid in enumerate(_member_ids(lobby))
     }
+    form['comment'] = 'Phase two lobby result'
 
     _, flashes = _post(
         site_app,
