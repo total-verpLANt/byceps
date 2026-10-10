@@ -25,7 +25,10 @@ from byceps.services.lan_tournament.blueprints.readiness_forms import (
     MatchReadyClaimForm as MatchReadyClaimForm,
     MatchReadyRevokeForm as MatchReadyRevokeForm,
 )
-from byceps.services.lan_tournament.form_validators import SafeNumberRange
+from byceps.services.lan_tournament.form_validators import (
+    SafeNumberRange,
+    storable_text,
+)
 from byceps.services.lan_tournament.models.elimination_mode import (
     EliminationMode,
 )
@@ -36,27 +39,35 @@ from byceps.util.l10n import LocalizedForm
 
 class SiteTeamCreateForm(LocalizedForm):
     name = StringField(
-        lazy_gettext('Name'), [InputRequired(), Length(max=80)]
+        lazy_gettext('Name'), [InputRequired(), Length(max=80), storable_text]
     )
-    tag = StringField(lazy_gettext('Tag'), [Optional(), Length(max=20)])
+    tag = StringField(
+        lazy_gettext('Tag'), [Optional(), Length(max=20), storable_text]
+    )
     description = TextAreaField(
-        lazy_gettext('Description'), [Optional(), Length(max=2000)]
+        lazy_gettext('Description'),
+        [Optional(), Length(max=2000), storable_text],
     )
     join_code = StringField(
-        lazy_gettext('Join code'), [Optional(), Length(max=80)]
+        lazy_gettext('Join code'),
+        [Optional(), Length(max=80), storable_text],
     )
 
 
 class SiteTeamUpdateForm(LocalizedForm):
     name = StringField(
-        lazy_gettext('Name'), [InputRequired(), Length(max=80)]
+        lazy_gettext('Name'), [InputRequired(), Length(max=80), storable_text]
     )
-    tag = StringField(lazy_gettext('Tag'), [Optional(), Length(max=20)])
+    tag = StringField(
+        lazy_gettext('Tag'), [Optional(), Length(max=20), storable_text]
+    )
     description = TextAreaField(
-        lazy_gettext('Description'), [Optional(), Length(max=2000)]
+        lazy_gettext('Description'),
+        [Optional(), Length(max=2000), storable_text],
     )
     join_code = StringField(
-        lazy_gettext('Join code'), [Optional(), Length(max=80)]
+        lazy_gettext('Join code'),
+        [Optional(), Length(max=80), storable_text],
     )
 
 
@@ -66,20 +77,21 @@ class HighscoreSubmitForm(LocalizedForm):
         [InputRequired(), SafeNumberRange(min=0, max=999999999)],
     )
     note = StringField(
-        lazy_gettext('Note'), [Optional(), Length(max=200)]
+        lazy_gettext('Note'), [Optional(), Length(max=200), storable_text]
     )
 
 
 class MatchCommentForm(LocalizedForm):
     comment = TextAreaField(
         lazy_gettext('Comment'),
-        [InputRequired(), Length(max=1000)],
+        [InputRequired(), Length(max=1000), storable_text],
     )
 
 
 class OrgaMatchUnconfirmForm(LocalizedForm):
     reason = TextAreaField(
-        lazy_gettext('Reason'), [InputRequired(), Length(min=1, max=2000)]
+        lazy_gettext('Reason'),
+        [InputRequired(), Length(min=1, max=2000), storable_text],
     )
 
 
@@ -87,7 +99,8 @@ class OrgaMatchCorrectionForm(LocalizedForm):
     """Validate the reason and acknowledgement of a result correction."""
 
     reason = TextAreaField(
-        lazy_gettext('Reason'), [InputRequired(), Length(min=1, max=2000)]
+        lazy_gettext('Reason'),
+        [InputRequired(), Length(min=1, max=2000), storable_text],
     )
     ack_critical = BooleanField(
         lazy_gettext('I understand the consequences'), [Optional()]

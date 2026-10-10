@@ -262,3 +262,53 @@ def test_draft_unchanged_legacy_table_saves(client, party):
 
     assert response.status_code == 302
     assert _stored(t.id).description == 'New'
+
+
+UNSTORABLE_MESSAGE = (
+    'The text contains a character that cannot be stored'
+    ' (NUL or an unpaired surrogate).'
+)
+
+_STORED_TEXT = {
+    'game': 'Old game',
+    'description': 'Old description',
+    'ruleset': 'Old rules',
+    'image_url': 'https://example.org/old.png',
+}
+
+
+def _stored_text(tournament_id) -> dict:
+    stored = _stored(tournament_id)
+    return {
+        'name': stored.name,
+        **{field: getattr(stored, field) for field in _STORED_TEXT},
+    }
+
+
+@pytest.mark.parametrize(
+    ('status', 'field'),
+    [
+        ('DRAFT', 'name'),
+        ('DRAFT', 'game'),
+        ('DRAFT', 'description'),
+        ('DRAFT', 'ruleset'),
+        ('DRAFT', 'image_url'),
+        ('ONGOING', 'description'),
+        ('ONGOING', 'ruleset'),
+        ('ONGOING', 'image_url'),
+    ],
+)
+def test_update_with_a_nul_byte_rerenders_the_form(
+    client, party, status, field
+):
+    name = _name('Update NUL')
+    t = _solo(party, name, status=status, **_STORED_TEXT)
+    before = _stored_text(t.id)
+    data = _solo_form(name, min_players='4', max_players='16', **_STORED_TEXT)
+    data[field] = 'A\x00B'
+
+    response = _post(client, t.id, data)
+
+    assert response.status_code == 200
+    assert UNSTORABLE_MESSAGE in response.get_data(as_text=True)
+    assert _stored_text(t.id) == before

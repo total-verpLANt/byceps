@@ -1,6 +1,6 @@
 import dataclasses
 from datetime import datetime, UTC
-from typing import NamedTuple, TYPE_CHECKING
+from typing import Any, NamedTuple, TYPE_CHECKING
 from urllib.parse import urlparse
 from uuid import UUID
 
@@ -290,6 +290,8 @@ def create_tournament(
     image_id: TournamentImageID | None = None,
     image_alt_text: str | None = None,
     creation_token: UUID | None = None,
+    log_event_type: str | None = None,
+    log_data: dict[str, Any] | None = None,
 ) -> Result[tuple[Tournament, TournamentCreatedEvent], str | ValidationMessage]:
     """Create a tournament.
 
@@ -300,6 +302,10 @@ def create_tournament(
     it is who the request-link audit entry is filed under. Passing
     one without the other is a caller bug, not a user-facing error, so
     it raises rather than returning `Err`.
+
+    With `log_event_type`, an audit entry of that type (and `log_data`)
+    is staged in the creation transaction, filed under `initiator_id`,
+    which is then required as well.
     """
     if category is None:
         category = (
@@ -316,6 +322,9 @@ def create_tournament(
                 'initiator_id is required when created_from_request_id '
                 'is set.'
             )
+
+    if log_event_type is not None and initiator_id is None:
+        raise ValueError('initiator_id is required when log_event_type is set.')
 
     # Never store a NULL contestant type: derive it from team size
     # before validation, so the FFA/team cross-check below sees it too.
@@ -407,9 +416,13 @@ def create_tournament(
     if tournament_domain_service.ffa_cut_missing(_settings_of(tournament)):
         return Err(tournament_domain_service.FFA_CUT_REQUIRED_MSGID)
 
+    defer_commit = created_from_request_id is not None or (
+        log_event_type is not None
+    )
+
     try:
         tournament_repository.create_tournament(
-            tournament, commit=created_from_request_id is None
+            tournament, commit=not defer_commit
         )
     except IntegrityError as e:
         tournament_repository.rollback_session()
@@ -464,6 +477,20 @@ def create_tournament(
             tournament_repository.rollback_session()
             return Err(link_result.unwrap_err())
 
+    if log_event_type is not None:
+        try:
+            create_log_entry(
+                log_event_type,
+                tournament.id,
+                initiator_id,
+                data=log_data,
+                commit=False,
+            )
+        except Exception:
+            tournament_repository.rollback_session()
+            raise
+
+    if defer_commit:
         try:
             tournament_repository.commit_session()
         except Exception:

@@ -17109,3 +17109,81 @@ msgstr "User Organized"
 
 msgid "Please choose a valid tournament category."
 msgstr "Bitte wähle eine gültige Turnierkategorie."
+
+msgid "The file is larger than %(max)s KiB."
+msgstr "Die Datei ist größer als %(max)s KiB."
+
+msgid "The file is not UTF-8 text."
+msgstr "Die Datei ist kein UTF-8-Text."
+
+msgid "The file is not valid JSON."
+msgstr "Die Datei ist kein gültiges JSON."
+
+msgid "The key \"%(key)s\" appears more than once."
+msgstr "Der Schlüssel „%(key)s“ kommt mehrfach vor."
+
+msgid "Expected a JSON object."
+msgstr "Erwartet wird ein JSON-Objekt."
+
+msgid "This is not a tournament configuration file."
+msgstr "Das ist keine Turnier-Konfigurationsdatei."
+
+msgid "Unsupported file version. This instance reads version %(supported)s."
+msgstr "Nicht unterstützte Dateiversion. Diese Instanz liest Version %(supported)s."
+
+msgid "Unknown key \"%(key)s\"."
+msgstr "Unbekannter Schlüssel „%(key)s“."
+
+msgid "This key is missing."
+msgstr "Dieser Schlüssel fehlt."
+
+msgid "Expected text."
+msgstr "Erwartet wird Text."
+
+msgid "Expected text or null."
+msgstr "Erwartet wird Text oder null."
+
+msgid "Expected a whole number or null."
+msgstr "Erwartet wird eine ganze Zahl oder null."
+
+msgid "Expected true or false."
+msgstr "Erwartet wird true oder false."
+
+msgid "Expected a list of whole numbers or null."
+msgstr "Erwartet wird eine Liste ganzer Zahlen oder null."
+
+msgid "Expected an ISO 8601 time with a UTC offset, e.g. 2026-10-09T18:00:00Z."
+msgstr "Erwartet wird eine ISO-8601-Zeit mit UTC-Versatz, z. B. 2026-10-09T18:00:00Z."
+
+msgid "The text contains a character that cannot be stored (NUL or an unpaired surrogate)."
+msgstr "Der Text enthält ein Zeichen, das nicht gespeichert werden kann (NUL oder ein einzelnes Surrogat)."
+
+msgid "Configuration file"
+msgstr "Konfigurationsdatei"
+
+msgid "Import tournament"
+msgstr "Turnier importieren"
+
+msgid "Check file"
+msgstr "Datei prüfen"
+
+msgid "JSON file, at most %(size)s KiB."
+msgstr "JSON-Datei, höchstens %(size)s KiB."
+
+msgid "Only the first %(count)s problems are shown."
+msgstr "Nur die ersten %(count)s Probleme werden angezeigt."
+
+msgid "The file is valid. Check the settings, then create the tournament."
+msgstr "Die Datei ist gültig. Prüfe die Einstellungen und lege dann das Turnier an."
+
+msgid "Check another file"
+msgstr "Andere Datei prüfen"
+
+msgid "Please choose a configuration file."
+msgstr "Bitte wähle eine Konfigurationsdatei aus."
+
+msgid "Tournament \"%(name)s\" has been imported as a draft."
+msgstr "Das Turnier „%(name)s“ wurde als Entwurf importiert."
+
+msgid "Export configuration"
+msgstr "Konfiguration exportieren"

@@ -25,10 +25,14 @@ from byceps.services.user import screen_name_validator, user_service
 from byceps.util.l10n import LocalizedForm
 
 from byceps.services.lan_tournament import (
+    tournament_config_domain_service,
     tournament_domain_service,
     tournament_request_domain_service,
 )
-from byceps.services.lan_tournament.form_validators import SafeNumberRange
+from byceps.services.lan_tournament.form_validators import (
+    SafeNumberRange,
+    storable_text,
+)
 from byceps.services.lan_tournament.models.contestant_type import (
     ContestantType,
 )
@@ -43,7 +47,7 @@ from byceps.services.lan_tournament.models.tournament_category import (
 )
 
 
-MAX_COUNT = tournament_request_domain_service.MAX_PARTICIPANT_LIMIT
+MAX_COUNT = tournament_config_domain_service.MAX_COUNT
 
 _LENGTH_MESSAGE = lazy_gettext(
     'At most %(max)d characters – currently %(length)d.'
@@ -157,24 +161,50 @@ class _BaseForm(LocalizedForm):
         filters=[_strip],
         validators=[
             DataRequired(message=lazy_gettext('Please enter a name.')),
-            Length(max=80, message=_LENGTH_MESSAGE),
+            Length(
+                max=tournament_config_domain_service.MAX_NAME_LENGTH,
+                message=_LENGTH_MESSAGE,
+            ),
+            storable_text,
         ],
     )
     game = StringField(
         lazy_gettext('Game'),
-        [Optional(), Length(max=80, message=_LENGTH_MESSAGE)],
+        [
+            Optional(),
+            Length(
+                max=tournament_config_domain_service.MAX_GAME_LENGTH,
+                message=_LENGTH_MESSAGE,
+            ),
+            storable_text,
+        ],
     )
     description = TextAreaField(
         lazy_gettext('Description'),
-        [Optional(), Length(max=10000, message=_LENGTH_MESSAGE)],
+        [
+            Optional(),
+            Length(
+                max=tournament_config_domain_service.MAX_TEXT_LENGTH,
+                message=_LENGTH_MESSAGE,
+            ),
+            storable_text,
+        ],
         filters=[_normalize_newlines],
     )
     image_url = StringField(
-        lazy_gettext('Image URL'), [Optional(), Length(max=256)]
+        lazy_gettext('Image URL'),
+        [Optional(), Length(max=256), storable_text],
     )
     ruleset = TextAreaField(
         lazy_gettext('Ruleset'),
-        [Optional(), Length(max=10000, message=_LENGTH_MESSAGE)],
+        [
+            Optional(),
+            Length(
+                max=tournament_config_domain_service.MAX_TEXT_LENGTH,
+                message=_LENGTH_MESSAGE,
+            ),
+            storable_text,
+        ],
         filters=[_normalize_newlines],
     )
     start_time = DateTimeLocalField(
@@ -418,7 +448,7 @@ class TournamentCreateForm(_BaseForm):
     image_alt_text = StringField(
         lazy_gettext('Image description'),
         filters=[_strip],
-        validators=[Optional(), Length(max=200)],
+        validators=[Optional(), Length(max=200), storable_text],
     )
 
     @staticmethod
@@ -442,6 +472,18 @@ class TournamentCreateForm(_BaseForm):
             )
 
 
+class TournamentImportForm(LocalizedForm):
+    config_file = FileField(lazy_gettext('Configuration file'))
+    config_document = HiddenField()
+    submission_token = HiddenField()
+    image = FileField(lazy_gettext('Tournament image'))
+    image_alt_text = StringField(
+        lazy_gettext('Image description'),
+        filters=[_strip],
+        validators=[Optional(), Length(max=200), storable_text],
+    )
+
+
 class TournamentUpdateForm(_BaseForm):
     pass
 
@@ -457,16 +499,23 @@ class TeamCreateForm(LocalizedForm):
             ),
         ],
     )
-    name = StringField(lazy_gettext('Name'), [InputRequired(), Length(max=80)])
-    tag = StringField(lazy_gettext('Tag'), [Optional(), Length(max=20)])
+    name = StringField(
+        lazy_gettext('Name'), [InputRequired(), Length(max=80), storable_text]
+    )
+    tag = StringField(
+        lazy_gettext('Tag'), [Optional(), Length(max=20), storable_text]
+    )
     description = TextAreaField(
-        lazy_gettext('Description'), [Optional(), Length(max=2000)]
+        lazy_gettext('Description'),
+        [Optional(), Length(max=2000), storable_text],
     )
     image_url = StringField(
-        lazy_gettext('Image URL'), [Optional(), Length(max=256)]
+        lazy_gettext('Image URL'),
+        [Optional(), Length(max=256), storable_text],
     )
     join_code = StringField(
-        lazy_gettext('Join code'), [Optional(), Length(max=80)]
+        lazy_gettext('Join code'),
+        [Optional(), Length(max=80), storable_text],
     )
 
     @staticmethod
@@ -512,16 +561,23 @@ class AddParticipantForm(LocalizedForm):
 
 
 class TeamUpdateForm(LocalizedForm):
-    name = StringField(lazy_gettext('Name'), [InputRequired(), Length(max=80)])
-    tag = StringField(lazy_gettext('Tag'), [Optional(), Length(max=20)])
+    name = StringField(
+        lazy_gettext('Name'), [InputRequired(), Length(max=80), storable_text]
+    )
+    tag = StringField(
+        lazy_gettext('Tag'), [Optional(), Length(max=20), storable_text]
+    )
     description = TextAreaField(
-        lazy_gettext('Description'), [Optional(), Length(max=2000)]
+        lazy_gettext('Description'),
+        [Optional(), Length(max=2000), storable_text],
     )
     image_url = StringField(
-        lazy_gettext('Image URL'), [Optional(), Length(max=256)]
+        lazy_gettext('Image URL'),
+        [Optional(), Length(max=256), storable_text],
     )
     join_code = StringField(
-        lazy_gettext('Join code'), [Optional(), Length(max=80)]
+        lazy_gettext('Join code'),
+        [Optional(), Length(max=80), storable_text],
     )
 
 
@@ -558,9 +614,13 @@ class AddTeamMemberForm(LocalizedForm):
 
 class TournamentOrgaAssignForm(LocalizedForm):
     screen_name = StringField(
-        lazy_gettext('Username'), [InputRequired(), Length(max=80)]
+        lazy_gettext('Username'),
+        [InputRequired(), Length(max=80), storable_text],
     )
-    duties = StringField(lazy_gettext('Duties'), [Optional(), Length(max=200)])
+    duties = StringField(
+        lazy_gettext('Duties'),
+        [Optional(), Length(max=200), storable_text],
+    )
 
 
 class MatchCorrectionForm(LocalizedForm):
@@ -570,7 +630,8 @@ class MatchCorrectionForm(LocalizedForm):
     """
 
     reason = TextAreaField(
-        lazy_gettext('Reason'), validators=[InputRequired(), Length(max=2000)]
+        lazy_gettext('Reason'),
+        validators=[InputRequired(), Length(max=2000), storable_text],
     )
     ack_critical = BooleanField(
         lazy_gettext(
@@ -583,7 +644,8 @@ class MatchCorrectionForm(LocalizedForm):
 
 class MatchUnconfirmForm(LocalizedForm):
     reason = TextAreaField(
-        lazy_gettext('Reason'), validators=[InputRequired(), Length(max=2000)]
+        lazy_gettext('Reason'),
+        validators=[InputRequired(), Length(max=2000), storable_text],
     )
 
 
@@ -785,4 +847,4 @@ class HighscoreSubmitForm(LocalizedForm):
         lazy_gettext('Score'),
         validators=[InputRequired(), SafeNumberRange(min=0)],
     )
-    note = StringField(lazy_gettext('Note'))
+    note = StringField(lazy_gettext('Note'), [storable_text])

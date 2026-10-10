@@ -694,3 +694,48 @@ def test_prefill_shows_the_proposer_as_text_without_the_user_view_right(
 
     assert f'/users/{proposer.id}' not in page
     assert page.count('Oma_Gerda') >= 2
+
+
+_UNSTORABLE_FIELDS = [
+    'name',
+    'game',
+    'description',
+    'ruleset',
+    'image_alt_text',
+]
+_UNSTORABLE_MESSAGE = (
+    'The text contains a character that cannot be stored'
+    ' (NUL or an unpaired surrogate).'
+)
+
+
+@pytest.mark.parametrize('field', _UNSTORABLE_FIELDS)
+def test_create_post_with_a_nul_byte_rerenders_the_form(client, party, field):
+    token = str(uuid4())
+    data = _solo_data('Unstorable text', submission_token=token)
+    data[field] = 'A\x00B'
+    before = len(tournament_service.get_tournaments_for_party(PARTY_ID))
+
+    response = client.post(_create_url(), data=data)
+
+    assert response.status_code == 200
+    assert _UNSTORABLE_MESSAGE in response.get_data(as_text=True)
+    assert _tournament_by_token(token) is None
+    assert len(tournament_service.get_tournaments_for_party(PARTY_ID)) == before
+
+
+@pytest.mark.parametrize('field', _UNSTORABLE_FIELDS)
+def test_validate_create_reports_a_nul_byte_under_its_field(
+    client, party, field
+):
+    token = str(uuid4())
+    data = _solo_data('Unstorable text', submission_token=token)
+    data[field] = 'A\x00B'
+
+    response = client.post(_validate_url(), data=data)
+
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body['ok'] is False
+    assert body['errors'][field] == [_UNSTORABLE_MESSAGE]
+    assert _tournament_by_token(token) is None

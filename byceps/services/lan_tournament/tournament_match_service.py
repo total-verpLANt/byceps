@@ -11,6 +11,7 @@ from byceps.util.result import Err, Ok, Result
 from byceps.util.uuid import generate_uuid7
 
 from . import (
+    tournament_config_domain_service,
     tournament_operational_service,
     tournament_qualification_domain_service as qualification_domain,
     tournament_qualification_repository,
@@ -4955,6 +4956,9 @@ def add_comment(
     if len(comment) > 1000:
         return Err('Comment cannot exceed 1000 characters.')
 
+    if tournament_config_domain_service.has_unstorable_character(comment):
+        return Err(tournament_config_domain_service.UNSTORABLE_CHARACTER_ERROR)
+
     now = datetime.now(UTC)
     comment_id = TournamentMatchCommentID(generate_uuid7())
 
@@ -4979,6 +4983,9 @@ def update_comment(
     # Validate comment length (max 1000 chars)
     if len(comment) > 1000:
         return Err('Comment cannot exceed 1000 characters.')
+
+    if tournament_config_domain_service.has_unstorable_character(comment):
+        return Err(tournament_config_domain_service.UNSTORABLE_CHARACTER_ERROR)
 
     tournament_repository.update_match_comment(comment_id, comment)
 

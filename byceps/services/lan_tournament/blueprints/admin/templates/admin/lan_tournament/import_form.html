@@ -1,0 +1,91 @@
+{% extends 'layout/admin/lan_tournament.html' %}
+{% from 'macros/admin.html' import render_backlink %}
+{% from 'macros/forms.html' import form_field, form_form_errors %}
+{% set current_page_party = party %}
+{% set current_tab = 'tournaments' %}
+{% set page_title = _('Import tournament') %}
+
+{% block head %}{{ super() }}
+  <style>
+    .lt-import-summary {
+      display: grid;
+      grid-template-columns: max-content 1fr;
+      gap: 0.4rem 1.5rem;
+      margin: 0;
+    }
+
+    .lt-import-summary dt {
+      font-weight: bold;
+    }
+
+    .lt-import-summary dd {
+      margin: 0;
+      overflow-wrap: anywhere;
+    }
+  </style>
+{%- endblock %}
+
+{% block before_body %}
+{{ super() }}
+{{ render_backlink(url_for('.index', party_id=party.id), _('Tournaments')) }}
+{%- endblock %}
+
+{% block body %}
+
+  <h1 class="title">{{ page_title }}</h1>
+
+  {% if problems %}
+    <div class="notification color-danger" style="margin-bottom: 1rem;">
+      <ul>
+        {% for label, message in problems %}
+          <li>{% if label %}{{ label }}: {% endif %}{{ message }}</li>
+        {% endfor %}
+      </ul>
+      {% if problems_truncated %}
+        <p>{{ _('Only the first %(count)s problems are shown.', count=problems|length) }}</p>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  {% if not document_b64 %}
+    <form action="{{ url_for('.import_config', party_id=party.id) }}" method="post" enctype="multipart/form-data">
+      <div class="box">
+        {{ form_field(form.config_file, accept='.json,application/json', caption=_('JSON file, at most %(size)s KiB.', size=max_document_kib)) }}
+      </div>
+
+      <div class="button-row is-hcentered">
+        <button type="submit" name="action" value="check" class="button color-primary"><span>{{ _('Check file') }}</span></button>
+      </div>
+    </form>
+  {% else %}
+    <div class="notification color-success" style="margin-bottom: 1rem;">
+      {{ _('The file is valid. Check the settings, then create the tournament.') }}
+    </div>
+
+    <div class="box">
+      <dl class="lt-import-summary">
+        {% for label, value in summary_rows %}
+          <dt>{{ label }}</dt>
+          <dd>{{ value }}</dd>
+        {% endfor %}
+      </dl>
+    </div>
+
+    <form action="{{ url_for('.import_config', party_id=party.id, step='import') }}" method="post" enctype="multipart/form-data">
+      <input type="hidden" name="config_document" value="{{ document_b64 }}">
+      {{ form.submission_token() }}
+      {{ form_form_errors(form) }}
+
+      <div class="box">
+        {{ form_field(form.image, accept='image/jpeg,image/png,image/webp', caption=_('JPEG, PNG or WebP · max. 5 MB · recommended 1920 × 1080 (16:9), at least 960 × 540. No cropping, the centre stays visible.')) }}
+        {{ form_field(form.image_alt_text, maxlength=200) }}
+      </div>
+
+      <div class="button-row is-hcentered">
+        <button type="submit" name="action" value="import" class="button color-primary"><span>{{ _('Create draft tournament') }}</span></button>
+        <a class="button is-outlined" href="{{ url_for('.import_form', party_id=party.id) }}">{{ _('Check another file') }}</a>
+      </div>
+    </form>
+  {% endif %}
+
+{%- endblock %}

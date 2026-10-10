@@ -5,7 +5,22 @@ byceps.services.lan_tournament.form_validators
 
 import math
 
+from flask_babel import lazy_gettext
 from wtforms.validators import NumberRange, ValidationError
+
+from byceps.services.lan_tournament import tournament_config_domain_service
+
+
+def storable_text(form, field):
+    """Refuse text that holds NUL or an unpaired surrogate."""
+    if field.data and tournament_config_domain_service.has_unstorable_character(
+        field.data
+    ):
+        raise ValidationError(
+            lazy_gettext(
+                tournament_config_domain_service.UNSTORABLE_CHARACTER_ERROR
+            )
+        )
 
 
 def _is_nan(data: float) -> bool:

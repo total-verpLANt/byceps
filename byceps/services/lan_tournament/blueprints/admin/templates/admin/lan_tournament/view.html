@@ -210,6 +210,11 @@
         {%- if g.user.has_permission('lan_tournament.update') %}
         <a class="button" href="{{ url_for('.update_form', tournament_id=tournament.id) }}">{{ _('Edit') }}</a>
         {%- endif %}
+        {%- if g.user.has_permission('lan_tournament.view') %}
+        <form action="{{ url_for('.export_config', tournament_id=tournament.id) }}" method="post">
+          <button type="submit" class="button">{{ render_icon('download') }} <span>{{ _('Export configuration') }}</span></button>
+        </form>
+        {%- endif %}
         {%- if status_name == 'DRAFT' and g.user.has_permission('lan_tournament.administrate') %}
         <form action="{{ url_for('.open_registration', tournament_id=tournament.id) }}" method="post" data-overview-open-registration>
           <button type="submit" class="button color-primary">{{ _('Open registration') }}</button>

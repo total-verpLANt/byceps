@@ -88,6 +88,39 @@ This guide documents all available URLs for the LAN Tournament module, covering 
 - **Description**: Runs the create validation without writing anything: no tournament, no flash, no request unlink.
 - **Success**: `200` with `{ok, errors: {<field>: [messages]}, first_error_step, checked_at}`. Form-level errors are under the key `""`.
 
+#### Import Tournament Form
+- **URL**: `/lan-tournaments/for_party/<party_id>/import`
+- **Endpoint**: `lan_tournament_admin.import_form`
+- **Method**: GET
+- **Permission**: `lan_tournament.create`
+- **Description**: Displays the upload form for a tournament configuration file (see Tournament Configuration File). The page links back to the tournament list of the party.
+- **Success**: `200`. An unknown party is a plain `404`.
+
+#### Import Tournament (Check or Create)
+- **URL**: `/lan-tournaments/for_party/<party_id>/import`
+- **Endpoint**: `lan_tournament_admin.import_config`
+- **Method**: POST (`multipart/form-data`)
+- **Permission**: `lan_tournament.create`
+- **Query Parameters**: `step=import`, set by the form of the summary page (step `import`); the form of the first step sends none. It only picks the message of a `413` (see Errors) and changes nothing else
+- **Form Fields**:
+  - `action`: `check` or `import` (required)
+  - `config_file`: the uploaded document (step `check`)
+  - `config_document`: the checked document as base64, carried in a hidden field by the summary page (step `import`). An upload takes precedence over it
+  - `submission_token`: UUID that makes a repeated submit idempotent (step `import`)
+  - `image`, `image_alt_text`: optional tournament image and its description, at most 200 characters (step `import`); the image is not part of the document
+- **Description**: `action=check` is the dry run: it parses and checks the document like the create wizard does and writes nothing (no tournament, no image, no log entry). `action=import` checks the document again in full and creates a new tournament with status `DRAFT` in the party, in one transaction, with an audit entry for the import (document SHA-256 and format version). The admin does not select the file a second time. The summary page shows the start time of the file in the viewer's time zone; it is changed afterwards in the edit form.
+- **Success**: `check`: `200` with the summary page. `import`: `302` to the new tournament (admin view) with a flash. A repeated submit with the same `submission_token` creates no second tournament and redirects to the first with a notice.
+- **Errors**: a missing or unknown `action` is a plain `400` (before the document is checked). Document, rule or image problems are `200` with the form page again and at most 20 problems listed, and write nothing: no file, a bad base64 carry or a document that fails the check or the wizard rules. A request body above the budget (5 MiB image, the document as base64 and 64 KiB for the other fields: 5,657,944 bytes) is `413` with the same page and one problem. With `step=import` the problem blames the image, the only large part of the second step: "Tournament image: The file is <size>. The maximum is 5 MB.". Without it, or with any other value, the problem is "The file is larger than 256 KiB.". An unknown party is a plain `404`.
+
+#### Export Tournament Configuration
+- **URL**: `/lan-tournaments/tournaments/<tournament_id>/export`
+- **Endpoint**: `lan_tournament_admin.export_config`
+- **Method**: POST (a GET is `405`: the export writes an audit entry)
+- **Permission**: `lan_tournament.view`
+- **Description**: Downloads the configuration document of the tournament (see Tournament Configuration File) and records the export in the audit log (document SHA-256 and format version).
+- **Success**: `200`, `application/json` as an attachment named `lan-tournament-<slug>-<YYYYMMDD>.json` (ASCII only: the tournament name is transliterated, at most 40 characters of slug, `tournament` if nothing is left; the date is the day of the export in UTC), with `Cache-Control: no-store` and `X-Content-Type-Options: nosniff`.
+- **Errors**: `403` without the permission, `404` for an unknown tournament.
+
 #### Update Tournament Form
 - **URL**: `/lan-tournaments/tournaments/<tournament_id>/update`
 - **Method**: GET
@@ -756,6 +789,58 @@ Each recipient of a match pairing has one work item per pairing generation. A ma
 
 ---
 
+## Tournament Configuration File
+
+The create settings of one tournament as a JSON file, to move a setup between BYCEPS instances. The export route writes it and the import routes read it (see Admin URLs); both are admin-only, there is no site route.
+
+```json
+{
+  "format": "lan_tournament.config",
+  "version": 1,
+  "tournament": {
+    "name": "Rocket League 2v2",
+    "category": "MAIN",
+    "start_time": "2026-10-09T18:00:00Z",
+    "contestant_type": "TEAM",
+    "game_format": "ONE_V_ONE",
+    "elimination_mode": "SINGLE_ELIMINATION",
+    "max_teams": 16
+  }
+}
+```
+
+### Envelope
+
+- `format`: must be the text `lan_tournament.config`; anything else is not a tournament configuration file.
+- `version`: a whole number that must equal `1`. The check is strict equality: an older or newer version is refused as unsupported (and nothing else in the file is checked), there is no conversion between versions.
+- `tournament`: an object with the keys below. An unknown key, in the envelope or in `tournament`, is refused; a key that appears twice is refused.
+
+### Keys of `tournament`
+
+The 27 keys are the fields of `TournamentConfigInput` (`tournament_config_domain_service.py`). `name` and `category` are required; every other key may be left out, and a missing or `null` value is treated like an untouched field of the create wizard.
+
+| Kind | Keys | Rule |
+|------|------|------|
+| Required text | `name`, `category` | `null` is refused; `category` is an enum name (below) |
+| Text or `null` | `game`, `description`, `ruleset` | Length limits and trimming as in the create wizard |
+| Time or `null` | `start_time` | ISO 8601 with a UTC offset, at most 64 characters. The export writes UTC with a trailing `Z`; the import accepts any offset and stores UTC. A time without an offset is refused |
+| Enum name or `null` | `contestant_type`, `game_format`, `elimination_mode`, `score_ordering`, `playoff_elimination_mode`, `playoff_release_mode` | The member name, never the label: `category` (required) `MAIN`, `FUN`, `STAGE`, `USER_ORGANIZED`; `contestant_type` `SOLO`, `TEAM`; `game_format` `ONE_V_ONE`, `FREE_FOR_ALL`, `HIGHSCORE`; `elimination_mode` and `playoff_elimination_mode` `SINGLE_ELIMINATION`, `DOUBLE_ELIMINATION`, `ROUND_ROBIN`, `NONE`; `score_ordering` `HIGHER_IS_BETTER`, `LOWER_IS_BETTER`; `playoff_release_mode` `AUTOMATIC`, `MANUAL` |
+| Whole number or `null` | `min_players`, `max_players`, `min_teams`, `max_teams`, `min_players_in_team`, `max_players_in_team`, `advancement_count`, `group_size_min`, `group_size_max`, `playoff_group_count`, `playoff_qualifiers_per_group`, `playoff_qualifier_count` | A JSON integer; a float, text or boolean is refused. Ranges are the create wizard's |
+| List of whole numbers or `null` | `point_table` | At most 64 places |
+| Flag | `points_carry_to_losers`, `playoff_enabled` | `true` or `false`; `null` counts as `false` |
+
+### Reading rules
+
+- The file is UTF-8 text with one JSON object, at most 256 KiB (262,144 bytes). `NaN` and `Infinity` are refused, and so is text with a NUL or an unpaired surrogate.
+- After parsing, the values go through the same normaliser as the create wizard, so every rule the wizard enforces applies to an import: lengths, count ranges, the cross-field rules between game format, contestant type, elimination mode and playoffs, and the playoff gating.
+- Problems are reported per key, at most 20 on the page.
+
+### Never exported
+
+The file holds only the 27 keys above. It never carries identifiers (`id`, `party_id`), timestamps, the creating request, the creation token, the status (an import always creates a `DRAFT`), the position, the image (`image_id`, `image_url`, `image_alt_text`: an image is attached in the import step), winner and playoff release state, leaderboard close, operational clock, `use_bracket_reset`, or anything that belongs to a running tournament (participants, teams, matches, seedings, scores, comments, log entries).
+
+---
+
 ## API Endpoints
 
 Currently, there are no dedicated REST API endpoints. All interactions happen through the web interface routes documented above.
@@ -765,8 +850,8 @@ Currently, there are no dedicated REST API endpoints. All interactions happen th
 ## Permission Requirements
 
 ### Admin Permissions
-- `lan_tournament.view` - View tournaments, teams, and matches
-- `lan_tournament.create` - Create tournaments and teams
+- `lan_tournament.view` - View tournaments, teams, and matches; export the configuration file of a tournament
+- `lan_tournament.create` - Create tournaments and teams; import a tournament from a configuration file (form, check and create). Scoped site orgas can neither import nor export
 - `lan_tournament.update` - Update tournaments, teams, and match scores
 - `lan_tournament.delete` - Delete tournaments and teams
 - `lan_tournament.administrate` - Full control including status changes, bracket generation, match confirmation, and the admin orga dashboard (list, poll, pin, acknowledge)

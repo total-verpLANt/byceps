@@ -1,8 +1,12 @@
+import base64
 from collections import Counter
+from contextlib import suppress
 import dataclasses
 from datetime import datetime, UTC
 from enum import Enum
 from functools import wraps
+from io import BytesIO
+import math
 from uuid import UUID, uuid4, uuid5
 
 from flask import (
@@ -14,10 +18,12 @@ from flask import (
     redirect,
     render_template,
     request,
+    send_file,
     url_for,
 )
 from flask_babel import (
     format_date,
+    format_datetime,
     format_decimal,
     format_time,
     format_timedelta,
@@ -54,6 +60,9 @@ from byceps.util.views import (
 )
 
 from byceps.services.lan_tournament import (
+    tournament_config_document,
+    tournament_config_domain_service,
+    tournament_config_service,
     tournament_domain_service,
     tournament_image_service,
     tournament_maintenance_service,
@@ -126,7 +135,6 @@ from byceps.services.lan_tournament.models.game_format import (
     GameFormat,
     is_valid_combination,
 )
-from byceps.services.lan_tournament.models.playoff import PlayoffReleaseMode
 from byceps.services.lan_tournament.models.tournament_status import (
     TournamentStatus,
 )
@@ -272,6 +280,7 @@ from .forms import (
     TeamUpdateForm,
     TransferCaptainForm,
     TournamentCreateForm,
+    TournamentImportForm,
     TournamentOrgaAssignForm,
     TournamentRequestRejectForm,
     TournamentRequestUpdateForm,
@@ -715,22 +724,13 @@ def create(party_id):
 
     form = _build_create_form(formdata)
 
-    creation_token = _parse_uuid(form.submission_token.data)
-    if creation_token is not None:
-        existing = tournament_service.find_tournament_by_creation_token(
-            creation_token
-        )
-        if existing is not None and existing.party_id != party.id:
-            # A token of another party's tournament is replaced by one
-            # derived from it, so a repost stays idempotent in this party.
-            creation_token = uuid5(creation_token, str(party.id))
-            form.submission_token.data = str(creation_token)
-            existing = tournament_service.find_tournament_by_creation_token(
-                creation_token
-            )
-        if existing is not None and existing.party_id == party.id:
-            flash_notice(gettext('This tournament has already been created.'))
-            return redirect_to('.view', tournament_id=existing.id)
+    raw_token = form.submission_token.data
+    creation_token, existing = _resolve_creation_token(raw_token, party)
+    if creation_token != _parse_uuid(raw_token):
+        form.submission_token.data = str(creation_token)
+    if existing is not None:
+        flash_notice(gettext('This tournament has already been created.'))
+        return redirect_to('.view', tournament_id=existing.id)
 
     if not form.validate():
         return create_form(party.id, form)
@@ -900,6 +900,342 @@ def validate_create(party_id):
     )
 
 
+@blueprint.get('/for_party/<party_id>/import')
+@permission_required('lan_tournament.create')
+@templated
+def import_form(
+    party_id,
+    erroneous_form=None,
+    *,
+    summary_rows=None,
+    problems=None,
+    problems_truncated=False,
+    document_b64=None,
+):
+    """Show form to import a tournament configuration."""
+    party = _get_party_or_404(party_id)
+
+    form = erroneous_form
+    if form is None:
+        form = TournamentImportForm()
+    if not form.submission_token.data:
+        form.submission_token.data = str(uuid4())
+
+    return {
+        'party': party,
+        'form': form,
+        'summary_rows': summary_rows or [],
+        'problems': problems or [],
+        'problems_truncated': problems_truncated,
+        'document_b64': document_b64,
+        'max_document_kib': (
+            tournament_config_document.MAX_DOCUMENT_BYTES // 1024
+        ),
+    }
+
+
+@blueprint.post('/for_party/<party_id>/import')
+@permission_required('lan_tournament.create')
+def import_config(party_id):
+    """Check a configuration file, or create a draft tournament from it."""
+    request.max_content_length = (
+        tournament_config_service.IMPORT_MAX_REQUEST_BYTES
+    )
+
+    party = _get_party_or_404(party_id)
+
+    try:
+        formdata = _get_import_formdata()
+    except RequestEntityTooLarge:
+        problems, truncated = _import_over_budget_problems()
+        body = import_form(
+            party.id, problems=problems, problems_truncated=truncated
+        )
+        return body, 413
+
+    action = formdata.get('action')
+    if action not in ('check', 'import'):
+        abort(400)
+
+    form = TournamentImportForm(formdata)
+
+    raw = _read_import_document(form)
+    if raw is None:
+        _add_field_error(
+            form.config_file, gettext('Please choose a configuration file.')
+        )
+        return import_form(party.id, form)
+
+    checked = tournament_config_service.check_import(raw)
+    if checked.is_err():
+        problems, truncated = _import_problems(checked.unwrap_err())
+        return import_form(
+            party.id, form, problems=problems, problems_truncated=truncated
+        )
+    check = checked.unwrap()
+
+    summary_rows = _import_summary_rows(check.config)
+    document_b64 = base64.b64encode(raw).decode('ascii')
+
+    valid = form.validate()
+    if not valid or action == 'check':
+        return import_form(
+            party.id,
+            form,
+            summary_rows=summary_rows,
+            document_b64=document_b64,
+        )
+
+    creation_token, existing = _resolve_creation_token(
+        form.submission_token.data, party
+    )
+    if creation_token != _parse_uuid(form.submission_token.data):
+        form.submission_token.data = str(creation_token)
+    if existing is not None:
+        flash_notice(gettext('This tournament has already been created.'))
+        return redirect_to('.view', tournament_id=existing.id)
+
+    image_id: TournamentImageID | None = None
+    upload = form.image.data
+    if upload is not None and getattr(upload, 'filename', None):
+        match tournament_image_service.store_uploaded_image(
+            party.id, g.user.id, upload.stream, upload.filename
+        ):
+            case Ok(image):
+                image_id = image.id
+            case Err(message):
+                _add_field_error(form.image, _translate_image_message(message))
+                return import_form(
+                    party.id,
+                    form,
+                    summary_rows=summary_rows,
+                    document_b64=document_b64,
+                )
+
+    try:
+        result = tournament_config_service.import_tournament_config(
+            party.id,
+            check,
+            g.user.id,
+            image_id=image_id,
+            image_alt_text=form.image_alt_text.data or None,
+            creation_token=creation_token,
+        )
+    except Exception:
+        with suppress(Exception):
+            tournament_repository.rollback_session()
+            _discard_staged_image(image_id, party)
+        raise
+
+    if result.is_err():
+        _discard_staged_image(image_id, party)
+        error_message = result.unwrap_err()
+
+        # A concurrent duplicate may trip another unique index first.
+        existing = (
+            tournament_service.find_tournament_by_creation_token(creation_token)
+            if creation_token is not None
+            else None
+        )
+        if existing is not None and existing.party_id == party.id:
+            flash_notice(gettext('This tournament has already been created.'))
+            return redirect_to('.view', tournament_id=existing.id)
+
+        if error_message == tournament_service.IMAGE_UNAVAILABLE_ERROR:
+            _add_field_error(form.image, gettext(error_message))
+        else:
+            form.form_errors.append(_translate_error(error_message))
+        return import_form(
+            party.id,
+            form,
+            summary_rows=summary_rows,
+            document_b64=document_b64,
+        )
+
+    tournament, _event = result.unwrap()
+
+    flash_success(
+        gettext(
+            'Tournament "%(name)s" has been imported as a draft.',
+            name=tournament.name,
+        )
+    )
+
+    return redirect_to('.view', tournament_id=tournament.id)
+
+
+@blueprint.post('/tournaments/<tournament_id>/export')
+@permission_required('lan_tournament.view')
+def export_config(tournament_id):
+    """Download the configuration document of a tournament."""
+    tournament = _get_tournament_or_404(tournament_id)
+
+    document = tournament_config_service.export_tournament_config(
+        tournament, g.user.id
+    )
+
+    response = send_file(
+        BytesIO(document),
+        mimetype='application/json',
+        as_attachment=True,
+        download_name=tournament_config_document.export_filename(
+            tournament.name, datetime.now(UTC).date()
+        ),
+    )
+    response.headers['Cache-Control'] = 'no-store'
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    return response
+
+
+def _read_import_document(form: TournamentImportForm) -> bytes | None:
+    """Return the uploaded or carried document, `None` if there is none."""
+    max_bytes = tournament_config_document.MAX_DOCUMENT_BYTES
+
+    upload = form.config_file.data
+    if upload is not None and getattr(upload, 'filename', None):
+        return upload.stream.read(max_bytes + 1)
+
+    carried = form.config_document.data
+    if not carried or len(carried) > 4 * math.ceil((max_bytes + 1) / 3):
+        return None
+
+    try:
+        return base64.b64decode(carried, validate=True)
+    except ValueError:
+        return None
+
+
+def _get_import_formdata():
+    """Return the request form with the files of the two file inputs."""
+    formdata = request.form.copy()
+    for name in ('config_file', 'image'):
+        if name in request.files:
+            formdata[name] = request.files[name]
+    return formdata
+
+
+def _create_form_labels() -> dict[str, str]:
+    """Return the label of every field of the create form."""
+    return {
+        field.name: str(field.label.text) for field in TournamentCreateForm()
+    }
+
+
+def _import_problems(
+    problems: list[tournament_config_document.DocumentProblem],
+) -> tuple[list[tuple[str, str]], bool]:
+    """Return label and message of the problems to show, and if cut off."""
+    shown = problems[: tournament_config_document.MAX_REPORTED_PROBLEMS]
+    labels = _create_form_labels()
+    return (
+        [
+            (
+                labels.get(problem.location, ''),
+                _translate_validation_message(problem.message),
+            )
+            for problem in shown
+        ],
+        len(problems) > len(shown),
+    )
+
+
+def _import_over_budget_problems() -> tuple[list[tuple[str, str]], bool]:
+    """Return the problem to show for a request above the body budget."""
+    # Only step 2 carries an image; the query string needs no body parsing.
+    if request.args.get('step') == 'import':
+        label = str(TournamentImportForm().image.label.text)
+        return [(label, _translate_image_too_large())], False
+
+    too_large = tournament_config_document.DocumentProblem(
+        '',
+        ValidationMessage(
+            tournament_config_document.DOCUMENT_TOO_LARGE_ERROR,
+            (('max', tournament_config_document.MAX_DOCUMENT_BYTES // 1024),),
+        ),
+    )
+    return _import_problems([too_large])
+
+
+def _import_summary_rows(
+    config: tournament_config_domain_service.TournamentConfig,
+) -> list[tuple[str, str]]:
+    """Return label and value of the main settings of a checked document."""
+    labels = _create_form_labels()
+    settings = config.settings
+    none = '–'
+
+    contestant_types: dict[ContestantType | None, str] = {
+        ContestantType.SOLO: gettext('Solo'),
+        ContestantType.TEAM: gettext('Team'),
+    }
+    game_format = settings.game_format
+    elimination_mode = _build_elimination_mode_labels().get(
+        settings.elimination_mode
+    )
+
+    rows = [
+        (labels['name'], config.name),
+        (labels['category'], str(config.category.label)),
+        (labels['game'], config.game or none),
+        (
+            labels['contestant_type'],
+            contestant_types.get(settings.contestant_type, none),
+        ),
+        (labels['game_format'], game_format.label if game_format else none),
+        (labels['elimination_mode'], elimination_mode or none),
+    ]
+
+    for name in (
+        'min_players',
+        'max_players',
+        'min_teams',
+        'max_teams',
+        'min_players_in_team',
+        'max_players_in_team',
+    ):
+        value = getattr(settings, name)
+        if value is not None:
+            rows.append((labels[name], str(value)))
+
+    rows.append(
+        (
+            labels['start_time'],
+            format_datetime(to_user_timezone(config.start_time))
+            if config.start_time
+            else none,
+        )
+    )
+    if settings.point_table:
+        rows.append(
+            (
+                labels['point_table'],
+                ', '.join(str(points) for points in settings.point_table),
+            )
+        )
+    rows.append(
+        (
+            labels['playoff_enabled'],
+            gettext('Yes')
+            if settings.playoff_game_format is not None
+            else gettext('No'),
+        )
+    )
+
+    return rows
+
+
+def _discard_staged_image(
+    image_id: TournamentImageID | None, party: Party
+) -> None:
+    """Delete the image of a failed import; it is gone or in use if refused."""
+    if image_id is None:
+        return
+
+    tournament_image_service.delete_staged_image(
+        image_id, party_id=party.id, requester_id=g.user.id
+    )
+
+
 def _get_create_formdata():
     """Return the request form merged with its uploaded files."""
     formdata = request.form.copy()
@@ -936,6 +1272,30 @@ def _parse_uuid(value) -> UUID | None:
         return UUID(str(value))
     except ValueError:
         return None
+
+
+def _resolve_creation_token(
+    raw_token, party: Party
+) -> tuple[UUID | None, Tournament | None]:
+    """Return the creation token for `party` and its existing tournament."""
+    creation_token = _parse_uuid(raw_token)
+    if creation_token is None:
+        return None, None
+
+    existing = tournament_service.find_tournament_by_creation_token(
+        creation_token
+    )
+    if existing is not None and existing.party_id != party.id:
+        # A token of another party's tournament is replaced by one
+        # derived from it, so a repost stays idempotent in this party.
+        creation_token = uuid5(creation_token, str(party.id))
+        existing = tournament_service.find_tournament_by_creation_token(
+            creation_token
+        )
+    if existing is not None and existing.party_id != party.id:
+        existing = None
+
+    return creation_token, existing
 
 
 def _find_staged_image(raw_image_id, party: Party) -> TournamentImage | None:
@@ -984,16 +1344,6 @@ def _apply_settings_errors(
             _add_field_error(field, translated)
 
 
-_PLAYOFF_KWARGS = (
-    'playoff_game_format',
-    'playoff_elimination_mode',
-    'playoff_group_count',
-    'playoff_qualifiers_per_group',
-    'playoff_qualifier_count',
-    'playoff_release_mode',
-)
-
-
 def _parse_playoff_config(
     form, game_format, elimination_mode, on_invalid
 ) -> dict:
@@ -1002,47 +1352,20 @@ def _parse_playoff_config(
     All are `None` unless the switch is on and the format has a playoff
     phase, so stale values of a skipped step never reach the service.
     """
-    config = dict.fromkeys(_PLAYOFF_KWARGS)
-
-    is_round_robin = (
-        game_format == GameFormat.ONE_V_ONE
-        and elimination_mode == EliminationMode.ROUND_ROBIN
+    config, errors = tournament_config_domain_service.playoff_config(
+        enabled=bool(form.playoff_enabled.data),
+        game_format=game_format,
+        elimination_mode=elimination_mode,
+        group_count=form.playoff_group_count.data,
+        qualifiers_per_group=form.playoff_qualifiers_per_group.data,
+        qualifier_count=form.playoff_qualifier_count.data,
+        elimination_mode_name=form.playoff_elimination_mode.data,
+        release_mode_name=form.playoff_release_mode.data,
     )
-    is_highscore = game_format == GameFormat.HIGHSCORE
-    if not form.playoff_enabled.data or not (is_round_robin or is_highscore):
-        return config
-
-    if is_round_robin:
-        config['playoff_game_format'] = GameFormat.ONE_V_ONE
-        config['playoff_group_count'] = form.playoff_group_count.data
-        config['playoff_qualifiers_per_group'] = (
-            form.playoff_qualifiers_per_group.data
+    for field_name, message in errors.items():
+        on_invalid(
+            getattr(form, field_name), _translate_validation_message(message)
         )
-    else:
-        config['playoff_game_format'] = GameFormat.FREE_FOR_ALL
-        config['playoff_qualifier_count'] = form.playoff_qualifier_count.data
-
-    if form.playoff_elimination_mode.data:
-        try:
-            config['playoff_elimination_mode'] = EliminationMode[
-                form.playoff_elimination_mode.data
-            ]
-        except KeyError:
-            on_invalid(
-                form.playoff_elimination_mode,
-                gettext('Invalid elimination mode selected.'),
-            )
-    if form.playoff_release_mode.data:
-        try:
-            config['playoff_release_mode'] = PlayoffReleaseMode[
-                form.playoff_release_mode.data
-            ]
-        except KeyError:
-            on_invalid(
-                form.playoff_release_mode,
-                gettext('Invalid release mode selected.'),
-            )
-
     return config
 
 
@@ -1051,153 +1374,49 @@ def _parse_create_submission(
 ) -> _CreateSubmission | None:
     """Parse and check a create POST; put errors on the form fields."""
 
-    def parse_enum(field, enum_class, invalid_message):
-        if not field.data:
-            return None
-        try:
-            return enum_class[field.data]
-        except KeyError:
-            _add_field_error(field, invalid_message)
-            return None
-
-    name = (form.name.data or '').strip()
-    try:
-        category = TournamentCategory(form.category.data)
-    except (ValueError, TypeError):
-        category = None
-    if category is None and not form.category.errors:
-        _add_field_error(
-            form.category, gettext('Please choose a valid tournament category.')
-        )
-    game = form.game.data.strip() if form.game.data else None
-    description = (
-        form.description.data.strip() if form.description.data else None
-    )
-    image_url = form.image_url.data.strip() if form.image_url.data else None
-    ruleset = form.ruleset.data.strip() if form.ruleset.data else None
     start_time_local = form.start_time.data
     start_time = (
         to_utc(start_time_local)
         if start_time_local and not form.start_time.errors
         else None
     )
-
-    contestant_type = parse_enum(
-        form.contestant_type,
-        ContestantType,
-        gettext('Invalid contestant type selected.'),
+    config_input = tournament_config_domain_service.TournamentConfigInput(
+        name=form.name.data or '',
+        category=form.category.data or None,
+        game=form.game.data or None,
+        description=form.description.data or None,
+        ruleset=form.ruleset.data or None,
+        start_time=start_time,
+        contestant_type=form.contestant_type.data or None,
+        game_format=form.game_format.data or None,
+        elimination_mode=form.elimination_mode.data or None,
+        score_ordering=form.score_ordering.data or None,
+        min_players=form.min_players.data,
+        max_players=form.max_players.data,
+        min_teams=form.min_teams.data,
+        max_teams=form.max_teams.data,
+        min_players_in_team=form.min_players_in_team.data,
+        max_players_in_team=form.max_players_in_team.data,
+        point_table=form.point_table.data or None,
+        advancement_count=form.advancement_count.data,
+        group_size_min=form.group_size_min.data,
+        group_size_max=form.group_size_max.data,
+        points_carry_to_losers=bool(form.points_carry_to_losers.data),
+        playoff_enabled=bool(form.playoff_enabled.data),
+        playoff_group_count=form.playoff_group_count.data,
+        playoff_qualifiers_per_group=form.playoff_qualifiers_per_group.data,
+        playoff_qualifier_count=form.playoff_qualifier_count.data,
+        playoff_elimination_mode=form.playoff_elimination_mode.data or None,
+        playoff_release_mode=form.playoff_release_mode.data or None,
     )
-    game_format = parse_enum(
-        form.game_format,
-        GameFormat,
-        gettext('Invalid game format selected.'),
-    )
-    elimination_mode = parse_enum(
-        form.elimination_mode,
-        EliminationMode,
-        gettext('Invalid elimination mode selected.'),
-    )
-    score_ordering = parse_enum(
-        form.score_ordering,
-        ScoreOrdering,
-        gettext('Invalid score ordering selected.'),
-    )
+    config = None
+    match tournament_config_domain_service.normalize_config(config_input):
+        case Ok(normalized):
+            config = normalized
+        case Err(config_errors):
+            _apply_settings_errors(form, config_errors)
 
-    if game_format == GameFormat.HIGHSCORE:
-        elimination_mode = EliminationMode.NONE
-
-    min_players = form.min_players.data
-    max_players = form.max_players.data
-    min_teams = form.min_teams.data
-    max_teams = form.max_teams.data
-    min_players_in_team = form.min_players_in_team.data
-    max_players_in_team = form.max_players_in_team.data
-
-    # Clear constraints irrelevant to the selected contestant type.
-    # A blank `contestant_type` still derives to TEAM/SOLO from team
-    # size at the service layer, so branch on that same derived type
-    # here too -- otherwise a blank type deriving to TEAM keeps
-    # `max_players`, which then caps participant joins meant for solo.
-    effective_contestant_type = (
-        tournament_domain_service.derive_contestant_type(
-            contestant_type, max_players_in_team, min_players_in_team
-        )
-    )
-    if effective_contestant_type == ContestantType.SOLO:
-        min_teams = None
-        max_teams = None
-        min_players_in_team = None
-        max_players_in_team = None
-    elif effective_contestant_type == ContestantType.TEAM:
-        min_players = None
-        max_players = None
-
-    # Clear score ordering for non-highscore game formats.
-    if game_format != GameFormat.HIGHSCORE:
-        score_ordering = None
-
-    playoff = _parse_playoff_config(
-        form, game_format, elimination_mode, _add_field_error
-    )
-
-    # Parse FFA fields. A highscore playoff phase is a Free-for-All phase
-    # and carries its settings in the same fields.
-    point_table = None
-    advancement_count = None
-    group_size_min = None
-    group_size_max = None
-    points_carry_to_losers = None
-    if game_format == GameFormat.FREE_FOR_ALL:
-        ffa_mode = elimination_mode
-    elif playoff['playoff_game_format'] == GameFormat.FREE_FOR_ALL:
-        ffa_mode = playoff['playoff_elimination_mode']
-    else:
-        ffa_mode = None
-    if (
-        game_format == GameFormat.FREE_FOR_ALL
-        or playoff['playoff_game_format'] == GameFormat.FREE_FOR_ALL
-    ):
-        point_table_raw = form.point_table.data
-        if point_table_raw:
-            try:
-                point_table = [
-                    int(v.strip())
-                    for v in point_table_raw.split(',')
-                    if v.strip()
-                ]
-            except ValueError:
-                _add_field_error(
-                    form.point_table,
-                    gettext('Point table must be comma-separated integers.'),
-                )
-        advancement_count = form.advancement_count.data
-        group_size_min = form.group_size_min.data
-        group_size_max = form.group_size_max.data
-        if ffa_mode == EliminationMode.DOUBLE_ELIMINATION:
-            points_carry_to_losers = form.points_carry_to_losers.data
-
-    settings = tournament_domain_service.TournamentSettings(
-        contestant_type=contestant_type,
-        game_format=game_format,
-        elimination_mode=elimination_mode,
-        score_ordering=score_ordering,
-        min_players=min_players,
-        max_players=max_players,
-        min_teams=min_teams,
-        max_teams=max_teams,
-        min_players_in_team=min_players_in_team,
-        max_players_in_team=max_players_in_team,
-        point_table=point_table,
-        group_size_min=group_size_min,
-        group_size_max=group_size_max,
-        advancement_count=advancement_count,
-        **playoff,
-    )
-    match tournament_domain_service.validate_tournament_settings(
-        settings, require_structure=True
-    ):
-        case Err(settings_errors):
-            _apply_settings_errors(form, settings_errors)
+    image_url = form.image_url.data.strip() if form.image_url.data else None
 
     # `from_request_id` arrives from a hidden form field -- client
     # supplied, so re-load and re-verify party ownership rather than
@@ -1263,19 +1482,23 @@ def _parse_create_submission(
             image_id = image.id
     image_alt_text = form.image_alt_text.data or None
 
-    if category is None or any(field.errors for field in form) or form.form_errors:
+    if (
+        config is None
+        or any(field.errors for field in form)
+        or form.form_errors
+    ):
         return None
 
     return _CreateSubmission(
-        name=name,
-        category=category,
-        game=game,
-        description=description,
+        name=config.name,
+        category=config.category,
+        game=config.game,
+        description=config.description,
         image_url=image_url,
-        ruleset=ruleset,
-        start_time=start_time,
-        settings=settings,
-        points_carry_to_losers=points_carry_to_losers,
+        ruleset=config.ruleset,
+        start_time=config.start_time,
+        settings=config.settings,
+        points_carry_to_losers=config.points_carry_to_losers,
         source_request=source_request,
         image_id=image_id,
         image_alt_text=image_alt_text,
@@ -4797,7 +5020,7 @@ def add_match_comment(match_id):
             flash_error(
                 gettext(
                     'Error adding comment: %(error)s',
-                    error=error_message,
+                    error=gettext(error_message),
                 )
             )
 
