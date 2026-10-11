@@ -378,6 +378,7 @@ def _assert_no_orga_data(html):
                 'team_id',
                 'participant_id',
                 'origin',
+                'origin_title',
             }
 
 
@@ -721,6 +722,50 @@ def test_playoff_bracket_carries_phase_and_origin_labels(
     assert 'Playoffs · Semifinal 1' in html
     assert 'Group A' in html
     assert re.search(r"href='[^']*/matches/[^']*'", html)
+
+
+def test_playoff_bracket_titles_each_origin_and_explains_it_once(
+    site_app, players, make_tournament
+):
+    tournament = make_tournament.groups()
+    _play_groups(tournament, players[0])
+    _release(tournament, players[0])
+
+    html = _page(site_app, tournament)
+
+    contestants = [
+        c for m in _bracket_json(html)['matches'] for c in m['contestants']
+    ]
+    assert {c['origin']: c['origin_title'] for c in contestants} == {
+        'A1': 'Group A, place 1',
+        'A2': 'Group A, place 2',
+        'B1': 'Group B, place 1',
+        'B2': 'Group B, place 2',
+    }
+    assert html.count('data-lt-origin-legend') == 1
+    assert 'C2 = group C, place 2' in html
+
+
+def test_the_origin_legend_is_only_on_the_playoff_bracket(
+    site_app, players, make_tournament
+):
+    tournament = make_tournament.groups()
+    _play_groups(tournament, players[0])
+    assert 'data-lt-origin-legend' not in _page(site_app, tournament)
+
+    _release(tournament, players[0])
+    assert _page(site_app, tournament).count('data-lt-origin-legend') == 1
+    assert 'data-lt-origin-legend' not in _page(
+        site_app, tournament, query='?phase=1'
+    )
+
+    for mode in (
+        EliminationMode.SINGLE_ELIMINATION,
+        EliminationMode.DOUBLE_ELIMINATION,
+    ):
+        plain = _page(site_app, make_tournament.bracket(mode))
+        assert "id='bracket-app'" in plain
+        assert 'data-lt-origin-legend' not in plain
 
 
 # -------------------------------------------------------------------- #

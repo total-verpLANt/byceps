@@ -205,7 +205,8 @@ function _ltBuildEntrant(contestant, placeholder) {
     id: contestant.team_id || contestant.participant_id,
     teamId: contestant.team_id ? String(contestant.team_id) : null,
     participantId: contestant.participant_id ? String(contestant.participant_id) : null,
-    origin: contestant.origin ? String(contestant.origin) : ''
+    origin: contestant.origin ? String(contestant.origin) : '',
+    originTitle: contestant.origin_title ? String(contestant.origin_title) : ''
   };
 }
 
@@ -220,7 +221,8 @@ function _ltFormatEntrantForView(entrant) {
     text: entrant.label || entrant.name || _t('tbd', 'TBD'),
     className: '',
     key: _ltNormalizePlayer(entrant.name),
-    origin: entrant.origin || ''
+    origin: entrant.origin || '',
+    originTitle: entrant.originTitle || ''
   };
 }
 
@@ -1246,12 +1248,13 @@ function buildTeamRow(entrant, isWinner, score, dims, matchRef, hoverData, place
     : '';
 
   var originAttr = team.origin ? ' data-origin="' + _ltEscapeHtml(team.origin) + '"' : '';
+  var titleText = team.originTitle ? team.text + ' - ' + team.originTitle : team.text;
   var teamTextHtml;
   if (hoverHtml) {
     teamTextHtml = '<span class="lt-hover-wrap lt-team-text"' + originAttr + ' tabindex="0" title="' +
-      _ltEscapeHtml(team.text) + '">' + trophyHtml + _ltEscapeHtml(team.text) + hoverHtml + '</span>';
+      _ltEscapeHtml(titleText) + '">' + trophyHtml + _ltEscapeHtml(team.text) + hoverHtml + '</span>';
   } else {
-    teamTextHtml = '<span class="lt-team-text"' + originAttr + ' title="' + _ltEscapeHtml(team.text) + '">' +
+    teamTextHtml = '<span class="lt-team-text"' + originAttr + ' title="' + _ltEscapeHtml(titleText) + '">' +
       trophyHtml + _ltEscapeHtml(team.text) + '</span>';
   }
 

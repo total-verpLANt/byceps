@@ -361,6 +361,11 @@
   line-height: 1.4;
 }
 
+.lt-origin-legend {
+  margin: 0 0 .75rem;
+  font-size: .85rem;
+}
+
 @media (max-width: 900px) {
   .lt-gcards {
     grid-template-columns: minmax(0, 1fr);

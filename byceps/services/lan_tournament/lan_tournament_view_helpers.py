@@ -652,7 +652,8 @@ def serialize_bracket_json(
 
     The payload is public: it carries the phase of a match and, with
     `origin_labels` (contestant ID to `A1`), where a contestant qualified
-    from, and never a seed, a tier, a code or a decision reason. Optional
+    from, in short (`origin`) and in words (`origin_title`), and never a
+    seed, a tier, a code or a decision reason. Optional
     canonical projections add an allowlisted ``readiness`` substate only for
     supplied match IDs; omission preserves the legacy payload exactly.
     """
@@ -678,6 +679,16 @@ def serialize_bracket_json(
     def origin_of(contestant) -> str | None:
         key = contestant.participant_id or contestant.team_id
         return origin_labels.get(str(key)) if key else None
+
+    def origin_title_of(contestant) -> str | None:
+        found = re.fullmatch(r'(\D+)(\d+)', origin_of(contestant) or '')
+        if found is None:
+            return None
+        return gettext(
+            'Group %(letter)s, place %(rank)s',
+            letter=found.group(1),
+            rank=found.group(2),
+        )
 
     return {
         'tournament': {
@@ -711,6 +722,7 @@ def serialize_bracket_json(
                         'team_id': str(c.team_id) if c.team_id else None,
                         'participant_id': str(c.participant_id) if c.participant_id else None,
                         'origin': origin_of(c),
+                        'origin_title': origin_title_of(c),
                     }
                     for c in contestants
                 ],

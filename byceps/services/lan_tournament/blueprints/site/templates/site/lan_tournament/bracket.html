@@ -149,6 +149,17 @@
        The JS renderer (lan_tournament_bracket.js) handles mobile dimensions
        via getBaseDims(). The bracket-desktop/bracket-mobile split is only
        used in the admin template where there is no JS bracket renderer. #}
+    {%- set origin_seen = namespace(any=false) %}
+    {%- if phase_view == 2 and bracket_json %}
+      {%- for m in bracket_json.get('matches', []) %}
+        {%- for c in m.get('contestants', []) if c.get('origin') %}
+          {%- set origin_seen.any = true %}
+        {%- endfor %}
+      {%- endfor %}
+    {%- endif %}
+    {%- if origin_seen.any %}
+    <p class='dimmed lt-origin-legend' data-lt-origin-legend>{{ _('The code before a name shows where the player qualified from: group letter and place, for example C2 = group C, place 2.') }}</p>
+    {%- endif %}
     <div id='bracket-app'>
       {% if not phase_view %}
       <noscript>
