@@ -64,6 +64,7 @@ from byceps.services.lan_tournament import (
     tournament_config_domain_service,
     tournament_config_service,
     tournament_domain_service,
+    tournament_image_repository,
     tournament_image_service,
     tournament_maintenance_service,
     tournament_match_service,
@@ -165,6 +166,7 @@ from byceps.services.lan_tournament.lan_tournament_view_helpers import (
     build_team_members_lookup,
     compute_feed_counts,
     count_match_projections,
+    edit_locked_fields,
     filter_match_projections,
     first_error_step,
     format_file_size,
@@ -195,6 +197,7 @@ from byceps.services.lan_tournament.lan_tournament_view_helpers import (
     seeding_audit_context,
     start_gate,
     START_CONFIRM_FIELD,
+    tournament_form_data,
     seeding_board_payload,
     leaderboard_submission_times,
     seeding_error_status,
@@ -202,6 +205,7 @@ from byceps.services.lan_tournament.lan_tournament_view_helpers import (
     serialize_qualification,
     wants_json,
 )
+from byceps.services.lan_tournament.lan_tournament_view_helpers import _MIN_MAX_PAIRS, _UNCHANGED_COUNT_FIELDS
 from byceps.services.lan_tournament.blueprints.dashboard_csrf import (
     CSRF_INVALID_ERROR,
     CSRF_INVALID_NOTICE,
@@ -1265,6 +1269,37 @@ def _create_wizard_urls(party: Party) -> dict[str, str]:
     }
 
 
+def _edit_wizard_urls(tournament: Tournament) -> dict[str, str]:
+    return {
+        'create': url_for('.update', tournament_id=tournament.id),
+        'upload': url_for('.upload_edit_image', tournament_id=tournament.id),
+        'delete_template': url_for(
+            '.delete_edit_image',
+            tournament_id=tournament.id,
+            image_id='__ID__',
+        ),
+        'images': url_for('.list_edit_images', tournament_id=tournament.id),
+        'validate': url_for('.validate_update', tournament_id=tournament.id),
+        'cancel': url_for('.view', tournament_id=tournament.id),
+    }
+
+
+def _stored_input_values(tournament: Tournament) -> dict[str, str]:
+    """Return the stored values the wizard may keep, as its inputs show them."""
+    data = tournament_form_data(tournament)
+    values = {
+        name: '' if data[name] is None else str(data[name])
+        for name in _UNCHANGED_COUNT_FIELDS
+    }
+    values['point_table'] = data['point_table']
+    start_time = data['start_time']
+    values['start_time'] = (
+        start_time.strftime('%Y-%m-%dT%H:%M') if start_time else ''
+    )
+    values['playoff_enabled'] = 'y' if data['playoff_enabled'] else ''
+    return values
+
+
 def _parse_uuid(value) -> UUID | None:
     if not value:
         return None
@@ -1521,9 +1556,61 @@ _IMAGE_DELETE_STATUS_BY_MSGID = {
 @permission_required('lan_tournament.create')
 def upload_create_image(party_id):
     """Store an uploaded tournament image; return its data as JSON."""
-    request.max_content_length = tournament_image_service.MAX_REQUEST_BYTES
+    return _image_upload_response(_get_party_or_404(party_id))
 
-    party = _get_party_or_404(party_id)
+
+@blueprint.delete('/for_party/<party_id>/create/image/<image_id>')
+@permission_required('lan_tournament.create')
+def delete_create_image(party_id, image_id):
+    """Delete a staged image of the current user."""
+    return _image_delete_response(_get_party_or_404(party_id), image_id)
+
+
+@blueprint.get('/for_party/<party_id>/images')
+@permission_required('lan_tournament.create')
+def list_create_images(party_id):
+    """List the images the party may pick from, as JSON."""
+    return _image_list_response(_get_party_or_404(party_id))
+
+
+# --- Edit wizard: image endpoints (JSON) ---
+
+
+@blueprint.post('/tournaments/<tournament_id>/image')
+@permission_required('lan_tournament.update')
+def upload_edit_image(tournament_id):
+    """Store an uploaded tournament image for the tournament's party."""
+    tournament = _get_tournament_or_404(tournament_id)
+    party = party_service.get_party(tournament.party_id)
+
+    return _image_upload_response(party)
+
+
+@blueprint.delete('/tournaments/<tournament_id>/image/<image_id>')
+@permission_required('lan_tournament.update')
+def delete_edit_image(tournament_id, image_id):
+    """Delete an unreferenced image of the current user."""
+    tournament = _get_tournament_or_404(tournament_id)
+    party = party_service.get_party(tournament.party_id)
+
+    return _image_delete_response(party, image_id)
+
+
+@blueprint.get('/tournaments/<tournament_id>/images')
+@permission_required('lan_tournament.update')
+def list_edit_images(tournament_id):
+    """List the images the tournament's party may pick from, as JSON."""
+    tournament = _get_tournament_or_404(tournament_id)
+    party = party_service.get_party(tournament.party_id)
+
+    return _image_list_response(party)
+
+
+# --- Image endpoints: bodies shared by the create and edit wizard ---
+
+
+def _image_upload_response(party):
+    request.max_content_length = tournament_image_service.MAX_REQUEST_BYTES
 
     try:
         upload = request.files.get('image')
@@ -1558,14 +1645,9 @@ def upload_create_image(party_id):
             return _json_error(_translate_image_message(message), status)
 
 
-@blueprint.delete('/for_party/<party_id>/create/image/<image_id>')
-@permission_required('lan_tournament.create')
-def delete_create_image(party_id, image_id):
-    """Delete a staged image of the current user."""
-    party = _get_party_or_404(party_id)
-
+def _image_delete_response(party, raw_image_id):
     try:
-        parsed_image_id = TournamentImageID(UUID(image_id))
+        parsed_image_id = TournamentImageID(UUID(raw_image_id))
     except ValueError:
         return _json_error(
             gettext(tournament_image_service.IMAGE_UNAVAILABLE_ERROR), 404
@@ -1583,12 +1665,7 @@ def delete_create_image(party_id, image_id):
             )
 
 
-@blueprint.get('/for_party/<party_id>/images')
-@permission_required('lan_tournament.create')
-def list_create_images(party_id):
-    """List the images the party may pick from, as JSON."""
-    party = _get_party_or_404(party_id)
-
+def _image_list_response(party):
     scope = request.args.get('scope', 'party')
     if scope not in ('party', 'brand'):
         return _json_error(gettext('Invalid image scope.'), 400)
@@ -2237,105 +2314,53 @@ def update_request(request_id):
 @blueprint.get('/tournaments/<tournament_id>/update')
 @permission_required('lan_tournament.update')
 @templated
-def update_form(tournament_id, erroneous_form=None):
-    """Show form to update the tournament."""
+def update_form(tournament_id, erroneous_form=None, image_error=None):
+    """Show the wizard to update the tournament."""
     tournament = _get_tournament_or_404(tournament_id)
 
     party = party_service.get_party(tournament.party_id)
 
-    is_locked = tournament.tournament_status in EDIT_LOCKED_STATUSES
-
     if erroneous_form:
         form = erroneous_form
     else:
-        start_time_local = (
-            to_user_timezone(tournament.start_time)
-            if tournament.start_time
-            else None
-        )
+        form = TournamentUpdateForm(data=tournament_form_data(tournament))
 
-        data = dataclasses.asdict(tournament)
-        data['category'] = tournament.category.value
-        data['start_time'] = start_time_local
-        if tournament.contestant_type is not None:
-            data['contestant_type'] = tournament.contestant_type.name
-        else:
-            data['contestant_type'] = ''
-        if tournament.game_format is not None:
-            data['game_format'] = tournament.game_format.name
-        else:
-            data['game_format'] = ''
-        if tournament.elimination_mode is not None:
-            data['elimination_mode'] = tournament.elimination_mode.name
-        else:
-            data['elimination_mode'] = ''
-        if tournament.score_ordering is not None:
-            data['score_ordering'] = tournament.score_ordering.name
-        else:
-            data['score_ordering'] = ''
-        # Serialize point_table list back to comma-separated string.
-        if tournament.point_table is not None:
-            data['point_table'] = ', '.join(
-                str(v) for v in tournament.point_table
-            )
-        else:
-            data['point_table'] = ''
-        # Pre-populate points_carry_to_losers checkbox.
-        data['points_carry_to_losers'] = (
-            tournament.points_carry_to_losers or False
-        )
-        data['playoff_enabled'] = tournament.has_playoffs
-        data['playoff_elimination_mode'] = (
-            tournament.playoff_elimination_mode.name
-            if tournament.playoff_elimination_mode
-            else ''
-        )
-        data['playoff_release_mode'] = (
-            tournament.playoff_release_mode.name
-            if tournament.playoff_release_mode
-            else ''
-        )
-        form = TournamentUpdateForm(data=data)
+    if image_error:
+        _add_field_error(form.image, image_error)
 
     form.set_contestant_type_choices()
     form.set_game_format_choices()
     form.set_elimination_mode_choices()
     form.set_score_ordering_choices()
 
-    locked_playoff = tournament_service.locked_playoff_fields(tournament)
-    governed = tournament_service.playoff_fields(tournament)
+    if tournament.image_id and form.image_id.data == str(tournament.image_id):
+        # The stored image shows even if the party may no longer pick it.
+        staged_image = tournament_image_repository.find_image(
+            tournament.image_id
+        )
+    else:
+        staged_image = _find_staged_image(form.image_id.data, party)
+
     return {
         'party': party,
         'tournament': tournament,
         'form': form,
-        'is_locked': is_locked,
-        'locked_playoff_fields': locked_playoff,
-        'ffa_locked': (
-            'point_table' in locked_playoff
-            if 'point_table' in governed
-            else is_locked
+        'source_request': None,
+        'source_proposer_name': None,
+        'source_request_blocking_field_labels': [],
+        'wizard': build_create_wizard_context(
+            party,
+            form,
+            source_request=None,
+            source_proposer_name=None,
+            staged_image=staged_image,
+            urls=_edit_wizard_urls(tournament),
+            mode='edit',
+            tournament=tournament,
+            locked_fields=edit_locked_fields(tournament),
+            stored_values=_stored_input_values(tournament),
         ),
     }
-
-
-_UNCHANGED_COUNT_FIELDS = (
-    'min_players',
-    'max_players',
-    'min_teams',
-    'max_teams',
-    'min_players_in_team',
-    'max_players_in_team',
-    'group_size_min',
-    'group_size_max',
-    'advancement_count',
-)
-
-# (min field, max field); the max field carries the pair's error.
-_MIN_MAX_PAIRS = (
-    ('min_players', 'max_players'),
-    ('min_teams', 'max_teams'),
-    ('min_players_in_team', 'max_players_in_team'),
-)
 
 
 def _parse_point_table(raw: str | None) -> list[int] | None:
@@ -2436,21 +2461,18 @@ def _update_form_is_valid(form, tournament) -> bool:
     return not form.errors
 
 
-@blueprint.post('/tournaments/<tournament_id>')
-@permission_required('lan_tournament.update')
-def update(tournament_id):
-    """Update the tournament."""
-    tournament = _get_tournament_or_404(tournament_id)
-
+def _build_update_form(
+    tournament: Tournament, formdata
+) -> TournamentUpdateForm:
+    """Return the edit form, with the stored values of the locked fields."""
     is_locked = tournament.tournament_status in EDIT_LOCKED_STATUSES
     locked_playoff = tournament_service.locked_playoff_fields(tournament)
     governed = tournament_service.playoff_fields(tournament)
 
     # Disabled fields are not submitted by browsers.  Inject the
     # stored values so WTForms validation passes normally.
-    formdata = (
-        request.form.copy() if is_locked or locked_playoff else request.form
-    )
+    if is_locked or locked_playoff:
+        formdata = formdata.copy()
     if is_locked:
         formdata['name'] = tournament.name
         formdata['category'] = tournament.category.value
@@ -2461,9 +2483,7 @@ def update(tournament_id):
             else ''
         )
         formdata['game_format'] = (
-            tournament.game_format.name
-            if tournament.game_format
-            else ''
+            tournament.game_format.name if tournament.game_format else ''
         )
         formdata['elimination_mode'] = (
             tournament.elimination_mode.name
@@ -2471,9 +2491,7 @@ def update(tournament_id):
             else ''
         )
         formdata['score_ordering'] = (
-            tournament.score_ordering.name
-            if tournament.score_ordering
-            else ''
+            tournament.score_ordering.name if tournament.score_ordering else ''
         )
         if tournament.start_time:
             formdata['start_time'] = to_user_timezone(
@@ -2522,10 +2540,42 @@ def update(tournament_id):
     form.set_game_format_choices()
     form.set_elimination_mode_choices()
     form.set_score_ordering_choices()
+    return form
 
-    if not _update_form_is_valid(form, tournament):
-        return update_form(tournament.id, form)
 
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class _UpdateSubmission:
+    name: str
+    category: TournamentCategory
+    game: str | None
+    description: str | None
+    image_url: str | None
+    ruleset: str | None
+    start_time: datetime | None
+    min_players: int | None
+    max_players: int | None
+    min_teams: int | None
+    max_teams: int | None
+    min_players_in_team: int | None
+    max_players_in_team: int | None
+    contestant_type: ContestantType | None
+    game_format: GameFormat | None
+    elimination_mode: EliminationMode | None
+    score_ordering: ScoreOrdering | None
+    point_table: list[int] | None
+    advancement_count: int | None
+    group_size_min: int | None
+    group_size_max: int | None
+    points_carry_to_losers: bool | None
+    playoff: dict
+    image_id: TournamentImageID | None
+    image_alt_text: str | None
+
+
+def _parse_update_submission(
+    form: TournamentUpdateForm, tournament: Tournament
+) -> _UpdateSubmission | None:
+    """Parse and check an edit POST; put errors on the fields."""
     name = form.name.data.strip()
     game = form.game.data.strip() if form.game.data else None
     description = (
@@ -2542,18 +2592,20 @@ def update(tournament_id):
             else None
         )
     except KeyError:
-        flash_error(gettext('Invalid contestant type selected.'))
-        return update_form(tournament.id, form)
+        _add_field_error(
+            form.contestant_type, gettext('Invalid contestant type selected.')
+        )
+        return None
 
     try:
         game_format = (
-            GameFormat[form.game_format.data]
-            if form.game_format.data
-            else None
+            GameFormat[form.game_format.data] if form.game_format.data else None
         )
     except KeyError:
-        flash_error(gettext('Invalid game format selected.'))
-        return update_form(tournament.id, form)
+        _add_field_error(
+            form.game_format, gettext('Invalid game format selected.')
+        )
+        return None
 
     try:
         elimination_mode = (
@@ -2562,18 +2614,21 @@ def update(tournament_id):
             else None
         )
     except KeyError:
-        flash_error(gettext('Invalid elimination mode selected.'))
-        return update_form(tournament.id, form)
+        _add_field_error(
+            form.elimination_mode, gettext('Invalid elimination mode selected.')
+        )
+        return None
 
     # Validate game_format + elimination_mode combination.
     if game_format and elimination_mode:
         if not is_valid_combination(game_format, elimination_mode):
-            flash_error(
+            _add_field_error(
+                form.elimination_mode,
                 gettext(
                     'Invalid combination of game format and elimination mode.'
-                )
+                ),
             )
-            return update_form(tournament.id, form)
+            return None
 
     try:
         score_ordering = (
@@ -2582,8 +2637,10 @@ def update(tournament_id):
             else None
         )
     except KeyError:
-        flash_error(gettext('Invalid score ordering selected.'))
-        return update_form(tournament.id, form)
+        _add_field_error(
+            form.score_ordering, gettext('Invalid score ordering selected.')
+        )
+        return None
     min_players = form.min_players.data
     max_players = form.max_players.data
     min_teams = form.min_teams.data
@@ -2614,17 +2671,11 @@ def update(tournament_id):
     if game_format != GameFormat.HIGHSCORE:
         score_ordering = None
 
-    playoff_errors: list[str] = []
     playoff = _parse_playoff_config(
-        form,
-        game_format,
-        elimination_mode,
-        lambda field, message: playoff_errors.append(message),
+        form, game_format, elimination_mode, _add_field_error
     )
-    if playoff_errors:
-        for message in playoff_errors:
-            flash_error(message)
-        return update_form(tournament.id, form)
+    if form.errors:
+        return None
 
     # Parse FFA fields. A highscore playoff phase is a Free-for-All phase
     # and carries its settings in the same fields.
@@ -2650,20 +2701,22 @@ def update(tournament_id):
                     if v.strip()
                 ]
             except ValueError:
-                flash_error(
-                    gettext(
-                        'Point table must be comma-separated integers.'
-                    )
+                _add_field_error(
+                    form.point_table,
+                    gettext('Point table must be comma-separated integers.'),
                 )
-                return update_form(tournament.id, form)
+                return None
             table_problem = None
             if point_table != tournament.point_table:
                 table_problem = tournament_domain_service.check_point_count(
                     point_table
                 ) or tournament_domain_service.check_point_values(point_table)
             if table_problem is not None:
-                flash_error(_translate_validation_message(table_problem))
-                return update_form(tournament.id, form)
+                _add_field_error(
+                    form.point_table,
+                    _translate_validation_message(table_problem),
+                )
+                return None
         advancement_count = form.advancement_count.data
         group_size_min = form.group_size_min.data
         group_size_max = form.group_size_max.data
@@ -2690,12 +2743,32 @@ def update(tournament_id):
     match tournament_domain_service.validate_playoff_settings(playoff_settings):
         case Err(playoff_errors_by_field):
             _apply_settings_errors(form, playoff_errors_by_field)
-            for message in playoff_errors_by_field.values():
-                flash_error(_translate_validation_message(message))
-            return update_form(tournament.id, form)
+            return None
 
-    result = tournament_service.update_tournament(
-        tournament.id,
+    # A client-supplied image id is re-checked against the tournament's
+    # party, unless it is the attached one; an upload without JavaScript
+    # replaces it.
+    image_id = None
+    has_upload = getattr(form.image.data, 'filename', None)
+    if form.image_id.data and not has_upload:
+        if tournament.image_id and form.image_id.data == str(
+            tournament.image_id
+        ):
+            image_id = tournament.image_id
+        else:
+            image = _find_staged_image(
+                form.image_id.data,
+                party_service.get_party(tournament.party_id),
+            )
+            if image is None:
+                _add_field_error(
+                    form.image_id,
+                    gettext(tournament_image_service.IMAGE_UNAVAILABLE_ERROR),
+                )
+                return None
+            image_id = image.id
+
+    return _UpdateSubmission(
         name=name,
         category=TournamentCategory(form.category.data),
         game=game,
@@ -2718,11 +2791,95 @@ def update(tournament_id):
         group_size_min=group_size_min,
         group_size_max=group_size_max,
         points_carry_to_losers=points_carry_to_losers,
-        **playoff,
+        playoff=playoff,
+        image_id=image_id,
+        image_alt_text=form.image_alt_text.data or None,
+    )
+
+
+@blueprint.post('/tournaments/<tournament_id>')
+@permission_required('lan_tournament.update')
+def update(tournament_id):
+    """Update the tournament."""
+    request.max_content_length = tournament_image_service.MAX_REQUEST_BYTES
+
+    tournament = _get_tournament_or_404(tournament_id)
+
+    try:
+        formdata = _get_create_formdata()
+    except RequestEntityTooLarge:
+        # The entries are in the unparsed body and cannot be restored.
+        body = update_form(
+            tournament.id, image_error=_translate_image_too_large()
+        )
+        return body, 413
+
+    form = _build_update_form(tournament, formdata)
+
+    if not _update_form_is_valid(form, tournament):
+        return update_form(tournament.id, form)
+
+    sub = _parse_update_submission(form, tournament)
+    if sub is None:
+        if form.image_id.errors:
+            form.image_id.data = ''
+        return update_form(tournament.id, form)
+
+    image_id = sub.image_id
+    upload = form.image.data
+    if upload is not None and getattr(upload, 'filename', None):
+        match tournament_image_service.store_uploaded_image(
+            tournament.party_id, g.user.id, upload.stream, upload.filename
+        ):
+            case Ok(image):
+                image_id = image.id
+                # A file input cannot be refilled: keep the staged image.
+                form.image_id.data = str(image.id)
+            case Err(message):
+                _add_field_error(form.image, _translate_image_message(message))
+                return update_form(tournament.id, form)
+
+    result = tournament_service.update_tournament(
+        tournament.id,
+        name=sub.name,
+        category=sub.category,
+        game=sub.game,
+        description=sub.description,
+        image_url=sub.image_url,
+        ruleset=sub.ruleset,
+        start_time=sub.start_time,
+        min_players=sub.min_players,
+        max_players=sub.max_players,
+        min_teams=sub.min_teams,
+        max_teams=sub.max_teams,
+        min_players_in_team=sub.min_players_in_team,
+        max_players_in_team=sub.max_players_in_team,
+        contestant_type=sub.contestant_type,
+        game_format=sub.game_format,
+        elimination_mode=sub.elimination_mode,
+        score_ordering=sub.score_ordering,
+        point_table=sub.point_table,
+        advancement_count=sub.advancement_count,
+        group_size_min=sub.group_size_min,
+        group_size_max=sub.group_size_max,
+        points_carry_to_losers=sub.points_carry_to_losers,
+        **sub.playoff,
+        image_id=image_id,
+        image_alt_text=sub.image_alt_text,
         initiator_id=g.user.id,
     )
     if result.is_err():
-        flash_error(_translate_error(result.unwrap_err()))
+        error_message = result.unwrap_err()
+        if error_message == tournament_service.IMAGE_UNAVAILABLE_ERROR:
+            _add_field_error(form.image_id, gettext(error_message))
+            form.image_id.data = ''
+        elif error_message in (
+            tournament_service.PLAYOFF_RELEASED_EDIT_ERROR,
+            tournament_service.PLAYOFF_STARTED_EDIT_ERROR,
+        ):
+            _add_field_error(form.playoff_enabled, gettext(error_message))
+        else:
+            form.form_errors.append(_translate_error(error_message))
         return update_form(tournament.id, form)
 
     tournament = result.unwrap()
@@ -2735,6 +2892,36 @@ def update(tournament_id):
     )
 
     return redirect_to('.view', tournament_id=tournament.id)
+
+
+@blueprint.post('/tournaments/<tournament_id>/update/validate')
+@permission_required('lan_tournament.update')
+def validate_update(tournament_id):
+    """Run edit validation without writing; return JSON."""
+    request.max_content_length = tournament_image_service.MAX_REQUEST_BYTES
+
+    tournament = _get_tournament_or_404(tournament_id)
+
+    try:
+        formdata = request.form
+    except RequestEntityTooLarge:
+        return _json_error(_translate_image_too_large(), 413)
+
+    form = _build_update_form(tournament, formdata)
+    if _update_form_is_valid(form, tournament):
+        _parse_update_submission(form, tournament)
+
+    errors = form.errors
+    return jsonify(
+        ok=not errors,
+        errors={
+            key: [str(message) for message in messages]
+            for key, messages in errors.items()
+        },
+        first_error_step=first_error_step(form),
+        checked_at=format_time(datetime.now(UTC), 'HH:mm'),
+        refusal=None,
+    )
 
 
 @blueprint.post('/tournaments/<tournament_id>/delete')

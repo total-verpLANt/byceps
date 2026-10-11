@@ -533,6 +533,8 @@ def update_tournament(
     playoff_qualifiers_per_group: int | None | _Unset = _UNSET,
     playoff_qualifier_count: int | None | _Unset = _UNSET,
     playoff_release_mode: PlayoffReleaseMode | None | _Unset = _UNSET,
+    image_id: TournamentImageID | None | _Unset = _UNSET,
+    image_alt_text: str | None | _Unset = _UNSET,
     initiator_id: UserID | None = None,
 ) -> Result[Tournament, str | ValidationMessage]:
     """Update a tournament.
@@ -547,6 +549,12 @@ def update_tournament(
     A playoff kwarg that is not passed keeps the stored value; pass
     `None` to clear it. The release state is never a kwarg here: the
     targeted repository writers own it.
+
+    An `image_id` must name an image the party's brand may use; its
+    served path then replaces `image_url`. The attached image's own id
+    is kept without that check. `None` drops the stored image
+    and applies `image_url`. Not passed, a changed `image_url` drops the
+    stored image. Neither image field is under the status lock.
 
     The playoff fields follow `locked_playoff_fields`, not the status
     lock. With an `initiator_id`, a changed playoff field of an ongoing
@@ -573,14 +581,49 @@ def update_tournament(
     if category is None:
         category = tournament.category
 
-    # An unchanged URL (e.g. an uploaded image's relative served path)
-    # stays valid without re-validation.
-    image_url_changed = (image_url or None) != (tournament.image_url or None)
-    if image_url_changed:
-        validation_result = _validate_image_url(image_url)
-        if validation_result.is_err():
+    new_image_id: TournamentImageID | None
+    if isinstance(image_id, _Unset) or image_id is None:
+        # An unchanged URL (e.g. an uploaded image's relative served path)
+        # stays valid without re-validation.
+        image_url_changed = (image_url or None) != (
+            tournament.image_url or None
+        )
+        if image_url_changed:
+            validation_result = _validate_image_url(image_url)
+            if validation_result.is_err():
+                tournament_repository.rollback_session()
+                return Err(validation_result.unwrap_err())
+        new_image_id = (
+            None
+            if image_id is None or image_url_changed
+            else tournament.image_id
+        )
+    elif image_id == tournament.image_id:
+        # The attached image stays, even if the party may no longer pick it.
+        image_url = tournament.image_url
+        image_url_changed = False
+        new_image_id = image_id
+    else:
+        # The stored image overrides any posted URL.
+        party = party_service.get_party(tournament.party_id)
+        image = tournament_image_service.find_attachable_image(image_id, party)
+        if image is None:
             tournament_repository.rollback_session()
-            return Err(validation_result.unwrap_err())
+            return Err(IMAGE_UNAVAILABLE_ERROR)
+        image_url = tournament_image_service.get_image_url_path(image)
+        image_url_changed = image_url != (tournament.image_url or None)
+        new_image_id = image_id
+
+    if isinstance(image_alt_text, _Unset):
+        new_image_alt_text = (
+            None
+            if image_url_changed and tournament.image_id is not None
+            else tournament.image_alt_text
+        )
+    else:
+        new_image_alt_text = (
+            (image_alt_text or None) if (new_image_id or image_url) else None
+        )
 
     # Validate game_format + elimination_mode combination
     if game_format is not None and elimination_mode is not None:
@@ -738,12 +781,8 @@ def update_tournament(
         game=game,
         description=description,
         image_url=image_url,
-        image_id=None if image_url_changed else tournament.image_id,
-        image_alt_text=(
-            None
-            if image_url_changed and tournament.image_id is not None
-            else tournament.image_alt_text
-        ),
+        image_id=new_image_id,
+        image_alt_text=new_image_alt_text,
         ruleset=ruleset,
         start_time=start_time,
         updated_at=datetime.now(UTC),
@@ -779,6 +818,11 @@ def update_tournament(
 
     try:
         tournament_repository.update_tournament(updated)
+    except IntegrityError as e:
+        tournament_repository.rollback_session()
+        if extract_constraint_name(e) == 'fk_lan_tournaments_image_id':
+            return Err(IMAGE_UNAVAILABLE_ERROR)
+        raise
     except Exception:
         tournament_repository.rollback_session()
         raise

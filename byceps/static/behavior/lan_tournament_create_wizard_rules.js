@@ -1246,6 +1246,119 @@
     return result;
   }
 
+  // The edit wizard saves from every step; the creation wizard only from
+  // the review.
+  function canSubmitFromStep(mode, step) {
+    return mode === 'edit' || step === LAST_STEP;
+  }
+
+  // A control of a locked field stays disabled, whatever the scope and
+  // availability rules want.
+  function isControlDisabled(field, lockedFields, wantDisabled) {
+    return !!wantDisabled ||
+      (Array.isArray(lockedFields) && lockedFields.indexOf(field) !== -1);
+  }
+
+  function hasOwn(object, key) {
+    return Object.prototype.hasOwnProperty.call(object, key);
+  }
+
+  // "007" and "7" are the same whole number; other text compares as is.
+  function comparable(raw) {
+    var text = isBlank(raw) ? '' : String(raw).trim();
+    if (!/^[+-]?\d+$/.test(text)) {
+      return text;
+    }
+    var digits = text.replace(/^[+-]/, '').replace(/^0+(?=\d)/, '');
+    return text.charAt(0) === '-' && digits !== '0' ? '-' + digits : digits;
+  }
+
+  function samePointTable(left, right) {
+    var a = pointTableList({point_table: left});
+    var b = pointTableList({point_table: right});
+    return a.length === b.length && a.every(function (item, i) {
+      return /^[+-]?\d+$/.test(item) && /^[+-]?\d+$/.test(b[i]) &&
+        comparable(item) === comparable(b[i]);
+    });
+  }
+
+  // The start time is compared to the minute, as the server does.
+  function sameStartTime(left, right) {
+    var a = startParts(left);
+    var b = startParts(right);
+    if (a && b) {
+      return a.year === b.year && a.month === b.month && a.day === b.day &&
+        a.time === b.time;
+    }
+    return comparable(left) === comparable(right);
+  }
+
+  function sameAsStored(field, value, stored) {
+    if (field === 'point_table') {
+      return samePointTable(value, stored);
+    }
+    if (field === 'start_time') {
+      return sameStartTime(value, stored);
+    }
+    return comparable(value) === comparable(stored);
+  }
+
+  function minAboveMax(values, minField, maxField) {
+    var minValue = wholeNumber(values[minField]);
+    var maxValue = wholeNumber(values[maxField]);
+    return minValue !== null && maxValue !== null && minValue > maxValue
+      ? message(MSG_MIN_ABOVE_MAX, {
+        other: FIELD_LABELS[minField] || minField,
+        n: minValue
+      })
+      : null;
+  }
+
+  // The twin of `discard_errors_on_unchanged_fields`: an edit that leaves a
+  // stored value alone is not blocked by a rule added after the tournament
+  // was created. A min/max pair error stays while the min field changed.
+  // The server also keeps the stored value of a locked field, so its errors
+  // are dropped. `ctx`: {storedValues, editExemptFields, minMaxPairs,
+  // lockedFields}. Returns a new map.
+  function dropEditExemptErrors(errors, values, ctx) {
+    values = values || {};
+    ctx = ctx || {};
+    var stored = ctx.storedValues || {};
+    var kept = {};
+    Object.keys(errors || {}).forEach(function (field) {
+      kept[field] = errors[field];
+    });
+    (ctx.lockedFields || []).forEach(function (field) {
+      delete kept[field];
+    });
+
+    var unchanged = {};
+    (ctx.editExemptFields || []).forEach(function (field) {
+      unchanged[field] = hasOwn(stored, field) &&
+        sameAsStored(field, values[field], stored[field]);
+    });
+
+    var minOf = {};
+    (ctx.minMaxPairs || []).forEach(function (pair) {
+      minOf[pair[1]] = pair[0];
+    });
+    Object.keys(unchanged).forEach(function (field) {
+      if (!unchanged[field] || !hasOwn(kept, field)) {
+        return;
+      }
+      var minField = minOf[field];
+      var cross = minField !== undefined && !unchanged[minField]
+        ? minAboveMax(values, minField, field)
+        : null;
+      if (cross) {
+        kept[field] = cross;
+      } else {
+        delete kept[field];
+      }
+    });
+    return kept;
+  }
+
   return {
     STEP_FIELDS: STEP_FIELDS,
     format: format,
@@ -1268,6 +1381,9 @@
     stepSubtitle: stepSubtitle,
     dependentChange: dependentChange,
     reviewBanner: reviewBanner,
+    canSubmitFromStep: canSubmitFromStep,
+    isControlDisabled: isControlDisabled,
+    dropEditExemptErrors: dropEditExemptErrors,
     startParts: startParts,
     initialReqMap: initialReqMap,
     applyRequestValues: applyRequestValues,

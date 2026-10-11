@@ -88,6 +88,32 @@ This guide documents all available URLs for the LAN Tournament module, covering 
 - **Description**: Runs the create validation without writing anything: no tournament, no flash, no request unlink.
 - **Success**: `200` with `{ok, errors: {<field>: [messages]}, first_error_step, checked_at}`. Form-level errors are under the key `""`.
 
+#### Edit Wizard: Upload Image
+- **URL**: `/lan-tournaments/tournaments/<tournament_id>/image`
+- **Endpoint**: `lan_tournament_admin.upload_edit_image`
+- **Method**: POST (`multipart/form-data`, file field `image`)
+- **Permission**: `lan_tournament.update`
+- **Description**: Same as Create Wizard: Upload Image, for the party of the tournament. The party comes from the tournament, never from the client.
+- **Success / Errors**: as for the create route. An unknown or malformed tournament id is a plain `404`.
+
+#### Edit Wizard: Delete Image
+- **URL**: `/lan-tournaments/tournaments/<tournament_id>/image/<image_id>`
+- **Endpoint**: `lan_tournament_admin.delete_edit_image`
+- **Method**: DELETE
+- **Permission**: `lan_tournament.update`
+- **Description**: Same as Create Wizard: Delete Staged Image, within the party of the tournament. An image that a tournament references (also this one) is refused with `409`.
+- **Success / Errors**: as for the create route. An unknown or malformed tournament id is a plain `404`.
+- **Client URL**: build with `url_for('lan_tournament_admin.delete_edit_image', tournament_id=..., image_id='__ID__')`; the client replaces `__ID__` with the image id.
+
+#### Edit Wizard: List Images
+- **URL**: `/lan-tournaments/tournaments/<tournament_id>/images`
+- **Endpoint**: `lan_tournament_admin.list_edit_images`
+- **Method**: GET
+- **Permission**: `lan_tournament.update`
+- **Query**: as for Create Wizard: List Images
+- **Description**: Lists the images the party of the tournament may pick from; brand scope covers the parties of its brand only.
+- **Success / Errors**: as for the create route. An unknown or malformed tournament id is a plain `404`.
+
 #### Import Tournament Form
 - **URL**: `/lan-tournaments/for_party/<party_id>/import`
 - **Endpoint**: `lan_tournament_admin.import_form`
@@ -123,17 +149,31 @@ This guide documents all available URLs for the LAN Tournament module, covering 
 
 #### Update Tournament Form
 - **URL**: `/lan-tournaments/tournaments/<tournament_id>/update`
+- **Endpoint**: `lan_tournament_admin.update_form`
 - **Method**: GET
 - **Permission**: `lan_tournament.update`
-- **Description**: Displays form to update tournament details
+- **Description**: Shows the creation wizard in edit mode, prefilled from the stored tournament. Every step is reachable and "Save changes" is offered on each. The fields the status or the playoff release lock are rendered `disabled` (`edit_locked_fields`); that is cosmetic, the POST decides. The image uses the uploader and picker of the edit image routes. No wizard state is kept in the browser.
 - **Example**: `/lan-tournaments/tournaments/01234567-89ab-cdef-0123-456789abcdef/update`
+- **Errors**: `404` for an unknown tournament, `403` without the permission.
 
 #### Update Tournament (Submit)
 - **URL**: `/lan-tournaments/tournaments/<tournament_id>`
-- **Method**: POST
+- **Endpoint**: `lan_tournament_admin.update`
+- **Method**: POST (`multipart/form-data` for the file field `image`; the request body may be up to `MAX_REQUEST_BYTES`, above that the form comes back with `413`)
 - **Permission**: `lan_tournament.update`
-- **Description**: Processes tournament update form submission
-- **Form Fields**: Same as create form
+- **Form Fields**: Same as the create form, minus the request link and the submission token. Hidden `image_id` carries the attached image: the wizard prefills it with the stored id, an empty value removes the image. A file in `image` (no JavaScript) is stored for the party of the tournament and replaces `image_id`.
+- **Description**: Locked values are injected from storage on the server before validation (disabled controls are not submitted, and a forged value of one is overwritten). Stored values the current rules refuse stay saveable while they are left unchanged (`discard_errors_on_unchanged_fields`).
+- **Success**: `302` to the tournament view with a success flash.
+- **Errors**: `200` re-renders the wizard on the step of the first error, nothing is flashed. Field errors sit on their field (an unavailable `image_id` on `image_id`, a refused playoff change on `playoff_enabled`); other service errors are form-level and show on the review step.
+
+#### Update Tournament: Pre-Check
+- **URL**: `/lan-tournaments/tournaments/<tournament_id>/update/validate`
+- **Endpoint**: `lan_tournament_admin.validate_update`
+- **Method**: POST (same form body as the update submit, without the image file)
+- **Permission**: `lan_tournament.update`
+- **Description**: Runs the update validation without writing anything: same injection of locked values and same parse as the update submit, no flash, no image upload.
+- **Success**: `200` with `{ok, errors: {<field>: [messages]}, first_error_step, checked_at, refusal: null}`. Form-level errors are under the key `""`.
+- **Errors**: `413` with `{error}` above the body limit, `403` without the permission, `404` for an unknown tournament.
 
 #### Delete Tournament
 - **URL**: `/lan-tournaments/tournaments/<tournament_id>/delete`

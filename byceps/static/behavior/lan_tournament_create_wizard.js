@@ -12,6 +12,10 @@
  *   - shows live errors, dependent-change notices and the review
  *   - asks the server for a pre-check when the review step opens
  *   - keeps the entries in sessionStorage until the form is submitted
+ *     (not in edit mode: stored values must not meet a stale draft)
+ *   - in edit mode (`config.mode === 'edit'`) every step is reachable, Save
+ *     is offered on every step and errors on unchanged or locked fields do
+ *     not block it
  *
  * Rules come from `LtCreateWizardRules` (no rule logic lives here).
  * Text comes only from the JSON config island (`strings`, keyed by the
@@ -134,6 +138,14 @@
     return value === undefined || value === null || String(value).trim() === '';
   }
 
+  // A stored flag as the server renders it: 'y', 'True', true.
+  function isOn(value) {
+    return value === true ||
+      /^(y|yes|true|on|1)$/i.test(
+        value === undefined || value === null ? '' : String(value).trim()
+      );
+  }
+
   function setShown(node, shown) {
     node.hidden = !shown;
     node.style.display = shown ? '' : 'none';
@@ -161,6 +173,7 @@
     var page = layout.parentNode;
     var strings = config.strings || {};
     var limits = config.limits || {};
+    var editMode = config.mode === 'edit';
 
     var stepEls = qsa(form, '[data-wiz-step]');
     if (stepEls.length !== STEP_COUNT) {
@@ -202,6 +215,12 @@
         ? strings[msgid]
         : msgid;
       return Rules.format(text, params);
+    }
+
+    function stepTitle(i) {
+      return editMode && i === REVIEW_STEP
+        ? t('Review and save')
+        : t(STEP_TITLES[i]);
     }
 
     function attentionMessage(count) {
@@ -321,8 +340,24 @@
         capacity: config.capacity,
         validCombinations: config.validCombinations,
         fromRequest: !!config.request && !state.unlinked,
-        requireStructure: true
+        requireStructure: config.requireStructure !== false
       };
+    }
+
+    // In edit mode the errors the server forgives (unchanged stored values,
+    // locked fields) must not block Save either.
+    function validateValues(values) {
+      var checked = validationValues(values);
+      var result = Rules.validate(checked, rulesContext());
+      if (editMode) {
+        result.errors = Rules.dropEditExemptErrors(result.errors, checked, {
+          storedValues: config.storedValues,
+          editExemptFields: config.editExemptFields,
+          minMaxPairs: config.minMaxPairs,
+          lockedFields: config.lockedFields
+        });
+      }
+      return result;
     }
 
     function stepOf(field) {
@@ -395,7 +430,9 @@
           function (control) {
             if (active) {
               if (control.hasAttribute('data-wiz-scope-off')) {
-                control.disabled = false;
+                control.disabled = Rules.isControlDisabled(
+                  control.name, config.lockedFields, false
+                );
                 control.removeAttribute('data-wiz-scope-off');
               }
             } else if (!control.disabled) {
@@ -420,7 +457,10 @@
 
     function buildStepper() {
       var nav = el('nav', 'lt-wiz-stepper');
-      nav.setAttribute('aria-label', t('Create tournament'));
+      nav.setAttribute(
+        'aria-label',
+        editMode ? t('Edit tournament') : t('Create tournament')
+      );
 
       var compact = el('div', 'lt-wiz-stepper__compact');
       var head = el('div', 'lt-wiz-stepper__head');
@@ -507,7 +547,7 @@
           item.setAttribute('data-wiz-key', key);
           var inner = [
             el('span', 'lt-wiz-stepper__n', marker),
-            el('span', 'lt-wiz-stepper__t', t(STEP_TITLES[i])),
+            el('span', 'lt-wiz-stepper__t', stepTitle(i)),
             el('span', 'lt-wiz-sr', ' (' + statusLabel(status) + ')')
           ];
           inner[0].setAttribute('aria-hidden', 'true');
@@ -567,19 +607,25 @@
       if (!last) {
         nextBtn.textContent = t(
           'Continue: %(step)s',
-          {step: t(STEP_TITLES[Rules.nextStep(state.step, values)])}
+          {step: stepTitle(Rules.nextStep(state.step, values))}
         ) + ' ›';
       }
-      setShown(submitBtn, last);
+      setShown(submitBtn, last || editMode);
       var blocked = state.submitting || state.image.status === 'uploading';
       if (blocked) {
         submitBtn.setAttribute('aria-disabled', 'true');
       } else {
         submitBtn.removeAttribute('aria-disabled');
       }
-      submitBtn.textContent = state.submitting
-        ? t('Creating …')
-        : t('Create draft tournament');
+      if (editMode) {
+        submitBtn.textContent = state.submitting
+          ? t('Saving …')
+          : t('Save changes');
+      } else {
+        submitBtn.textContent = state.submitting
+          ? t('Creating …')
+          : t('Create draft tournament');
+      }
     }
 
     function showStep() {
@@ -622,7 +668,7 @@
       focusHeading();
       announce(
         t('Step %(n)s of %(total)s', {n: i + 1, total: STEP_COUNT}) + ': ' +
-        t(STEP_TITLES[i])
+        stepTitle(i)
       );
       if (i === REVIEW_STEP) {
         startPrecheck();
@@ -669,7 +715,7 @@
       state.values.reqMap = state.reqMap;
       placePieces(values);
       applyScopes(values);
-      state.result = Rules.validate(validationValues(values), rulesContext());
+      state.result = validateValues(values);
       showStep();
       renderFieldMessages();
       refreshErrsum();
@@ -1407,7 +1453,9 @@
           if (!input) {
             return;
           }
-          input.disabled = !choice.available;
+          input.disabled = Rules.isControlDisabled(
+            input.name, config.lockedFields, !choice.available
+          );
           var card = input.closest('label');
           qsa(card, '[data-wiz-why]').forEach(function (why) {
             setShown(why, cards && !choice.available);
@@ -1559,6 +1607,19 @@
       }
     }
 
+    // Stored playoffs disappear on save once the format has no playoff phase.
+    function paintPlayoffRemoval(values) {
+      var note = qs(document, '[data-wiz-playoff-removal]');
+      if (!note) {
+        return;
+      }
+      var stored = (config.storedValues || {}).playoff_enabled;
+      setShown(
+        note,
+        editMode && isOn(stored) && Rules.applicableScopes(values).playoffNone
+      );
+    }
+
     function renderAux(values) {
       paintChoices(values);
       paintSourceTags(values);
@@ -1567,6 +1628,7 @@
       paintGroupUnit(values);
       paintPreview(values);
       paintPlayoffs(values);
+      paintPlayoffRemoval(values);
       paintReqMap(values);
     }
 
@@ -2196,7 +2258,7 @@
         fields.forEach(function (field) {
           var item = el('li');
           var link = el(
-            'a', null, t(STEP_TITLES[stepOf(field)]) + ' › ' + labelOf(field)
+            'a', null, stepTitle(stepOf(field)) + ' › ' + labelOf(field)
           );
           link.setAttribute('href', '#');
           link.setAttribute('data-wiz-goto', String(stepOf(field)));
@@ -2223,10 +2285,15 @@
         } else if (banner === 'offline') {
           var off = statusBox('color-warning', 'status');
           off.appendChild(el('strong', null, t('Pre-check unavailable right now.')));
-          off.appendChild(document.createTextNode(' ' + t(
-            'You can still create: the server checks everything again. ' +
-            'Your entries are kept.'
-          )));
+          off.appendChild(document.createTextNode(' ' + (editMode
+            ? t(
+              'You can still save: the server checks everything again. ' +
+              'Your entries are kept.'
+            )
+            : t(
+              'You can still create: the server checks everything again. ' +
+              'Your entries are kept.'
+            ))));
           reviewEl.appendChild(off);
         } else if (banner === 'ok') {
           var ok = statusBox('color-success', 'status');
@@ -2243,11 +2310,17 @@
         reviewEl.appendChild(reviewSection(section));
       });
       var info = el('div', 'notification color-info');
-      info.appendChild(formatNodes(
-        'The tournament is created as %(draft)s. Registration stays ' +
-        'closed until you open it on the tournament page.',
-        {draft: el('strong', null, t('a draft'))}
-      ));
+      if (editMode) {
+        info.textContent = t(
+          'Changes are saved only when you press Save changes.'
+        );
+      } else {
+        info.appendChild(formatNodes(
+          'The tournament is created as %(draft)s. Registration stays ' +
+          'closed until you open it on the tournament page.',
+          {draft: el('strong', null, t('a draft'))}
+        ));
+      }
       reviewEl.appendChild(info);
     }
 
@@ -2390,7 +2463,7 @@
         event.preventDefault();
         return;
       }
-      if (state.step !== REVIEW_STEP) {
+      if (!Rules.canSubmitFromStep(config.mode, state.step)) {
         event.preventDefault();
         goNext();
         return;
@@ -2597,13 +2670,18 @@
       state.reqMap = config.request
         ? Rules.initialReqMap(values, config.request)
         : null;
-      if (typeof first === 'number' && first >= 0 && first < STEP_COUNT) {
+      var failed = typeof first === 'number' && first >= 0 && first < STEP_COUNT;
+      if (failed) {
         state.step = first;
+      }
+      // Edit mode starts from stored entries: every step counts as seen.
+      if (failed || editMode) {
         for (var i = 0; i < REVIEW_STEP; i++) {
           state.visited[i] = true;
           state.shown[i] = true;
         }
-      } else {
+      }
+      if (!failed && !editMode) {
         restoreSession();
       }
     }

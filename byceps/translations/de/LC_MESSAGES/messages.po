@@ -17463,3 +17463,15 @@ msgid "%(count)s number followed"
 msgid_plural "%(count)s numbers followed"
 msgstr[0] "%(count)s Nummer verfolgt"
 msgstr[1] "%(count)s Nummern verfolgt"
+
+msgid "Review and save"
+msgstr "Prüfen & speichern"
+
+msgid "The server rejected the changes."
+msgstr "Der Server hat die Änderungen abgelehnt."
+
+msgid "You can still save: the server checks everything again. Your entries are kept."
+msgstr "Du kannst trotzdem speichern: Der Server prüft beim Speichern alles erneut. Deine Eingaben bleiben erhalten."
+
+msgid "Changes are saved only when you press Save changes."
+msgstr "Änderungen werden erst gespeichert, wenn du „Änderungen speichern“ drückst."

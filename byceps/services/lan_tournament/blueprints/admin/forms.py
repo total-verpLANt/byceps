@@ -436,13 +436,7 @@ class _BaseForm(LocalizedForm):
         self.score_ordering.choices = _get_score_ordering_choices()
 
 
-class TournamentCreateForm(_BaseForm):
-    # Set by `create_form` when opened from an accepted tournament
-    # request (`?from_request=<uuid>`); read back by `create`, which
-    # passes it to `tournament_service.create_tournament` to link the
-    # tournament to that request in the same transaction.
-    from_request_id = HiddenField()
-    submission_token = HiddenField()
+class _ImageFieldsMixin:
     image_id = HiddenField()
     image = FileField(lazy_gettext('Tournament image'))
     image_alt_text = StringField(
@@ -450,6 +444,15 @@ class TournamentCreateForm(_BaseForm):
         filters=[_strip],
         validators=[Optional(), Length(max=200), storable_text],
     )
+
+
+class TournamentCreateForm(_ImageFieldsMixin, _BaseForm):
+    # Set by `create_form` when opened from an accepted tournament
+    # request (`?from_request=<uuid>`); read back by `create`, which
+    # passes it to `tournament_service.create_tournament` to link the
+    # tournament to that request in the same transaction.
+    from_request_id = HiddenField()
+    submission_token = HiddenField()
 
     @staticmethod
     def validate_image_url(form, field):
@@ -484,7 +487,7 @@ class TournamentImportForm(LocalizedForm):
     )
 
 
-class TournamentUpdateForm(_BaseForm):
+class TournamentUpdateForm(_ImageFieldsMixin, _BaseForm):
     pass
 
 

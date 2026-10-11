@@ -1265,3 +1265,247 @@ test('ffaCutMissing mirrors the server table', () => {
     assert.strictEqual(rules.ffaCutMissing(values, c), expected, name);
   }
 });
+
+const EDIT_EXEMPT = [
+  'min_players', 'max_players', 'min_teams', 'max_teams',
+  'min_players_in_team', 'max_players_in_team', 'group_size_min',
+  'group_size_max', 'advancement_count', 'point_table', 'start_time',
+];
+const MIN_MAX_PAIRS = [
+  ['min_players', 'max_players'],
+  ['min_teams', 'max_teams'],
+  ['min_players_in_team', 'max_players_in_team'],
+];
+const AT_MOST = 'At most %(max)s.';
+const MIN_ABOVE_MAX = 'Must be at least "%(other)s" (%(n)s).';
+
+function editCtx(storedValues, extra) {
+  return Object.assign({
+    storedValues,
+    editExemptFields: EDIT_EXEMPT,
+    minMaxPairs: MIN_MAX_PAIRS,
+    lockedFields: [],
+  }, extra);
+}
+
+function editErrors(values, ctx) {
+  const merged = basics(values);
+  const found = rules.validate(merged, Object.assign({}, CTX, {requireStructure: false})).errors;
+  return rules.dropEditExemptErrors(found, merged, ctx);
+}
+
+function idsOf(errors) {
+  return Object.fromEntries(Object.entries(errors).map(([k, v]) => [k, v.msgid]));
+}
+
+test('canSubmitFromStep: edit allows every step, create only review', () => {
+  for (let step = 0; step < rules.STEP_FIELDS.length; step++) {
+    assert.strictEqual(rules.canSubmitFromStep('edit', step), true, `edit ${step}`);
+    assert.strictEqual(
+      rules.canSubmitFromStep('create', step),
+      step === rules.STEP_FIELDS.length - 1,
+      `create ${step}`
+    );
+  }
+  assert.strictEqual(rules.canSubmitFromStep(undefined, 0), false);
+});
+
+test('isControlDisabled: a locked field stays disabled even when available', () => {
+  const locked = ['name', 'elimination_mode'];
+  assert.strictEqual(rules.isControlDisabled('elimination_mode', locked, false), true);
+  assert.strictEqual(rules.isControlDisabled('name', locked, false), true);
+  assert.strictEqual(rules.isControlDisabled('elimination_mode', locked, true), true);
+});
+
+test('isControlDisabled: an unlocked field follows the wanted state', () => {
+  const locked = ['name', 'elimination_mode'];
+  assert.strictEqual(rules.isControlDisabled('description', locked, false), false);
+  assert.strictEqual(rules.isControlDisabled('description', locked, true), true);
+  // Only the exact field name is locked.
+  assert.strictEqual(rules.isControlDisabled('name_extra', locked, false), false);
+  assert.strictEqual(rules.isControlDisabled('', locked, false), false);
+});
+
+test('isControlDisabled: no locked fields is the creation behaviour', () => {
+  for (const locked of [undefined, null, [], 'elimination_mode', {elimination_mode: true}]) {
+    assert.strictEqual(rules.isControlDisabled('elimination_mode', locked, false), false);
+    assert.strictEqual(rules.isControlDisabled('elimination_mode', locked, true), true);
+  }
+  // A plain string is no list: no substring matching.
+  assert.strictEqual(rules.isControlDisabled('mode', 'elimination_mode', false), false);
+});
+
+test('isControlDisabled: always returns a boolean', () => {
+  assert.strictEqual(rules.isControlDisabled('a', ['a'], undefined), true);
+  assert.strictEqual(rules.isControlDisabled('a', [], undefined), false);
+  assert.strictEqual(rules.isControlDisabled('a', [], 1), true);
+  assert.strictEqual(rules.isControlDisabled('a', [], 0), false);
+});
+
+test('controller: every write that can enable a field control goes through isControlDisabled', () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, '../../byceps/static/behavior/lan_tournament_create_wizard.js'),
+    'utf8'
+  );
+  const writes = [...source.matchAll(/([\w.]+)\.disabled = ([^;]+);/g)];
+  // The Save button is no field control; writing `true` only disables.
+  const enabling = writes.filter(
+    ([, target, value]) => target !== 'submitBtn' && value.trim() !== 'true'
+  );
+  // The mode cards (paintChoices) and the scope toggle (applyScopes).
+  assert.strictEqual(enabling.length, 2);
+  for (const [write, , value] of enabling) {
+    assert.match(value.trim(), /^Rules\.isControlDisabled\(/, write);
+  }
+});
+
+test('dropEditExemptErrors: unchanged legacy count keeps no error', () => {
+  const solo = {contestant_type: 'SOLO', min_players: '2', max_players: '5000'};
+  const raw = rules.validate(basics(solo), Object.assign({}, CTX, {requireStructure: false})).errors;
+  assert.deepStrictEqual(idsOf(raw), {max_players: AT_MOST});
+
+  const stored = {min_players: '2', max_players: '5000'};
+  assert.deepStrictEqual(editErrors(solo, editCtx(stored)), {});
+  // Leading zeros and padding do not make a stored number "changed".
+  assert.deepStrictEqual(
+    editErrors(Object.assign({}, solo, {max_players: ' 05000 '}), editCtx(stored)),
+    {}
+  );
+});
+
+test('dropEditExemptErrors: a changed legacy count keeps its error', () => {
+  const stored = {min_players: '2', max_players: '5000'};
+  const values = {contestant_type: 'SOLO', min_players: '2', max_players: '6000'};
+
+  assert.deepStrictEqual(idsOf(editErrors(values, editCtx(stored))), {max_players: AT_MOST});
+});
+
+test('dropEditExemptErrors: a field outside the exempt list keeps its error', () => {
+  const values = {contestant_type: 'SOLO', name: ''};
+  const stored = {name: ''};
+
+  assert.deepStrictEqual(
+    idsOf(editErrors(values, editCtx(stored))),
+    {name: 'Please enter a name.'}
+  );
+});
+
+test('dropEditExemptErrors: a stored value that is not given exempts nothing', () => {
+  const ffa = {
+    contestant_type: 'SOLO',
+    game_format: 'FREE_FOR_ALL',
+    elimination_mode: 'SINGLE_ELIMINATION',
+    group_size_min: '2',
+    group_size_max: '',
+    advancement_count: '1',
+    point_table: '10, 5',
+  };
+  const stored = {
+    group_size_min: '2', advancement_count: '1', point_table: '10, 5',
+  };
+
+  assert.deepStrictEqual(
+    idsOf(editErrors(ffa, editCtx(stored))),
+    {group_size_max: 'Required for Free-for-All.'}
+  );
+  // A stored blank is a stored value: the server forgives it as well.
+  assert.deepStrictEqual(
+    editErrors(ffa, editCtx(Object.assign({group_size_max: ''}, stored))),
+    {}
+  );
+});
+
+test('dropEditExemptErrors: changed min keeps the pair error on max', () => {
+  const stored = {min_players: '2', max_players: '5'};
+  const values = {contestant_type: 'SOLO', min_players: '10', max_players: '5'};
+
+  const errors = editErrors(values, editCtx(stored));
+
+  assert.deepStrictEqual(Object.keys(errors), ['max_players']);
+  assert.strictEqual(errors.max_players.msgid, MIN_ABOVE_MAX);
+  assert.deepStrictEqual(errors.max_players.params, {other: 'Min. players', n: 10});
+});
+
+test('dropEditExemptErrors: changed min replaces the legacy error on max by the pair error', () => {
+  const stored = {min_players: '2', max_players: '5000'};
+  const values = {contestant_type: 'SOLO', min_players: '6000', max_players: '5000'};
+
+  const errors = editErrors(values, editCtx(stored));
+
+  assert.deepStrictEqual(idsOf(errors), {min_players: AT_MOST, max_players: MIN_ABOVE_MAX});
+  assert.deepStrictEqual(errors.max_players.params, {other: 'Min. players', n: 6000});
+});
+
+test('dropEditExemptErrors: unchanged min and max drop a legacy pair error', () => {
+  const stored = {min_players: '8', max_players: '5'};
+  const values = {contestant_type: 'SOLO', min_players: '8', max_players: '5'};
+  const raw = rules.validate(basics(values), Object.assign({}, CTX, {requireStructure: false})).errors;
+  assert.deepStrictEqual(idsOf(raw), {max_players: MIN_ABOVE_MAX});
+
+  assert.deepStrictEqual(editErrors(values, editCtx(stored)), {});
+});
+
+test('dropEditExemptErrors: locked fields carry no errors', () => {
+  const values = {contestant_type: 'SOLO', name: '', category: 'bogus', min_players: 'x'};
+  const ctx = editCtx({}, {lockedFields: ['name', 'category']});
+
+  assert.deepStrictEqual(idsOf(editErrors(values, ctx)), {min_players: 'Whole numbers from 1 only.'});
+});
+
+test('dropEditExemptErrors: unchanged point table compares parsed values', () => {
+  const TOO_HIGH = 'Points may be at most %(max)s.';
+  const ffa = (point_table) => ({
+    contestant_type: 'SOLO',
+    game_format: 'FREE_FOR_ALL',
+    elimination_mode: 'SINGLE_ELIMINATION',
+    group_size_min: '2',
+    group_size_max: '4',
+    advancement_count: '1',
+    point_table,
+  });
+  const stored = {
+    point_table: '10, 7, 1000000000',
+    group_size_min: '2',
+    group_size_max: '4',
+    advancement_count: '1',
+  };
+  const raw = rules.validate(basics(ffa('10,07 , 1000000000')), Object.assign({}, CTX, {requireStructure: false})).errors;
+  assert.deepStrictEqual(idsOf(raw), {point_table: TOO_HIGH});
+
+  // Spacing and leading zeros differ, the parsed table does not.
+  assert.deepStrictEqual(editErrors(ffa('10,07 , 1000000000'), editCtx(stored)), {});
+  // A changed place keeps the error.
+  assert.deepStrictEqual(
+    idsOf(editErrors(ffa('10, 8, 1000000000'), editCtx(stored))),
+    {point_table: TOO_HIGH}
+  );
+  // So does a longer table.
+  assert.deepStrictEqual(
+    idsOf(editErrors(ffa('10, 7, 1000000000, 1'), editCtx(stored))),
+    {point_table: TOO_HIGH}
+  );
+});
+
+test('dropEditExemptErrors: unchanged start time compares to the minute', () => {
+  const errors = {start_time: {msgid: 'Not a valid date.', params: {}}};
+  const same = (value, stored) => rules.dropEditExemptErrors(
+    errors, {start_time: value}, editCtx({start_time: stored})
+  );
+
+  assert.deepStrictEqual(same('2026-10-17T14:00', '2026-10-17T14:00'), {});
+  assert.deepStrictEqual(same('2026-10-17 14:00:30', '2026-10-17T14:00'), {});
+  assert.deepStrictEqual(Object.keys(same('2026-10-17T14:01', '2026-10-17T14:00')), ['start_time']);
+  assert.deepStrictEqual(same('', ''), {});
+  assert.deepStrictEqual(Object.keys(same('', '2026-10-17T14:00')), ['start_time']);
+});
+
+test('dropEditExemptErrors: returns a new map and leaves the input alone', () => {
+  const errors = {max_players: {msgid: AT_MOST, params: {max: 1024}}, name: {msgid: 'x', params: {}}};
+  const ctx = editCtx({max_players: '5000'}, {lockedFields: ['name']});
+
+  const result = rules.dropEditExemptErrors(errors, {max_players: '5000'}, ctx);
+
+  assert.deepStrictEqual(result, {});
+  assert.deepStrictEqual(Object.keys(errors), ['max_players', 'name']);
+  assert.deepStrictEqual(rules.dropEditExemptErrors(undefined, undefined, undefined), {});
+});

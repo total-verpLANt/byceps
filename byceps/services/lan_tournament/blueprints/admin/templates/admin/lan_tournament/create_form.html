@@ -1,8 +1,10 @@
 {% extends 'layout/admin/lan_tournament.html' %}
 {% from 'macros/forms.html' import form_field_errors %}
+{% from 'macros/icons.html' import render_icon %}
+{% set is_edit = wizard.get('mode') == 'edit' %}
 {% set current_page_party = party %}
 {% set current_tab = 'tournaments' %}
-{% set page_title = _('Create tournament') %}
+{% set page_title = _('Edit tournament') if is_edit else _('Create tournament') %}
 
 {% block head %}{{ super() }}
   <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_ffa_admin.css') }}">
@@ -22,13 +24,15 @@
 
   {%- set source_values = wizard.get('source_values') %}
 
-  {#- One field: label, control, counter, caption, server errors. -#}
-  {%- macro wiz_field(field, caption=None, optional=False, required=False, counter=None, label=None) %}
+  {#- One field: label, control, counter, caption, server errors. A locked
+      field is disabled and says so. -#}
+  {%- macro wiz_field(field, caption=None, optional=False, required=False, counter=None, label=None, locked=False) %}
     {%- set attrs = {'class': 'form-control'} %}
     {%- set source_value = source_values.get(field.name) if source_values else none %}
     {%- set current_value = field.data.strftime('%Y-%m-%dT%H:%M') if field.data.strftime is defined else (field._value() if field._value is defined else field.data) %}
     {%- if caption or counter %}{% set unused = attrs.update({'aria-describedby': field.id ~ '-cap'}) %}{% endif %}
     {%- if field.data.strftime is defined %}{% set unused = attrs.update({'value': current_value}) %}{% endif %}
+    {%- if locked %}{% set unused = attrs.update({'disabled': True, 'aria-describedby': ((field.id ~ '-cap ') if caption or counter else '') ~ field.id ~ '-lock'}) %}{% endif %}
     {%- set unused = attrs.update(kwargs) %}
     <div class="form-control-block{% if field.errors %} invalid{% endif %}" data-wiz-field="{{ field.name }}"{% if label %} data-wiz-label="{{ field.label.text }}"{% endif %}>
       <label class="form-label" for="{{ field.id }}">{{ label or field.label.text }}
@@ -44,6 +48,9 @@
       {%- elif caption %}
       <div class="form-caption" id="{{ field.id }}-cap">{{ caption }}</div>
       {%- endif %}
+      {%- if locked %}
+      <div class="form-caption dimmed lt-wiz-lock" id="{{ field.id }}-lock">{{ render_icon('lock') }} {{ _('Locked') }}</div>
+      {%- endif %}
       <div data-wiz-err-for="{{ field.name }}" id="{{ field.id }}-err">{{ form_field_errors(field) }}</div>
     </div>
   {%- endmacro %}
@@ -51,9 +58,10 @@
   {#- Choice field as native radio cards. An option is a dict: value, label,
       description and optionally example (markup), examples (per game format),
       why (reason it can be unavailable). `mode_area` adds the empty hint and the
-      fixed Highscore row that the script swaps in for the grid. -#}
-  {%- macro wiz_cards(field, options, required=False, intro=None, cols=2, legend=None, mode_area=False, piece=None) %}
-    <fieldset class="lt-wiz-cards lt-wiz-cards--cols-{{ cols }}{% if field.errors %} invalid{% endif %}" id="{{ field.id }}" tabindex="-1" data-wiz-choice="{{ field.name }}" data-wiz-field="{{ field.name }}"{% if piece %} data-wiz-piece="{{ piece }}"{% endif %}>
+      fixed Highscore row that the script swaps in for the grid. A locked
+      choice disables every card and says so. -#}
+  {%- macro wiz_cards(field, options, required=False, intro=None, cols=2, legend=None, mode_area=False, piece=None, locked=False) %}
+    <fieldset class="lt-wiz-cards lt-wiz-cards--cols-{{ cols }}{% if field.errors %} invalid{% endif %}" id="{{ field.id }}" tabindex="-1" data-wiz-choice="{{ field.name }}" data-wiz-field="{{ field.name }}"{% if piece %} data-wiz-piece="{{ piece }}"{% endif %}{% if locked %} aria-describedby="{{ field.id }}-lock"{% endif %}>
       <legend class="form-label">{{ legend or field.label.text }}
         {%- if required %} <span class="req-mark" aria-hidden="true">*</span>{% endif %}</legend>
       {%- if intro %}
@@ -70,7 +78,7 @@
       <div class="lt-wiz-cards__grid">
         {%- for option in options %}
         <label class="lt-wiz-card"{% if option.get('hidden_with_script') %} data-wiz-card-nojs{% endif %}>
-          <input type="radio" name="{{ field.name }}" value="{{ option.value }}"{% if field.data == option.value %} checked{% endif %}>
+          <input type="radio" name="{{ field.name }}" value="{{ option.value }}"{% if field.data == option.value %} checked{% endif %}{% if locked %} disabled{% endif %}>
           <span class="lt-wiz-card__title">{{ option.label }}<span class="lt-wiz-sr" data-wiz-selected-sr{% if field.data != option.value %} hidden{% endif %}> ({{ _('selected') }})</span>
             {%- if option.get('nojs_hint') %}<span class="lt-wiz-card__nojs dimmed"> ({{ option.nojs_hint }})</span>{% endif %}</span>
           {%- if option.get('description') %}
@@ -88,6 +96,9 @@
         </label>
         {%- endfor %}
       </div>
+      {%- if locked %}
+      <div class="form-caption dimmed lt-wiz-lock" id="{{ field.id }}-lock">{{ render_icon('lock') }} {{ _('Locked') }}</div>
+      {%- endif %}
       <div data-wiz-err-for="{{ field.name }}">{{ form_field_errors(field) }}</div>
     </fieldset>
   {%- endmacro %}
@@ -98,6 +109,19 @@
   {%- set first_error_step = wizard.get('first_error_step') %}
   {%- set hidden_field_names = ['from_request_id', 'image_id', 'submission_token'] %}
   {%- set derived_team = source_request and source_request.team_size != 1 %}
+  {%- set locked_names = wizard.get('locked_fields') or [] %}
+  {%- if is_edit %}
+  {%- set status_tag_classes = {
+    'DRAFT': 'color-disabled',
+    'REGISTRATION_OPEN': 'color-info',
+    'REGISTRATION_CLOSED': 'color-warning',
+    'ONGOING': 'color-success',
+    'PAUSED': 'color-warning',
+    'COMPLETED': 'color-success',
+    'CANCELLED': 'color-danger',
+  } %}
+  {%- set status_tag_class = status_tag_classes.get(tournament.tournament_status.name if tournament.tournament_status else '', 'color-disabled') %}
+  {%- endif %}
 
   <div class="block lt-wiz-head">
     <h1 class="title">{{ page_title }}</h1>
@@ -116,7 +140,7 @@
       {{ _('From %(request)s by %(user)s', request=request_link, user=proposer_link) }}
     </div>
     {%- endif %}
-    <div class="lt-wiz-subline">{{ ([party.title] + ([_('%(seats)s seats', seats=capacity)] if capacity is not none else []) + [wizard.timezone_name])|join(' · ') }}</div>
+    <div class="lt-wiz-subline">{% if is_edit %}<span class="tag {{ status_tag_class }}">{{ wizard.tournament_status_label }}</span> {% endif %}{{ ([party.title] + ([_('%(seats)s seats', seats=capacity)] if capacity is not none else []) + [wizard.timezone_name])|join(' · ') }}</div>
   </div>
 
   <div class="notification color-info block" data-wiz-nojs-intro>{{ _('Without JavaScript you see all settings on one page. Sections marked "Only for …" are ignored if they do not match your choice.') }}</div>
@@ -127,11 +151,18 @@
 
       {%- if wizard.get('server_banner') %}
       <div class="notification color-danger block" role="alert" data-wiz-server-banner hidden>
-        <strong>{{ _('The server rejected the creation.') }}</strong> {{ _('We took you to the affected field. All other entries are kept.') }}
+        <strong>{{ _('The server rejected the changes.') if is_edit else _('The server rejected the creation.') }}</strong> {{ _('We took you to the affected field. All other entries are kept.') }}
       </div>
       {%- endif %}
 
       <div data-wiz-notices></div>
+
+      {%- if is_edit and wizard.get('lock_banner') %}
+      <div class="notification color-info block" data-wiz-lock-banner>
+        {{ render_icon('lock') }} {{ _('This tournament is ongoing. Only description, image, and ruleset can be changed.') }}
+        {%- if wizard.get('playoff_lock_note') %} {{ _('The playoff settings stay editable until the release.') }}{% endif %}
+      </div>
+      {%- endif %}
 
       {#- The review box shows the errors of these fields. -#}
       {%- set review_error_names = ['from_request_id', 'submission_token'] %}
@@ -162,25 +193,30 @@
       </div>
       {% endif %}
 
+      {%- if is_edit %}
+      <form action="{{ url_for('.update', tournament_id=tournament.id) }}" method="post" enctype="multipart/form-data" data-lt-wizard data-wiz-mode="edit">
+        {{ form.image_id() }}
+      {%- else %}
       <form action="{{ url_for('.create', party_id=party.id) }}" method="post" enctype="multipart/form-data" data-lt-wizard>
         {{ form.from_request_id() }}
         {{ form.submission_token() }}
         {{ form.image_id() }}
+      {%- endif %}
 
         <fieldset class="lt-wiz-step box" data-wiz-step="0">
           <legend><h2 tabindex="-1" data-wiz-step-heading>1 · {{ _('Basics') }}</h2></legend>
           <div class="lt-wiz-row">
-            {{ wiz_field(form.name, required=True, counter=80, autofocus='autofocus', maxlength=False) }}
-            {{ wiz_field(form.game, optional=True, counter=80, placeholder=_('e.g. Mario Kart 8 Deluxe'), maxlength=False) }}
+            {{ wiz_field(form.name, required=True, counter=80, autofocus='autofocus', maxlength=False, locked=('name' in locked_names)) }}
+            {{ wiz_field(form.game, optional=True, counter=80, placeholder=_('e.g. Mario Kart 8 Deluxe'), maxlength=False, locked=('game' in locked_names)) }}
           </div>
-          {{ wiz_field(form.category, required=True) }}
+          {{ wiz_field(form.category, required=True, locked=('category' in locked_names)) }}
           <div class="lt-wiz-row">
             {%- if wizard.timezone_detail %}
             {%- set timezone_caption = _('In your timezone: %(tz)s (%(offset)s).', tz=wizard.timezone_name, offset=wizard.timezone_detail) %}
             {%- else %}
             {%- set timezone_caption = _('In your timezone: %(timezone)s.', timezone=wizard.timezone_name) %}
             {%- endif %}
-            {{ wiz_field(form.start_time, optional=True, caption=timezone_caption ~ ' ' ~ _('Party: %(dates)s.', dates=wizard.party_dates)) }}
+            {{ wiz_field(form.start_time, optional=True, caption=timezone_caption ~ ' ' ~ _('Party: %(dates)s.', dates=wizard.party_dates), locked=('start_time' in locked_names)) }}
             <div></div>
           </div>
           {{ wiz_field(form.description, optional=True, counter=10000, caption=_('Shown on the tournament page.'), rows=4, maxlength=False) }}
@@ -219,7 +255,7 @@
           {{ wiz_cards(form.contestant_type, [
             {'value': 'SOLO', 'label': _('Solo'), 'description': _('Each person registers individually.')},
             {'value': 'TEAM', 'label': _('Teams'), 'description': _('Teams register. A captain manages the members.')},
-          ], required=True, cols=2, legend=_('Who competes?')) }}
+          ], required=True, cols=2, legend=_('Who competes?'), locked=('contestant_type' in locked_names)) }}
           {%- set chip_a %}<span class="lt-wiz-chip">A</span>{% endset %}
           {%- set chip_b %}<span class="lt-wiz-chip">B</span>{% endset %}
           {%- set chips %}<span class="lt-wiz-chip">A</span><span class="lt-wiz-chip">B</span><span class="lt-wiz-chip">C</span><span class="lt-wiz-chip">D</span>{% endset %}
@@ -230,7 +266,7 @@
              'example': _('%(chips)s → places 1–4 → points', chips=chips)},
             {'value': 'HIGHSCORE', 'label': 'Highscore', 'description': _('Everyone plays on their own and submits a result. The leaderboard decides.'),
              'example': ('<span class="lt-wiz-chip">A ' ~ 12400|numberformat ~ '</span><span class="lt-wiz-chip">B ' ~ 11950|numberformat ~ '</span><span class="lt-wiz-chip">C ' ~ 9800|numberformat ~ '</span>')|safe},
-          ], required=True, cols=3, intro=_('Defines how a single match works.')) }}
+          ], required=True, cols=3, intro=_('Defines how a single match works.'), locked=('game_format' in locked_names)) }}
           {{ wiz_cards(form.elimination_mode, [
             {'value': 'SINGLE_ELIMINATION', 'label': _('Single knockout'), 'description': _('Losers are eliminated.'),
              'examples': {'ONE_V_ONE': _('Example with 8: 3 rounds, 7 matches'), 'FREE_FOR_ALL': _('The best of each group advance to the next round.')}},
@@ -241,7 +277,7 @@
              'nojs_hint': _('only 1v1')},
             {'value': 'NONE', 'label': _('No knockout'), 'description': _('Only for Highscore, set automatically.'), 'hidden_with_script': True,
              'nojs_hint': _('only for Highscore, automatic there')},
-          ], required=True, cols=3, intro=_('Defines who is eliminated when.'), legend=_('Tournament mode'), mode_area=True) }}
+          ], required=True, cols=3, intro=_('Defines who is eliminated when.'), legend=_('Tournament mode'), mode_area=True, locked=('elimination_mode' in locked_names)) }}
         </fieldset>
 
         <fieldset class="lt-wiz-step box" data-wiz-step="2">
@@ -270,8 +306,8 @@
           <fieldset class="lt-wiz-scope" data-wiz-scope="solo">
             <legend><span class="lt-wiz-legend-js">{{ _('Solo · players') }}</span><span class="lt-wiz-legend-nojs">{{ _('3 · Participants – only for Solo') }}</span></legend>
             <div class="lt-wiz-row lt-wiz-row--keep">
-              {{ wiz_field(form.min_players, optional=True, caption=_('Displayed on the tournament page.'), placeholder='–', **numeric) }}
-              {{ wiz_field(form.max_players, optional=True, caption=_('Leave empty for no limit. Then registration is full.'), placeholder=_('no limit'), **numeric) }}
+              {{ wiz_field(form.min_players, optional=True, caption=_('Displayed on the tournament page.'), placeholder='–', locked=('min_players' in locked_names), **numeric) }}
+              {{ wiz_field(form.max_players, optional=True, caption=_('Leave empty for no limit. Then registration is full.'), placeholder=_('no limit'), locked=('max_players' in locked_names), **numeric) }}
             </div>
             <div class="form-caption lt-wiz-capline" data-wiz-capacity>
               {%- if capacity is not none %}{{ _('No limit: up to %(seats)s party seats.', seats=capacity) }}{% endif -%}
@@ -281,16 +317,16 @@
           <fieldset class="lt-wiz-scope" data-wiz-scope="team">
             <legend><span class="lt-wiz-legend-js">{{ _('Teams') }}</span><span class="lt-wiz-legend-nojs">{{ _('3 · Participants – only for Teams') }}</span></legend>
             <div class="lt-wiz-row lt-wiz-row--keep">
-              {{ wiz_field(form.min_teams, optional=True, caption=_('Displayed on the tournament page.'), placeholder='–', **numeric) }}
-              {{ wiz_field(form.max_teams, optional=True, caption=_('Leave empty for no limit. Then no more teams can be created.'), placeholder=_('no limit'), **numeric) }}
+              {{ wiz_field(form.min_teams, optional=True, caption=_('Displayed on the tournament page.'), placeholder='–', locked=('min_teams' in locked_names), **numeric) }}
+              {{ wiz_field(form.max_teams, optional=True, caption=_('Leave empty for no limit. Then no more teams can be created.'), placeholder=_('no limit'), locked=('max_teams' in locked_names), **numeric) }}
             </div>
           </fieldset>
 
           <fieldset class="lt-wiz-scope" data-wiz-scope="team-players">
             <legend>{{ _('Players per team') }}</legend>
             <div class="lt-wiz-row lt-wiz-row--keep">
-              {{ wiz_field(form.min_players_in_team, optional=True, label=_('Minimum'), caption=_('Smaller teams are reported as incomplete.'), placeholder='–', **numeric) }}
-              {{ wiz_field(form.max_players_in_team, optional=True, label=_('Maximum'), caption=_('Leave empty for no limit.'), placeholder=_('no limit'), **numeric) }}
+              {{ wiz_field(form.min_players_in_team, optional=True, label=_('Minimum'), caption=_('Smaller teams are reported as incomplete.'), placeholder='–', locked=('min_players_in_team' in locked_names), **numeric) }}
+              {{ wiz_field(form.max_players_in_team, optional=True, label=_('Maximum'), caption=_('Leave empty for no limit.'), placeholder=_('no limit'), locked=('max_players_in_team' in locked_names), **numeric) }}
             </div>
             <div class="form-caption lt-wiz-capline" data-wiz-capacity>
               {%- if capacity is not none %}{{ _('Without max. teams and max. players per team there is no limit (party: %(seats)s seats).', seats=capacity) }}{% endif -%}
@@ -314,7 +350,7 @@
             {{ wiz_cards(form.score_ordering, [
               {'value': 'HIGHER_IS_BETTER', 'label': _('Higher is better'), 'description': _('e.g. points, kills, distance')},
               {'value': 'LOWER_IS_BETTER', 'label': _('Lower is better'), 'description': _('e.g. lap time, failed attempts')},
-            ], required=True, cols=2, intro=_('Defines the order of the leaderboard.'), legend=_('Score sorting')) }}
+            ], required=True, cols=2, intro=_('Defines the order of the leaderboard.'), legend=_('Score sorting'), locked=('score_ordering' in locked_names)) }}
           </div>
 
           <div data-wiz-slot="ffa-points">
@@ -325,23 +361,29 @@
                 <div class="ffa-point-editor" data-ffa-editor data-no-drag role="group" aria-labelledby="point_table-label"
                      data-field-id="{{ form.point_table.id }}"
                      data-field-name="{{ form.point_table.name }}"
-                     data-field-value="{{ form.point_table.data or '' }}"
+                     data-field-value="{{ form.point_table.data or '' }}"{% if 'point_table' in locked_names %}
+                     data-locked{% endif %}
                      data-label-points="{{ _('Points for place %(n)s', n='%(n)s') }}"
                      data-label-remove="{{ _('Remove place %(n)s', n='%(n)s') }}">
                   <div class="form-label" id="point_table-label">{{ _('Points by placement') }} <span class="req-mark" aria-hidden="true">*</span></div>
+                  {%- if 'point_table' not in locked_names %}
                   <div class="ffa-point-editor__toolbar">
                     <span class="dimmed lt-wiz-toolbar-label">{{ _('Template:') }}</span>
                     <button type="button" data-ffa-preset="10,8,6,4,2,1">F1 (10-8-6-4-2-1)</button>
                     <button type="button" data-ffa-preset="25,18,15,12,10,8,6,4,2,1">Top 10</button>
                     <button type="button" data-ffa-add>{{ _('+ Add place') }}</button>
                   </div>
+                  {%- endif %}
                   <div class="ffa-point-cards" data-ffa-cards-container data-wiz-empty="{{ _('No points yet. Choose a template or add places.') }}"></div>
                 </div>
                 <div class="form-caption">{{ _('Place 1 first. Places without an entry get 0 points.') }}</div>
+                {%- if 'point_table' in locked_names %}
+                <div class="form-caption dimmed lt-wiz-lock" id="{{ form.point_table.id }}-lock">{{ render_icon('lock') }} {{ _('Locked') }}</div>
+                {%- endif %}
               </div>
               <noscript>
                 <label class="form-label" for="{{ form.point_table.id }}">{{ form.point_table.label.text }} <span class="req-mark" aria-hidden="true">*</span></label>
-                {{ form.point_table(class='form-control') }}
+                {{ form.point_table(class='form-control', disabled=('point_table' in locked_names)) }}
                 <div class="form-caption">{{ _('Comma-separated, place 1 first.') }}</div>
               </noscript>
               <div data-wiz-err-for="point_table">{{ form_field_errors(form.point_table) }}</div>
@@ -350,9 +392,9 @@
             <fieldset class="lt-wiz-scope lt-wiz-groups">
               <legend>{{ _('Groups · size in %(unit)s', unit=_('teams or players')) }}</legend>
               <div class="lt-wiz-row lt-wiz-row--three lt-wiz-row--keep">
-                {{ wiz_field(form.group_size_min, optional=True, caption=_('Smaller groups are not formed.'), placeholder='2', **numeric) }}
-                {{ wiz_field(form.group_size_max, required=True, caption=_('At most this many %(unit)s play at once.', unit=_('teams or players')), **numeric) }}
-                {{ wiz_field(form.advancement_count, label=_('Advancing per group'), caption=_('The best of each group advance.'), placeholder='–', **numeric) }}
+                {{ wiz_field(form.group_size_min, optional=True, caption=_('Smaller groups are not formed.'), placeholder='2', locked=('group_size_min' in locked_names), **numeric) }}
+                {{ wiz_field(form.group_size_max, required=True, caption=_('At most this many %(unit)s play at once.', unit=_('teams or players')), locked=('group_size_max' in locked_names), **numeric) }}
+                {{ wiz_field(form.advancement_count, label=_('Advancing per group'), caption=_('The best of each group advance.'), placeholder='–', locked=('advancement_count' in locked_names), **numeric) }}
               </div>
             </fieldset>
           </div>
@@ -362,8 +404,11 @@
           <fieldset class="lt-wiz-scope" data-wiz-scope="ffa-de" data-wiz-piece="ffa-carry">
             <legend>{{ _('Only for Double Elimination') }}</legend>
             <div class="form-control-block{% if form.points_carry_to_losers.errors %} invalid{% endif %}" data-wiz-field="points_carry_to_losers">
-              <label class="form-check-label">{{ form.points_carry_to_losers(**{'aria-describedby': form.points_carry_to_losers.id ~ '-cap'}) }} <span><strong>{{ _('Carry points into the losers bracket') }}</strong></span></label>
+              <label class="form-check-label">{{ form.points_carry_to_losers(**{'aria-describedby': form.points_carry_to_losers.id ~ '-cap', 'disabled': 'points_carry_to_losers' in locked_names}) }} <span><strong>{{ _('Carry points into the losers bracket') }}</strong></span></label>
               <div class="form-caption lt-wiz-check-cap" id="{{ form.points_carry_to_losers.id }}-cap"><strong>{{ _('On:') }}</strong> {{ _('All points from the winners and losers brackets count for seeding into the final.') }}<br><strong>{{ _('Off:') }}</strong> {{ _('In the losers bracket only points scored there count. Whoever comes from the winners bracket is seeded first.') }}</div>
+              {%- if 'points_carry_to_losers' in locked_names %}
+              <div class="form-caption dimmed lt-wiz-lock">{{ render_icon('lock') }} {{ _('Locked') }}</div>
+              {%- endif %}
               <div data-wiz-err-for="points_carry_to_losers">{{ form_field_errors(form.points_carry_to_losers) }}</div>
             </div>
           </fieldset>
@@ -386,6 +431,10 @@
             </div>
           </div>
 
+          {%- if is_edit %}
+          <div class="notification color-warning block" role="status" data-wiz-playoff-removal hidden>{{ _('This format has no playoff phase. The playoff settings are removed when you save.') }}</div>
+          {%- endif %}
+
           <div data-wiz-scope="playoff-intro-rr">
             <p class="lt-wiz-intro">{{ _('Optional: a second phase after the group phase. Only for 1v1 with "Everyone plays everyone" and for Highscore.') }}</p>
           </div>
@@ -396,8 +445,11 @@
 
           <div data-wiz-scope="playoff-toggle">
             <div class="form-control-block{% if form.playoff_enabled.errors %} invalid{% endif %}" data-wiz-field="playoff_enabled">
-              <label class="form-check-label">{{ form.playoff_enabled(**{'aria-describedby': form.playoff_enabled.id ~ '-cap'}) }} <span><strong>{{ _('Add playoff phase') }}</strong></span></label>
+              <label class="form-check-label">{{ form.playoff_enabled(**{'aria-describedby': form.playoff_enabled.id ~ '-cap', 'disabled': 'playoff_enabled' in locked_names}) }} <span><strong>{{ _('Add playoff phase') }}</strong></span></label>
               <div class="form-caption lt-wiz-check-cap" id="{{ form.playoff_enabled.id }}-cap">{{ _('Off: one phase, as before.') }}</div>
+              {%- if 'playoff_enabled' in locked_names %}
+              <div class="form-caption dimmed lt-wiz-lock">{{ render_icon('lock') }} {{ _('Locked') }}</div>
+              {%- endif %}
               <div data-wiz-err-for="playoff_enabled">{{ form_field_errors(form.playoff_enabled) }}</div>
             </div>
           </div>
@@ -405,8 +457,8 @@
           <fieldset class="lt-wiz-scope" data-wiz-scope="playoff-rr">
             <legend>{{ _('Group phase') }}</legend>
             <div class="lt-wiz-row lt-wiz-row--keep">
-              {{ wiz_field(form.playoff_group_count, required=True, caption=_('At least 1; each group needs at least 2 players.'), **numeric) }}
-              {{ wiz_field(form.playoff_qualifiers_per_group, required=True, caption=_('Fewer than the smallest group. Groups × qualifiers: at least 2. Double knockout with fewer than 4 runs as single knockout.'), **numeric) }}
+              {{ wiz_field(form.playoff_group_count, required=True, caption=_('At least 1; each group needs at least 2 players.'), locked=('playoff_group_count' in locked_names), **numeric) }}
+              {{ wiz_field(form.playoff_qualifiers_per_group, required=True, caption=_('Fewer than the smallest group. Groups × qualifiers: at least 2. Double knockout with fewer than 4 runs as single knockout.'), locked=('playoff_qualifiers_per_group' in locked_names), **numeric) }}
             </div>
           </fieldset>
 
@@ -415,13 +467,13 @@
               {{ wiz_cards(form.playoff_elimination_mode, [
                 {'value': 'SINGLE_ELIMINATION', 'label': _('Single knockout'), 'examples': {'ONE_V_ONE': _('The loser is out.'), 'HIGHSCORE': _('Whoever does not advance is out.')}},
                 {'value': 'DOUBLE_ELIMINATION', 'label': _('Double knockout'), 'examples': {'ONE_V_ONE': _('The first defeat leads to the losers bracket.'), 'HIGHSCORE': _('Whoever does not advance keeps playing in the losers bracket.')}},
-              ], required=True, cols=2, legend=_('Playoff mode'), piece='playoff-mode') }}
+              ], required=True, cols=2, legend=_('Playoff mode'), piece='playoff-mode', locked=('playoff_elimination_mode' in locked_names)) }}
             </div>
           </div>
 
           <fieldset class="lt-wiz-scope" data-wiz-scope="playoff-hs">
             <legend>{{ _('Qualification') }}</legend>
-            {{ wiz_field(form.playoff_qualifier_count, required=True, caption=_('At least 2 and at least the min. lobby size (%(min)s). The first phase ends with "Close qualification".', min=form.group_size_min.data or 2), **numeric) }}
+            {{ wiz_field(form.playoff_qualifier_count, required=True, caption=_('At least 2 and at least the min. lobby size (%(min)s). The first phase ends with "Close qualification".', min=form.group_size_min.data or 2), locked=('playoff_qualifier_count' in locked_names), **numeric) }}
           </fieldset>
 
           <fieldset class="lt-wiz-scope" data-wiz-scope="playoff-hs-ffa">
@@ -435,7 +487,7 @@
             {{ wiz_cards(form.playoff_release_mode, [
               {'value': 'AUTOMATIC', 'label': _('Automatic'), 'description': _('The playoffs start as soon as all results are final and no tie blocks.')},
               {'value': 'MANUAL', 'label': _('Manual ("Release playoffs")'), 'description': _('The orga checks the prefilled draft and releases the playoffs.')},
-            ], required=True, cols=2, legend=_('Release mode')) }}
+            ], required=True, cols=2, legend=_('Release mode'), locked=('playoff_release_mode' in locked_names)) }}
 
             <div class="lt-wiz-preview" data-wiz-playoff-preview>
               <div class="data-label">{{ _('Preview') }}</div>
@@ -446,7 +498,7 @@
         </fieldset>
 
         <section class="lt-wiz-step box" data-wiz-step="5">
-          <h2 tabindex="-1" data-wiz-step-heading>6 · {{ _('Review and create') }}</h2>
+          <h2 tabindex="-1" data-wiz-step-heading>6 · {{ _('Review and save') if is_edit else _('Review and create') }}</h2>
           {%- set refusal = wizard.get('refusal') %}
           {%- if refusal %}
           <div class="notification color-danger block" role="alert" tabindex="-1" data-wiz-err-for="review" data-wiz-refusal>
@@ -457,7 +509,7 @@
             </div>
           </div>
           {%- endif %}
-          {%- set review_errors = form.form_errors|list + (form.from_request_id.errors|list if not refusal else []) + form.submission_token.errors|list %}
+          {%- set review_errors = form.form_errors|list + ([] if is_edit else (form.from_request_id.errors|list if not refusal else []) + form.submission_token.errors|list) %}
           {%- if review_errors %}
           <div class="notification color-danger block" data-wiz-err-for="{{ 'review-other' if refusal else 'review' }}">
             <ul>
@@ -468,13 +520,13 @@
           </div>
           {%- endif %}
           <div data-wiz-review>
-            <div class="notification color-info">{{ _('The tournament is created as a draft. Registration stays closed.') }}</div>
+            <div class="notification color-info">{{ _('Changes are saved only when you press Save changes.') if is_edit else _('The tournament is created as a draft. Registration stays closed.') }}</div>
           </div>
         </section>
 
         <div class="button-row lt-wiz-nav" data-wiz-nav>
-          <button type="submit" class="button color-primary" data-wiz-submit>{{ _('Create draft tournament') }}</button>
-          <a class="button" href="{{ wiz_config.urls.get('cancel') or url_for('.index', party_id=party.id) }}" data-wiz-cancel>{{ _('Cancel') }}</a>
+          <button type="submit" class="button color-primary" data-wiz-submit>{{ _('Save changes') if is_edit else _('Create draft tournament') }}</button>
+          <a class="button" href="{{ wiz_config.urls.get('cancel') or (url_for('.view', tournament_id=tournament.id) if is_edit else url_for('.index', party_id=party.id)) }}" data-wiz-cancel>{{ _('Cancel') }}</a>
         </div>
       </form>
     </div>
@@ -535,9 +587,15 @@
       {% endif %}
 
       <div class="box">
+        {%- if is_edit %}
+        <div class="data-label">{{ _('Status') }}</div>
+        <div class="data-value"><span class="tag {{ status_tag_class }}">{{ wizard.tournament_status_label }}</span></div>
+        <div class="form-caption">{{ _('Changes are saved only when you press Save changes.') }}</div>
+        {%- else %}
         <div class="data-label">{{ _('Will be created as') }}</div>
         <div class="data-value"><span class="tag color-disabled">{{ _('Draft') }}</span> {{ _('Registration closed') }}</div>
         <div class="form-caption">{{ _('Nothing is saved until the last step.') }}</div>
+        {%- endif %}
       </div>
     </aside>
   </div>

@@ -16,7 +16,6 @@ from flask_babel import Babel
 import pytest
 from werkzeug.datastructures import MultiDict
 
-from byceps.services.lan_tournament import tournament_service as edit_rules
 from byceps.services.lan_tournament.blueprints.admin import views
 from byceps.services.lan_tournament.blueprints.admin.forms import (
     TournamentCreateForm,
@@ -674,10 +673,35 @@ def test_update_reports_a_playoff_rule_translated_on_the_field(app):
     )
 
     update_tournament.assert_not_called()
-    assert flashes == ['Playoffs need at least 2 qualifiers in total.']
+    assert flashes == []
     form = update_form.call_args.args[1]
     assert isinstance(form, TournamentUpdateForm)
-    assert form.playoff_qualifiers_per_group.errors == flashes
+    assert form.playoff_qualifiers_per_group.errors == [
+        'Playoffs need at least 2 qualifiers in total.'
+    ]
+
+
+def test_update_reports_a_missing_playoff_release_mode_on_its_field(app):
+    data = {
+        **_UPDATE_BASE,
+        'elimination_mode': 'ROUND_ROBIN',
+        'playoff_enabled': 'y',
+        'playoff_group_count': '2',
+        'playoff_qualifiers_per_group': '2',
+        'playoff_elimination_mode': 'SINGLE_ELIMINATION',
+        'playoff_release_mode': '',
+    }
+
+    update_tournament, update_form, flashes = _call_update(
+        app, _tournament(), data
+    )
+
+    update_tournament.assert_not_called()
+    assert flashes == []
+    form = update_form.call_args.args[1]
+    assert form.errors == {
+        'playoff_release_mode': ['Please choose how the playoffs are released.']
+    }
 
 
 def test_update_highscore_playoff_errors_are_translated_with_their_params(app):
@@ -702,232 +726,151 @@ def test_update_highscore_playoff_errors_are_translated_with_their_params(app):
     )
 
     update_tournament.assert_not_called()
-    assert flashes == [
-        (
-            'With at most 2 players no group of at least 3 can form. '
-            'Lower the minimum or raise "Max. players" in step 3.'
-        )
-    ]
+    assert flashes == []
+    form = update_form.call_args.args[1]
+    assert form.errors == {
+        'group_size_min': [
+            (
+                'With at most 2 players no group of at least 3 can form. '
+                'Lower the minimum or raise "Max. players" in step 3.'
+            )
+        ]
+    }
 
 
-# --------------------------------------------------------------------- #
-# update form
-# --------------------------------------------------------------------- #
+def test_update_reports_a_bad_combination_on_the_elimination_mode(app):
+    data = {**_UPDATE_BASE, 'elimination_mode': 'NONE'}
 
-
-def _update_env():
-    from jinja2 import DictLoader, Environment, StrictUndefined
-    from markupsafe import Markup
-
-    from tests.unit.services.lan_tournament import (
-        test_create_wizard_render as render,
+    update_tournament, update_form, flashes = _call_update(
+        app, _tournament(), data
     )
 
-    root = pathlib.Path(
-        'byceps/services/lan_tournament/blueprints/admin/templates'
-        '/admin/lan_tournament'
+    update_tournament.assert_not_called()
+    assert flashes == []
+    form = update_form.call_args.args[1]
+    assert form.errors == {
+        'elimination_mode': [
+            'Invalid combination of game format and elimination mode.'
+        ]
+    }
+
+
+def test_update_reports_a_malformed_point_table_on_the_field(app):
+    data = {
+        **_UPDATE_BASE,
+        'game_format': 'FREE_FOR_ALL',
+        'elimination_mode': 'SINGLE_ELIMINATION',
+        'point_table': '5, x',
+        'group_size_max': '4',
+        'advancement_count': '1',
+    }
+
+    update_tournament, update_form, flashes = _call_update(
+        app, _tournament(), data
     )
-    env = Environment(
-        undefined=StrictUndefined,
-        autoescape=True,
-        loader=DictLoader(
-            {
-                'update_form.html': (root / 'update_form.html').read_text(),
-                'admin/lan_tournament/_constraint_toggle.html': (
-                    root / '_constraint_toggle.html'
-                ).read_text(),
-                'layout/admin/lan_tournament.html': render._LAYOUT_STUB,
-                'macros/admin.html': render._ADMIN_MACROS_STUB,
-                'macros/forms.html': render._FORMS_MACRO_SRC,
-                'macros/icons.html': render._ICONS_STUB,
-            }
+
+    update_tournament.assert_not_called()
+    assert flashes == []
+    form = update_form.call_args.args[1]
+    assert form.errors == {
+        'point_table': ['Point table must be comma-separated integers.']
+    }
+
+
+def test_update_puts_a_service_error_on_the_form_not_on_a_flash(app):
+    tournament = _tournament()
+    data = {**_UPDATE_BASE, 'description': 'New text'}
+    flashes = []
+    with (
+        patch(f'{_V}._get_tournament_or_404', return_value=tournament),
+        patch(
+            f'{_V}.tournament_service.update_tournament',
+            return_value=Err('Something the service refused.'),
         ),
-    )
-    env.globals['_'] = lambda s, **kw: (Markup(s) % kw) if kw else s  # noqa: S704
-    env.globals['url_for'] = render._url_for
-    return env
-
-
-def _render_update_form(app, tournament, *, is_locked=False):
-    locked = edit_rules.locked_playoff_fields(tournament)
-    governed = edit_rules.playoff_fields(tournament)
-    with app.test_request_context('/'):
-        data = {
-            'name': tournament.name,
-            'contestant_type': 'SOLO',
-            'game_format': tournament.game_format.name,
-            'elimination_mode': tournament.elimination_mode.name,
-            'score_ordering': '',
-            'point_table': '',
-            'playoff_enabled': tournament.has_playoffs,
-            'playoff_elimination_mode': (
-                tournament.playoff_elimination_mode.name
-                if tournament.playoff_elimination_mode
-                else ''
-            ),
-            'playoff_release_mode': (
-                tournament.playoff_release_mode.name
-                if tournament.playoff_release_mode
-                else ''
-            ),
-            'playoff_group_count': tournament.playoff_group_count,
-            'playoff_qualifiers_per_group': (
-                tournament.playoff_qualifiers_per_group
-            ),
-            'playoff_qualifier_count': tournament.playoff_qualifier_count,
-        }
-        form = TournamentUpdateForm(data=data)
-        form.set_contestant_type_choices()
-        form.set_game_format_choices()
-        form.set_elimination_mode_choices()
-        form.set_score_ordering_choices()
-        return _update_env().get_template('update_form.html').render(
-            party=MagicMock(),
-            tournament=tournament,
-            form=form,
-            is_locked=is_locked,
-            locked_playoff_fields=locked,
-            ffa_locked=(
-                'point_table' in locked
-                if 'point_table' in governed
-                else is_locked
-            ),
-        )
-
-
-def _tag(out: str, name: str) -> str:
-    """Return the input or select tag of a field, padded with spaces."""
-    match = re.search(rf'<(?:input|select)[^>]*name="{name}"[^>]*>', out)
-    assert match is not None, name
-    return match.group(0).replace('<', '< ').replace('>', ' >')
-
-
-def test_update_form_renders_the_playoff_section_with_stored_values(app):
-    out = _render_update_form(app, _playoff_tournament())
-
-    assert 'id="playoff-constraints"' in out
-    assert ' checked ' in _tag(out, 'playoff_enabled')
-    assert 'value="3"' in _tag(out, 'playoff_group_count')
-    assert 'value="2"' in _tag(out, 'playoff_qualifiers_per_group')
-    assert '<option selected value="SINGLE_ELIMINATION">' in out
-    assert '<option selected value="MANUAL">' in out
-    assert 'Editable until the release.' in out
-    assert '%(' not in out
-
-
-def test_update_form_locks_the_switch_and_group_count_once_started(app):
-    out = _render_update_form(
-        app,
-        _playoff_tournament(status=TournamentStatus.ONGOING),
-        is_locked=True,
-    )
-
-    for name in ('playoff_enabled', 'playoff_group_count'):
-        assert 'disabled="disabled"' in _tag(out, name), name
-    for name in (
-        'playoff_qualifiers_per_group',
-        'playoff_qualifier_count',
-        'playoff_elimination_mode',
-        'playoff_release_mode',
+        patch(f'{_V}.gettext', side_effect=_gettext),
+        patch(f'{_V}.flash_error', side_effect=flashes.append),
+        patch(f'{_V}.update_form') as update_form,
+        app.test_request_context('/', method='POST', data=data),
     ):
-        assert 'disabled' not in _tag(out, name), name
-    assert 'The playoff settings stay editable until the release.' in out
+        g.user = MagicMock()
+        views.update.__wrapped__(str(tournament.id))
+
+    assert flashes == []
+    form = update_form.call_args.args[1]
+    assert form.form_errors == ['Something the service refused.']
 
 
-def test_update_form_locks_every_playoff_field_after_the_release(app):
-    out = _render_update_form(
-        app,
-        _playoff_tournament(
-            status=TournamentStatus.COMPLETED,
-            playoff_released_at=datetime(2026, 9, 1, tzinfo=UTC),
-        ),
-    )
-
-    for name in (
-        'playoff_enabled',
-        'playoff_group_count',
-        'playoff_qualifiers_per_group',
-        'playoff_qualifier_count',
-        'playoff_elimination_mode',
-        'playoff_release_mode',
-    ):
-        assert 'disabled="disabled"' in _tag(out, name), name
-    assert 'Locked while the playoffs are released.' in out
-
-
-# fmt: off
 @pytest.mark.parametrize(
-    ('status', 'released', 'locked'),
+    'message',
     [
-        (TournamentStatus.ONGOING, False, False),
-        (TournamentStatus.PAUSED, False, False),
-        (TournamentStatus.ONGOING, True, True),
-        (TournamentStatus.COMPLETED, True, True),
+        'The playoffs are released, so their settings are locked.',
+        (
+            'Once the tournament has started, the playoffs cannot be '
+            'switched on or off and the group count cannot change.'
+        ),
     ],
 )
-# fmt: on
-def test_update_form_offers_the_highscore_phase_two_fields_until_the_release(
-    app, status, released, locked
-):
-    tournament = _highscore_playoff_tournament(
-        status=status,
-        playoff_released_at=datetime(2026, 9, 1, tzinfo=UTC) if released else None,
-    )
-
-    out = _render_update_form(
-        app,
-        tournament,
-        is_locked=status in (TournamentStatus.ONGOING, TournamentStatus.PAUSED),
-    )
-
-    for name in (
-        'point_table',
-        'group_size_min',
-        'group_size_max',
-        'advancement_count',
-        'points_carry_to_losers',
+def test_update_puts_a_playoff_lock_error_on_the_switch(app, message):
+    tournament = _tournament()
+    flashes = []
+    with (
+        patch(f'{_V}._get_tournament_or_404', return_value=tournament),
+        patch(
+            f'{_V}.tournament_service.update_tournament',
+            return_value=Err(message),
+        ),
+        patch(f'{_V}.gettext', side_effect=_gettext),
+        patch(f'{_V}.flash_error', side_effect=flashes.append),
+        patch(f'{_V}.update_form') as update_form,
+        app.test_request_context('/', method='POST', data=_UPDATE_BASE),
     ):
-        assert ('disabled' in _tag(out, name)) is locked, name
-    assert ('data-locked' in out) is locked
+        g.user = MagicMock()
+        views.update.__wrapped__(str(tournament.id))
+
+    assert flashes == []
+    form = update_form.call_args.args[1]
+    assert form.errors == {'playoff_enabled': [message]}
 
 
-def test_update_form_locks_the_free_for_all_fields_of_an_ongoing_tournament(
-    app,
-):
-    tournament = _tournament(
-        status=TournamentStatus.ONGOING,
-        game_format=GameFormat.FREE_FOR_ALL,
-        elimination_mode=EliminationMode.SINGLE_ELIMINATION,
-        point_table=[3, 2, 1],
-        group_size_min=2,
-        group_size_max=4,
-        advancement_count=1,
-    )
+def test_update_passes_the_image_fields_to_the_service(app):
+    image_id = generate_uuid()
+    data = {
+        **_UPDATE_BASE,
+        'image_id': str(image_id),
+        'image_alt_text': 'A blue field',
+    }
+    image = MagicMock(id=image_id)
 
-    out = _render_update_form(app, tournament, is_locked=True)
+    with patch(f'{_V}._find_staged_image', return_value=image), patch(
+        f'{_V}.party_service'
+    ):
+        update_tournament, _, flashes = _call_update(app, _tournament(), data)
 
-    for name in ('group_size_min', 'group_size_max', 'advancement_count'):
-        assert 'disabled' in _tag(out, name), name
-    assert 'data-locked' in out
-
-
-def test_update_form_warns_before_saving_a_format_without_playoffs(app):
-    out = _render_update_form(app, _playoff_tournament())
-
-    assert 'id="playoff-removal-note"' in out
-    assert (
-        'This format has no playoff phase. The playoff settings are removed '
-        'when you save.'
-    ) in out
-    assert '!isRr && !isHs && !!(playoffEnabled' in out
+    assert flashes == []
+    kwargs = update_tournament.call_args.kwargs
+    assert kwargs['image_id'] == image_id
+    assert kwargs['image_alt_text'] == 'A blue field'
 
 
-def test_update_form_script_shows_highscore_playoffs_in_the_ffa_block(app):
-    out = _render_update_form(app, _playoff_tournament())
+def test_update_refuses_an_unavailable_image_id_on_the_field(app):
+    data = {**_UPDATE_BASE, 'image_id': str(generate_uuid())}
 
-    assert 'isHs && playoffsOn' in out
-    assert 'isRr && playoffsOn' in out
-    assert "gf === 'ONE_V_ONE' && em === 'ROUND_ROBIN'" in out
+    with patch(f'{_V}._find_staged_image', return_value=None), patch(
+        f'{_V}.party_service'
+    ):
+        update_tournament, update_form, flashes = _call_update(
+            app, _tournament(), data
+        )
+
+    update_tournament.assert_not_called()
+    assert flashes == []
+    form = update_form.call_args.args[1]
+    assert form.errors == {
+        'image_id': [
+            'This image is no longer available. Please choose another.'
+        ]
+    }
+    assert form.image_id.data == ''
 
 
 # --------------------------------------------------------------------- #

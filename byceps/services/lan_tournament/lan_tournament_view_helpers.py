@@ -1,8 +1,8 @@
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timedelta, UTC
 import re
-from typing import Any, TypeGuard
+from typing import Any, Literal, TypeGuard
 from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -26,6 +26,7 @@ from byceps.services.lan_tournament import (
     tournament_qualification_domain_service as qualification_domain,
     tournament_repository,
     tournament_seeding_domain_service as seeding_domain,
+    tournament_service,
     tournament_team_service,
 )
 from byceps.services.lan_tournament.models.bracket import Bracket
@@ -1139,6 +1140,52 @@ _HIGHSCORE_PLAYOFF_FIELDS = frozenset(
 
 _UPLOAD_BYTES = 5 * 1024 * 1024
 
+# Edit locks: while a tournament runs, only the cosmetic fields stay editable.
+_STATUS_LOCKED_FIELDS = (
+    'name',
+    'game',
+    'category',
+    'start_time',
+    'contestant_type',
+    'game_format',
+    'elimination_mode',
+    'score_ordering',
+    'min_players',
+    'max_players',
+    'min_teams',
+    'max_teams',
+    'min_players_in_team',
+    'max_players_in_team',
+)
+_FFA_FIELDS = (
+    'point_table',
+    'group_size_min',
+    'group_size_max',
+    'advancement_count',
+    'points_carry_to_losers',
+)
+
+# Count fields whose stored value an edit may keep, although the current
+# rules reject it.
+_UNCHANGED_COUNT_FIELDS = (
+    'min_players',
+    'max_players',
+    'min_teams',
+    'max_teams',
+    'min_players_in_team',
+    'max_players_in_team',
+    'group_size_min',
+    'group_size_max',
+    'advancement_count',
+)
+
+# (min field, max field); the max field carries the pair's error.
+_MIN_MAX_PAIRS = (
+    ('min_players', 'max_players'),
+    ('min_teams', 'max_teams'),
+    ('min_players_in_team', 'max_players_in_team'),
+)
+
 
 def _step_field_names(index: int, is_highscore: bool) -> tuple[str, ...]:
     """Return the fields whose errors belong to a step of the form."""
@@ -1180,6 +1227,104 @@ def first_error_step(form: Form) -> int | None:
     return None
 
 
+def tournament_form_data(tournament: Tournament) -> dict[str, Any]:
+    """Return the form prefill of a stored tournament."""
+    start_time_local = (
+        to_user_timezone(tournament.start_time)
+        if tournament.start_time
+        else None
+    )
+
+    data = asdict(tournament)
+    data['category'] = tournament.category.value
+    data['start_time'] = start_time_local
+    if tournament.contestant_type is not None:
+        data['contestant_type'] = tournament.contestant_type.name
+    else:
+        data['contestant_type'] = ''
+    if tournament.game_format is not None:
+        data['game_format'] = tournament.game_format.name
+    else:
+        data['game_format'] = ''
+    if tournament.elimination_mode is not None:
+        data['elimination_mode'] = tournament.elimination_mode.name
+    else:
+        data['elimination_mode'] = ''
+    if tournament.score_ordering is not None:
+        data['score_ordering'] = tournament.score_ordering.name
+    else:
+        data['score_ordering'] = ''
+    # Serialize point_table list back to comma-separated string.
+    if tournament.point_table is not None:
+        data['point_table'] = ', '.join(str(v) for v in tournament.point_table)
+    else:
+        data['point_table'] = ''
+    # Pre-populate points_carry_to_losers checkbox.
+    data['points_carry_to_losers'] = tournament.points_carry_to_losers or False
+    data['playoff_enabled'] = tournament.has_playoffs
+    data['playoff_elimination_mode'] = (
+        tournament.playoff_elimination_mode.name
+        if tournament.playoff_elimination_mode
+        else ''
+    )
+    data['playoff_release_mode'] = (
+        tournament.playoff_release_mode.name
+        if tournament.playoff_release_mode
+        else ''
+    )
+    # An attached image shows as the uploaded one, not as a URL.
+    data['image_id'] = str(tournament.image_id) if tournament.image_id else ''
+    if tournament.image_id:
+        data['image_url'] = ''
+    data['image_alt_text'] = tournament.image_alt_text or ''
+    return data
+
+
+def edit_locked_fields(tournament: Tournament) -> frozenset[str]:
+    """Return the form fields an edit of the tournament may not change."""
+    is_locked = (
+        tournament.tournament_status in tournament_service.EDIT_LOCKED_STATUSES
+    )
+    locked_playoff = tournament_service.locked_playoff_fields(tournament)
+    governed = tournament_service.playoff_fields(tournament)
+    ffa_locked = (
+        'point_table' in locked_playoff
+        if 'point_table' in governed
+        else is_locked
+    )
+
+    locked: set[str] = set()
+    if is_locked:
+        locked.update(_STATUS_LOCKED_FIELDS)
+    if ffa_locked:
+        locked.update(_FFA_FIELDS)
+    locked.update(
+        'playoff_enabled' if name == 'playoff_game_format' else name
+        for name in locked_playoff
+    )
+    return frozenset(locked)
+
+
+def _tournament_status_label(status: TournamentStatus | None) -> str:
+    match status:
+        case TournamentStatus.DRAFT:
+            return gettext('Draft')
+        case TournamentStatus.REGISTRATION_OPEN:
+            return gettext('Registration open')
+        case TournamentStatus.REGISTRATION_CLOSED:
+            return gettext('Registration closed')
+        case TournamentStatus.ONGOING:
+            return gettext('Ongoing')
+        case TournamentStatus.PAUSED:
+            return gettext('Paused')
+        case TournamentStatus.COMPLETED:
+            return gettext('Completed')
+        case TournamentStatus.CANCELLED:
+            return gettext('Cancelled')
+        case _:
+            return ''
+
+
 def build_create_wizard_context(
     party: Party,
     form: Form,
@@ -1189,8 +1334,16 @@ def build_create_wizard_context(
     staged_image: TournamentImage | None,
     urls: Mapping[str, str],
     refusal: Mapping[str, Any] | None = None,
+    mode: Literal['create', 'edit'] = 'create',
+    tournament: Tournament | None = None,
+    locked_fields: frozenset[str] = frozenset(),
+    stored_values: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
-    """Return the `wizard` template context of the create form."""
+    """Return the `wizard` template context of the wizard.
+
+    In edit mode, the context also carries the edit locks and the
+    stored values; the wizard keeps no session draft then.
+    """
     staged = _staged_image_to_dict(staged_image) if staged_image else None
     step = first_error_step(form)
     source_values = (
@@ -1252,7 +1405,7 @@ def build_create_wizard_context(
         'strings': build_create_wizard_strings(),
     }
 
-    return {
+    context = {
         'config': config,
         'timezone_label': config['timezoneLabel'],
         'timezone_name': current_app.config['TIMEZONE'],
@@ -1265,6 +1418,46 @@ def build_create_wizard_context(
         'refusal': refusal,
         'source_values': source_values,
     }
+
+    if mode == 'edit':
+        if tournament is None:
+            raise ValueError('The edit mode needs the tournament.')
+
+        status_label = _tournament_status_label(tournament.tournament_status)
+        config.update(
+            {
+                'mode': mode,
+                'sessionKey': None,
+                'requireStructure': False,
+                'lockedFields': sorted(locked_fields),
+                'storedValues': dict(stored_values or {}),
+                'editExemptFields': [
+                    *_UNCHANGED_COUNT_FIELDS,
+                    'point_table',
+                    'start_time',
+                ],
+                'minMaxPairs': [list(pair) for pair in _MIN_MAX_PAIRS],
+                'tournamentStatusLabel': status_label,
+            }
+        )
+        context.update(
+            {
+                'mode': mode,
+                'is_edit': True,
+                'locked_fields': locked_fields,
+                'tournament_status_label': status_label,
+                'lock_banner': (
+                    tournament.tournament_status
+                    in tournament_service.EDIT_LOCKED_STATUSES
+                ),
+                'playoff_lock_note': (
+                    tournament.has_playoffs
+                    and not tournament.playoff_released_at
+                ),
+            }
+        )
+
+    return context
 
 
 def _staged_image_to_dict(image: TournamentImage) -> dict[str, Any]:
@@ -1600,6 +1793,19 @@ def build_create_wizard_strings() -> dict[str, str]:
         'Cancel': gettext('Cancel'),
         'Create draft tournament': gettext('Create draft tournament'),
         'Creating …': gettext('Creating …'),
+        'Edit tournament': gettext('Edit tournament'),
+        'Save changes': gettext('Save changes'),
+        'Saving …': gettext('Saving …'),
+        'Review and save': gettext('Review and save'),
+        'The server rejected the changes.': gettext(
+            'The server rejected the changes.'
+        ),
+        'You can still save: the server checks everything again. Your entries are kept.': gettext(
+            'You can still save: the server checks everything again. Your entries are kept.'
+        ),
+        'Changes are saved only when you press Save changes.': gettext(
+            'Changes are saved only when you press Save changes.'
+        ),
         'from request': gettext('from request'),
         'From request #%(id)s by %(user)s': gettext(
             'From request #%(id)s by %(user)s'

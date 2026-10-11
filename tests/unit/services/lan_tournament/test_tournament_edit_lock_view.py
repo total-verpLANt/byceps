@@ -234,3 +234,51 @@ def test_locked_paused_tournament_also_injects_stored_values(app):
     # Editable fields carry submitted values.
     assert kwargs['description'] == 'Paused update'
     assert kwargs['ruleset'] == 'New rules while paused'
+
+
+def _build_form(app, tournament, form_data: dict):
+    """Build the edit form from an immutable request form."""
+    from flask import request
+
+    from byceps.services.lan_tournament.blueprints.admin import views
+
+    with app.test_request_context('/', method='POST', data=form_data):
+        with patch(f'{_V}.to_user_timezone', side_effect=lambda dt: dt):
+            form = views._build_update_form(tournament, request.form)
+        posted = dict(request.form)
+    return form, posted
+
+
+def test_build_update_form_overrides_forged_values_of_locked_fields(app):
+    tournament = _make_tournament(TournamentStatus.ONGOING)
+
+    form, posted = _build_form(
+        app,
+        tournament,
+        {
+            'name': 'Forged name',
+            'game': 'Forged game',
+            'max_players': '999',
+            'game_format': 'FREE_FOR_ALL',
+            'description': 'Editable',
+        },
+    )
+
+    assert form.name.data == 'Locked Tournament'
+    assert form.game.data == 'CS2'
+    assert form.max_players.data == 16
+    assert form.game_format.data == 'ONE_V_ONE'
+    assert form.description.data == 'Editable'
+    # The request's own form stays as posted.
+    assert posted['name'] == 'Forged name'
+
+
+def test_build_update_form_keeps_posted_values_of_a_draft(app):
+    tournament = _make_tournament(TournamentStatus.DRAFT)
+
+    form, _ = _build_form(
+        app, tournament, {'name': 'Renamed', 'max_players': '32'}
+    )
+
+    assert form.name.data == 'Renamed'
+    assert form.max_players.data == 32
