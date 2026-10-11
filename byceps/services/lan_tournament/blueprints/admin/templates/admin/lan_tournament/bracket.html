@@ -1,4 +1,5 @@
 {% extends 'layout/admin/lan_tournament.html' %}
+{% from 'admin/lan_tournament/_subnav.html' import render_admin_subnav %}
 {% from 'macros/admin.html' import render_backlink %}
 {% from 'macros/icons.html' import render_icon %}
 {% from 'admin/lan_tournament/_phase_sections.html' import render_phase_one, render_phase_waiting %}
@@ -47,6 +48,8 @@
 {%- endblock %}
 
 {% block body %}
+
+  {{ render_admin_subnav(tournament, 'bracket') }}
 
   {%- include 'admin/lan_tournament/_ffa_cut_ties.html' %}
 

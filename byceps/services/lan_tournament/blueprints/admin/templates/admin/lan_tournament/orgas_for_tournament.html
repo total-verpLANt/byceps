@@ -1,4 +1,5 @@
 {% extends 'layout/admin/lan_tournament.html' %}
+{% from 'admin/lan_tournament/_subnav.html' import render_admin_subnav %}
 {% set current_page_party = party %}
 {% set current_tab = 'tournaments' %}
 {% from 'macros/admin.html' import render_extra_in_heading %}
@@ -15,6 +16,8 @@
   </nav>
 
   <h1 class="title">{{ _('Orgas') }} {{ render_extra_in_heading(orgas|length) }}</h1>
+
+  {{ render_admin_subnav(tournament, 'orgas') }}
 
   {%- if orgas %}
   <table class="itemlist is-vcentered is-wide">

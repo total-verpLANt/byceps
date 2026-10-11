@@ -83,15 +83,55 @@ def _current(html):
         ('overview', 'Overview'),
         ('seeding', 'Seeding'),
         ('qualification', 'Qualification & release'),
+        ('participants', 'Participants'),
+        ('matches', 'Matches'),
+        ('orgas', 'Orgas'),
     ],
 )
-def test_subnav_on_overview_seeding_and_qualification(
+def test_subnav_marks_the_active_tab(
     template, active_tab, label
 ):
     html = template.render(tournament=_tournament(), active_tab=active_tab)
 
     assert _current(html) == [label]
     assert 'Participants' in html and 'Orgas' in html
+
+
+def test_subnav_marks_teams_tab(template):
+    html = template.render(tournament=_tournament(team=True), active_tab='teams')
+
+    assert _current(html) == ['Teams']
+
+
+# fmt: off
+_SUBNAV_PAGES = [
+    ('add_participant_form',        'participants'),
+    ('bracket',                     'bracket'),
+    ('create_team_form',            'teams'),
+    ('ffa_standings',               'bracket'),
+    ('highscore',                   'highscore'),
+    ('matches_for_tournament',      'matches'),
+    ('orgas_for_tournament',        'orgas'),
+    ('participants_for_tournament', 'participants'),
+    ('qualification',               'qualification'),
+    ('seeding',                     'seeding'),
+    ('teams_for_tournament',        'teams'),
+    ('update_form',                 ''),
+    ('update_team_form',            'teams'),
+    ('view',                        'active_tab'),
+    ('view_match',                  'matches'),
+    ('view_team',                   'teams'),
+]
+# fmt: on
+
+
+@pytest.mark.parametrize(('page', 'tab'), _SUBNAV_PAGES)
+def test_every_tournament_page_renders_the_subnav(page, tab):
+    source = (_ADMIN_DIR / f'{page}.html').read_text()
+    argument = tab if tab == 'active_tab' else repr(tab)
+
+    assert 'import render_admin_subnav' in source
+    assert f'render_admin_subnav(tournament, {argument})' in source
 
 
 def test_subnav_shows_teams_only_for_team_tournaments(template):

@@ -1,4 +1,5 @@
 {% extends 'layout/admin/lan_tournament.html' %}
+{% from 'admin/lan_tournament/_subnav.html' import render_admin_subnav %}
 {% set current_page_party = party %}
 {% set current_tab = 'tournaments' %}
 {% from 'macros/admin.html' import render_extra_in_heading %}
@@ -39,6 +40,8 @@
   </nav>
 
   <h1 class="title">{{ _('Participants') }} {{ render_extra_in_heading(participants|length) }}</h1>
+
+  {{ render_admin_subnav(tournament, 'participants') }}
 
   {%- if tournament.tournament_status and tournament.tournament_status.name in ('REGISTRATION_OPEN', 'REGISTRATION_CLOSED') %}
   <div class="button-row">

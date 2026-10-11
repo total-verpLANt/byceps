@@ -1,4 +1,5 @@
 {% extends 'layout/admin/lan_tournament.html' %}
+{% from 'admin/lan_tournament/_subnav.html' import render_admin_subnav %}
 {% from 'macros/admin.html' import render_backlink %}
 {% from 'macros/forms.html' import form_buttons, form_field %}
 {% from 'macros/icons.html' import render_icon %}
@@ -18,6 +19,8 @@
 {% block body %}
 
   <h1 class="title">{{ page_title }}</h1>
+
+  {{ render_admin_subnav(tournament, '') }}
 
   {% if is_locked %}
     <div class="notification color-info" style="margin-bottom: 1rem;">

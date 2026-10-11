@@ -8,11 +8,11 @@
 </style>
   <div class="button-row subnav block">
     <a class="button{% if active_tab == 'overview' %} button--current{% endif %}" href="{{ url_for('.view', tournament_id=tournament.id) }}">{{ _('Overview') }}</a>
-    <a class="button" href="{{ url_for('.participants_for_tournament', tournament_id=tournament.id) }}">{{ _('Participants') }}</a>
+    <a class="button{% if active_tab == 'participants' %} button--current{% endif %}" href="{{ url_for('.participants_for_tournament', tournament_id=tournament.id) }}">{{ _('Participants') }}</a>
     {% if tournament.contestant_type.name == 'TEAM' %}
-    <a class="button" href="{{ url_for('.teams_for_tournament', tournament_id=tournament.id) }}">{{ _('Teams') }}</a>
+    <a class="button{% if active_tab == 'teams' %} button--current{% endif %}" href="{{ url_for('.teams_for_tournament', tournament_id=tournament.id) }}">{{ _('Teams') }}</a>
     {% endif %}
-    <a class="button" href="{{ url_for('.matches_for_tournament', tournament_id=tournament.id) }}">{{ _('Matches') }}</a>
+    <a class="button{% if active_tab == 'matches' %} button--current{% endif %}" href="{{ url_for('.matches_for_tournament', tournament_id=tournament.id) }}">{{ _('Matches') }}</a>
     {%- if tournament.game_format and tournament.game_format.name != 'HIGHSCORE' %}
     <a class="button{% if active_tab == 'seeding' %} button--current{% endif %}" href="{{ url_for('.seeding', tournament_id=tournament.id) }}">{{ _('Seeding') }}</a>
     {%- endif %}

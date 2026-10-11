@@ -1,4 +1,5 @@
 {% extends 'layout/admin/lan_tournament.html' %}
+{% from 'admin/lan_tournament/_subnav.html' import render_admin_subnav %}
 {% from 'macros/admin.html' import render_backlink %}
 {% from 'macros/forms.html' import form_buttons, form_field %}
 {% set current_page_party = party %}
@@ -13,6 +14,8 @@
 {% block body %}
 
   <h1 class="title">{{ page_title }}</h1>
+
+  {{ render_admin_subnav(tournament, 'teams') }}
 
   <form action="{{ url_for('.create_team', tournament_id=tournament.id) }}" method="post">
     <div class="box">

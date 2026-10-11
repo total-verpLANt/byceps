@@ -1,4 +1,5 @@
 {% extends 'layout/admin/lan_tournament.html' %}
+{% from 'admin/lan_tournament/_subnav.html' import render_admin_subnav %}
 {% from 'macros/admin.html' import render_extra_in_heading %}
 {% from 'macros/icons.html' import render_icon %}
 {% set current_page_party = party %}
@@ -30,6 +31,8 @@
   </nav>
 
   <h1 class="title">{{ _('Teams') }}</h1>
+
+  {{ render_admin_subnav(tournament, 'teams') }}
 
   <div class="button-row is-right-aligned block">
     <a href="{{ url_for('.create_team_form', tournament_id=tournament.id) }}" class="button">{{ render_icon('add') }} <span>{{ _('Create team') }}</span></a>

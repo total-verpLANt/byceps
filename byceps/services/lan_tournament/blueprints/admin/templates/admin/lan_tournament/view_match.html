@@ -1,4 +1,5 @@
 {% extends 'layout/admin/lan_tournament.html' %}
+{% from 'admin/lan_tournament/_subnav.html' import render_admin_subnav %}
 {% from 'macros/admin.html' import render_backlink %}
 {% from 'macros/icons.html' import render_icon %}
 {% from 'macros/misc.html' import render_tag %}
@@ -28,6 +29,8 @@
 
   <h1 class='title'>{{ _('Match') }} {{ render_match_ref(match) }}</h1>
   <p class='lt-match__position'>{{ match_label }}</p>
+
+  {{ render_admin_subnav(tournament, 'matches') }}
 
   {# Match status #}
   <div class='block'>
