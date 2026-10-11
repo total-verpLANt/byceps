@@ -41,6 +41,9 @@ from byceps.services.lan_tournament.models.operational_timing import (
     TrafficTier,
 )
 from byceps.services.lan_tournament.models.tournament import TournamentID
+from byceps.services.lan_tournament.models.tournament_category import (
+    TournamentCategory,
+)
 from byceps.services.lan_tournament.models.tournament_dashboard import (
     AckUnavailableReason,
     DashboardAcknowledgementSummary,
@@ -833,6 +836,108 @@ def test_query_parser_drops_invalid_values_with_field_errors():
     assert stranger['banner'] is not None
 
 
+_NOT_A_CATEGORY = (
+    'Tournament category “{}” does not exist. The list is shown without this'
+    ' value.'
+)
+
+
+# fmt: off
+@pytest.mark.parametrize('surface', ['admin', 'site'])
+@pytest.mark.parametrize('pairs, expected, echoed', [
+    pytest.param([], None, None, id='absent'),
+    pytest.param([('category', '')], None, None, id='empty'),
+    pytest.param(
+        [('category', 'MAIN')], TournamentCategory.MAIN, None, id='main'
+    ),
+    pytest.param(
+        [('category', 'FUN')], TournamentCategory.FUN, None, id='fun'
+    ),
+    pytest.param(
+        [('category', 'STAGE')], TournamentCategory.STAGE, None, id='stage'
+    ),
+    pytest.param(
+        [('category', 'USER_ORGANIZED')],
+        TournamentCategory.USER_ORGANIZED,
+        None,
+        id='user-organized',
+    ),
+    pytest.param([('category', 'NOPE')], None, 'NOPE', id='unknown'),
+    pytest.param([('category', 'main')], None, 'main', id='lowercase'),
+    pytest.param([('category', 'Main')], None, 'Main', id='title-case'),
+    pytest.param(
+        [('category', 'Main tournaments')],
+        None,
+        'Main tournaments',
+        id='label-is-no-value',
+    ),
+    pytest.param(
+        [('category', 'USER ORGANIZED')],
+        None,
+        'USER ORGANIZED',
+        id='space-for-underscore',
+    ),
+    pytest.param(
+        [('category', 'MAIN\x00')], None, 'MAIN', id='trailing-nul'
+    ),
+    pytest.param(
+        [('category', 'MAIN'), ('category', 'FUN')],
+        None,
+        'MAIN',
+        id='duplicate-different',
+    ),
+    pytest.param(
+        [('category', 'MAIN'), ('category', 'MAIN')],
+        None,
+        'MAIN',
+        id='duplicate-same',
+    ),
+    pytest.param(
+        [('category', ''), ('category', 'MAIN')],
+        None,
+        '',
+        id='duplicate-empty-first',
+    ),
+])
+# fmt: on
+def test_category_query_parsing(surface, pairs, expected, echoed):
+    args = MultiDict([('view', 'all'), ('sort', 'wait'), ('page', '3'), *pairs])
+
+    # The scope holds no tournament at all: a category is a filter, never an
+    # assignment lookup, so it parses (or fails) on its own.
+    query, errors = parse_dashboard_query(
+        args, surface=surface, per_page=25, scope_tournament_ids=()
+    )
+
+    # An invalid category is dropped alone; nothing else is touched, and the
+    # scope and the tournament stay at their narrow defaults.
+    assert query == DashboardQuery(
+        view='all', sort='wait', page=3, category=expected, per_page=25
+    )
+    assert query.category is expected
+    assert query.scope == 'assigned'
+    assert query.tournament_id is None
+    if echoed is None:
+        assert errors == {}
+    else:
+        assert errors == {'category': _NOT_A_CATEGORY.format(echoed)}
+
+    # The control shows the dropped value at its field, with one notice.
+    context = _context(_page([_row()]), query, surface=surface, errors=errors)
+    field = context['filters']['category']
+    assert field['is_invalid'] is (echoed is not None)
+    assert field['error'] == (
+        None if echoed is None else 'This value is invalid and was not applied.'
+    )
+    assert [o['value'] for o in field['options'] if o['selected']] == [
+        '' if expected is None else expected.value
+    ]
+    if echoed is None:
+        assert context['banner'] is None
+    else:
+        assert context['banner']['details'] == list(errors.values())
+
+
 # --------------------------------------------------------- return context
 
 
@@ -1002,6 +1107,179 @@ def test_return_context_rebuilds_only_allowlisted_parameters():
         assert parse_dashboard_return(
             returned[0], surface='admin', per_page=50
         ) == DashboardQuery(scope='all', state='pinned', page=2, per_page=50)
+
+
+_HOSTILE_CATEGORY_RETURNS = [
+    'view=all&category=main',
+    'category=NOPE',
+    'category=Main+tournaments',
+    'category=MAIN&category=FUN',
+    'category=MAIN&category=MAIN',
+    'page=2&category=MAIN%00',
+    'sort=wait&category=MAIN%0d%0aSet-Cookie:x=1',
+    'view=all&category=MAIN&category',
+    'view=all&category=MAIN&evil=1',
+    'category=' + 'A' * 1100,
+]
+
+
+def test_category_return_round_trip():
+    tournament = generate_uuid7()
+
+    # What the dashboard writes for each category, it reads back exactly,
+    # with every other non-default value (the URL leaves defaults out).
+    for surface in ('admin', 'site'):
+        for category in TournamentCategory:
+            query = DashboardQuery(
+                scope='all',
+                view='upcoming',
+                state='ready-both',
+                sort='tournament',
+                category=category,
+                tournament_id=tournament,
+                page=7,
+                per_page=25,
+            )
+            expected = (
+                query
+                if surface == 'admin'
+                else replace(query, scope='assigned')
+            )
+
+            written = build_dashboard_return(query, surface=surface)
+            assert parse_qs(written)['category'] == [category.value]
+            parsed = parse_dashboard_return(
+                written, surface=surface, per_page=25
+            )
+            assert parsed == expected
+            assert parsed is not None and parsed.category is category
+
+            url = build_dashboard_list_url(surface, 'pixelnacht-36', query)
+            assert parse_qs(urlsplit(url).query) == {
+                **({'scope': ['all']} if surface == 'admin' else {}),
+                'view': ['upcoming'],
+                'state': ['ready-both'],
+                'sort': ['tournament'],
+                'category': [category.value],
+                'tournament': [str(tournament)],
+                'page': ['7'],
+            }
+
+    # The category sits between the sort and the tournament, as in
+    # `QUERY_PARAMETERS`; it is written for every category, and only then.
+    assert helpers.QUERY_PARAMETERS == (
+        'scope',
+        'view',
+        'state',
+        'sort',
+        'category',
+        'tournament',
+        'page',
+    )
+    fun = DashboardQuery(
+        scope='all',
+        view='upcoming',
+        state='ready-both',
+        sort='tournament',
+        category=TournamentCategory.FUN,
+        tournament_id=tournament,
+        page=7,
+        per_page=25,
+    )
+    assert build_dashboard_return(fun, surface='admin') == (
+        'scope=all&view=upcoming&state=ready-both&sort=tournament'
+        f'&category=FUN&tournament={tournament}&page=7'
+    )
+
+    # A list URL leaves every default out, the category is none.
+    only = DashboardQuery(
+        category=TournamentCategory.USER_ORGANIZED, per_page=25
+    )
+    assert build_dashboard_list_url('admin', 'p', only) == (
+        '/lan-tournaments/for_party/p/dashboard?category=USER_ORGANIZED'
+    )
+    assert build_dashboard_list_url('site', 'p', only) == (
+        '/lan-tournaments/orga-dashboard?category=USER_ORGANIZED'
+    )
+    assert build_dashboard_return(only, surface='admin') == (
+        'scope=assigned&view=due&state=all&sort=urgency'
+        '&category=USER_ORGANIZED&page=1'
+    )
+
+    # Without a category, the legacy bytes do not change.
+    legacy = DashboardQuery(per_page=25)
+    assert build_dashboard_return(legacy, surface='admin') == (
+        'scope=assigned&view=due&state=all&sort=urgency&page=1'
+    )
+    assert build_dashboard_return(legacy, surface='site') == (
+        'view=due&state=all&sort=urgency&page=1'
+    )
+    assert build_dashboard_list_url('admin', 'p', legacy) == (
+        '/lan-tournaments/for_party/p/dashboard'
+    )
+    assert 'category' not in build_dashboard_list_url(
+        'site', 'p', replace(legacy, view='all', page=2)
+    )
+
+    # The reader is as strict as before: any invalid or repeated category
+    # gives the default list, never a partial reading.
+    control = parse_dashboard_return(
+        'view=all&category=MAIN', surface='admin', per_page=25
+    )
+    assert control == DashboardQuery(
+        view='all', category=TournamentCategory.MAIN, per_page=25
+    )
+    for hostile in _HOSTILE_CATEGORY_RETURNS:
+        for surface in ('admin', 'site'):
+            rejected = parse_dashboard_return(
+                hostile, surface=surface, per_page=25
+            )
+            assert rejected == legacy, hostile
+            assert 'category' not in build_dashboard_list_url(
+                surface, 'p', rejected
+            )
+
+    # The back link names the restored category, and the same text comes
+    # back through the written and the read `return` value.
+    assert (
+        helpers.describe_dashboard_return(legacy)
+        == '(Due now · Urgency · Page 1)'
+    )
+    described = helpers.describe_dashboard_return(
+        DashboardQuery(
+            view='all',
+            sort='wait',
+            category=TournamentCategory.FUN,
+            page=3,
+            per_page=25,
+        )
+    )
+    assert (
+        described
+        == '(All matches · Fun tournaments · Total active wait · Page 3)'
+    )
+    for category, label in zip(
+        TournamentCategory,
+        (
+            'Main tournaments',
+            'Fun tournaments',
+            'Stage / Offline',
+            'User Organized',
+        ),
+        strict=True,
+    ):
+        query = DashboardQuery(
+            view='upcoming', sort='wait', category=category, page=4, per_page=25
+        )
+        restored = parse_dashboard_return(
+            build_dashboard_return(query, surface='site'),
+            surface='site',
+            per_page=25,
+        )
+        assert restored == query
+        assert helpers.describe_dashboard_return(restored) == (
+            f'(Upcoming matches · {label} · Total active wait · Page 4)'
+        )
 
 
 # ------------------------------------------------- durations and wall time
@@ -1878,6 +2156,352 @@ def test_pager_is_bounded_and_keeps_the_query():
     last = pager(40, 40)
     assert last['next']['url'] is None
     assert [i.get('number') for i in last['items']] == [1, None, 38, 39, 40]
+
+
+def _url_query(url: str, surface: helpers.Surface = 'admin') -> DashboardQuery:
+    query, errors = parse_dashboard_query(
+        MultiDict(parse_qsl(urlsplit(url).query, keep_blank_values=True)),
+        surface=surface,
+        per_page=50,
+    )
+    assert errors == {}
+    return query
+
+
+_CATEGORY_LABELS = {
+    TournamentCategory.MAIN: 'Main tournaments',
+    TournamentCategory.FUN: 'Fun tournaments',
+    TournamentCategory.STAGE: 'Stage / Offline',
+    TournamentCategory.USER_ORGANIZED: 'User Organized',
+}
+
+
+def test_category_context_and_navigation():
+    labels = dashboard_labels()
+    assert labels['filter_category'] == 'Tournament category'
+    assert labels['categories_all'] == 'All categories'
+
+    # The control: All plus the four categories, in the enum's order. The
+    # labels are the enum's own text, never the raw value.
+    default = _context(_page([_row()]))
+    assert default['query']['category'] is None
+    assert default['is_default_query'] is True
+    assert default['filters']['applied'] == []
+    assert default['filters']['reset_url'] is None
+
+    field = default['filters']['category']
+    assert (field['id'], field['name'], field['label']) == (
+        'lt-filter-category',
+        'category',
+        'Tournament category',
+    )
+    assert field['is_invalid'] is False
+    assert field['error'] is None
+    assert [o['value'] for o in field['options']] == [
+        '',
+        'MAIN',
+        'FUN',
+        'STAGE',
+        'USER_ORGANIZED',
+    ]
+    assert [o['label'] for o in field['options']] == [
+        'All categories',
+        'Main tournaments',
+        'Fun tournaments',
+        'Stage / Offline',
+        'User Organized',
+    ]
+    assert [o['selected'] for o in field['options']] == [
+        True,
+        False,
+        False,
+        False,
+        False,
+    ]
+
+    # Each category alone: selected, one chip, no longer the default list.
+    for category, label in _CATEGORY_LABELS.items():
+        context = _context(_page([_row()]), _query(category=category))
+        _walk(context)
+        assert context['query']['category'] == category.value
+        assert context['is_default_query'] is False
+        filters = context['filters']
+        assert [
+            o['value'] for o in filters['category']['options'] if o['selected']
+        ] == [category.value]
+        assert filters['applied'] == [label]
+        assert filters['has_applied'] is True
+        assert _url_query(filters['reset_url']) == _query()
+
+    # The whole list navigation of a non-default query, on each surface.
+    choices = (
+        DashboardTournamentRef(
+            tournament_id=_tournament_id(), name='Neon-Duell'
+        ),
+        DashboardTournamentRef(
+            tournament_id=_tournament_id(), name='Kupfer-Cup'
+        ),
+    )
+    leaderboard = DashboardTournamentRef(
+        tournament_id=_tournament_id(), name='Highscore-Cup', game='Pong'
+    )
+    counterpart = _ref(list_page=2)
+    row = _row(
+        tier=TrafficTier.YELLOW,
+        ack_unavailable_reason=None,
+        conflicts=(_conflict('Nori', refs=(counterpart,)),),
+    )
+    page = _page(
+        [row],
+        total_count=150,
+        total_pages=3,
+        page=2,
+        tier_counts=DashboardTierCounts(red=1, yellow=2, green=3),
+        tournament_choices=choices,
+        leaderboard_only_tournaments=(leaderboard,),
+    )
+
+    for surface in ('admin', 'site'):
+        scope = 'all' if surface == 'admin' else 'assigned'
+        query = _query(
+            scope=scope,
+            view='all',
+            state='ready-both',
+            sort='wait',
+            category=TournamentCategory.STAGE,
+            tournament_id=choices[0].tournament_id,
+            page=2,
+        )
+
+        def url_query(url, surface=surface):
+            return _url_query(url, surface)
+
+        context = _context(page, query, surface=surface)
+        _walk(context)
+        json.dumps(context)
+
+        assert context['query'] == {
+            'scope': scope,
+            'view': 'all',
+            'state': 'ready-both',
+            'sort': 'wait',
+            'category': 'STAGE',
+            'tournament': str(choices[0].tournament_id),
+            'page': 2,
+            'per_page': 50,
+        }
+
+        filters = context['filters']
+        assert [
+            o['value'] for o in filters['category']['options'] if o['selected']
+        ] == ['STAGE']
+        assert filters['applied'] == [
+            'All matches',
+            'Stage / Offline',
+            'Neon-Duell',
+            'Both ready',
+            'Sort: Total active wait',
+        ]
+        assert context['is_default_query'] is False
+
+        # The select carries the category once; a hidden twin would repeat
+        # the parameter, and the parser drops a repeated one. The page is
+        # never submitted, so a new selection starts at page 1.
+        assert [name for name, _ in filters['hidden']] == (
+            ['scope', 'view'] if surface == 'admin' else ['view']
+        )
+        # Reset clears the category with every other filter.
+        assert url_query(filters['reset_url']) == _query(scope=scope)
+
+        # The scope form keeps the category, once, and never the page.
+        hidden = context['scope']['hidden']
+        assert ['category', 'STAGE'] in hidden
+        assert [name for name, _ in hidden].count('category') == 1
+        assert all(name not in ('scope', 'page') for name, _ in hidden)
+
+        # Polling asks for the very same list.
+        poll = urlsplit(context['poll']['url'])
+        assert poll.path.endswith('/poll')
+        assert url_query(context['poll']['url']) == query
+        assert parse_qs(poll.query)['category'] == ['STAGE']
+
+        # The views, the tiles and the pager keep the category.
+        assert [v['key'] for v in context['views']] == [
+            'due',
+            'upcoming',
+            'all',
+        ]
+        for view in context['views']:
+            assert url_query(view['url']) == replace(
+                query, view=view['key'], page=1
+            )
+
+        tiles = context['tiles']['items']
+        assert [t['tier'] for t in tiles] == ['red', 'yellow', 'green']
+        for tile in tiles:
+            assert url_query(tile['url']) == replace(
+                query, state=f'tier-{tile["tier"]}', page=1
+            )
+        pressed = _context(
+            page, replace(query, state='tier-red'), surface=surface
+        )
+        assert url_query(pressed['tiles']['items'][0]['url']) == replace(
+            query, state='all', page=1
+        )
+
+        pager = context['pager']
+        assert [i['number'] for i in pager['items']] == [1, 2, 3]
+        for item in pager['items']:
+            assert url_query(item['url']) == replace(query, page=item['number'])
+        assert url_query(pager['previous']['url']) == replace(query, page=1)
+        assert url_query(pager['next']['url']) == replace(query, page=3)
+
+        # Every row link, action and note card returns to this very list.
+        assert (
+            parse_dashboard_return(
+                context['return_value'], surface=surface, per_page=50
+            )
+            == query
+        )
+        assert parse_qs(context['return_value'])['category'] == ['STAGE']
+
+        shown = _rows(context)[0]
+        assert shown['ack']['form'] is not None
+        assert shown['pin']['offered'] is True
+        links = [
+            shown['match_url'],
+            shown['tournament']['url'],
+            context['cards'][0]['url'],
+        ]
+        conflict = shown['conflicts'][0]['refs'][0]
+        links.append(conflict['match_url'])
+        for link in links:
+            assert parse_qs(urlsplit(link).query)['return'] == [
+                context['return_value']
+            ]
+        for value in (
+            shown['ack']['form']['return_value'],
+            shown['pin']['return_value'],
+        ):
+            assert value == context['return_value']
+
+        # A counterpart on another page links to that page of the same list,
+        # category included.
+        assert url_query(conflict['list_page_url']) == replace(query, page=2)
+        assert urlsplit(conflict['list_page_url']).fragment == (
+            f'lt-row-{counterpart.match_id}'
+        )
+
+        # The empty states: every way on keeps the category, and the reset
+        # of a filter that fits nothing clears it.
+        def empty(reason, query=query, surface=surface, **fields):
+            return _context(
+                _page(total_count=0, empty_reason=reason, **fields),
+                query,
+                surface=surface,
+            )['empty']
+
+        for reason, views in [
+            ('no_current_demand', ['upcoming', 'all']),
+            ('no_actionable_fixtures', ['all']),
+        ]:
+            card = empty(reason)
+            assert card['kind'] == reason
+            assert [url_query(a['url']) for a in card['actions']] == [
+                replace(query, view=view, page=1) for view in views
+            ]
+
+        no_match = empty('no_filter_matches', tournament_choices=choices)
+        assert [url_query(a['url']) for a in no_match['actions']] == [
+            _query(scope=scope)
+        ]
+
+        gone = _context(
+            _page(total_count=100, total_pages=2, page=5),
+            replace(query, page=5),
+            surface=surface,
+        )['empty']
+        assert [url_query(a['url']) for a in gone['actions']] == [
+            replace(query, page=1)
+        ]
+
+
+def test_category_tournament_mismatch_keeps_authorized_choice():
+    neon = DashboardTournamentRef(
+        tournament_id=_tournament_id(), name='Neon-Duell'
+    )
+    kupfer = DashboardTournamentRef(
+        tournament_id=_tournament_id(), name='Kupfer-Cup'
+    )
+    choices = (neon, kupfer)
+
+    # Say Neon-Duell is a fun tournament and the list asks for the main
+    # ones: no row fits, but the tournament is still the viewer's own.
+    query = _query(
+        category=TournamentCategory.MAIN, tournament_id=neon.tournament_id
+    )
+    page = _page(
+        total_count=0,
+        empty_reason='no_filter_matches',
+        tournament_choices=choices,
+    )
+
+    for surface in ('admin', 'site'):
+        context = _context(page, query, surface=surface)
+        _walk(context)
+
+        # Both filters stay as asked: neither is dropped, none is added.
+        assert context['query']['category'] == 'MAIN'
+        assert context['query']['tournament'] == str(neon.tournament_id)
+        assert context['banner'] is None
+        assert context['rows'] == []
+
+        filters = context['filters']
+        assert filters['tournament']['is_invalid'] is False
+        assert filters['tournament']['error'] is None
+        assert filters['category']['is_invalid'] is False
+        assert [
+            (o['label'], o['selected'])
+            for o in filters['tournament']['options']
+        ] == [
+            ('All assigned tournaments', False),
+            ('Neon-Duell', True),
+            ('Kupfer-Cup', False),
+        ]
+        assert [
+            o['value'] for o in filters['category']['options'] if o['selected']
+        ] == ['MAIN']
+        assert filters['applied'] == ['Main tournaments', 'Neon-Duell']
+
+        # The empty card is the filtered one, and the poll asks for both.
+        assert context['empty']['kind'] == 'no_filter_matches'
+        assert context['empty']['context'] == 'Neon-Duell · Due now'
+        assert _url_query(context['poll']['url'], surface) == query
+        assert parse_qs(urlsplit(context['poll']['url']).query) == {
+            'category': ['MAIN'],
+            'tournament': [str(neon.tournament_id)],
+        }
+
+    # What decides "not available" is the viewer's own inventory, not the
+    # category: a tournament outside it is still dropped with its notice.
+    outside = _tournament_id()
+    stranger = _context(
+        _page(
+            total_count=0,
+            empty_reason='no_filter_matches',
+            tournament_choices=choices,
+        ),
+        _query(category=TournamentCategory.MAIN, tournament_id=outside),
+    )
+    assert stranger['query']['tournament'] is None
+    assert stranger['query']['category'] == 'MAIN'
+    assert stranger['filters']['tournament']['error'] == (
+        'This tournament is not available'
+    )
+    assert str(outside) in stranger['banner']['details'][0]
+    assert [
+        o['selected'] for o in stranger['filters']['tournament']['options']
+    ] == [True, False, False]
 
 
 # -------------------------------------------------------- context shape

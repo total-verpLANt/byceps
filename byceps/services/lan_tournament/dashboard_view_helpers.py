@@ -38,6 +38,7 @@ from .models.elimination_mode import EliminationMode
 from .models.game_format import GameFormat
 from .models.operational_timing import TrafficTier
 from .models.tournament import TournamentID
+from .models.tournament_category import TournamentCategory
 from .models.tournament_dashboard import (
     AckUnavailableReason,
     DASHBOARD_SCOPES,
@@ -91,7 +92,15 @@ ROW_ANCHOR_PREFIX = 'lt-row-'
 RETURN_PARAMETER = 'return'
 
 # The query parameters of a list URL, in the order they are written.
-QUERY_PARAMETERS = ('scope', 'view', 'state', 'sort', 'tournament', 'page')
+QUERY_PARAMETERS = (
+    'scope',
+    'view',
+    'state',
+    'sort',
+    'category',
+    'tournament',
+    'page',
+)
 
 # The routes the context links to, by name. The admin routes of the
 # dashboard itself are bound to the party in the URL; the site routes to
@@ -285,10 +294,12 @@ def dashboard_labels() -> dict[str, str]:
         'view_all': gettext('All matches'),
         'views_nav': gettext('View'),
         'filters_form': gettext('Filter dashboard matches'),
+        'filter_category': gettext('Tournament category'),
         'filter_tournament': gettext('Tournament'),
         'filter_state': gettext('State'),
         'filter_sort': gettext('Sort order'),
         'tournaments_assigned': gettext('All assigned tournaments'),
+        'categories_all': gettext('All categories'),
         'state_all': gettext('All states'),
         'state_tier_template': gettext('Tier: %(tier)s'),
         'state_ready_none': gettext('Nobody ready'),
@@ -605,17 +616,15 @@ def build_dashboard_list_url(
 
 
 def describe_dashboard_return(query: DashboardQuery) -> str:
-    """Return the context of a back link: view, sort and page."""
+    """Return the context of a back link: view, category, sort and page."""
     labels = dashboard_labels()
-    return '({})'.format(
-        ' · '.join(
-            (
-                _view_label(labels, query.view),
-                _sort_label(labels, query.sort),
-                gettext('Page %(page)d', page=query.page),
-            )
-        )
-    )
+    parts = [_view_label(labels, query.view)]
+    if query.category is not None:
+        parts.append(str(query.category.label))
+    parts.append(_sort_label(labels, query.sort))
+    parts.append(gettext('Page %(page)d', page=query.page))
+
+    return '({})'.format(' · '.join(parts))
 
 
 def _reader(args: Mapping[str, str]) -> Callable[[str], list[str]]:
@@ -678,6 +687,14 @@ def _parse(
     elif raw_sort is not None and 'sort' not in errors:
         errors['sort'] = _dropped_notice('sort', raw_sort)
 
+    category: TournamentCategory | None = None
+    raw_category = single('category')
+    if raw_category:
+        try:
+            category = TournamentCategory(raw_category)
+        except ValueError:
+            errors['category'] = _dropped_notice('category', raw_category)
+
     tournament_id: TournamentID | None = None
     raw_tournament = single('tournament')
     if raw_tournament:
@@ -703,6 +720,7 @@ def _parse(
         view=view,
         state=state,
         sort=sort,
+        category=category,
         tournament_id=tournament_id,
         page=page,
         per_page=per_page,
@@ -759,6 +777,8 @@ def _field_noun(field: str) -> str:
         return gettext('State')
     if field == 'sort':
         return gettext('Sort order')
+    if field == 'category':
+        return gettext('Tournament category')
     return gettext('Page')
 
 
@@ -789,6 +809,8 @@ def _query_parameters(
         parameters['state'] = query.state
     if complete or query.sort != 'urgency':
         parameters['sort'] = query.sort
+    if query.category is not None:
+        parameters['category'] = query.category.value
 
     tournament = _uuid_text(query.tournament_id)
     if tournament is not None:
@@ -986,6 +1008,7 @@ def _is_default(query: DashboardQuery) -> bool:
         query.view == 'due'
         and query.state == 'all'
         and query.sort == 'urgency'
+        and query.category is None
         and query.tournament_id is None
     )
 
@@ -998,6 +1021,9 @@ def _query_summary(
         'view': query.view,
         'state': query.state,
         'sort': query.sort,
+        'category': query.category.value
+        if query.category is not None
+        else None,
         'tournament': _uuid_text(query.tournament_id)
         if tournament_name is not None
         else None,
@@ -1193,6 +1219,20 @@ def _filters(
         if query.scope == 'all'
         else labels['tournaments_assigned']
     )
+    category_options = [
+        {
+            'value': '',
+            'label': labels['categories_all'],
+            'selected': query.category is None,
+        }
+    ] + [
+        {
+            'value': category.value,
+            'label': str(category.label),
+            'selected': query.category is category,
+        }
+        for category in TournamentCategory
+    ]
     tournament_options = [
         {
             'value': '',
@@ -1228,6 +1268,8 @@ def _filters(
     chips = []
     if query.view != 'due':
         chips.append(_view_label(labels, query.view))
+    if query.category is not None:
+        chips.append(str(query.category.label))
     if selected_name is not None:
         chips.append(selected_name)
     if query.state != 'all':
@@ -1262,6 +1304,9 @@ def _filters(
     return {
         'aria_label': labels['filters_form'],
         'hidden': hidden,
+        'category': field(
+            'category', labels['filter_category'], category_options
+        ),
         'tournament': field(
             'tournament', labels['filter_tournament'], tournament_options
         ),

@@ -935,6 +935,8 @@ DESIGN_DEVIATIONS = {
 OWN_WORDING = frozenset({
     'Page',  # the noun of a dropped query value
     'Open',  # a side that has not claimed readiness
+    'All categories',  # the empty option of the category filter
+    'Tournament category',  # the category filter's label and dropped noun
     '%(filled)d place filled.',  # a lobby note without its size
     'Result %(score)s confirmed.',  # a result note without its time
     'Round %(round)d is still open. Future match, so no conflict.',

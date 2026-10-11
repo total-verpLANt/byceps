@@ -66,6 +66,7 @@ from .models.operational_timing import (
     MatchEscalationAcknowledgementID,
 )
 from .models.tournament import TournamentID
+from .models.tournament_category import TournamentCategory
 from .models.tournament_dashboard import (
     DashboardMatchLocation,
     DashboardNonActionableCounts,
@@ -252,8 +253,10 @@ class DashboardConflictRecord:
 class DashboardPageData:
     """What the canonical query returns for one page of one scope.
 
-    The counts cover the whole authorized scope. Only `total_count` and
-    `view_total_count` follow the query. `contestants` also names the
+    The tier and non-actionable counts cover the authorized scope narrowed
+    by the category alone. They ignore the tournament, view, state, sort
+    and page of the query. `view_total_count` follows the category and the
+    view, `total_count` the whole query. `contestants` also names the
     authorized counterparts of the conflicts.
     """
 
@@ -924,6 +927,18 @@ def _tournament_predicate(
     return relation.c.tournament_id == tournament_id
 
 
+def _category_predicate(
+    relation: CTE, category: TournamentCategory | None
+) -> ColumnElement[bool]:
+    """Narrow to one category. It presents a scope and never widens one."""
+    if category is None:
+        return true()
+
+    return relation.c.tournament_id.in_(
+        select(DbTournament.id).where(DbTournament.category == category.value)
+    )
+
+
 _STATE_PREDICATES: dict[
     DashboardState, Callable[[CTE], ColumnElement[bool]]
 ] = {
@@ -943,11 +958,13 @@ _STATE_PREDICATES: dict[
 
 
 def _selection(relation: CTE, query: DashboardQuery) -> ColumnElement[bool]:
-    """Return what the requested list consists of: view, tournament, state.
+    """Return what the requested list consists of.
 
-    The total and the rows are cut from this one predicate.
+    That is category, view, tournament and state. The total and the rows
+    are cut from this one predicate.
     """
     return and_(
+        _category_predicate(relation, query.category),
         _view_predicate(relation, query.view),
         _tournament_predicate(relation, _as_uuid(query.tournament_id)),
         _STATE_PREDICATES[query.state](relation),
@@ -1006,7 +1023,8 @@ class _Counts:
 
 def _counts_statement(relation: CTE, query: DashboardQuery) -> Select:
     r = relation
-    in_view = _view_predicate(r, query.view)
+    in_category = _category_predicate(r, query.category)
+    in_view = and_(in_category, _view_predicate(r, query.view))
     selected = _selection(r, query)
     waiting = r.c.state.in_(_NOT_DUE_STATES)
     pre_start = _truthy(r.c.t_status.in_(_PRE_START_STATUSES))
@@ -1014,12 +1032,24 @@ def _counts_statement(relation: CTE, query: DashboardQuery) -> Select:
     return select(
         func.count().filter(selected).label('total'),
         func.count().filter(in_view).label('view_total'),
-        func.count().filter(r.c.tier == _TIER_RED).label('red'),
-        func.count().filter(r.c.tier == _TIER_YELLOW).label('yellow'),
-        func.count().filter(r.c.tier == _TIER_GREEN).label('green'),
-        func.count().filter(r.c.state == _PAUSED).label('paused'),
-        func.count().filter(and_(waiting, pre_start)).label('pre_start'),
-        func.count().filter(and_(waiting, not_(pre_start))).label('partial'),
+        func.count()
+        .filter(and_(in_category, r.c.tier == _TIER_RED))
+        .label('red'),
+        func.count()
+        .filter(and_(in_category, r.c.tier == _TIER_YELLOW))
+        .label('yellow'),
+        func.count()
+        .filter(and_(in_category, r.c.tier == _TIER_GREEN))
+        .label('green'),
+        func.count()
+        .filter(and_(in_category, r.c.state == _PAUSED))
+        .label('paused'),
+        func.count()
+        .filter(and_(in_category, waiting, pre_start))
+        .label('pre_start'),
+        func.count()
+        .filter(and_(in_category, waiting, not_(pre_start)))
+        .label('partial'),
     ).select_from(r)
 
 
@@ -1550,11 +1580,11 @@ def _query_tournaments(
     """Return the filter choices and the leaderboard-only tournaments.
 
     A leaderboard-only tournament has no matches. Its note card belongs
-    to the unfiltered list of every match.
+    to the list of every match, narrowed by category and tournament.
     """
     t = DbTournament
     rows = db.session.execute(
-        select(t.id, t.name, t.game, t.game_format)
+        select(t.id, t.name, t.game, t.game_format, t.category)
         .where(
             t.party_id == scope.party_id,
             t.id.in_(list(scope.tournament_ids)),
@@ -1578,6 +1608,7 @@ def _query_tournaments(
         if show_cards
         and row.game_format == _HIGHSCORE
         and (filter_id is None or row.id == filter_id)
+        and (query.category is None or row.category == query.category.value)
     )
     return choices, leaderboard_only
 

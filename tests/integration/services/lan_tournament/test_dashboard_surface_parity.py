@@ -9,8 +9,8 @@ import json
 from pathlib import Path
 import re
 from types import SimpleNamespace
-from typing import Self
-from urllib.parse import quote, unquote, urlencode
+from typing import Any, Self
+from urllib.parse import parse_qs, quote, unquote, urlencode, urlsplit
 from uuid import uuid4
 
 from babel.messages.mofile import write_mo
@@ -64,6 +64,9 @@ from byceps.services.lan_tournament.models.tournament import (
     Tournament,
     TournamentID,
 )
+from byceps.services.lan_tournament.models.tournament_category import (
+    TournamentCategory,
+)
 from byceps.services.lan_tournament.models.tournament_dashboard import (
     DashboardPage,
     DashboardQuery,
@@ -93,6 +96,10 @@ from byceps.services.user.models import User
 from byceps.util.uuid import uuid7
 
 from tests.helpers import create_site, log_in_user
+from tests.unit.services.lan_tournament.test_dashboard_rows_render import (
+    Node,
+    parse,
+)
 
 
 ADMIN_ORIGIN = 'http://admin.acmecon.test'
@@ -254,6 +261,7 @@ class Scene:
         status: TournamentStatus = ONGOING,
         mode: EliminationMode = SINGLE,
         clock: str = 'running',
+        category: TournamentCategory = TournamentCategory.MAIN,
     ) -> TournamentID:
         """`clock` is `running`, `frozen` (paused) or `unknown` (legacy)."""
         tournament_id = TournamentID(uuid7())
@@ -284,6 +292,7 @@ class Scene:
                 game_format=GameFormat.ONE_V_ONE,
                 elimination_mode=mode,
                 group_size_max=None,
+                category=category,
                 operational_clock_elapsed_us=elapsed,
                 operational_clock_running_since=running_since,
                 operational_clock_activated_at=activated,
@@ -964,6 +973,7 @@ def canonical(party_id: PartyID, user, **values) -> DashboardPage:
         view=values.get('view', 'due'),
         sort=values.get('sort', 'urgency'),
         state=values.get('state', 'all'),
+        category=values.get('category'),
         tournament_id=values.get('tournament'),
         page=int(values.get('page', 1)),
         per_page=settings.page_size,
@@ -1912,4 +1922,778 @@ def test_external_hint_bytes_identical_for_one_or_many_hidden_overlaps(
         ]
         assert row_ids(panel(many, f'{label} page')) == row_ids(
             panel(one, f'{label} page')
+        )
+
+
+# -- the category filter: every category has rows and counts of its own --
+
+MAIN = TournamentCategory.MAIN
+FUN = TournamentCategory.FUN
+STAGE = TournamentCategory.STAGE
+USER_ORGANIZED = TournamentCategory.USER_ORGANIZED
+CATEGORIES = tuple(TournamentCategory)
+CATEGORY_VALUES = ['', 'MAIN', 'FUN', 'STAGE', 'USER_ORGANIZED']
+
+# The visible tournaments with matches, and the category of each.
+CATEGORY_OF = {
+    'main_a': MAIN,
+    'main_b': MAIN,
+    'fun': FUN,
+    'stage': STAGE,
+    'user': USER_ORGANIZED,
+}
+# What the due matches of `build_category_world` come to (yellow from 15
+# minutes, red from 45): no two categories count alike.
+CATEGORY_TIERS = {
+    MAIN: {'r': 1, 'y': 1, 'g': 1},
+    FUN: {'r': 0, 'y': 2, 'g': 0},
+    STAGE: {'r': 0, 'y': 0, 'g': 1},
+    USER_ORGANIZED: {'r': 2, 'y': 0, 'g': 2},
+}
+NO_MATCH_FITS = 'Keine Begegnung passt zu diesen Filtern.'
+RESET_LINKS = {'Zurücksetzen', 'Filter zurücksetzen'}
+
+
+def category_tiers(category: TournamentCategory | None) -> dict[str, int]:
+    chosen = CATEGORIES if category is None else (category,)
+    return {
+        tier: sum(CATEGORY_TIERS[each][tier] for each in chosen)
+        for tier in 'ryg'
+    }
+
+
+@dataclass
+class CategoryWorld:
+    """The tournaments of every category an orga sees, and the ones not.
+
+    `orga_a` and `power` are assigned to the visible tournaments and
+    leaderboards of the site's party, and to those of another party;
+    `orga_c` to the hidden ones of the site's party. Every category has
+    all three kinds, and the hidden ones wait longer than any visible
+    match, so a count that ignores the category or the scope cannot pass.
+    p0 is needed in a due match of MAIN and in one of FUN: an authorized
+    conflict across two categories.
+    """
+
+    cast: Cast
+    party_id: PartyID
+    names: dict[str, str]
+    games: dict[str, str]
+    ids: dict[str, TournamentID]
+    categories: dict[str, TournamentCategory]
+    due_of: dict[str, list[TournamentMatchID]]
+    upcoming_of: dict[str, list[TournamentMatchID]]
+    hidden_due: dict[TournamentCategory, TournamentMatchID]
+    far_due: dict[TournamentCategory, TournamentMatchID]
+    clash: tuple[TournamentMatchID, TournamentMatchID]
+    secrets: dict[str, str]
+    visible_secrets: dict[str, str]
+
+    def visible(self) -> set[str]:
+        """Return the tournaments of the orga: with matches, and boards."""
+        return {
+            str(self.ids[key])
+            for key in self.ids
+            if key in CATEGORY_OF or key.startswith('board_')
+        }
+
+    def party_wide(self) -> set[str]:
+        """Return every tournament of the party, as the administrator's `all`."""
+        return {
+            str(self.ids[key]) for key in self.ids if not key.startswith('far_')
+        }
+
+    def match_ids(
+        self,
+        category: TournamentCategory | None,
+        view: str = 'due',
+        tournament: str | None = None,
+    ) -> set[str]:
+        found: set[str] = set()
+        for key, each in CATEGORY_OF.items():
+            if category not in (None, each) or tournament not in (None, key):
+                continue
+            found |= {str(match_id) for match_id in self.due_of[key]}
+            if view == 'all':
+                found |= {str(m) for m in self.upcoming_of.get(key, [])}
+        return found
+
+    def cards(
+        self,
+        category: TournamentCategory | None,
+        view: str = 'due',
+        tournament: str | None = None,
+        *,
+        hidden: bool = False,
+    ) -> list[str]:
+        """Return the titles of the leaderboard cards the list shows."""
+        if view != 'all' or tournament is not None:
+            return []
+        prefixes = ('board_', 'hidden_board_') if hidden else ('board_',)
+        return sorted(
+            f'{self.names[key]} · {self.games[key]}'
+            for key in self.games
+            if key.startswith(prefixes)
+            and category in (None, self.categories[key])
+        )
+
+
+def build_category_world(party, other_party, cast, players) -> CategoryWorld:
+    sx = cast.suffix
+    p, h = players, cast.hidden
+    scene = Scene(party.id, cast.confirmer)
+    far_scene = Scene(other_party.id, cast.confirmer)
+    names: dict[str, str] = {}
+    games: dict[str, str] = {}
+    ids: dict[str, TournamentID] = {}
+    categories: dict[str, TournamentCategory] = {}
+
+    def make(on: Scene, key: str, title: str, category, *, board=False, **kw):
+        names[key] = f'{title} {sx}'
+        categories[key] = category
+        ids[key] = on.tournament(names[key], category=category, **kw)
+        if board:
+            games[key] = f'Spiel {names[key]}'
+            db.session.execute(
+                text(
+                    'UPDATE lan_tournaments SET game_format = :format,'
+                    ' elimination_mode = :mode, game = :game WHERE id = :id'
+                ),
+                {
+                    'format': GameFormat.HIGHSCORE.name,
+                    'mode': EliminationMode.NONE.name,
+                    'game': games[key],
+                    'id': ids[key],
+                },
+            )
+            db.session.commit()
+        return ids[key]
+
+    main_a = make(scene, 'main_a', 'Sichtbar Haupt A', MAIN)
+    main_b = make(scene, 'main_b', 'Sichtbar Haupt B', MAIN)
+    fun = make(scene, 'fun', 'Sichtbar Neben', FUN)
+    # A round robin knows its later rounds: they are upcoming, not unknown.
+    stage = make(scene, 'stage', 'Sichtbar Buehne', STAGE, mode=ROUND_ROBIN)
+    user = make(scene, 'user', 'Sichtbar Fremd', USER_ORGANIZED)
+
+    red = scene.solo(main_a, p[0], wait=50)
+    clash = scene.solo(fun, p[0], wait=25)
+    due_of = {
+        'main_a': [red, scene.solo(main_a, p[1], wait=20)],
+        'main_b': [scene.solo(main_b, p[2], wait=5)],
+        'fun': [clash, scene.solo(fun, p[3], wait=22)],
+        'stage': [scene.solo(stage, p[4], wait=8)],
+        'user': [
+            scene.solo(user, p[6 + number], wait=wait)
+            for number, wait in enumerate((60, 55, 12, 6))
+        ],
+    }
+    upcoming_of = {
+        'stage': [scene.duel(stage, p[5], p[10], round=2, wait=None)]
+    }
+
+    hidden_due, far_due = {}, {}
+    for number, category in enumerate(CATEGORIES):
+        name = category.name
+        make(
+            scene,
+            f'board_{name}',
+            f'Sichtbar Brett {name}',
+            category,
+            board=True,
+        )
+        hidden = make(scene, f'hidden_{name}', f'Geheim {name}', category)
+        hidden_due[category] = scene.solo(hidden, h[number], wait=70)
+        make(
+            scene,
+            f'hidden_board_{name}',
+            f'Geheim Brett {name}',
+            category,
+            board=True,
+        )
+        far = make(far_scene, f'far_{name}', f'Fern {name}', category)
+        far_due[category] = far_scene.solo(far, h[number], wait=65)
+        make(
+            far_scene,
+            f'far_board_{name}',
+            f'Fern Brett {name}',
+            category,
+            board=True,
+        )
+
+    for key, tournament_id in ids.items():
+        if key.startswith('hidden_'):
+            scene.assign(tournament_id, cast.orga_c)
+        elif key.startswith('far_'):
+            far_scene.assign(tournament_id, cast.orga_a, cast.power)
+        else:
+            scene.assign(tournament_id, cast.orga_a, cast.power)
+
+    secrets: dict[str, str] = {}
+    visible_secrets: dict[str, str] = {}
+    for key, tournament_id in ids.items():
+        kept = (
+            secrets if key.startswith(('hidden_', 'far_')) else visible_secrets
+        )
+        kept[f'{key} id'] = str(tournament_id)
+        kept[f'{key} name'] = names[key]
+        if key in games:
+            kept[f'{key} game'] = games[key]
+    for category in CATEGORIES:
+        secrets[f'hidden match {category.name}'] = str(hidden_due[category])
+        secrets[f'far match {category.name}'] = str(far_due[category])
+    for match_ids in (*due_of.values(), *upcoming_of.values()):
+        for match_id in match_ids:
+            visible_secrets[f'match {match_id}'] = str(match_id)
+    for number, person in enumerate(h):
+        secrets[f'hidden player {number} name'] = name_of(person)
+        secrets[f'hidden player {number} id'] = str(person.id)
+    secrets['hidden orga name'] = name_of(cast.orga_c)
+    secrets['hidden orga id'] = str(cast.orga_c.id)
+
+    return CategoryWorld(
+        cast=cast,
+        party_id=party.id,
+        names=names,
+        games=games,
+        ids=ids,
+        categories=categories,
+        due_of=due_of,
+        upcoming_of=upcoming_of,
+        hidden_due=hidden_due,
+        far_due=far_due,
+        clash=(red, clash),
+        secrets=secrets,
+        visible_secrets=visible_secrets,
+    )
+
+
+@pytest.fixture(scope='module')
+def category_world(party, other_party, make_user, make_admin) -> CategoryWorld:
+    """One world for the tests that only read, built once."""
+    cast = build_cast(make_user, make_admin)
+    players = [make_user(f'f03catp{i}x{cast.suffix}') for i in range(11)]
+    return build_category_world(party, other_party, cast, players)
+
+
+def category_viewers(world: CategoryWorld, surfaces) -> list[tuple]:
+    cast = world.cast
+    return [
+        ('admin, administrator', surfaces('admin', cast.power)),
+        ('site, administrator', surfaces('site', cast.power)),
+        ('bote, administrator', surfaces('bote', cast.power)),
+        ('site, scoped orga', surfaces('site', cast.orga_a)),
+        ('bote, scoped orga', surfaces('bote', cast.orga_a)),
+    ]
+
+
+def read_both(label: str, surface: Surface, query: str, *, scoped=True):
+    """Read the list as a page and as a poll; both must be one panel."""
+    if scoped:
+        query = _admin_reads_assigned(surface, query)
+    page = surface.page(query)
+    poll = surface.poll(query)
+    assert (page.status_code, poll.status_code) == (200, 200), label
+    assert page.headers.get('Cache-Control') == 'private, no-store', label
+    assert poll.headers.get('Cache-Control') == 'private, no-store', label
+    panel = panel_of(page.get_data(as_text=True))
+    answer = poll.get_json()
+    assert set(answer) == {'html', 'as_of', 'poll_seconds'}, label
+    # The poll is the page's own panel, byte for byte.
+    assert answer['html'] == panel, label
+    return panel, page, poll
+
+
+def dom_of(panel: str) -> Node:
+    return parse(panel).one('section', 'lt-dashboard')
+
+
+def option_values(root: Node, name: str) -> list[str]:
+    select = root.one('select', id=f'lt-filter-{name}')
+    return [o.attrs['value'] for o in select.find_all('option')]
+
+
+def chosen_values(root: Node, name: str) -> list[str]:
+    select = root.one('select', id=f'lt-filter-{name}')
+    return [o.attrs['value'] for o in select.find_all('option', selected=True)]
+
+
+def card_titles(panel: str) -> list[str]:
+    titles = re.findall(r'<div class="ltd-empty">\n<h2>([^<]*)</h2>', panel)
+    return sorted(html.unescape(t) for t in titles if ' · Spiel ' in t)
+
+
+def _no_scope(query: dict[str, list[str]]) -> dict[str, list[str]]:
+    return {name: value for name, value in query.items() if name != 'scope'}
+
+
+def anchors_of(root: Node) -> list[tuple[str, dict]]:
+    """Return the text and query of every link; `return` is read, too.
+
+    The scope is the admin's own parameter, so it is left out.
+    """
+    found = []
+    for anchor in root.find_all('a'):
+        query: dict[str, Any] = _no_scope(
+            parse_qs(urlsplit(anchor.attrs['href']).query)
+        )
+        if 'return' in query:
+            query['return'] = _no_scope(parse_qs(query['return'][0]))
+        found.append((anchor.text, query))
+    return found
+
+
+def returns_of(root: Node) -> list[dict[str, list[str]]]:
+    """Return every `return` value of the panel: in links and in forms."""
+    found = [q['return'] for _, q in anchors_of(root) if 'return' in q]
+    for field in root.find_all('input', type='hidden'):
+        if field.attrs['name'] == 'return':
+            found.append(_no_scope(parse_qs(field.attrs['value'])))
+    return found
+
+
+def assert_category_carried(label: str, root: Node, category) -> None:
+    """Every link, form and the poll carry the category, or none does."""
+    wanted = None if category is None else [category.value]
+    for text_of, query in anchors_of(root):
+        carried = query.get('category') or query.get('return', {}).get(
+            'category'
+        )
+        if category is None or text_of in RESET_LINKS:
+            # All stays all; a reset link is the one that drops it.
+            assert carried is None, (label, text_of, query)
+        else:
+            assert carried == wanted, (label, text_of, query)
+    for returned in returns_of(root):
+        assert returned.get('category') == wanted, label
+    poll = _no_scope(parse_qs(urlsplit(root.attrs['data-poll-url']).query))
+    assert poll.get('category') == wanted, label
+    scope_forms = root.find_all('form', 'ltd-scope')
+    for form in scope_forms:
+        carried = [
+            f.attrs['value']
+            for f in form.find_all('input', type='hidden')
+            if f.attrs['name'] == 'category'
+        ]
+        assert carried == ([] if category is None else [category.value]), label
+
+
+def refresh_fields(root: Node) -> list[tuple[str, str]]:
+    """Return the hidden fields of the refresh that needs no script."""
+    form = root.one('form', 'ltd-refresh')
+    return [
+        (field.attrs['name'], field.attrs['value'])
+        for field in form.find_all('input', type='hidden')
+    ]
+
+
+def check_selection(
+    label: str,
+    panel: str,
+    world: CategoryWorld,
+    *,
+    ids: set[str],
+    tiers: dict[str, int],
+    category,
+    cards: list[str],
+    tournament: str | None = None,
+    options: set[str] | None = None,
+) -> Node:
+    root = dom_of(panel)
+    # The rows and the counts of the selection, as the fixtures know them.
+    assert sorted(row_ids(panel)) == sorted(ids), label
+    assert tiles_of(panel) == tiers, label
+    if ids:
+        assert f'<h2 id="ltd-count">{len(ids)} ' in panel, label
+    # Nothing fits only where the fixtures say so: the filters are kept.
+    assert (NO_MATCH_FITS in panel) is (not ids), label
+    assert card_titles(panel) == cards, label
+    # The controls: five categories, one chosen, every authorized choice.
+    assert option_values(root, 'category') == CATEGORY_VALUES, label
+    assert chosen_values(root, 'category') == [
+        '' if category is None else category.value
+    ], label
+    assert set(option_values(root, 'tournament')) == (
+        {'', *(world.visible() if options is None else options)}
+    ), label
+    assert chosen_values(root, 'tournament') == [
+        '' if tournament is None else str(world.ids[tournament])
+    ], label
+    assert 'aria-invalid' not in panel, label
+    assert_category_carried(label, root, category)
+    # The select is the only field of the category in the filter form: a
+    # hidden twin would repeat the parameter, and a repeat is dropped.
+    hidden = [
+        field.attrs['name']
+        for field in root.one('form', 'ltd-filters').find_all(
+            'input', type='hidden'
+        )
+    ]
+    assert 'category' not in hidden, label
+    # The refresh without script asks for the same list: it keeps the
+    # category, once, and has none when there is none.
+    assert [v for n, v in refresh_fields(root) if n == 'category'] == (
+        [] if category is None else [category.value]
+    ), label
+    return root
+
+
+@pytest.mark.parametrize('view', ['due', 'all'])
+def test_category_get_and_poll_agree_across_surfaces(
+    category_world, surfaces, view
+):
+    world = category_world
+    cast = world.cast
+    reached = category_viewers(world, surfaces)
+
+    selections = [
+        (None, None),
+        *((category, None) for category in CATEGORIES),
+        (None, 'main_a'),  # one tournament, as it always was
+        (MAIN, 'main_b'),  # one tournament of the category
+        (FUN, 'main_a'),  # a tournament of another category
+    ]
+    listed = {}
+    for category, tournament in selections:
+        values = {'view': view}
+        if category is not None:
+            values['category'] = category.value
+        if tournament is not None:
+            values['tournament'] = world.ids[tournament]
+        query = urlencode(values)
+        ids = world.match_ids(category, view, tournament)
+        tiers = category_tiers(category)
+        cards = world.cards(category, view, tournament)
+
+        # What the service computes is what the fixtures stand for.
+        expected = canonical(
+            world.party_id,
+            cast.power,
+            view=view,
+            category=category,
+            tournament=None if tournament is None else world.ids[tournament],
+        )
+        where = (view, category, tournament)
+        assert {str(row.match_id) for row in expected.rows} == ids, where
+        assert _tiers(expected) == tiers, where
+        assert expected.total_count == len(ids), where
+        assert len(expected.leaderboard_only_tournaments) == len(cards), where
+        # A tournament narrows the rows, never the counts.
+        assert len(ids) < sum(tiers.values()) or not tournament, where
+        assert ids or (category, tournament) == (FUN, 'main_a'), where
+
+        panels, links = {}, {}
+        for label, surface in reached:
+            panel, page, poll = read_both(label, surface, query)
+            root = check_selection(
+                f'{label} {where}',
+                panel,
+                world,
+                ids=ids,
+                tiers=tiers,
+                category=category,
+                cards=cards,
+                tournament=tournament,
+            )
+            assert row_ids(panel) == [str(r.match_id) for r in expected.rows]
+            assert_clean(label, capture(page), world.secrets)
+            assert_clean(label, capture(poll), world.secrets)
+            panels[label] = normalise(panel)
+            links[label] = anchors_of(root)
+
+        # Everything of the panel and the query of every link are the
+        # same on every surface.
+        first_label = next(iter(panels))
+        for label in panels:
+            assert panels[label] == panels[first_label], (label, where)
+            assert links[label] == links[first_label], (label, where)
+        if category is not None and tournament is None:
+            listed[category] = ids
+
+    # A category-blind list would show every row in each of them.
+    assert all(listed.values())
+    assert set().union(*listed.values()) == world.match_ids(None, view)
+    assert sum(len(ids) for ids in listed.values()) == len(
+        world.match_ids(None, view)
+    )
+    assert len({tuple(CATEGORY_TIERS[c].values()) for c in CATEGORIES}) == 4
+
+
+BAD_CATEGORIES = [
+    ('category=main', True),
+    ('category=Main', True),
+    ('category=BOGUS', True),
+    ('category=MAIN&category=FUN', True),
+    ('category=FUN&category=FUN', True),
+    ('category=%20MAIN', True),
+    ('category=MAIN%00', True),
+    ('category=%3Cscript%3Ealert(1)%3C%2Fscript%3E', True),
+    (f'category={"C" * 5000}', True),
+    ('category=%FF%FE', True),
+    ('category[]=MAIN', False),
+    ('category=', False),
+]
+
+
+def test_category_transport_preserves_filters_and_authorization(
+    category_world, surfaces
+):
+    world = category_world
+    cast = world.cast
+    reached = category_viewers(world, surfaces)
+    clash = str(world.clash[1])
+
+    # The filters ride along in the poll, the navigation and the returns.
+    query = 'view=all&category=FUN&state=conflict&sort=wait'
+    expected = canonical(
+        world.party_id,
+        cast.power,
+        view='all',
+        category=FUN,
+        state='conflict',
+        sort='wait',
+    )
+    # The one FUN match in conflict: p0 is needed in MAIN, too, which is
+    # another category and an authorized one.
+    assert [str(row.match_id) for row in expected.rows] == [clash]
+    assert expected.rows[0].conflicts
+    assert {str(world.clash[0])} <= world.match_ids(MAIN)
+    kept = {
+        'view': ['all'],
+        'state': ['conflict'],
+        'sort': ['wait'],
+        'category': ['FUN'],
+    }
+    for label, surface in reached:
+        panel, page, poll = read_both(label, surface, query)
+        root = dom_of(panel)
+        assert row_ids(panel) == [clash], label
+        # The counts follow the category and ignore state, view and sort.
+        assert tiles_of(panel) == category_tiers(FUN), label
+        assert chosen_values(root, 'category') == ['FUN'], label
+        assert chosen_values(root, 'state') == ['conflict'], label
+        assert chosen_values(root, 'sort') == ['wait'], label
+        assert_category_carried(label, root, FUN)
+
+        poll_url = urlsplit(root.attrs['data-poll-url'])
+        assert poll_url.path.endswith('/poll'), label
+        assert _no_scope(parse_qs(poll_url.query)) == kept, label
+
+        # The whole query, written out, is what a row sends back.
+        returned = returns_of(root)
+        assert len(returned) >= 4, label
+        assert all(value == {**kept, 'page': ['1']} for value in returned), (
+            label
+        )
+
+        # The refresh without script is the whole query, page included.
+        refreshed = dict(refresh_fields(root))
+        refreshed.pop('scope', None)
+        assert refreshed == {
+            name: values[0] for name, values in {**kept, 'page': ['1']}.items()
+        }, label
+
+        for nav in root.one('nav', 'ltd-views').find_all('a'):
+            query_of_link = _no_scope(
+                parse_qs(urlsplit(nav.attrs['href']).query)
+            )
+            for name in ('category', 'state', 'sort'):
+                assert query_of_link[name] == kept[name], (label, nav.text)
+        tile_links = root.one('section', 'ltd-sum').find_all('a')
+        assert tile_links, label
+        for tile in tile_links:
+            query_of_link = _no_scope(
+                parse_qs(urlsplit(tile.attrs['href']).query)
+            )
+            assert query_of_link['category'] == ['FUN'], (label, tile.text)
+            assert query_of_link['sort'] == ['wait'], (label, tile.text)
+            assert query_of_link['view'] == ['all'], (label, tile.text)
+
+        if surface.name != 'admin':
+            # Back from the match, the site rebuilds the very same list.
+            href = root.one('a', 'ltd-mlink').attrs['href']
+            answer = surface.client.get(href)
+            assert answer.status_code == 200, label
+            back = re.search(
+                r'<p class="ltd-back"><a href="([^"]*)">[^<]*</a>'
+                r' <span class="dimmed">([^<]*)</span></p>',
+                answer.get_data(as_text=True),
+            )
+            assert back, label
+            link = urlsplit(html.unescape(back[1]))
+            assert link.path == SITE_BASE, label
+            assert parse_qs(link.query) == kept, label
+            assert 'Neben-/Funturniere' in back[2], label
+
+        foreign = {k: v for k, v in world.secrets.items() if v not in query}
+        assert_clean(label, capture(page), foreign)
+        assert_clean(label, capture(poll), foreign)
+
+    # No category widens the scope, and none leaks a count: each one
+    # reads exactly its visible rows, and the hidden and far ones of the
+    # same category are in neither the rows, the counts nor the markup.
+    for category in CATEGORIES:
+        for view in ('due', 'all'):
+            query = f'view={view}&category={category.value}'
+            for label, surface in reached:
+                panel, page, poll = read_both(label, surface, query)
+                where = f'{label} {query}'
+                check_selection(
+                    where,
+                    panel,
+                    world,
+                    ids=world.match_ids(category, view),
+                    tiers=category_tiers(category),
+                    category=category,
+                    cards=world.cards(category, view),
+                )
+                assert_clean(where, capture(page), world.secrets)
+                assert_clean(where, capture(poll), world.secrets)
+                assert str(world.hidden_due[category]) not in panel, where
+                assert str(world.far_due[category]) not in panel, where
+
+    # The orga of the hidden tournaments reads theirs, by category, and
+    # nothing of the visible ones.
+    hidden_orga = surfaces('site', cast.orga_c)
+    seen = set()
+    for category in CATEGORIES:
+        panel, page, poll = read_both(
+            'hidden orga', hidden_orga, f'category={category.value}'
+        )
+        assert row_ids(panel) == [str(world.hidden_due[category])], category
+        assert tiles_of(panel) == {tier: int(tier == 'r') for tier in 'ryg'}, (
+            category
+        )
+        assert_clean(
+            f'hidden orga {category}', capture(page), world.visible_secrets
+        )
+        assert_clean(
+            f'hidden orga {category}', capture(poll), world.visible_secrets
+        )
+        seen.add(row_ids(panel)[0])
+    assert len(seen) == len(CATEGORIES)
+
+    # The administrator's own `all` reads the party, by category: the
+    # hidden tournaments of the category are there, the far ones never.
+    # Other worlds of this module share the party, so the rows are compared
+    # as sets that must contain ours, and must hold none of the other
+    # categories' or of the far ones.
+    admin = surfaces('admin', cast.power)
+    for category in CATEGORIES:
+        query = f'scope=all&view=all&category={category.value}'
+        panel, page, poll = read_both('admin all', admin, query, scoped=False)
+        root = dom_of(panel)
+        where = f'scope=all {category}'
+        rows = set(row_ids(panel))
+        mine = world.match_ids(category, 'all') | {
+            str(world.hidden_due[category])
+        }
+        assert mine <= rows, where
+        for other in CATEGORIES:
+            if other is not category:
+                foreign = world.match_ids(other, 'all') | {
+                    str(world.hidden_due[other])
+                }
+                assert not foreign & rows, (where, other)
+        assert not {str(m) for m in world.far_due.values()} & rows, where
+        counts = tiles_of(panel)
+        for tier, wanted in category_tiers(category).items():
+            assert counts[tier] >= wanted + int(tier == 'r'), where
+        options = set(option_values(root, 'tournament'))
+        assert {'', *world.party_wide()} <= options, where
+        assert (
+            not {
+                str(world.ids[key])
+                for key in world.ids
+                if key.startswith('far_')
+            }
+            & options
+        ), where
+        assert card_titles(panel) == world.cards(
+            category, 'all', hidden=True
+        ), where
+        assert chosen_values(root, 'category') == [category.value], where
+        far = {k: v for k, v in world.secrets.items() if k.startswith('far')}
+        assert_clean(where, capture(page), far)
+        assert_clean(where, capture(poll), far)
+        scope_form = root.one('form', 'ltd-scope')
+        assert [
+            f.attrs['value']
+            for f in scope_form.find_all('input', type='hidden')
+            if f.attrs['name'] == 'category'
+        ] == [category.value], where
+
+    # A hidden or far tournament of the category reads like one that does
+    # not exist: it is dropped, and the category stays as it was.
+    for label, surface in reached:
+        answers = {}
+        for what, value in (
+            ('hidden', world.ids['hidden_MAIN']),
+            ('other party', world.ids['far_MAIN']),
+            ('missing', uuid4()),
+        ):
+            response = surface.page(
+                _admin_reads_assigned(
+                    surface, f'category=MAIN&tournament={value}'
+                )
+            )
+            assert response.status_code == 200, (label, what)
+            body = response.get_data(as_text=True)
+            panel = panel_of(body)
+            assert set(row_ids(panel)) == world.match_ids(MAIN), (label, what)
+            assert chosen_values(dom_of(panel), 'category') == ['MAIN']
+            answers[what] = body.replace(str(value), '{{id}}')
+        assert len(set(answers.values())) == 1, label
+
+    # A category that is none, or given twice, is dropped with a notice
+    # like any other filter: the list is the unfiltered one, never a 500.
+    everything = world.match_ids(None)
+    for label, surface in reached:
+        for bad, noticed in BAD_CATEGORIES:
+            where = f'{label} {bad[:60]!r}'
+            panel, page, poll = read_both(label, surface, bad)
+            root = dom_of(panel)
+            assert sorted(row_ids(panel)) == sorted(everything), where
+            assert tiles_of(panel) == category_tiers(None), where
+            assert chosen_values(root, 'category') == [''], where
+            assert ('aria-invalid="true"' in panel) is noticed, where
+            assert_category_carried(where, root, None)
+            assert '<script>alert(1)</script>' not in panel, where
+            foreign = {k: v for k, v in world.secrets.items() if v not in bad}
+            assert_clean(where, capture(page), foreign)
+            assert_clean(where, capture(poll), foreign)
+
+        # Good filters beside a bad category stay.
+        where = f'{label} bad category, good filters'
+        panel, page, poll = read_both(
+            label, surface, 'category=bogus&state=tier-red&sort=wait'
+        )
+        root = dom_of(panel)
+        wanted = canonical(
+            world.party_id, cast.power, state='tier-red', sort='wait'
+        )
+        assert len(wanted.rows) >= 3
+        assert row_ids(panel) == [str(row.match_id) for row in wanted.rows]
+        assert chosen_values(root, 'state') == ['tier-red'], where
+        assert chosen_values(root, 'sort') == ['wait'], where
+        assert chosen_values(root, 'category') == [''], where
+        assert 'aria-invalid="true"' in panel, where
+
+    # Nobody without authority is told anything, with a category or not.
+    secrets = {**world.secrets, **world.visible_secrets}
+    outsider = surfaces('site', cast.outsider)
+    anonymous = surfaces('site', None)
+    for label, answer, status in (
+        ('outsider page', outsider.page('category=MAIN'), 403),
+        ('outsider poll', outsider.poll('category=MAIN'), 403),
+        ('anonymous poll', anonymous.poll('category=MAIN'), 401),
+    ):
+        assert answer.status_code == status, label
+        assert_clean(label, capture(answer), secrets)
+    orga = surfaces('admin', cast.orga_a)
+    for kind in ('page', 'poll'):
+        answer = getattr(orga, kind)('scope=all&category=MAIN')
+        assert answer.status_code == (302 if kind == 'page' else 401), kind
+        assert_clean(
+            f'scoped orga on the admin, {kind}', capture(answer), secrets
         )

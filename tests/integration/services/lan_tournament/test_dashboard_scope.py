@@ -1,6 +1,8 @@
 from collections.abc import Iterable
 from contextlib import contextmanager
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, UTC
+from itertools import count
 import random
 from typing import Any
 from uuid import uuid4
@@ -52,6 +54,9 @@ from byceps.services.lan_tournament.models.playoff import PlayoffReleaseMode
 from byceps.services.lan_tournament.models.tournament import (
     Tournament,
     TournamentID,
+)
+from byceps.services.lan_tournament.models.tournament_category import (
+    TournamentCategory,
 )
 from byceps.services.lan_tournament.models.tournament_dashboard import (
     AckUnavailableReason,
@@ -176,6 +181,7 @@ class World:
         group_size_max: int | None = None,
         game: str | None = None,
         party_id: PartyID | None = None,
+        category: TournamentCategory = TournamentCategory.MAIN,
     ) -> TournamentID:
         tournament_id = TournamentID(uuid7())
         if clock == 'known':
@@ -211,6 +217,7 @@ class World:
                 game_format=game_format,
                 elimination_mode=mode,
                 group_size_max=group_size_max,
+                category=category,
                 operational_clock_elapsed_us=elapsed,
                 operational_clock_running_since=running_since,
                 operational_clock_activated_at=activated_at,
@@ -2270,3 +2277,884 @@ def test_tiers_follow_the_effective_thresholds_of_the_party(
         [TrafficTier.YELLOW, TrafficTier.GREEN],
         DashboardTierCounts(yellow=1, green=1),
     )
+
+
+# -- the category filter --
+
+# What `_build_category` makes per category: the waits in minutes of the due
+# matches by tier, and the number of paused, pre-start and partial matches
+# and of leaderboard-only tournaments. Every number differs from the one of
+# the other categories, so a count that ignores the category cannot pass.
+# fmt: off
+_CATEGORY_SPECS: dict[TournamentCategory, dict[str, Any]] = {
+    TournamentCategory.MAIN: {
+        'red': [55, 50], 'yellow': [30], 'green': [12, 5, 5],
+        'paused': 1, 'pre_start': 2, 'partial': 3, 'boards': 1,
+    },
+    TournamentCategory.FUN: {
+        'red': [48], 'yellow': [25, 20, 20], 'green': [8],
+        'paused': 2, 'pre_start': 0, 'partial': 1, 'boards': 2,
+    },
+    TournamentCategory.STAGE: {
+        'red': [], 'yellow': [40], 'green': [3, 2],
+        'paused': 0, 'pre_start': 1, 'partial': 0, 'boards': 0,
+    },
+    TournamentCategory.USER_ORGANIZED: {
+        'red': [70, 60, 46], 'yellow': [], 'green': [14],
+        'paused': 0, 'pre_start': 3, 'partial': 2, 'boards': 1,
+    },
+}
+# fmt: on
+
+
+@dataclass
+class _Built:
+    """The tournaments and matches of one category, by what they count as."""
+
+    category: TournamentCategory
+    matches_of: dict[TournamentID, list[TournamentMatchID]] = field(
+        default_factory=dict
+    )
+    boards: list[TournamentID] = field(default_factory=list)
+    red: list[TournamentMatchID] = field(default_factory=list)
+    yellow: list[TournamentMatchID] = field(default_factory=list)
+    green: list[TournamentMatchID] = field(default_factory=list)
+    paused: list[TournamentMatchID] = field(default_factory=list)
+    pre_start: list[TournamentMatchID] = field(default_factory=list)
+    partial: list[TournamentMatchID] = field(default_factory=list)
+
+    @property
+    def tournaments(self) -> list[TournamentID]:
+        return [*self.matches_of, *self.boards]
+
+    def listed(self, view: str) -> list[TournamentMatchID]:
+        due = [*self.red, *self.yellow, *self.green]
+        upcoming = [*self.pre_start, *self.partial]
+        return {
+            'due': due,
+            'upcoming': upcoming,
+            'all': [*due, *self.paused, *upcoming],
+        }[view]
+
+
+def _build_category(world: World, category: TournamentCategory) -> _Built:
+    spec = _CATEGORY_SPECS[category]
+    label = category.name.title()
+    built = _Built(category)
+    order = count(1)
+
+    def add(tournament_id, bucket, match_id) -> None:
+        bucket.append(match_id)
+        built.matches_of[tournament_id].append(match_id)
+
+    live = world.tournament(name=f'{label} live', category=category)
+    built.matches_of[live] = []
+    for tier in ('red', 'yellow', 'green'):
+        for wait in spec[tier]:
+            match_id = world.due_match(
+                live, wait_minutes=wait, round=1, match_order=next(order)
+            )
+            add(live, getattr(built, tier), match_id)
+    for _ in range(spec['partial']):
+        match_id = world.match(
+            live, contestants=1, round=2, match_order=next(order)
+        )
+        add(live, built.partial, match_id)
+
+    if spec['paused']:
+        stopped = world.tournament(
+            name=f'{label} stopped', status=PAUSED, category=category
+        )
+        built.matches_of[stopped] = []
+        for _ in range(spec['paused']):
+            match_id = world.due_match(
+                stopped, round=1, match_order=next(order)
+            )
+            add(stopped, built.paused, match_id)
+
+    if spec['pre_start']:
+        early = world.tournament(
+            name=f'{label} early',
+            status=TournamentStatus.REGISTRATION_CLOSED,
+            category=category,
+        )
+        built.matches_of[early] = []
+        for _ in range(spec['pre_start']):
+            match_id = world.match(early, round=1, match_order=next(order))
+            add(early, built.pre_start, match_id)
+
+    for number in range(spec['boards']):
+        built.boards.append(
+            world.tournament(
+                name=f'{label} board {number}',
+                game=f'{label} game {number}',
+                game_format=HIGHSCORE,
+                mode=EliminationMode.NONE,
+                category=category,
+            )
+        )
+    return built
+
+
+@pytest.fixture
+def mixed(world) -> dict[TournamentCategory, _Built]:
+    return {
+        category: _build_category(world, category)
+        for category in TournamentCategory
+    }
+
+
+def _measures(builts) -> dict[str, int]:
+    """Count what the dashboard counts, from what the fixtures made."""
+    return {
+        'red': sum(len(b.red) for b in builts),
+        'yellow': sum(len(b.yellow) for b in builts),
+        'green': sum(len(b.green) for b in builts),
+        'paused': sum(len(b.paused) for b in builts),
+        'pre_start': sum(len(b.pre_start) for b in builts),
+        'partial': sum(len(b.partial) for b in builts),
+        'cards': sum(len(b.boards) for b in builts),
+        'due': sum(len(b.listed('due')) for b in builts),
+        'upcoming': sum(len(b.listed('upcoming')) for b in builts),
+        'all': sum(len(b.listed('all')) for b in builts),
+    }
+
+
+def _scoped_counts(builts) -> tuple:
+    """Return the tier and non-actionable counts the builts amount to."""
+    measures = _measures(builts)
+    return (
+        DashboardTierCounts(
+            red=measures['red'],
+            yellow=measures['yellow'],
+            green=measures['green'],
+        ),
+        DashboardNonActionableCounts(
+            paused=measures['paused'],
+            pre_start=measures['pre_start'],
+            partial=measures['partial'],
+        ),
+    )
+
+
+def _counts_of(page) -> tuple:
+    return page.tier_counts, page.non_actionable_counts
+
+
+def _card_ids(page) -> set:
+    return {t.tournament_id for t in page.leaderboard_only_tournaments}
+
+
+def _repository_data(viewer, party_id, **fields):
+    scope = service.resolve_dashboard_scope(
+        viewer, party_id, fields.get('scope', 'assigned')
+    ).unwrap()
+    with repository.read_snapshot():
+        return repository.query_dashboard_matches(
+            scope, _query(**fields), now=NOW, settings=SETTINGS
+        )
+
+
+def test_dashboard_category_rows_and_counts(party_id, admin, mixed):
+    viewer = _admin(admin)
+    every = tuple(mixed.values())
+    everywhere = {t for built in every for t in built.tournaments}
+
+    # Each category tells apart from the total in every count there is.
+    totals = _measures(every)
+    for built in every:
+        for name, value in _measures((built,)).items():
+            assert value != totals[name], (built.category, name)
+
+    for category in (None, *TournamentCategory):
+        builts = every if category is None else (mixed[category],)
+        wanted_tiers, wanted_rest = _scoped_counts(builts)
+        for view in ('due', 'upcoming', 'all'):
+            expected = [m for built in builts for m in built.listed(view)]
+            assert expected, (category, view)
+            page = _page(
+                viewer,
+                party_id,
+                scope='all',
+                view=view,
+                category=category,
+                per_page=100,
+            )
+            where = (category, view)
+            assert set(_ids(page)) == set(expected), where
+            assert len(page.rows) == len(expected), where
+            assert page.total_count == len(expected), where
+            assert page.tier_counts == wanted_tiers, where
+            assert page.non_actionable_counts == wanted_rest, where
+            # Direct selection of any authorized tournament stays possible.
+            assert {c.tournament_id for c in page.tournament_choices} == (
+                everywhere
+            ), where
+            cards = {b for built in builts for b in built.boards}
+            assert _card_ids(page) == (cards if view == 'all' else set())
+            assert len(page.leaderboard_only_tournaments) == len(
+                _card_ids(page)
+            )
+
+            # The list and the view follow the category, the tiers do not
+            # follow the state.
+            data = _repository_data(
+                viewer, party_id, scope='all', view=view, category=category
+            )
+            assert data.total_count == len(expected), where
+            assert data.view_total_count == len(expected), where
+            narrowed = _repository_data(
+                viewer,
+                party_id,
+                scope='all',
+                view=view,
+                category=category,
+                state='tier-red',
+            )
+            reds = sum(len(built.red) for built in builts)
+            assert narrowed.total_count == (reds if view != 'upcoming' else 0)
+            assert narrowed.view_total_count == len(expected), where
+            assert narrowed.tier_counts == wanted_tiers, where
+            assert narrowed.non_actionable_counts == wanted_rest, where
+
+
+def test_dashboard_category_combines_with_tournament_state_sort_and_page(
+    party_id, admin, mixed
+):
+    viewer = _admin(admin)
+    every = tuple(mixed.values())
+    everywhere = {t for built in every for t in built.tournaments}
+
+    for category, built in mixed.items():
+        kept = _scoped_counts((built,))
+
+        # A tournament of the category narrows the list, not the counts.
+        for tournament_id, match_ids in built.matches_of.items():
+            page = _page(
+                viewer,
+                party_id,
+                scope='all',
+                view='all',
+                category=category,
+                tournament_id=tournament_id,
+                per_page=100,
+            )
+            assert match_ids
+            assert set(_ids(page)) == set(match_ids), category
+            assert page.total_count == len(match_ids)
+            assert _counts_of(page) == kept, (category, tournament_id)
+        for board in built.boards:
+            page = _page(
+                viewer,
+                party_id,
+                scope='all',
+                view='all',
+                category=category,
+                tournament_id=board,
+            )
+            assert _card_ids(page) == {board}
+
+        # One of another category is empty, and nothing is reset behind
+        # the back of the viewer.
+        for other in every:
+            if other.category is category:
+                continue
+            for tournament_id in other.tournaments:
+                page = _page(
+                    viewer,
+                    party_id,
+                    scope='all',
+                    view='all',
+                    category=category,
+                    tournament_id=tournament_id,
+                )
+                where = (category, other.category)
+                assert page.rows == (), where
+                assert page.total_count == 0, where
+                assert page.empty_reason == 'no_filter_matches', where
+                assert _counts_of(page) == kept, where
+                assert _card_ids(page) == set(), where
+                assert {c.tournament_id for c in page.tournament_choices} == (
+                    everywhere
+                ), where
+
+        # The state of the list narrows it, and the cards do not show.
+        for tier in ('red', 'yellow', 'green'):
+            matching = getattr(built, tier)
+            page = _page(
+                viewer,
+                party_id,
+                scope='all',
+                category=category,
+                state=f'tier-{tier}',
+                per_page=100,
+            )
+            assert set(_ids(page)) == set(matching), (category, tier)
+            assert page.total_count == len(matching)
+            assert _counts_of(page) == kept, (category, tier)
+            assert page.empty_reason == (
+                None if matching else 'no_filter_matches'
+            ), (category, tier)
+            everything = _page(
+                viewer,
+                party_id,
+                scope='all',
+                view='all',
+                category=category,
+                state=f'tier-{tier}',
+            )
+            assert _card_ids(everything) == set()
+    assert any(not built.red for built in every)
+    assert any(not built.yellow for built in every)
+
+    # Every sort, and every page size, cuts the same list in pieces: it is
+    # the list of all categories, reduced to the one of the category.
+    for sort, key in _SORT_KEYS.items():
+        reference = _page(
+            viewer, party_id, scope='all', view='all', sort=sort, per_page=100
+        )
+        assert reference.total_count == _measures(every)['all']
+        for category, built in mixed.items():
+            kept = _scoped_counts((built,))
+            members = set(built.tournaments)
+            expected = [
+                row.match_id
+                for row in reference.rows
+                if row.tournament_id in members
+            ]
+            assert len(expected) == len(built.listed('all')), (sort, category)
+            whole = _page(
+                viewer,
+                party_id,
+                scope='all',
+                view='all',
+                sort=sort,
+                category=category,
+                per_page=100,
+            )
+            assert _ids(whole) == expected, (sort, category)
+            due = _page(
+                viewer,
+                party_id,
+                scope='all',
+                sort=sort,
+                category=category,
+                per_page=100,
+            )
+            assert len(due.rows) == len(built.listed('due'))
+            assert [key(row) for row in due.rows] == sorted(
+                key(row) for row in due.rows
+            )
+
+            for per_page in (1, 3):
+                pages = -(-len(expected) // per_page)
+                collected = []
+                shapes = set()
+                for number in range(1, pages + 1):
+                    page = _page(
+                        viewer,
+                        party_id,
+                        scope='all',
+                        view='all',
+                        sort=sort,
+                        category=category,
+                        per_page=per_page,
+                        page=number,
+                    )
+                    collected += _ids(page)
+                    shapes.add(
+                        (page.total_count, page.total_pages, *_counts_of(page))
+                    )
+                where = (sort, category, per_page)
+                assert collected == expected, where
+                assert shapes == {(len(expected), pages, *kept)}, where
+
+                beyond = _page(
+                    viewer,
+                    party_id,
+                    scope='all',
+                    view='all',
+                    sort=sort,
+                    category=category,
+                    per_page=per_page,
+                    page=pages + 1,
+                )
+                assert beyond.rows == (), where
+                assert beyond.page == pages + 1, where
+                assert beyond.total_count == len(expected), where
+                assert beyond.empty_reason is None, where
+                assert _counts_of(beyond) == kept, where
+
+
+def test_dashboard_category_cannot_widen_authorized_party_scope(
+    world, party_id, users, admin, make_party, brand
+):
+    foreign_party = PartyID(f'f03s-{uuid4().hex[:12]}')
+    make_party(brand, foreign_party, f'F03 foreign {foreign_party}')
+    orga = users[1]
+    main, fun, stage, user_organized = tuple(TournamentCategory)
+
+    def board(name, category, **fields):
+        return world.tournament(
+            name=name,
+            game_format=HIGHSCORE,
+            mode=EliminationMode.NONE,
+            category=category,
+            **fields,
+        )
+
+    mine_main = world.tournament(name='Mine main', category=main)
+    mine_fun = world.tournament(name='Mine fun', category=fun)
+    mine_board = board('Mine board', main)
+    for tournament_id in (mine_main, mine_fun, mine_board):
+        world.orga(tournament_id, orga)
+    mine = {
+        'main_due': world.due_match(
+            mine_main, wait_minutes=20, round=1, match_order=1
+        ),
+        'main_partial': world.match(
+            mine_main, contestants=1, round=2, match_order=2
+        ),
+        'fun_due': world.due_match(
+            mine_fun, wait_minutes=50, round=1, match_order=1
+        ),
+    }
+
+    # What the orga does not hold: every category, in every state, as a
+    # tournament of the same party and as one of another party.
+    hidden_tournaments = {
+        'main': world.tournament(name='Hidden main', category=main),
+        'main_paused': world.tournament(
+            name='Hidden main paused', status=PAUSED, category=main
+        ),
+        'main_early': world.tournament(
+            name='Hidden main early',
+            status=TournamentStatus.REGISTRATION_CLOSED,
+            category=main,
+        ),
+        'fun': world.tournament(name='Hidden fun', category=fun),
+        'stage': world.tournament(name='Hidden stage', category=stage),
+        'user': world.tournament(name='Hidden user', category=user_organized),
+    }
+    hidden_boards = [
+        board('Hidden main board', main),
+        board('Hidden fun board', fun),
+        board('Hidden stage board', stage),
+    ]
+    foreign = {
+        'main': world.tournament(
+            name='Foreign main', party_id=foreign_party, category=main
+        ),
+        'fun': world.tournament(
+            name='Foreign fun', party_id=foreign_party, category=fun
+        ),
+        'board': board('Foreign board', main, party_id=foreign_party),
+    }
+    for tournament_id in foreign.values():
+        world.orga(tournament_id, orga)
+
+    def leak_set(tournament_id) -> list:
+        return [
+            world.due_match(
+                tournament_id, wait_minutes=55, round=1, match_order=1
+            ),
+            world.match(tournament_id, contestants=1, round=2, match_order=2),
+            world.match(tournament_id, confirmed=True, round=3, match_order=3),
+        ]
+
+    hidden_matches = [
+        match_id
+        for key in ('main', 'main_paused', 'main_early', 'fun')
+        for match_id in leak_set(hidden_tournaments[key])
+    ]
+    hidden_matches += leak_set(hidden_tournaments['stage'])
+    hidden_matches += leak_set(hidden_tournaments['user'])
+    foreign_matches = leak_set(foreign['main']) + leak_set(foreign['fun'])
+
+    viewer = _viewer(orga)
+    wanted = {
+        None: {
+            'due': {mine['main_due'], mine['fun_due']},
+            'upcoming': {mine['main_partial']},
+            'all': set(mine.values()),
+            'tiers': DashboardTierCounts(red=1, yellow=1),
+            'rest': DashboardNonActionableCounts(partial=1),
+            'cards': {mine_board},
+        },
+        main: {
+            'due': {mine['main_due']},
+            'upcoming': {mine['main_partial']},
+            'all': {mine['main_due'], mine['main_partial']},
+            'tiers': DashboardTierCounts(yellow=1),
+            'rest': DashboardNonActionableCounts(partial=1),
+            'cards': {mine_board},
+        },
+        fun: {
+            'due': {mine['fun_due']},
+            'upcoming': set(),
+            'all': {mine['fun_due']},
+            'tiers': DashboardTierCounts(red=1),
+            'rest': DashboardNonActionableCounts(),
+            'cards': set(),
+        },
+        stage: {
+            'due': set(),
+            'upcoming': set(),
+            'all': set(),
+            'tiers': DashboardTierCounts(),
+            'rest': DashboardNonActionableCounts(),
+            'cards': set(),
+        },
+        user_organized: {
+            'due': set(),
+            'upcoming': set(),
+            'all': set(),
+            'tiers': DashboardTierCounts(),
+            'rest': DashboardNonActionableCounts(),
+            'cards': set(),
+        },
+    }
+    own_choices = {mine_main, mine_fun, mine_board}
+    out_of_reach = {
+        *hidden_matches,
+        *foreign_matches,
+        *hidden_tournaments.values(),
+        *hidden_boards,
+        *foreign.values(),
+    }
+
+    # Neither the requested scope nor the category widens it, in any list.
+    for requested in ('assigned', 'all'):
+        for category, expectation in wanted.items():
+            for view in ('due', 'upcoming', 'all'):
+                where = (requested, category, view)
+                page = _page(
+                    viewer,
+                    party_id,
+                    scope=requested,
+                    view=view,
+                    category=category,
+                    per_page=100,
+                )
+                assert set(_ids(page)) == expectation[view], where
+                assert page.total_count == len(expectation[view]), where
+                assert page.tier_counts == expectation['tiers'], where
+                assert page.non_actionable_counts == expectation['rest'], where
+                assert {c.tournament_id for c in page.tournament_choices} == (
+                    own_choices
+                ), where
+                assert _card_ids(page) == (
+                    expectation['cards'] if view == 'all' else set()
+                ), where
+                dump = repr(page)
+                for hidden in out_of_reach:
+                    assert str(hidden) not in dump, where
+                for name in ('Hidden', 'Foreign'):
+                    assert name not in dump, where
+                if category in (stage, user_organized):
+                    assert page.empty_reason == 'no_filter_matches', where
+
+    # A tournament out of reach is no way in, whatever its category is,
+    # nor is it a card.
+    for category in (None, main, fun, stage, user_organized):
+        for hidden in (*hidden_tournaments.values(), *foreign.values()):
+            for wanted_id in (hidden, str(hidden)):
+                page = _page(
+                    viewer,
+                    party_id,
+                    scope='all',
+                    view='all',
+                    category=category,
+                    tournament_id=wanted_id,
+                )
+                assert page.rows == (), (category, hidden)
+                assert page.empty_reason == 'no_filter_matches'
+        for hidden in (*hidden_boards, foreign['board']):
+            page = _page(
+                viewer,
+                party_id,
+                scope='all',
+                view='all',
+                category=category,
+                tournament_id=hidden,
+            )
+            assert page.leaderboard_only_tournaments == ()
+
+    # The assignment in another party only counts there.
+    page = _page(viewer, foreign_party, scope='all', category=main)
+    assert set(_ids(page)) == {foreign_matches[0]}
+    page = _page(viewer, foreign_party, scope='all', category=fun)
+    assert set(_ids(page)) == {foreign_matches[3]}
+    page = _page(viewer, foreign_party, scope='all', view='all', category=stage)
+    assert page.rows == ()
+    assert _card_ids(page) == set()
+
+    # The same viewer with the right to see all would see all of it.
+    everything = _admin(admin)
+    for category, reachable in (
+        (main, set(hidden_matches[0:9])),
+        (fun, set(hidden_matches[9:12])),
+        (stage, set(hidden_matches[12:15])),
+        (user_organized, set(hidden_matches[15:18])),
+    ):
+        page = _page(
+            everything,
+            party_id,
+            scope='all',
+            view='all',
+            category=category,
+            per_page=100,
+        )
+        assert reachable <= set(_ids(page)), category
+
+    # The repository bounds a forged scope to its party, in each category.
+    forged = DashboardScope(
+        user_id=orga.id,
+        party_id=party_id,
+        kind='all',
+        tournament_ids=(
+            *own_choices,
+            *hidden_tournaments.values(),
+            *hidden_boards,
+            *foreign.values(),
+        ),
+        is_global_admin=True,
+    )
+    in_party = {
+        *own_choices,
+        *hidden_tournaments.values(),
+        *hidden_boards,
+    }
+    for category in (None, main, fun):
+        with repository.read_snapshot():
+            data = repository.query_dashboard_matches(
+                forged,
+                _query(view='all', category=category, per_page=100),
+                now=NOW,
+                settings=SETTINGS,
+            )
+        assert data.records
+        assert {r.tournament_id for r in data.records} <= in_party
+        assert {c.tournament_id for c in data.tournament_choices} <= in_party
+        assert {
+            t.tournament_id for t in data.leaderboard_only_tournaments
+        } <= in_party
+        assert not {r.match_id for r in data.records} & set(foreign_matches), (
+            category
+        )
+
+
+def test_dashboard_category_retains_cross_category_conflicts(
+    world, party_id, users, admin
+):
+    main, fun, stage = (
+        TournamentCategory.MAIN,
+        TournamentCategory.FUN,
+        TournamentCategory.STAGE,
+    )
+    orga = users[4]
+    in_main = world.tournament(name='Main', category=main)
+    in_fun = world.tournament(name='Fun', category=fun)
+    hidden_main = world.tournament(name='Hidden main', category=main)
+    hidden_stage = world.tournament(name='Hidden stage', category=stage)
+    world.orga(in_main, orga)
+    world.orga(in_fun, orga)
+
+    def pair(tournament_id, first: int, second: int, **fields):
+        people = world.participants(tournament_id)
+        return world.due_match(
+            tournament_id,
+            contestants=[people[first], people[second]],
+            round=1,
+            match_order=1,
+            **fields,
+        )
+
+    # users[0] is needed in a match of another category that the orga holds,
+    # users[1] in two they do not hold, one of the same category, one not.
+    here = pair(in_main, 0, 1, wait_minutes=20)
+    there = pair(in_fun, 0, 2, wait_minutes=30)
+    hidden_here = pair(hidden_main, 1, 5, wait_minutes=10)
+    hidden_there = pair(hidden_stage, 1, 3, wait_minutes=5)
+    hidden_other = pair(hidden_stage, 2, 3, wait_minutes=6)
+    secrets = [
+        *(str(t) for t in (hidden_main, hidden_stage)),
+        *(str(m) for m in (hidden_here, hidden_there, hidden_other)),
+        'Hidden main',
+        'Hidden stage',
+        users[3].screen_name,
+        users[5].screen_name,
+    ]
+
+    def conflicts_of(row):
+        return {c.user_id: c for c in row.conflicts}
+
+    def refs_of(conflict):
+        return {ref.match_id: ref.list_page for ref in conflict.visible_refs}
+
+    viewer = _viewer(orga)
+
+    # The whole list: the counterpart of the other category is in it.
+    page = _page(viewer, party_id)
+    assert set(_ids(page)) == {here, there}
+    rows = {row.match_id: row for row in page.rows}
+    found = conflicts_of(rows[here])
+    assert set(found) == {users[0].id, users[1].id}
+    assert refs_of(found[users[0].id]) == {there: 1}
+    assert not found[users[0].id].has_external_conflict
+    # What the orga does not hold is a boolean, and has no name.
+    assert found[users[1].id].visible_refs == ()
+    assert found[users[1].id].has_external_conflict
+    found = conflicts_of(rows[there])
+    assert refs_of(found[users[0].id]) == {here: 1}
+    assert found[users[2].id].visible_refs == ()
+    assert found[users[2].id].has_external_conflict
+
+    # The category narrows the list. A counterpart of the other category is
+    # no less a counterpart of theirs: it is not a generic hint, it has no
+    # page of this list.
+    for category, row_id, other_id, user in (
+        (main, here, there, users[0]),
+        (fun, there, here, users[0]),
+    ):
+        page = _page(viewer, party_id, category=category)
+        assert _ids(page) == [row_id], category
+        found = conflicts_of(page.rows[0])
+        assert refs_of(found[user.id]) == {other_id: None}, category
+        assert found[user.id].via_team_name is None
+        assert not found[user.id].has_external_conflict, category
+        (ref,) = found[user.id].visible_refs
+        assert ref.tournament_name in {'Main', 'Fun'}
+        assert ref.tournament_id in {in_main, in_fun}
+        for dump in (repr(page), repr(found)):
+            for secret in secrets:
+                assert secret not in dump, (category, secret)
+    page = _page(viewer, party_id, category=main)
+    found = conflicts_of(page.rows[0])
+    assert found[users[1].id].visible_refs == ()
+    assert found[users[1].id].has_external_conflict
+    page = _page(viewer, party_id, category=fun)
+    found = conflicts_of(page.rows[0])
+    assert found[users[2].id].has_external_conflict
+
+    # A category the orga holds nothing of is empty, and names nothing.
+    page = _page(viewer, party_id, category=stage, view='all')
+    assert page.rows == ()
+    assert page.empty_reason == 'no_filter_matches'
+    assert {c.tournament_id for c in page.tournament_choices} == {
+        in_main,
+        in_fun,
+    }
+    for secret in secrets:
+        assert secret not in repr(page), secret
+
+    # Whoever holds all of it, holds it as references, in every category.
+    everything = _admin(admin)
+    page = _page(everything, party_id, scope='all', view='due', category=main)
+    assert set(_ids(page)) == {here, hidden_here}
+    rows = {row.match_id: row for row in page.rows}
+    found = conflicts_of(rows[here])
+    assert refs_of(found[users[0].id]) == {there: None}
+    assert refs_of(found[users[1].id]) == {hidden_here: 1, hidden_there: None}
+    assert not found[users[0].id].has_external_conflict
+    assert not found[users[1].id].has_external_conflict
+    page = _page(everything, party_id, scope='all', view='due')
+    rows = {row.match_id: row for row in page.rows}
+    found = conflicts_of(rows[here])
+    assert refs_of(found[users[1].id]).keys() == {hidden_here, hidden_there}
+    assert None not in refs_of(found[users[1].id]).values()
+    assert refs_of(found[users[0].id])[there] is not None
+
+
+def test_dashboard_category_query_remains_read_only_and_bounded(
+    world, party_id, users, admin, mixed
+):
+    orga = users[1]
+    for category in (TournamentCategory.MAIN, TournamentCategory.FUN):
+        for tournament_id in mixed[category].tournaments:
+            world.orga(tournament_id, orga)
+    live, *_ = mixed[TournamentCategory.MAIN].matches_of
+    pinned, acked = mixed[TournamentCategory.MAIN].red
+    world.pin(live, pinned, users[2])
+    episode_id = db.session.scalar(
+        select(DbMatchDueEpisode.id).where(DbMatchDueEpisode.match_id == acked)
+    )
+    world.ack(live, acked, episode_id, actor=users[3])
+    viewers = [
+        ('admin', _admin(admin), {'scope': 'all'}),
+        ('orga', _viewer(orga), {}),
+    ]
+    tables = (
+        DbTournamentMatch,
+        DbTournamentMatchToContestant,
+        DbMatchDueEpisode,
+        DbMatchDashboardAnnotation,
+        DbMatchEscalationAck,
+        DbTournamentOrga,
+    )
+
+    def table_counts() -> list[int]:
+        counts = [
+            db.session.execute(
+                select(func.count()).select_from(table)
+            ).scalar_one()
+            for table in tables
+        ]
+        db.session.rollback()
+        return counts
+
+    before = table_counts()
+    assert all(before)
+
+    taken: dict[tuple, int] = {}
+    for label, viewer, extra in viewers:
+        for category in (None, *TournamentCategory):
+            for per_page in (3, 30):
+                with _recorded_statements() as statements:
+                    result = service.get_dashboard_page(
+                        viewer,
+                        party_id,
+                        _query(
+                            view='all',
+                            category=category,
+                            per_page=per_page,
+                            **extra,
+                        ),
+                        settings=SETTINGS,
+                        now=NOW,
+                    )
+                page = result.unwrap()
+                where = (label, category, per_page)
+                assert len(page.rows) == min(per_page, page.total_count)
+                if label == 'admin':
+                    expected = _measures(
+                        mixed.values()
+                        if category is None
+                        else (mixed[category],)
+                    )['all']
+                    assert page.total_count == expected, where
+
+                for statement in statements:
+                    head = statement.lstrip().split(None, 1)[0].upper()
+                    assert head in {'SELECT', 'WITH'}, statement
+                    assert 'FOR UPDATE' not in statement.upper()
+                    assert 'FOR SHARE' not in statement.upper()
+                # The category is part of the one canonical statement.
+                paged = [s for s in statements if 'page_rows' in s]
+                assert len(paged) == 1, where
+                assert ('lan_tournaments.category' in paged[0]) == (
+                    category is not None
+                ), where
+                taken[(label, category, per_page)] = len(statements)
+
+    assert table_counts() == before
+    for label, *_ in viewers:
+        # Growth of the page and the category add no statement.
+        base = taken[(label, None, 3)]
+        assert 0 < base <= 12, label
+        for category in (None, *TournamentCategory):
+            assert taken[(label, category, 3)] == taken[(label, category, 30)]
+            assert taken[(label, category, 3)] <= base, (label, category)
+    # With rows in the category, nothing but the filter is added.
+    main = TournamentCategory.MAIN
+    assert taken[('admin', main, 3)] == taken[('admin', None, 3)]

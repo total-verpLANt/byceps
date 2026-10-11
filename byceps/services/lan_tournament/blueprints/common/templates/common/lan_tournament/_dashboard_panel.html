@@ -99,6 +99,9 @@
 {{ _hidden('view', query.view) }}
 {{ _hidden('state', query.state) }}
 {{ _hidden('sort', query.sort) }}
+{%- if query.category %}
+{{ _hidden('category', query.category) }}
+{%- endif %}
 {%- if query.tournament %}
 {{ _hidden('tournament', query.tournament) }}
 {%- endif %}
@@ -133,7 +136,7 @@
 {{ _hidden(name, value) }}
 {%- endfor %}
 <div class="ltd-fl">
-{%- for field in [filters.tournament, filters.state, filters.sort] %}
+{%- for field in [filters.category, filters.tournament, filters.state, filters.sort] %}
 <div class="ltd-fld">
 <label class="ltd-lbl" for="{{ field.id }}">{{ field.label }}</label>
 <select id="{{ field.id }}" name="{{ field.name }}"{% if field.is_invalid %} aria-invalid="true" aria-describedby="{{ field.error_id }}"{% endif %}>

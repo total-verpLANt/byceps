@@ -20,6 +20,7 @@ from .operational_timing import (
     TrafficTier,
 )
 from .tournament import TournamentID
+from .tournament_category import TournamentCategory
 from .tournament_match import TournamentMatchID
 
 
@@ -108,6 +109,7 @@ class DashboardQuery:
     view: DashboardView = 'due'
     state: DashboardState = 'all'
     sort: DashboardSort = 'urgency'
+    category: TournamentCategory | None = None
     tournament_id: TournamentID | None = None
     page: int = 1
     per_page: int
@@ -258,7 +260,11 @@ class DashboardRow:
 
 @dataclass(frozen=True, kw_only=True)
 class DashboardTierCounts:
-    """The due matches with a known clock per tier, over the whole scope."""
+    """The due matches with a known clock per tier.
+
+    They cover the authorized scope narrowed by the category alone. The
+    tournament, view, state, sort and page filters do not change them.
+    """
 
     red: int = 0
     yellow: int = 0
@@ -267,7 +273,11 @@ class DashboardTierCounts:
 
 @dataclass(frozen=True, kw_only=True)
 class DashboardNonActionableCounts:
-    """The matches in scope that have no current demand, by reason."""
+    """The matches in scope that have no current demand, by reason.
+
+    The scope is the authorized one narrowed by the category alone. The
+    tournament, view, state, sort and page filters do not change them.
+    """
 
     paused: int = 0
     pre_start: int = 0

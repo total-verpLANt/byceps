@@ -5,6 +5,7 @@ tests.unit.services.lan_tournament.test_dashboard_scope
 
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
+from enum import Enum
 from typing import Any
 from unittest.mock import call, MagicMock, patch
 from uuid import uuid4
@@ -27,6 +28,9 @@ from byceps.services.lan_tournament.models.operational_timing import (
     MatchDueEpisodeID,
     MatchEscalationAcknowledgementID,
     TrafficTier,
+)
+from byceps.services.lan_tournament.models.tournament_category import (
+    TournamentCategory,
 )
 from byceps.services.lan_tournament.models.tournament_dashboard import (
     AckUnavailableReason,
@@ -697,10 +701,70 @@ def test_a_tournament_filter_may_arrive_as_a_string(make_environment):
     assert env.fake.seen['query'].tournament_id == str(T2)
 
 
+# -- category --
+
+
+class _LookalikeCategory(Enum):
+    MAIN = 'MAIN'
+
+
+@pytest.mark.parametrize('category', [None, *TournamentCategory])
+def test_category_query_accepts_existing_enum(make_environment, category):
+    env = make_environment(assigned=[T1], data=_data([_record()]))
+
+    result = _page(env, _viewer(_user()), category=category)
+
+    assert result.is_ok()
+    assert service._check_query(_query(category=category)) is None
+    # The service passes the category on as given and adds none of its own.
+    assert env.fake.seen['query'].category is category
+    assert _query().category is None
+
+
+# fmt: off
+@pytest.mark.parametrize('category', [
+    pytest.param('MAIN', id='value-string'),
+    pytest.param('main', id='lowercase-string'),
+    pytest.param('', id='empty-string'),
+    pytest.param(_LookalikeCategory.MAIN, id='lookalike-enum'),
+    pytest.param(GameFormat.ONE_V_ONE, id='foreign-enum'),
+    pytest.param(True, id='true'),
+    pytest.param(False, id='false'),
+    pytest.param(1, id='one'),
+    pytest.param(0, id='zero'),
+    pytest.param(object(), id='object'),
+    pytest.param(TournamentCategory, id='enum-class'),
+    pytest.param((TournamentCategory.MAIN,), id='tuple-of-member'),
+])
+# fmt: on
+def test_category_query_rejects_untyped_values(make_environment, category):
+    env = make_environment(assigned=[T1], data=_data([_record()]))
+    calls = env.fake.calls
+
+    result = _page(env, _viewer(_user()), category=category)
+
+    assert result.unwrap_err() == service.DASHBOARD_QUERY_INVALID_ERROR
+    assert (
+        service._check_query(_query(category=category))
+        == service.DASHBOARD_QUERY_INVALID_ERROR
+    )
+    # No snapshot, no repository read and nothing read behind them.
+    assert calls == []
+    assert env.fake.seen == {}
+    assert env.permission_reads == []
+    assert env.user_reads == []
+
+    # The same request without a category does reach the repository.
+    assert _page(env, _viewer(_user())).is_ok()
+    assert 'enter' in calls and 'query' in calls
+
+
 # -- empty and out-of-range pages --
 
 _NONE = DashboardNonActionableCounts()
 _SOME = DashboardNonActionableCounts(paused=1, pre_start=0, partial=2)
+_MAIN = TournamentCategory.MAIN
+_FUN = TournamentCategory.FUN
 
 
 # fmt: off
@@ -759,6 +823,68 @@ def test_page_beyond_last_is_not_clamped_and_empty_reason_is_distinct(
     page = _page(env, _viewer(orga), **query).unwrap()
 
     assert page.empty_reason == expected
+    # The requested page is reported as it was, and never clamped.
+    assert page.page == query.get('page', 1)
+    assert page.total_count == total
+    assert page.total_pages == -(-total // 50)
+
+
+# fmt: off
+@pytest.mark.parametrize(
+    'scope_ids, query, total, view_total, counts, expected', [
+        # Anything listed is not an empty page, whatever the page number.
+        ((T1,), {'category': _MAIN}, 3, 3, _SOME, None),
+        ((T1,), {'category': _MAIN, 'page': 9}, 3, 3, _SOME, None),
+        # A category without a fixture is an empty filter result, neither
+        # a missing right nor a party without demand.
+        ((T1,), {'category': _FUN}, 0, 0, _NONE, 'no_filter_matches'),
+        ((T1,), {'category': _FUN}, 0, 0, _SOME, 'no_filter_matches'),
+        ((T1,), {'category': _FUN, 'view': 'all'}, 0, 0, _NONE,
+         'no_filter_matches'),
+        ((T1,), {'category': _FUN, 'view': 'upcoming'}, 0, 0, _SOME,
+         'no_filter_matches'),
+        # Another filter on top of a category that has fixtures.
+        ((T1,), {'category': _MAIN, 'state': 'tier-red'}, 0, 4, _NONE,
+         'no_filter_matches'),
+        # A category and a tournament that cannot meet.
+        ((T1,), {'category': _MAIN, 'tournament_id': T2}, 0, 4, _SOME,
+         'no_filter_matches'),
+        ((T1,), {'category': _FUN, 'tournament_id': T2}, 0, 0, _NONE,
+         'no_filter_matches'),
+        # Beyond the last page of an empty category, the page is not clamped.
+        ((T1,), {'category': _FUN, 'page': 9}, 0, 0, _NONE,
+         'no_filter_matches'),
+        # No tournament in scope is still a missing assignment.
+        ((), {'category': _MAIN}, 0, 0, _NONE, 'no_assignment'),
+        ((), {'category': _FUN, 'view': 'all'}, 0, 0, _SOME,
+         'no_assignment'),
+        # The same results without a category keep their own reasons.
+        ((T1,), {}, 0, 0, _NONE, 'no_current_demand'),
+        ((T1,), {}, 0, 0, _SOME, 'no_actionable_fixtures'),
+    ],
+)
+# fmt: on
+def test_empty_category_has_filtered_empty_reason(
+    make_environment, scope_ids, query, total, view_total, counts, expected
+):
+    orga = _user()
+    env = make_environment(
+        assigned=scope_ids,
+        everything=scope_ids,
+        data=_data(
+            [_record() for _ in range(min(total, 2))],
+            total_count=total,
+            view_total_count=view_total,
+            non_actionable_counts=counts,
+        ),
+        permissions={orga.id: frozenset({ADMIN_PERMISSION})},
+    )
+
+    page = _page(env, _viewer(orga), **query).unwrap()
+
+    assert page.empty_reason == expected
+    assert env.fake.seen['query'].category is query.get('category')
+    assert len(page.rows) == min(total, 2)
     # The requested page is reported as it was, and never clamped.
     assert page.page == query.get('page', 1)
     assert page.total_count == total

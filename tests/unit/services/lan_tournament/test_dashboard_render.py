@@ -22,12 +22,17 @@ from jinja2 import (
     StrictUndefined,
 )
 import pytest
+from werkzeug.datastructures import MultiDict
 
 from byceps.services.lan_tournament.dashboard_view_helpers import (
     build_dashboard_context,
     format_comment_counter,
+    parse_dashboard_query,
 )
 from byceps.services.lan_tournament.models.tournament import TournamentID
+from byceps.services.lan_tournament.models.tournament_category import (
+    TournamentCategory,
+)
 from byceps.services.lan_tournament.models.tournament_dashboard import (
     DashboardNonActionableCounts,
     DashboardPage,
@@ -1107,7 +1112,7 @@ def test_native_forms_work_without_script_and_keep_the_validated_query(
     assert filters.attrs['role'] == 'search'
     assert hidden(filters) == {'scope': 'assigned', 'view': 'all'}
     names = [s.attrs['name'] for s in filters.find_all('select')]
-    assert names == ['tournament', 'state', 'sort']
+    assert names == ['category', 'tournament', 'state', 'sort']
     selected = {
         s.attrs['name']: [
             o.attrs['value'] for o in s.find_all('option', selected=True)
@@ -1115,6 +1120,7 @@ def test_native_forms_work_without_script_and_keep_the_validated_query(
         for s in filters.find_all('select')
     }
     assert selected == {
+        'category': [''],
         'tournament': [str(choice.tournament_id)],
         'state': ['conflict'],
         'sort': ['wait'],
@@ -1182,6 +1188,298 @@ def test_native_forms_work_without_script_and_keep_the_validated_query(
     assert site.one('p', 'ltd-scope').one('b').text == 'Zugewiesene Turniere'
     assert 'scope' not in hidden(site.one('form', 'ltd-refresh'))
     assert 'scope' not in hidden(site.one('form', 'ltd-filters'))
+
+
+# ------------------------------------------------------ the category filter
+
+CATEGORY_VALUES = ['', 'MAIN', 'FUN', 'STAGE', 'USER_ORGANIZED']
+CATEGORY_ENGLISH = {
+    None: 'All categories',
+    TournamentCategory.MAIN: 'Main tournaments',
+    TournamentCategory.FUN: 'Fun tournaments',
+    TournamentCategory.STAGE: 'Stage / Offline',
+    TournamentCategory.USER_ORGANIZED: 'User Organized',
+}
+CATEGORY_GERMAN = {
+    None: 'Alle Kategorien',
+    TournamentCategory.MAIN: 'Hauptturniere',
+    TournamentCategory.FUN: 'Neben-/Funturniere',
+    TournamentCategory.STAGE: 'Bühne / Offline',
+    TournamentCategory.USER_ORGANIZED: 'User Organized',
+}
+
+
+def controls_of(root: Node) -> dict[str, tuple[Node, Node]]:
+    """Return the label and the select of each filter field, in page order."""
+    controls = {}
+    for field in root.one('form', 'ltd-filters').find_all('div', 'ltd-fld'):
+        select = field.one('select')
+        controls[select.attrs['name']] = (field.one('label', 'ltd-lbl'), select)
+    return controls
+
+
+def refresh_hidden(root: Node) -> list[tuple[str, str]]:
+    """Return the hidden fields of the no-script refresh, in order."""
+    form = root.one('form', 'ltd-refresh')
+    return [
+        (i.attrs['name'], i.attrs['value'])
+        for i in form.find_all('input', type='hidden')
+    ]
+
+
+def chosen(select: Node) -> list[str]:
+    return [o.attrs['value'] for o in select.find_all('option', selected=True)]
+
+
+@pytest.mark.parametrize('surface', ['admin', 'site'])
+def test_category_filter_uses_existing_controls_and_labels(env, surface):
+    context = context_of([neon_50()], surface=surface)
+    root = root_of(panel_html(env, context))
+    filters = root.one('form', 'ltd-filters')
+
+    # A native GET form of the list, as before: no script, no handler.
+    assert filters.attrs['method'] == 'get'
+    assert filters.attrs['action'] == context['views'][0]['url'].split('?')[0]
+    assert filters.attrs['role'] == 'search'
+    assert filters.find_all('script') == []
+    for node in (filters, *filters.walk()):
+        assert not [name for name in node.attrs if name.startswith('on')]
+    assert filters.one('button', 'ltd-btn', type='submit')
+
+    # The category is one more field of the existing loop, first in line.
+    controls = controls_of(root)
+    assert list(controls) == ['category', 'tournament', 'state', 'sort']
+    assert len(filters.find_all('select')) == 4
+    all_ids = [node.attrs['id'] for node in root.walk() if 'id' in node.attrs]
+    for name, (label, select) in controls.items():
+        field_id = f'lt-filter-{name}'
+        assert select.attrs['id'] == field_id
+        assert label.attrs['for'] == field_id
+        assert all_ids.count(field_id) == 1
+        assert 'ltd-fld' in select.parent.classes
+        assert label.parent is select.parent
+        assert 'multiple' not in select.attrs
+
+    label, select = controls['category']
+    assert label.text == 'Tournament category'
+    options = select.find_all('option')
+    assert [o.attrs['value'] for o in options] == CATEGORY_VALUES
+    assert [o.text for o in options] == list(CATEGORY_ENGLISH.values())
+    assert chosen(select) == ['']
+    assert [name for name in options[0].attrs] == ['value', 'selected']
+    assert [name for name in options[1].attrs] == ['value']
+
+    # No category chip, and no twin of the select: a repeated parameter is
+    # dropped by the parser.
+    assert root.find('p', 'ltd-applied') is None
+    assert 'category' not in dict(refresh_hidden(root))
+    hidden_names = [
+        i.attrs['name'] for i in filters.find_all('input', type='hidden')
+    ]
+    assert hidden_names == (
+        ['scope', 'view'] if surface == 'admin' else ['view']
+    )
+    assert [n for n in filters.walk() if n.attrs.get('name') == 'category'] == [
+        select
+    ]
+
+    # Each category alone: its option is the only one selected, by value.
+    for category, english in CATEGORY_ENGLISH.items():
+        if category is None:
+            continue
+        query = {'category': category}
+        root = root_of(
+            panel_html(
+                env, context_of([neon_50()], surface=surface, query=query)
+            )
+        )
+        controls = controls_of(root)
+        select = controls['category'][1]
+        assert chosen(select) == [category.value]
+        assert [o.text for o in select.find_all('option', selected=True)] == [
+            english
+        ]
+        # The other controls keep their own choice.
+        assert chosen(controls['tournament'][1]) == ['']
+        assert chosen(controls['state'][1]) == ['all']
+        assert chosen(controls['sort'][1]) == ['urgency']
+        filters = root.one('form', 'ltd-filters')
+        assert [
+            n for n in filters.walk() if n.attrs.get('name') == 'category'
+        ] == [select]
+        # The refresh without script is a form of its own: it asks for the
+        # same list again, so it keeps the category, once.
+        hidden_fields = refresh_hidden(root)
+        assert [v for n, v in hidden_fields if n == 'category'] == [
+            category.value
+        ]
+        assert [n for n, _ in hidden_fields if n == 'category'] == ['category']
+        # The scope switch of the admin is its own form: it keeps the
+        # category as one hidden field.
+        if surface == 'admin':
+            scope = root.one('form', 'ltd-scope')
+            (twin,) = [
+                i
+                for i in scope.find_all('input')
+                if i.attrs['name'] == 'category'
+            ]
+            assert twin.attrs == {
+                'type': 'hidden',
+                'name': 'category',
+                'value': category.value,
+            }
+
+
+def test_category_filter_renders_german_labels(env, german):
+    root = root_of(panel_html(env, context_of([neon_50()])))
+    label, select = controls_of(root)['category']
+
+    assert label.text == 'Turnierkategorie'
+    options = select.find_all('option')
+    # The stored value is the enum's own; only the text is German.
+    assert [o.attrs['value'] for o in options] == CATEGORY_VALUES
+    assert [o.text for o in options] == [
+        'Alle Kategorien',
+        'Hauptturniere',
+        'Neben-/Funturniere',
+        'Bühne / Offline',
+        'User Organized',
+    ]
+    english = set(CATEGORY_ENGLISH.values()) - {'User Organized'}
+    assert not english & {o.text for o in options}
+
+    for category, german_label in CATEGORY_GERMAN.items():
+        if category is None:
+            continue
+        context = context_of([neon_50()], query={'category': category})
+        root = root_of(panel_html(env, context))
+        select = controls_of(root)['category'][1]
+        assert [o.text for o in select.find_all('option', selected=True)] == [
+            german_label
+        ]
+        # The chip speaks German as well, and never shows the raw value.
+        assert [c.text for c in root.find_all('span', 'ltd-chip')] == [
+            german_label
+        ]
+        assert root.one('p', 'ltd-applied').one('span', 'ltd-k').text == (
+            'Angewendet'
+        )
+        assert (
+            category.value not in root.one('form', 'ltd-filters').text.split()
+        )
+
+
+@pytest.mark.parametrize('surface', ['admin', 'site'])
+def test_category_filter_renders_error_chip_and_reset(env, german, surface):
+    page = '/lan-tournaments/for_party/pixelnacht-36/dashboard'
+    if surface == 'site':
+        page = '/lan-tournaments/orga-dashboard'
+
+    def read(*pairs):
+        query, errors = parse_dashboard_query(
+            MultiDict(pairs), surface=surface, per_page=50
+        )
+        context = context_of(
+            [neon_50()],
+            surface=surface,
+            errors=errors,
+            query={'category': query.category, 'sort': query.sort},
+        )
+        return root_of(panel_html(env, context)), errors
+
+    # A value that is no category is dropped with a notice: the control says
+    # so in native markup, falls back to all and sets no chip.
+    root, errors = read(('category', 'main'))
+    assert set(errors) == {'category'}
+    filters = root.one('form', 'ltd-filters')
+    controls = controls_of(root)
+    label, select = controls['category']
+    error = root.one('p', 'ltd-err')
+    assert error.attrs['id'] == 'lt-filter-category-error'
+    assert error.text == 'Dieser Wert ist ungültig und wurde nicht angewendet.'
+    assert error.parent is select.parent
+    assert select.attrs['aria-invalid'] == 'true'
+    assert select.attrs['aria-describedby'] == error.attrs['id']
+    assert chosen(select) == ['']
+    for name in ('tournament', 'state', 'sort'):
+        assert 'aria-invalid' not in controls[name][1].attrs
+        assert 'aria-describedby' not in controls[name][1].attrs
+    assert root.find('p', 'ltd-applied') is None
+    assert filters.find('a', 'ltd-btn') is None
+    assert 'category' not in dict(refresh_hidden(root))
+    banner = root.one('div', 'ltd-ban')
+    assert banner.attrs['role'] == 'status'
+    assert errors['category'] in banner.text
+    assert 'Turnierkategorie' in banner.text and 'main' in banner.text
+
+    # A repeated parameter is dropped the same way.
+    root, errors = read(('category', 'MAIN'), ('category', 'FUN'))
+    assert set(errors) == {'category'}
+    assert controls_of(root)['category'][1].attrs['aria-invalid'] == 'true'
+    assert chosen(controls_of(root)['category'][1]) == ['']
+
+    # A valid one is chosen, set as a chip and left out of the reset link,
+    # which clears every filter and carries nothing else.
+    root, errors = read(('category', 'STAGE'), ('sort', 'wait'))
+    assert errors == {}
+    filters = root.one('form', 'ltd-filters')
+    controls = controls_of(root)
+    assert chosen(controls['category'][1]) == ['STAGE']
+    assert 'aria-invalid' not in controls['category'][1].attrs
+    assert root.find('p', 'ltd-err') is None
+    assert [c.text for c in root.find_all('span', 'ltd-chip')] == [
+        'Bühne / Offline',
+        'Sortierung: Aktive Wartezeit gesamt',
+    ]
+    (reset,) = filters.one('div', 'ltd-fb').find_all('a', 'ltd-btn')
+    assert reset.text == 'Zurücksetzen'
+    assert urlsplit(reset.attrs['href']).path == page
+    assert query_of(reset.attrs['href']) == {}
+
+    # A bad value beside a good one: the good one stays and is a chip.
+    root, errors = read(('category', 'bogus'), ('sort', 'wait'))
+    assert set(errors) == {'category'}
+    assert [c.text for c in root.find_all('span', 'ltd-chip')] == [
+        'Sortierung: Aktive Wartezeit gesamt'
+    ]
+    (reset,) = root.one('form', 'ltd-filters').find_all('a', 'ltd-btn')
+    assert query_of(reset.attrs['href']) == {}
+
+    # Category and tournament together: both chips, category first, and the
+    # empty card of a mismatch keeps both controls and resets both.
+    choice = tournament_ref('Kupfer-Cup')
+    context = context_of(
+        [],
+        surface=surface,
+        query={
+            'category': TournamentCategory.FUN,
+            'tournament_id': choice.tournament_id,
+        },
+        choices=[choice],
+        reason='no_filter_matches',
+        total=0,
+    )
+    root = root_of(panel_html(env, context))
+    controls = controls_of(root)
+    assert chosen(controls['category'][1]) == ['FUN']
+    assert chosen(controls['tournament'][1]) == [str(choice.tournament_id)]
+    # The refresh keeps both, the category before the tournament.
+    kept = [n for n, _ in refresh_hidden(root)]
+    assert kept.count('category') == 1
+    assert kept.index('category') < kept.index('tournament')
+    assert dict(refresh_hidden(root))['category'] == 'FUN'
+    assert [c.text for c in root.find_all('span', 'ltd-chip')] == [
+        'Neben-/Funturniere',
+        'Kupfer-Cup',
+    ]
+    for link in (
+        *root.one('form', 'ltd-filters').find_all('a', 'ltd-btn'),
+        *root.one('div', 'ltd-empty').find_all('a', 'ltd-btn'),
+    ):
+        assert query_of(link.attrs['href']) == {}, link.text
+    assert root.one('div', 'ltd-empty').one('h2').text == (
+        'Keine Begegnung passt zu diesen Filtern.'
+    )
 
 
 def test_the_panel_names_the_script_contract_in_its_root(env, german):

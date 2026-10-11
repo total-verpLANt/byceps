@@ -26,6 +26,7 @@ from . import (
 from .dashboard_config import MAX_PAGE_SIZE
 from .models.game_format import GameFormat
 from .models.operational_timing import TrafficTier
+from .models.tournament_category import TournamentCategory
 from .models.tournament_dashboard import (
     AckUnavailableReason,
     DASHBOARD_SCOPES,
@@ -176,6 +177,11 @@ def _check_query(query: DashboardQuery) -> str | None:
     if not _is_int(query.per_page) or not 1 <= query.per_page <= MAX_PAGE_SIZE:
         return DASHBOARD_QUERY_INVALID_ERROR
 
+    if query.category is not None and not isinstance(
+        query.category, TournamentCategory
+    ):
+        return DASHBOARD_QUERY_INVALID_ERROR
+
     if query.tournament_id is not None:
         try:
             UUID(str(query.tournament_id))
@@ -241,6 +247,10 @@ def _empty_reason(
 
     if not scope.tournament_ids:
         return 'no_assignment'
+
+    # A category without fixtures is an empty filter, not a missing right.
+    if query.category is not None:
+        return 'no_filter_matches'
 
     filtered = query.tournament_id is not None or query.state != 'all'
     if filtered and data.view_total_count > 0:
