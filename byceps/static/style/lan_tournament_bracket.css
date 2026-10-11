@@ -148,13 +148,15 @@
 .lt-round-title {
   position: absolute;
   border-radius: 16px;
-  padding: 0.56rem 0.75rem 0.56rem 0.94rem;
+  padding: 0.3rem 0.75rem 0.3rem 0.94rem;
   background: linear-gradient(135deg, color-mix(in srgb, var(--lt-white) 8%, transparent), color-mix(in srgb, var(--lt-white) 4%, transparent));
   border: 1px solid var(--lt-border);
   display: flex;
   justify-content: space-between;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.62rem;
+  align-content: center;
+  gap: 1px 0.62rem;
   font-size: 0.92rem;
   font-weight: 800;
   z-index: 3;
@@ -177,7 +179,9 @@
 
 .lt-round-title > span,
 .lt-round-title small {
+  flex: 0 1 auto;
   min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

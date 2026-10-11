@@ -1287,6 +1287,13 @@ function createMatchEl(match, dims, options, matchUrls) {
   var matchRefDisplay = _ltFormatMatchRefDisplay(match.ref);
   // Payloads cached before label_long existed fall back to the short display.
   var longLabel = match.longLabel || matchRefDisplay;
+  // The stage line already names a grand-final or third-place game, so its
+  // label keeps only the game number; the long name stays in title and ARIA.
+  var parsedRef = _ltParseMatchRef(match.ref);
+  var refLabel = (options.stageText && parsedRef &&
+    (parsedRef.bracket === 'GF' || parsedRef.bracket === 'P3'))
+    ? _t('game', 'Game') + ' ' + parsedRef.match
+    : matchRefDisplay;
   el.className = 'lt-match' + (url ? ' clickable' : '');
   el.style.left = match.geom.boxLeft + 'px';
   el.style.top = match.geom.boxTop + 'px';
@@ -1343,7 +1350,7 @@ function createMatchEl(match, dims, options, matchUrls) {
     '<div class="lt-match-label" style="font-size:' + (0.72 * dims.fontScale) + 'rem">' +
     '<span class="lt-match-ref-wrap" title="' + _ltEscapeHtml(longLabel) + ' - ' + _ltEscapeHtml(statusMeta.label) + '">' +
     '<span class="lt-match-state-dot lt-match-state-dot--' + _ltEscapeHtml(statusMeta.key) + '" aria-hidden="true"></span>' +
-    '<span class="lt-match-ref-text">' + _ltEscapeHtml(matchRefDisplay) + '</span>' +
+    '<span class="lt-match-ref-text">' + _ltEscapeHtml(refLabel) + '</span>' +
     '</span>' +
     '<span class="lt-match-meta">' + stageText + statusTag + readinessTag + '</span>' +
     '</div>' +
