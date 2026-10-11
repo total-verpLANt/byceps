@@ -417,3 +417,84 @@ def test_deliver_then_undeliver_then_deliver_again(
 
     # Clean up.
     pizza_delivery_service.delete_entry(entry.id)
+
+
+def test_deliver_sets_delivered_at_and_undeliver_clears_it(
+    admin_app, party: Party, user: User
+) -> None:
+    """The call time is stored on delivery and dropped on revert."""
+    entry = pizza_delivery_service.create_entry(
+        party.id, 'CALLED-AT-01', None, user.id
+    ).unwrap()
+    assert entry.delivered_at is None
+
+    delivered = pizza_delivery_service.deliver_entry(entry.id).unwrap()
+    assert delivered.delivered_at is not None
+    assert delivered.delivered_at == delivered.updated_at
+
+    reverted = pizza_delivery_service.undeliver_entry(entry.id).unwrap()
+    assert reverted.delivered_at is None
+
+    # Clean up.
+    pizza_delivery_service.delete_entry(entry.id)
+
+
+def test_delivered_entries_come_newest_call_first(
+    admin_app, make_party, brand, user: User
+) -> None:
+    """Delivered entries are ordered by call time, not creation time."""
+    party = make_party(brand, title='Newest call first')
+
+    numbers = ['ORD-A', 'ORD-B', 'ORD-C']
+    entries = [
+        pizza_delivery_service.create_entry(
+            party.id, number, None, user.id
+        ).unwrap()
+        for number in numbers
+    ]
+
+    # Called in reverse order of creation.
+    for entry in reversed(entries):
+        pizza_delivery_service.deliver_entry(entry.id).unwrap()
+
+    delivered = pizza_delivery_service.get_entries_for_party(
+        party.id, status=PizzaDeliveryStatus.DELIVERED
+    )
+    assert [entry.number for entry in delivered] == ['ORD-A', 'ORD-B', 'ORD-C']
+
+    # Clean up.
+    for entry in entries:
+        pizza_delivery_service.delete_entry(entry.id)
+
+
+def test_count_entries_for_party(
+    admin_app, make_party, brand, user: User
+) -> None:
+    """The count covers every entry, optionally of one status."""
+    party = make_party(brand, title='Count entries')
+
+    entries = [
+        pizza_delivery_service.create_entry(
+            party.id, f'CNT-{i}', None, user.id
+        ).unwrap()
+        for i in range(3)
+    ]
+    pizza_delivery_service.deliver_entry(entries[0].id).unwrap()
+
+    assert pizza_delivery_service.count_entries_for_party(party.id) == 3
+    assert (
+        pizza_delivery_service.count_entries_for_party(
+            party.id, status=PizzaDeliveryStatus.DELIVERED
+        )
+        == 1
+    )
+    assert (
+        pizza_delivery_service.count_entries_for_party(
+            party.id, status=PizzaDeliveryStatus.PENDING
+        )
+        == 2
+    )
+
+    # Clean up.
+    for entry in entries:
+        pizza_delivery_service.delete_entry(entry.id)

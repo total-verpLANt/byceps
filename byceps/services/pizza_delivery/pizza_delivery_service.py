@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from byceps.database import db
@@ -120,19 +120,45 @@ def get_entries_for_party(
     *,
     status: str | None = None,
 ) -> list[PizzaDeliveryEntry]:
-    """Return all pizza delivery entries for the party, ordered by
-    created_at descending.
+    """Return up to 200 pizza delivery entries for the party.
+
+    Delivered entries come newest call first (`delivered_at`, entries
+    without one last); all others by `created_at` descending.
     """
     stmt = select(DbPizzaDeliveryEntry).filter_by(party_id=party_id)
 
     if status is not None:
         stmt = stmt.filter(DbPizzaDeliveryEntry.status == status)
 
-    stmt = stmt.order_by(DbPizzaDeliveryEntry.created_at.desc()).limit(200)
+    if status == PizzaDeliveryStatus.DELIVERED:
+        order_by = (
+            DbPizzaDeliveryEntry.delivered_at.desc().nulls_last(),
+            DbPizzaDeliveryEntry.created_at.desc(),
+        )
+    else:
+        order_by = (DbPizzaDeliveryEntry.created_at.desc(),)
+
+    stmt = stmt.order_by(*order_by).limit(200)
 
     db_entries = db.session.execute(stmt).scalars().all()
 
     return [_db_entity_to_entry(db_entry) for db_entry in db_entries]
+
+
+def count_entries_for_party(
+    party_id: PartyID,
+    *,
+    status: str | None = None,
+) -> int:
+    """Return the number of pizza delivery entries for the party."""
+    stmt = select(func.count(DbPizzaDeliveryEntry.id)).filter_by(
+        party_id=party_id
+    )
+
+    if status is not None:
+        stmt = stmt.filter(DbPizzaDeliveryEntry.status == status)
+
+    return db.session.execute(stmt).scalar_one()
 
 
 def get_claimed_entries_for_user(
@@ -180,8 +206,10 @@ def deliver_entry(
     if db_entry.status == PizzaDeliveryStatus.DELIVERED:
         return Err(PizzaDeliveryEntryAlreadyDeliveredError(entry_id=entry_id))
 
+    now = datetime.now(timezone.utc)
     db_entry.status = PizzaDeliveryStatus.DELIVERED
-    db_entry.updated_at = datetime.now(timezone.utc)
+    db_entry.delivered_at = now
+    db_entry.updated_at = now
     db.session.commit()
 
     entry = _db_entity_to_entry(db_entry)
@@ -216,6 +244,7 @@ def undeliver_entry(
         return Err(PizzaDeliveryEntryNotDeliveredError(entry_id=entry_id))
 
     db_entry.status = PizzaDeliveryStatus.PENDING
+    db_entry.delivered_at = None
     db_entry.updated_at = datetime.now(timezone.utc)
     db.session.commit()
 
@@ -324,4 +353,5 @@ def _db_entity_to_entry(
         created_at=db_entry.created_at,
         updated_at=db_entry.updated_at,
         created_by_id=db_entry.created_by_id,
+        delivered_at=db_entry.delivered_at,
     )

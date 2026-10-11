@@ -17244,3 +17244,222 @@ msgstr "Das Kürzel vor einem Namen zeigt, aus welcher Gruppe und von welchem Pl
 
 msgid "Filter by bracket"
 msgstr "Nach Turnierbaum filtern"
+
+# --- Pizza Delivery · Kantine Essensausgabe (tv36) ---
+#
+
+#, python-format
+msgid "Called: %(number)s"
+msgstr "Aufgerufen: %(number)s"
+
+msgid "Canteen · Food counter"
+msgstr "Kantine · Essensausgabe"
+
+msgid "The Rentenbote · Issue 36"
+msgstr "Der Rentenbote · Ausgabe 36"
+
+msgid "The <em>pizza board</em>"
+msgstr "Die <em>Pizzatafel</em>"
+
+msgid "Called pizza numbers from the canteen. If your number is listed, your pizza is waiting at the food counter."
+msgstr "Aufgerufene Pizzanummern der Kantine. Steht deine Nummer hier, liegt deine Pizza an der Essensausgabe."
+
+#, python-format
+msgid "As of %(time)s"
+msgstr "Stand %(time)s Uhr"
+
+msgid "Refreshes every 30 s"
+msgstr "Aktualisiert sich alle 30 s"
+
+msgid "Stop refreshing"
+msgstr "Aktualisierung anhalten"
+
+msgid "Refreshing paused"
+msgstr "Aktualisierung angehalten"
+
+msgid "Resume refreshing"
+msgstr "Aktualisierung fortsetzen"
+
+msgid "Waiting for a pizza?"
+msgstr "Du wartest auf eine Pizza?"
+
+msgid "Log in and enter your pizza number. We will let you know as soon as it is called."
+msgstr "Melde dich an und trag deine Pizzanummer ein. Wir sagen Bescheid, sobald sie aufgerufen ist."
+
+msgid "Fill in a pickup slip"
+msgstr "Abholschein ausfüllen"
+
+#, python-format
+msgid "%(number)s has not been called yet."
+msgstr "%(number)s ist noch nicht aufgerufen."
+
+#, python-format
+msgid "Not called yet: %(numbers)s."
+msgstr "Noch nicht aufgerufen: %(numbers)s."
+
+msgid "You will also get an email."
+msgstr "Du bekommst zusätzlich eine E-Mail."
+
+msgid "You will get an email for each."
+msgstr "Du bekommst jeweils eine E-Mail."
+
+msgid "and"
+msgstr "und"
+
+msgid "My pickup slip"
+msgstr "Mein Abholschein"
+
+msgid "Your status"
+msgstr "Dein Stand"
+
+msgid "No number followed yet"
+msgstr "Noch keine Nummer verfolgt"
+
+msgid "Follow a number"
+msgstr "Nummer verfolgen"
+
+msgid "Enter your pizza number. We will let you know as soon as it is called."
+msgstr "Trag deine Pizzanummer ein. Wir sagen Bescheid, sobald sie aufgerufen ist."
+
+msgid "Enter number"
+msgstr "Nummer eintragen"
+
+msgid "Stop press"
+msgstr "Eilmeldung"
+
+#, python-format
+msgid "%(time)s h"
+msgstr "%(time)s Uhr"
+
+msgid "Your numbers have been called!"
+msgstr "Deine Nummern wurden aufgerufen!"
+
+msgid "Your pizza is waiting at the food counter. Please pick it up."
+msgstr "Deine Pizza liegt an der Essensausgabe. Bitte abholen."
+
+msgid "Ready for pickup · newest first"
+msgstr "Abholbereite Pizzen · neueste zuerst"
+
+msgid "Last called"
+msgstr "Zuletzt aufgerufen"
+
+msgid "Fresh from the oven"
+msgstr "Frisch aus dem Ofen"
+
+msgid "fresh"
+msgstr "frisch"
+
+msgid "✶ = fresh, under 10 minutes"
+msgstr "✶ = frisch, unter 10 Minuten"
+
+msgid "Called before"
+msgstr "Vorher aufgerufen"
+
+msgid "Your number"
+msgstr "Deine Nummer"
+
+msgid "Only this one so far."
+msgstr "Bisher nur diese eine."
+
+msgid "As soon as the first pizza reaches the counter, its number appears here."
+msgstr "Sobald die erste Pizza an der Ausgabe liegt, steht ihre Nummer hier."
+
+msgid "Only the 200 most recent numbers are printed. Older calls are left out. If yours is missing, ask at the food counter."
+msgstr "Abgedruckt sind die 200 jüngsten Nummern. Ältere Aufrufe entfallen. Fehlt deine, frag an der Essensausgabe."
+
+msgid "Canteen · Pickup slip"
+msgstr "Kantine · Abholschein"
+
+msgid "My <em>pickup slip</em>"
+msgstr "Mein <em>Abholschein</em>"
+
+msgid "Follow your pizza numbers here. Once one is called, you will see it here, on the board and in your inbox."
+msgstr "Hier verfolgst du deine Pizzanummern. Wird eine aufgerufen, steht es hier, auf der Tafel und in deinem Postfach."
+
+msgid "Your numbers"
+msgstr "Deine Nummern"
+
+#, python-format
+msgid "Pickup slip · %(party)s"
+msgstr "Abholschein · %(party)s"
+
+#, python-format
+msgid "Following since %(time)s"
+msgstr "Verfolgt seit %(time)s Uhr"
+
+msgid "Ready for pickup"
+msgstr "Abholbereit"
+
+msgid "On its way"
+msgstr "Noch unterwegs"
+
+#, python-format
+msgid "Called at %(time)s. Please pick it up at the food counter."
+msgstr "Aufgerufen um %(time)s Uhr. Bitte an der Essensausgabe abholen."
+
+msgid "Not called yet. We will let you know."
+msgstr "Noch nicht aufgerufen. Wir melden uns."
+
+msgid "e.g. A-12"
+msgstr "z. B. A-12"
+
+msgid "On your order receipt. Up to 20 characters, upper or lower case."
+msgstr "Steht auf deinem Bestellzettel. Höchstens 20 Zeichen, Groß- und Kleinschreibung egal."
+
+msgid "Follow number"
+msgstr "Nummer verfolgen"
+
+msgid "Following only means we tell you when the number is called. It reserves nothing and does not prove the pizza is yours. Entered the wrong number? The orga team at the food counter will fix it."
+msgstr "Verfolgen heißt nur: Wir sagen Bescheid, sobald die Nummer aufgerufen ist. Es reserviert nichts und ist kein Beleg, dass die Pizza dir gehört. Falsche Nummer eingetragen? Das korrigiert die Orga an der Essensausgabe."
+
+msgid "Someone is already following this number. If it is yours, the orga team at the food counter will sort it out."
+msgstr "Diese Nummer verfolgt schon jemand. Stimmt sie, klärt die Orga an der Essensausgabe das."
+
+#, python-format
+msgid "You are now following %(number)s. We will let you know as soon as it is called."
+msgstr "Du verfolgst jetzt %(number)s. Wir melden uns, sobald sie aufgerufen ist."
+
+#, python-format
+msgid "%(number)s has already been called. Go to the food counter now."
+msgstr "%(number)s wurde schon aufgerufen. Geh sofort zur Essensausgabe."
+
+msgid "Canteen · Extra edition"
+msgstr "Kantine · Extrablatt"
+
+msgid "Extra edition"
+msgstr "Extrablatt"
+
+msgid "Please pick up at the food counter."
+msgstr "Bitte an der Essensausgabe abholen."
+
+msgid "Called before · newest first"
+msgstr "Vorher aufgerufen · neueste zuerst"
+
+#, python-format
+msgid "+ %(count)s more at %(path)s"
+msgstr "+ %(count)s weitere unter %(path)s"
+
+msgid "Called = waiting at the food counter"
+msgstr "Aufgerufen = liegt an der Essensausgabe"
+
+msgid "The first pizza is on its way."
+msgstr "Die erste Pizza ist unterwegs."
+
+msgid "new every 10 s"
+msgstr "neu alle 10 s"
+
+#, python-format
+msgid "All numbers: %(path)s"
+msgstr "Alle Nummern: %(path)s"
+
+#, python-format
+msgid "%(count)s number called"
+msgid_plural "%(count)s numbers called"
+msgstr[0] "%(count)s Nummer aufgerufen"
+msgstr[1] "%(count)s Nummern aufgerufen"
+
+#, python-format
+msgid "%(count)s number followed"
+msgid_plural "%(count)s numbers followed"
+msgstr[0] "%(count)s Nummer verfolgt"
+msgstr[1] "%(count)s Nummern verfolgt"

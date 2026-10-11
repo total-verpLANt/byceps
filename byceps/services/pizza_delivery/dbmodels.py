@@ -30,6 +30,7 @@ class DbPizzaDeliveryEntry(db.Model):
     status: Mapped[str] = mapped_column(db.UnicodeText, default=PizzaDeliveryStatus.PENDING)
     created_at: Mapped[datetime]
     updated_at: Mapped[datetime]
+    delivered_at: Mapped[datetime | None]
     created_by_id: Mapped[UserID] = mapped_column(
         db.Uuid, db.ForeignKey('users.id')
     )

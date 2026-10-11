@@ -1,0 +1,70 @@
+{% extends 'layout/base.html' %}
+{% from 'site/pizza_delivery/_pizza_macros.html' import claim_form, len_class, stamp with context %}
+{%- set current_page = 'pizza_delivery' %}
+{%- set page_title = _('My Pizza Delivery Status') %}
+
+{% block head %}
+{% include 'site/pizza_delivery/_bote_pizza_style.html' %}
+{%- endblock %}
+
+{% block body %}
+<div class="bote-page pizza-page">
+
+  <div class="page-folio">
+    <span class="pf-ressort">{{ _('Canteen · Pickup slip') }}</span>
+    <span>{{ _('The Rentenbote · Issue 36') }}</span>
+  </div>
+
+  <header class="page-head">
+    <h1 class="ph-title">{{ _('My <em>pickup slip</em>')|safe }}</h1>
+    <p class="ph-standfirst">{{ _('Follow your pizza numbers here. Once one is called, you will see it here, on the board and in your inbox.') }}</p>
+    <p class="ph-meta">
+      <span>{{ _('As of %(time)s', time=now|timeformat('HH:mm')) }}</span>
+      <a class="pz-link" href="{{ url_for('.board') }}">&larr; {{ _('Back to Board') }}</a>
+    </p>
+  </header>
+
+  {%- if not entries %}
+  <div class="pz-status pz-status--empty">
+    {{ claim_form(form_error, form_value, 'lead') }}
+  </div>
+  {%- else %}
+  <div class="pz-status">
+    <section>
+      <div class="pz-sec-h">
+        <h2>{{ _('Your numbers') }}</h2>
+        <span>{{ ngettext('%(count)s number followed', '%(count)s numbers followed', entries|length, count=entries|length) }}</span>
+      </div>
+      <ul class="pz-slips">
+        {%- for entry in entries %}
+        {%- set is_ready = entry.status == 'delivered' %}
+        <li>
+          <article class="coupon pz-slip pz-slip--{{ 'ready' if is_ready else 'wait' }} {{ len_class(entry.number) }}">
+            <span class="scissors" aria-hidden="true">&#9986;</span>
+            <p class="kicker">{{ _('Pickup slip · %(party)s', party=party.title) }}</p>
+            <p class="price pz-slip-no">{{ entry.number }}</p>
+            {#- A claim time is not stored; for a waiting entry the last change is the claim. #}
+            {%- if not is_ready %}
+            <p class="price-note">{{ _('Following since %(time)s', time=entry.updated_at|timeformat('HH:mm')) }}</p>
+            {%- endif %}
+            {{ stamp('ready' if is_ready else 'wait') }}
+            <p class="pz-slip-say">
+              {%- if is_ready -%}
+              {{ _('Called at %(time)s. Please pick it up at the food counter.', time=(entry.delivered_at or entry.updated_at)|timeformat('HH:mm')) }}
+              {%- else -%}
+              {{ _('Not called yet. We will let you know.') }}
+              {%- endif -%}
+            </p>
+          </article>
+        </li>
+        {%- endfor %}
+      </ul>
+    </section>
+    <aside>
+      {{ claim_form(form_error, form_value) }}
+    </aside>
+  </div>
+  {%- endif %}
+
+</div>
+{%- endblock %}

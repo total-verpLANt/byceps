@@ -27,3 +27,4 @@ class PizzaDeliveryEntry:
     created_at: datetime
     updated_at: datetime
     created_by_id: UserID
+    delivered_at: datetime | None = None

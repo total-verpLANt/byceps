@@ -40,9 +40,17 @@
     <h2 class="pizza-claim-title">{{ _('Claim a Pizza Number') }}</h2>
     <form method="post" action="{{ url_for('pizza_delivery.claim') }}">
       <div class="pizza-claim-input-group">
-        <input type="text" name="number" placeholder="{{ _('Pizza number') }}" maxlength="20" required class="pizza-claim-input">
+        <input type="text" name="number" placeholder="{{ _('Pizza number') }}" value="{{ form_value|default('')|upper }}" maxlength="20" required class="pizza-claim-input">
         <button type="submit" class="button pizza-claim-button">{{ _('Claim') }}</button>
       </div>
+      {%- if form_error|default(none) %}
+      <p class="pizza-claim-error" role="alert">
+        {%- if form_error == 'empty' %}{{ _('Please enter a pizza number.') }}
+        {%- elif form_error == 'too_long' %}{{ _('Pizza number is too long.') }}
+        {%- elif form_error == 'already_claimed' %}{{ _('Someone is already following this number. If it is yours, the orga team at the food counter will sort it out.') }}
+        {%- else %}{{ _('Pizza number not found.') }}{% endif -%}
+      </p>
+      {%- endif %}
     </form>
   </div>
 
@@ -193,6 +201,12 @@
     border-radius: 8px;
     color: #ffffff;
     font-size: 1rem;
+  }
+
+  .pizza-claim-error {
+    color: #f87171;
+    font-size: 0.9rem;
+    margin: 0.75rem 0 0 0;
   }
 
   .pizza-claim-input::placeholder {
