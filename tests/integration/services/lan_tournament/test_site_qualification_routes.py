@@ -275,6 +275,14 @@ def _play_all_draws(tournament, initiator):
             _confirm(match, ids, (1, 1), initiator)
 
 
+def _play_crossover_ties(tournament, initiator):
+    """Win each group by 1-0, so equal records tie across the groups."""
+    for matches in _groups_of(tournament).values():
+        for match, ids in matches:
+            low = min(ids, key=str)
+            _confirm(match, ids, (1, 0) if ids[0] == low else (0, 1), initiator)
+
+
 def _state(tournament):
     result = tournament_qualification_service.get_qualification(tournament.id)
     assert result.is_ok(), result.unwrap_err()
@@ -330,7 +338,9 @@ def _drawn_entries(tournament):
 
 
 def _decide_form(state, scope, **overrides):
-    block = next(b for b in state.blockers if b.scope == scope)
+    block = next(
+        b for b in (*state.blockers, *state.seeding_ties) if b.scope == scope
+    )
     form = {
         'scope': scope,
         'action': 'save',
@@ -529,18 +539,21 @@ def test_scoped_orga_can_decide_and_release(site_app, orga, make_tournament):
 
 def test_scoped_orga_decides_a_crossover_tie(site_app, orga, make_tournament):
     tournament = make_tournament.groups(participants=4, qualifiers_per_group=2)
-    for matches in _groups_of(tournament).values():
-        for match, ids in matches:
-            low = min(ids, key=str)
-            _confirm(match, ids, (1, 0) if ids[0] == low else (0, 1), orga)
+    _play_crossover_ties(tournament, orga)
     state = _state(tournament)
-    ties = [b for b in state.blockers if b.scope == 'crossover']
-    assert not state.ready
-    assert {b.scope for b in state.blockers} == {'crossover'}
+    ties = list(state.seeding_ties)
+    assert state.ready
+    assert not state.blockers
+    assert {b.scope for b in ties} == {'crossover'}
     assert len(ties) == 2
 
     with http_client(site_app, user_id=orga.id) as client:
         page = client.get(_url(tournament, '/qualification'))
+        early = client.post(
+            _url(tournament, '/qualification/release'),
+            data={'version': '1'},
+            headers=JSON,
+        )
         decided = [
             client.post(
                 _url(tournament, '/qualification/decisions'),
@@ -558,7 +571,16 @@ def test_scoped_orga_decides_a_crossover_tie(site_app, orga, make_tournament):
     html = page.get_data(as_text=True)
     assert page.status_code == 200
     assert html.count('data-qualification-decide') == 2
+    assert 'id="seeding-ties"' in html
+    assert 'Seeding needs attention' in html
+    assert html.count('data-blocker="seeding"') == 2
     assert 'Playoff seeding' in html
+    assert 'Order the equal seeds to open the release.' in html
+    assert 'Needs all group results final and no blocking tie.' not in html
+    assert '<span class="lt-seed-tag t-err">Blocked</span>' not in html
+    assert early.status_code == 422
+    assert _released_at(tournament) is None
+    assert not _phase_two(tournament)
     assert [r.status_code for r in decided] == [302, 302]
     stored = _decisions(tournament)['crossover']
     assert {b.contestant_ids for b in stored.blocks} == {
@@ -567,11 +589,17 @@ def test_scoped_orga_decides_a_crossover_tie(site_app, orga, make_tournament):
     assert {b.decided_by for b in stored.blocks} == {orga.id}
     state = _state(tournament)
     assert state.ready
+    assert not state.seeding_ties
     assert [q.contestant_id for q in state.seed_order] == [
         *reversed(ties[0].contestant_ids),
         *reversed(ties[1].contestant_ids),
     ]
-    assert 'data-decision="crossover"' in after.get_data(as_text=True)
+    after_html = after.get_data(as_text=True)
+    assert 'data-decision="crossover"' in after_html
+    assert 'id="seeding-ties"' not in after_html
+    assert 'Seeding needs attention' not in after_html
+    assert '/qualification/release' in after_html
+    assert 'data-lt-playoff-version' in after_html
 
 
 def test_decide_requires_a_reason(site_app, orga, make_tournament):
@@ -1104,6 +1132,43 @@ def test_orga_of_another_tournament_forbidden(site_app, orga, make_tournament):
             assert response.status_code == 403, suffix
 
     assert not _decisions(tournament)
+
+
+def test_seed_band_decision_is_refused_without_the_orga_role(
+    site_app, bystander, orga, make_tournament
+):
+    own = make_tournament.groups(participants=4, qualifiers_per_group=2)
+    foreign = make_tournament.groups(
+        participants=4, qualifiers_per_group=2, orga_user=None
+    )
+    for tournament in (own, foreign):
+        _play_crossover_ties(tournament, orga)
+        assert _state(tournament).seeding_ties
+    forged = {
+        t.id: _decide_form(_state(t), 'crossover', reason='Forged.')
+        for t in (own, foreign)
+    }
+
+    with http_client(site_app, user_id=bystander.id) as client:
+        for tournament in (own, foreign):
+            page = client.get(_url(tournament, '/qualification'))
+            post = client.post(
+                _url(tournament, '/qualification/decisions'),
+                data=forged[tournament.id],
+            )
+            assert page.status_code == 403
+            assert post.status_code == 403
+            assert b'seeding-ties' not in page.data
+    with http_client(site_app, user_id=orga.id) as client:
+        post = client.post(
+            _url(foreign, '/qualification/decisions'),
+            data=forged[foreign.id],
+        )
+        assert post.status_code == 403
+
+    for tournament in (own, foreign):
+        assert not _decisions(tournament)
+        assert _state(tournament).seeding_ties
 
 
 def test_anonymous_is_not_served(site_app, make_tournament):

@@ -59,7 +59,7 @@ def users(make_user):
 def make_tournament(party, users):
     created = []
 
-    def _make(*, participants=4, qualifiers_per_group=1):
+    def _make(*, participants=4, qualifiers_per_group=1, groups=2):
         result = tournament_service.create_tournament(
             PARTY_ID,
             f'Qualification Tournament {next(_counter)}',
@@ -69,7 +69,7 @@ def make_tournament(party, users):
             tournament_status=TournamentStatus.REGISTRATION_CLOSED,
             playoff_game_format=GameFormat.ONE_V_ONE,
             playoff_elimination_mode=EliminationMode.SINGLE_ELIMINATION,
-            playoff_group_count=2,
+            playoff_group_count=groups,
             playoff_qualifiers_per_group=qualifiers_per_group,
             playoff_release_mode=PlayoffReleaseMode.MANUAL,
         )
@@ -1071,7 +1071,7 @@ def _crossover_ties(tournament):
     state = tournament_qualification_service.get_qualification(
         tournament.id
     ).unwrap()
-    return state, [b for b in state.blockers if b.scope == 'crossover']
+    return state, list(state.seeding_ties)
 
 
 def _decide_crossover(tournament, ties, admin, *, reverse=False):
@@ -1087,7 +1087,7 @@ def _decide_crossover(tournament, ties, admin, *, reverse=False):
         assert result.is_ok(), result.unwrap_err()
 
 
-def test_equal_group_winners_block_until_the_orga_orders_them(
+def test_equal_group_winners_wait_for_the_orga_to_order_them(
     make_tournament, users
 ):
     tournament = make_tournament(qualifiers_per_group=2)
@@ -1096,28 +1096,29 @@ def test_equal_group_winners_block_until_the_orga_orders_them(
     state, ties = _crossover_ties(tournament)
 
     assert state.open_match_count == 0
-    assert not state.ready
+    assert state.ready
+    assert state.blockers == ()
     assert state.qualifiers is not None
     assert len(state.qualifiers) == 4
-    assert state.seed_order is None
+    assert len(state.seed_order) == 4
     assert state.crossover is not None
     assert [(t.rank_from, t.rank_to, t.kind.name) for t in ties] == [
         (1, 2, 'SEEDING'),
         (3, 4, 'SEEDING'),
     ]
-    assert {b.scope for b in state.blockers} == {'crossover'}
 
     _decide_crossover(tournament, ties[:1], users[0], reverse=True)
     state, ties_left = _crossover_ties(tournament)
-    assert not state.ready
+    assert state.ready
     assert len(ties_left) == 1
     assert ties_left[0].rank_from == 3
 
     _decide_crossover(tournament, ties_left, users[0], reverse=True)
-    state, _ = _crossover_ties(tournament)
+    state, ties_left = _crossover_ties(tournament)
 
     assert state.ready
     assert state.blockers == ()
+    assert ties_left == []
     expected = [
         *reversed(ties[0].contestant_ids),
         *reversed(ties[1].contestant_ids),
@@ -1125,6 +1126,176 @@ def test_equal_group_winners_block_until_the_orga_orders_them(
     assert [q.contestant_id for q in state.seed_order] == expected
     (first, _second) = _log_entries(tournament, 'qualification-tie-decided')
     assert first.data['scope'] == 'crossover'
+
+
+def test_equal_cross_group_records_qualify_but_leave_a_seeding_task(
+    make_tournament, users
+):
+    tournament = make_tournament(
+        participants=8, qualifiers_per_group=2, groups=4
+    )
+    _play_groups_by_margin(tournament, users[0], lambda group: 1)
+
+    state, ties = _crossover_ties(tournament)
+
+    assert state.open_match_count == 0
+    assert state.ready
+    assert state.blockers == ()
+    assert len(state.qualifiers) == 8
+    assert [(t.rank_from, t.rank_to, t.kind.name) for t in ties] == [
+        (1, 4, 'SEEDING'),
+        (5, 8, 'SEEDING'),
+    ]
+    assert len(state.seed_order) == 8
+    assert {q.contestant_id for q in state.seed_order} == {
+        q.contestant_id for q in state.qualifiers
+    }
+    # an open band keeps the order of the groups, winners before runners-up
+    assert [q.scope for q in state.seed_order] == [
+        f'group:{group}' for group in range(4)
+    ] * 2
+    assert [q.rank for q in state.seed_order] == [1] * 4 + [2] * 4
+
+
+def test_crossover_decision_clears_the_seeding_task(make_tournament, users):
+    tournament = make_tournament(
+        participants=8, qualifiers_per_group=2, groups=4
+    )
+    _play_groups_by_margin(tournament, users[0], lambda group: 1)
+    _, ties = _crossover_ties(tournament)
+    assert len(ties) == 2
+
+    _decide_crossover(tournament, ties, users[0], reverse=True)
+    state, ties_left = _crossover_ties(tournament)
+
+    assert state.ready
+    assert state.blockers == ()
+    assert state.seeding_ties == ()
+    assert ties_left == []
+    assert all(t.decided for t in state.crossover.ties)
+    expected = [
+        *reversed(ties[0].contestant_ids),
+        *reversed(ties[1].contestant_ids),
+    ]
+    assert [q.contestant_id for q in state.seed_order] == expected
+    entries = _log_entries(tournament, 'qualification-tie-decided')
+    assert {e.data['scope'] for e in entries} == {'crossover'}
+    bands = sorted((e.data['rank_from'], e.data['rank_to']) for e in entries)
+    assert bands == [(1, 4), (5, 8)]
+
+    withdrawn = tournament_qualification_service.withdraw_decision(
+        tournament.id,
+        'crossover',
+        contestant_ids=list(ties[0].contestant_ids),
+        reason='the orga takes the order back',
+        initiator_id=users[0].id,
+    )
+    assert withdrawn.is_ok(), withdrawn.unwrap_err()
+    state, reopened = _crossover_ties(tournament)
+
+    assert state.ready
+    assert [(t.rank_from, t.rank_to) for t in reopened] == [(1, 4)]
+
+
+def test_seeding_task_and_a_cut_tie_together_keep_ready_false(
+    make_tournament, users
+):
+    admin = users[0]
+    tournament = make_tournament(participants=8, qualifiers_per_group=2)
+    groups = _groups(tournament)
+    # group 0: A wins, B and C tie for the second place, across the cut
+    _play_named(
+        groups[0],
+        {
+            frozenset('AB'): {'A': 1, 'B': 0},
+            frozenset('AC'): {'A': 1, 'C': 0},
+            frozenset('AD'): {'A': 1, 'D': 0},
+            frozenset('BC'): {'B': 1, 'C': 1},
+            frozenset('BD'): {'B': 1, 'D': 0},
+            frozenset('CD'): {'C': 1, 'D': 0},
+        },
+        admin,
+    )
+    # group 1: a strict table whose winner has the same record as A
+    _play_named(
+        groups[1],
+        {
+            frozenset('AB'): {'A': 1, 'B': 0},
+            frozenset('AC'): {'A': 1, 'C': 0},
+            frozenset('AD'): {'A': 1, 'D': 0},
+            frozenset('BC'): {'B': 1, 'C': 0},
+            frozenset('BD'): {'B': 1, 'D': 0},
+            frozenset('CD'): {'C': 1, 'D': 0},
+        },
+        admin,
+    )
+
+    state, _ = _crossover_ties(tournament)
+
+    assert state.open_match_count == 0
+    assert not state.ready
+    assert state.qualifiers is None
+    assert [(b.scope, b.kind.name) for b in state.blockers] == [
+        ('group:0', 'CUT')
+    ]
+    assert state.seeding_ties == ()
+    refused = tournament_qualification_service.save_decision(
+        tournament.id,
+        'crossover',
+        [q.contestant_id for q in state.rankings[0].entries[:2]],
+        reason='too early',
+        initiator_id=admin.id,
+    )
+    assert refused.is_err()
+
+    cut = state.blockers[0]
+    decided = tournament_qualification_service.save_decision(
+        tournament.id,
+        'group:0',
+        list(cut.contestant_ids),
+        reason='coin toss by the orga',
+        initiator_id=admin.id,
+    )
+    assert decided.is_ok(), decided.unwrap_err()
+    state, ties = _crossover_ties(tournament)
+
+    assert state.ready
+    assert state.blockers == ()
+    assert len(state.qualifiers) == 4
+    assert [(t.rank_from, t.rank_to) for t in ties] == [(1, 2)]
+
+
+def test_seed_order_is_reproducible_for_the_same_decisions(
+    make_tournament, users, monkeypatch
+):
+    tournament = make_tournament(qualifiers_per_group=2)
+    _play_groups_by_margin(tournament, users[0], lambda group: 1)
+
+    def seed_ids():
+        state, _ = _crossover_ties(tournament)
+        return [q.contestant_id for q in state.seed_order]
+
+    def seed_ids_when_matches_are_fetched_backwards():
+        fetch = tournament_repository.get_matches_for_tournament
+        with monkeypatch.context() as patched:
+            patched.setattr(
+                tournament_repository,
+                'get_matches_for_tournament',
+                lambda tournament_id: list(reversed(fetch(tournament_id))),
+            )
+            return seed_ids()
+
+    open_band = seed_ids()
+    assert seed_ids() == open_band
+    assert seed_ids_when_matches_are_fetched_backwards() == open_band
+
+    _, ties = _crossover_ties(tournament)
+    _decide_crossover(tournament, ties, users[0], reverse=True)
+    decided = seed_ids()
+
+    assert decided != open_band
+    assert seed_ids() == decided
+    assert seed_ids_when_matches_are_fetched_backwards() == decided
 
 
 def test_distinct_group_margins_seed_without_a_decision(make_tournament, users):
@@ -1136,6 +1307,7 @@ def test_distinct_group_margins_seed_without_a_decision(make_tournament, users):
     assert state.ready
     assert ties == []
     assert state.blockers == ()
+    assert state.seeding_ties == ()
     scopes = [q.scope for q in state.seed_order]
     # the bigger margin leads the winners, the smaller one the runners-up
     assert scopes == ['group:1', 'group:0', 'group:0', 'group:1']
@@ -1152,6 +1324,7 @@ def test_exactly_two_qualifiers_need_no_crossover_decision(
 
     assert state.ready
     assert ties == []
+    assert state.seeding_ties == ()
     assert state.crossover is None
     assert len(state.seed_order) == 2
     refused = tournament_qualification_service.save_decision(

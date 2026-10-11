@@ -128,6 +128,7 @@ ERR_PLAYOFF_LOCKED = (
     'The playoff seeding is locked once a playoff match has a result.'
 )
 ERR_PLAYOFF_NOT_READY = 'The qualification is not ready yet.'
+ERR_PLAYOFF_SEEDING_OPEN = 'The playoff seeding is not decided yet.'
 ERR_FFA_NOT_RUNNING = (
     'A round can only be seeded while the tournament is running.'
 )
@@ -252,6 +253,8 @@ class SeedingBoard:
     the contestants of a lone losers pool, who get no lobby.
     `prefilled` is set when a playoff draft still has the seed order and
     the tiers the qualification prefilled.
+    `seed_band_ties` are the open cross-group seed bands of the playoff
+    target; they gate the release, not the layout.
     """
 
     tournament_id: TournamentID
@@ -285,6 +288,7 @@ class SeedingBoard:
     notices: tuple[str, ...] = ()
     notice_params: tuple[Mapping[str, Any], ...] = ()
     prefilled: bool = False
+    seed_band_ties: tuple[qualification_domain.TieBlock, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -774,6 +778,9 @@ def _generate_locked(
         window = _check_playoff_window(view, require_released)
         if window.is_err():
             return Err(window.unwrap_err())
+        decided = _check_seeding_decided(tournament_id)
+        if decided.is_err():
+            return Err(decided.unwrap_err())
     elif ffa_round is not None:
         window = _check_ffa_window(view)
         if window.is_err():
@@ -1407,26 +1414,29 @@ def _phase_two_progress(tournament_id: TournamentID) -> 'PhaseTwoProgress':
     )
 
 
-def _qualifiers(
-    tournament: Tournament,
-) -> Result[tuple[qualification_domain.Qualifier, ...], str]:
-    """Return the qualifiers in seed order, once the qualification is ready."""
-    from . import tournament_qualification_service
-
-    state_result = tournament_qualification_service.get_qualification(
-        tournament.id
-    )
-    if state_result.is_err():
-        return Err(state_result.unwrap_err())
-    return _ready_qualifiers(state_result.unwrap())
-
-
 def _ready_qualifiers(
     state: 'QualificationState',
 ) -> Result[tuple[qualification_domain.Qualifier, ...], str]:
     if not state.ready or state.seed_order is None:
         return Err(ERR_PLAYOFF_NOT_READY)
     return Ok(state.seed_order)
+
+
+def _check_seeding_decided(tournament_id: TournamentID) -> Result[None, str]:
+    """Refuse while a seed band of the qualification is still open.
+
+    Reads only: it takes no lock and writes nothing.
+    """
+    from . import tournament_qualification_service
+
+    state_result = tournament_qualification_service.get_qualification(
+        tournament_id
+    )
+    if state_result.is_err():
+        return Err(state_result.unwrap_err())
+    if state_result.unwrap().seeding_ties:
+        return Err(ERR_PLAYOFF_SEEDING_OPEN)
+    return Ok(None)
 
 
 def _playoff_roster(
@@ -1485,15 +1495,29 @@ class _TargetView:
         )
 
     @cached_property
+    def qualification(self) -> 'Result[QualificationState, str] | None':
+        """The qualification of the playoff target, else `None`."""
+        if self.target != PLAYOFF_TARGET:
+            return None
+        if self._qualification is not None:
+            return Ok(self._qualification)
+        from . import tournament_qualification_service
+
+        return tournament_qualification_service.get_qualification(
+            self.tournament.id
+        )
+
+    @cached_property
     def qualifiers(
         self,
     ) -> Result[tuple[qualification_domain.Qualifier, ...], str] | None:
         """The qualifiers of the playoff target, else `None`."""
-        if self.target != PLAYOFF_TARGET:
+        state_result = self.qualification
+        if state_result is None:
             return None
-        if self._qualification is not None:
-            return _ready_qualifiers(self._qualification)
-        return _qualifiers(self.tournament)
+        if state_result.is_err():
+            return Err(state_result.unwrap_err())
+        return _ready_qualifiers(state_result.unwrap())
 
     @cached_property
     def roster(self) -> Result[_Roster, str]:
@@ -2212,8 +2236,19 @@ def _board(
             notices=tuple(msgid for msgid, _ in notices),
             notice_params=tuple(params for _, params in notices),
             prefilled=_is_prefilled(state, seeding),
+            seed_band_ties=_seed_band_ties(view),
         )
     )
+
+
+def _seed_band_ties(
+    view: _TargetView,
+) -> tuple[qualification_domain.TieBlock, ...]:
+    """Return the open seed bands the playoff board announces."""
+    state_result = view.qualification
+    if state_result is None or state_result.is_err():
+        return ()
+    return state_result.unwrap().seeding_ties
 
 
 def _small_lobby_notices(

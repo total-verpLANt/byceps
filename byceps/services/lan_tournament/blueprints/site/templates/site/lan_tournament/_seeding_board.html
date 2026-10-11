@@ -190,6 +190,21 @@
     {% endcall %}
     {%- endif %}
 
+    {%- set seed_bands = board.get('seed_band_ties') or [] %}
+    {%- if board.target == 'playoff' and seed_bands %}
+    {% call notice('warn', _('Seeding needs attention')) %}
+    <div class="lt-seed-ntb" data-seed-band-notice>
+      <p>{{ _('All qualifiers are known, but the playoff seeding contains equal seeds.') }}</p>
+      <ul>
+        {%- for tie in seed_bands %}
+        <li>{{ _('Places %(range)s are equal on every criterion.', range=tie.places) }} {{ tie.contestants|map(attribute='name')|join(', ') }}</li>
+        {%- endfor %}
+      </ul>
+      <p><a href="{{ url_for('.orga_qualification', tournament_id=tournament.id) }}#seeding-ties">{{ _('Order the equal seeds to open the release.') }}</a></p>
+    </div>
+    {% endcall %}
+    {%- endif %}
+
     {%- for text in board.get('notices', []) %}
     {{ notice('warn', text) }}
     {%- endfor %}

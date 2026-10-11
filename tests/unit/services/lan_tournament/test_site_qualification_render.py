@@ -64,6 +64,7 @@ STRINGS = {
     'scope_leaderboard': 'Leaderboard',
     'scope_winner': 'Tournament win',
     'scope_group': 'Group %(letter)s',
+    'scope_crossover': 'Playoff seeding',
 }
 _SUBNAV_STUB = (
     "{% macro render_tournament_subnav(tournament, active_tab='') %}"
@@ -1770,3 +1771,180 @@ def test_blocking_tie_sentence_has_no_appended_names(template):
     html = template.render(_context(_tied_payload()))
 
     assert re.search(r'equal on every criterion\.\s*</p>', html)
+
+
+# -------------------------------------------------------------------- #
+# seeding needs attention
+
+
+def _seeding_state(*, blockers=(), ready=True, **kwargs):
+    band = _tie('crossover', ('a', 'c'), domain.TieKind.SEEDING, rank_from=2)
+    return dataclasses.replace(
+        _state(
+            rankings=[_group('group:0', 'ab'), _group('group:1', 'cd')],
+            blockers=blockers,
+            ready=ready,
+            qualifiers=(_qualifier('a', 'group:0', 1),),
+            **kwargs,
+        ),
+        seeding_ties=(band,),
+    )
+
+
+def _seeding_payload(**kwargs):
+    return _payload(_seeding_state(**kwargs))
+
+
+def _seeding_section(html):
+    start = html.index('id="seeding-ties"')
+    return html[start : html.index('class="lt-qual-chain"', start)]
+
+
+def test_open_seed_band_renders_the_section_the_anchor_and_the_form(template):
+    html = template.render(_context(_seeding_payload()))
+
+    section = _seeding_section(html)
+    assert html.count('id="seeding-ties"') == 1
+    assert 'Seeding needs attention' in section
+    assert (
+        'All qualifiers are known, but the playoff seeding contains equal'
+        ' seeds.'
+    ) in section
+    assert 'SEEDING TEXT' in section
+    assert 'data-blocker="seeding"' in section
+    assert 'Playoff seeding: Places 2–3 are equal on every criterion.' in (
+        ' '.join(section.split())
+    )
+    form = re.search(
+        r'<form[^>]*data-qualification-decide[^>]*>.*?</form>', section, re.S
+    ).group(0)
+    assert 'action="/orga_qualification_decide"' in form
+    assert 'name="scope" value="crossover"' in form
+    assert 'name="action" value="save"' in form
+    assert form.count('<select name="order"') == 2
+    assert re.search(r'<textarea[^>]* name="reason"[^>]* required', form)
+    assert html.count('data-qualification-decide') == 1
+
+
+def test_seed_band_alone_is_no_blocker(template):
+    html = template.render(_context(_seeding_payload()))
+
+    assert 'Blocked' not in html
+    assert 'lt-seed-tag t-err' not in html
+    assert 'Tie · decision needed' not in html
+    panel = _panel(html)
+    assert 'Ties needing an orga decision: 0' in panel
+    rows = re.findall(r'<li><span class="lt-seed-ckt">.*?</li>', panel, re.S)
+    states = [re.search(r'lt-seed-ckm (m-\w+)', row).group(1) for row in rows]
+    assert states == ['m-ok', 'm-ok', 'm-mute']
+
+
+def test_seed_band_disables_the_release_and_says_why(template):
+    html = template.render(_context(_seeding_payload()))
+
+    panel = _panel(html)
+    assert '<button type="button" class="button" disabled>' in panel
+    assert 'Release playoffs' in panel
+    assert 'Order the equal seeds to open the release.' in panel
+    assert 'lt-seed-pill p-warn' in panel
+    assert 'Seeding needs attention' in panel
+    assert '✓</i>Ready' not in panel
+    assert 'Needs all group results final and no blocking tie.' not in html
+    assert 'no blocking tie' not in html
+    assert 'action="/orga_qualification_release"' not in html
+    assert 'data-lt-draft-create' not in html
+
+
+def test_seed_band_withholds_the_release_form_despite_a_stored_draft(template):
+    html = template.render(
+        _context(
+            _seeding_payload(), playoff_version=4, playoff_release_open=True
+        )
+    )
+
+    assert 'action="/orga_qualification_release"' not in html
+    assert 'name="version"' not in html
+    assert 'Order the equal seeds to open the release.' in _panel(html)
+
+
+def test_automatic_release_waits_for_the_seed_band(template):
+    html = template.render(
+        _context(_seeding_payload(mode=PlayoffReleaseMode.AUTOMATIC))
+    )
+
+    panel = _panel(html)
+    assert 'Order the equal seeds to open the release.' in panel
+    assert 'No button needed' not in panel
+    assert 'disabled' not in panel
+
+
+def test_suspended_automatic_release_keeps_the_disabled_button(template):
+    html = template.render(
+        _context(
+            _seeding_payload(mode=PlayoffReleaseMode.AUTOMATIC, suspended=True)
+        )
+    )
+
+    panel = _panel(html)
+    assert 'Automatic release suspended.' in panel
+    assert '<button type="button" class="button" disabled>' in panel
+    assert 'Order the equal seeds to open the release.' in panel
+
+
+@pytest.mark.parametrize('status', ['COMPLETED', 'CANCELLED'])
+def test_seed_band_offers_no_form_in_a_terminal_tournament(template, status):
+    html = template.render(
+        _context(_seeding_payload(), tournament=_page_tournament(status))
+    )
+
+    section = _seeding_section(html)
+    assert 'id="seeding-ties"' in html
+    assert 'data-qualification-decide' not in html
+    assert 'name="order"' not in html
+    assert 'value="save"' not in html
+    assert 'lt-seed-why' in section
+
+
+def test_cut_tie_blocker_stays_blocked_beside_a_seed_band(template):
+    cut = _tie('group:0', ('a', 'b'), domain.TieKind.CUT)
+    payload = _seeding_payload(blockers=[cut], ready=False)
+
+    html = template.render(_context(payload))
+
+    assert 'data-blocker="cut"' in html
+    assert 'data-blocker="seeding"' in html
+    assert html.count('data-qualification-decide') == 2
+    assert '<span class="lt-seed-tag t-err">Blocked</span>' in html
+    panel = _panel(html)
+    assert 'Ties needing an orga decision: 1' in panel
+    assert '<i aria-hidden="true">✕</i>Blocked' in panel
+    assert 'lt-seed-pill p-warn' not in panel
+    assert 'Needs all group results final and no blocking tie.' in panel
+
+
+def test_decided_band_leaves_no_section_and_offers_the_release(template):
+    state = dataclasses.replace(_seeding_state(), seeding_ties=())
+
+    html = template.render(
+        _context(_payload(state), playoff_version=4, playoff_release_open=True)
+    )
+
+    assert 'id="seeding-ties"' not in html
+    assert 'Seeding needs attention' not in html
+    assert 'action="/orga_qualification_release"' in html
+    assert '✓</i>Ready' in _panel(html)
+
+
+@pytest.mark.parametrize('make_payload', [_ready_payload, _blocked_payload])
+def test_payload_without_the_seeding_keys_renders_unchanged(
+    template, make_payload
+):
+    payload = make_payload()
+    del payload['seeding_ties']
+    del payload['seeding_open']
+
+    html = template.render(_context(payload))
+
+    assert 'id="seeding-ties"' not in html
+    assert 'Seeding needs attention' not in html
+    assert 'lt-seed-pill p-warn' not in html

@@ -340,6 +340,8 @@ def test_removal_settling_last_match_preserves_unresolved_crossover_tie(
 ):
     """Settling all matches is not enough when playoff seeds still tie."""
     admin = users[0]
+    # The automatic mode only waits; the manual mode opens the draft already.
+    draft_expected = mode is PlayoffReleaseMode.MANUAL
     tournament = _make_groups_tournament(make_tournament, users, mode)
     open_match, weakest = _open_match_with_weakest(tournament, group=1)
     for match in _group_matches(tournament):
@@ -362,9 +364,10 @@ def test_removal_settling_last_match_preserves_unresolved_crossover_tie(
         tournament.id
     ).unwrap()
     assert state.open_match_count == 0
-    assert not state.ready
-    assert state.seed_order is None
-    (tie,) = state.blockers
+    assert state.ready
+    assert state.blockers == ()
+    assert state.seed_order is not None
+    (tie,) = state.seeding_ties
     assert tie.scope == 'crossover'
     assert tie.kind is TieKind.SEEDING
     assert not tie.decided
@@ -375,7 +378,7 @@ def test_removal_settling_last_match_preserves_unresolved_crossover_tie(
         == (3, 9, 6, 0)
         for entry in winners
     )
-    assert not _has_draft(tournament)
+    assert _has_draft(tournament) is draft_expected
     assert not _released(tournament)
     assert not any(
         match.phase == 2
@@ -386,7 +389,7 @@ def test_removal_settling_last_match_preserves_unresolved_crossover_tie(
     )
     assert retried.is_ok(), retried.unwrap_err()
     assert retried.unwrap() is False
-    assert not _has_draft(tournament)
+    assert _has_draft(tournament) is draft_expected
     assert not _released(tournament)
 
 

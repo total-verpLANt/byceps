@@ -592,11 +592,14 @@ def test_admin_decides_a_crossover_tie(client, admin, make_tournament):
         for match, ids in matches:
             low = min(ids, key=str)
             _confirm(match, ids, (1, 0) if ids[0] == low else (0, 1), admin)
-    ties = [b for b in _state(tournament).blockers if b.scope == 'crossover']
+    state = _state(tournament)
+    ties = [t for t in state.seeding_ties if t.scope == 'crossover']
     assert len(ties) == 2
+    assert state.ready
+    assert not state.blockers
 
     page = client.get(_url(tournament, '/qualification'))
-    saved = client.post(
+    first = client.post(
         _url(tournament, '/qualification/decisions'),
         data={
             'scope': 'crossover',
@@ -609,15 +612,45 @@ def test_admin_decides_a_crossover_tie(client, admin, make_tournament):
 
     html = page.get_data(as_text=True)
     assert page.status_code == 200
+    assert 'id="seeding-ties"' in html
+    assert 'Seeding needs attention' in html
     assert html.count('data-blocker="seeding"') == 2
     assert 'Playoff seeding' in html
-    assert saved.status_code == 200
-    (decision,) = saved.get_json()['qualification']['decisions']
+    assert 'Blocked' not in html
+    assert 'data-blocker="cut"' not in html
+    assert first.status_code == 200
+    payload = first.get_json()['qualification']
+    (decision,) = payload['decisions']
     assert decision['scope'] == 'crossover'
     assert decision['scope_label'] == 'Playoff seeding'
     assert decision['status'] == 'applied'
     assert decision['places'] == '1\u20132'
-    assert not _state(tournament).ready
+    assert payload['seeding_open'] is True
+    assert [t['places'] for t in payload['seeding_ties']] == ['3\u20134']
+    assert payload['blockers'] == []
+    assert _state(tournament).ready
+    assert len(_state(tournament).seeding_ties) == 1
+
+    second = client.post(
+        _url(tournament, '/qualification/decisions'),
+        data={
+            'scope': 'crossover',
+            'action': 'save',
+            'reason': 'Seeded by the orga, too.',
+            'order': list(ties[1].contestant_ids),
+        },
+        headers=JSON,
+    )
+
+    assert second.status_code == 200
+    payload = second.get_json()['qualification']
+    assert payload['seeding_ties'] == []
+    assert payload['seeding_open'] is False
+    assert len(payload['decisions']) == 2
+    assert _state(tournament).ready
+    assert _state(tournament).seeding_ties == ()
+    cleared = client.get(_url(tournament, '/qualification'))
+    assert 'seeding-ties' not in cleared.get_data(as_text=True)
 
 
 def test_withdraw_without_reason_is_refused(client, admin, make_tournament):

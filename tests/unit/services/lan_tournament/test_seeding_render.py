@@ -19,6 +19,10 @@ from byceps.services.lan_tournament import (
 )
 from byceps.services.lan_tournament.models.bracket import Bracket
 from byceps.services.lan_tournament.models.seeding import SeedingFormat
+from byceps.services.lan_tournament.tournament_qualification_domain_service import (
+    TieBlock,
+    TieKind,
+)
 from byceps.services.lan_tournament.tournament_match_service import (
     UndersizedPool,
 )
@@ -1666,3 +1670,120 @@ def test_playoff_format_line_starts_with_playoffs(env, site_env):
         assert 'Playoffs · Single knockout · 8 Players' in html
     for html in _surfaces(env, site_env, _board()):
         assert 'Playoffs · ' not in _markup(html)
+
+
+def _seed_band(*ids, rank_from=1, decided=False):
+    return TieBlock(
+        scope='crossover',
+        contestant_ids=ids,
+        rank_from=rank_from,
+        rank_to=rank_from + len(ids) - 1,
+        decided=decided,
+        kind=TieKind.SEEDING,
+    )
+
+
+_TWO_BANDS = (
+    _seed_band('c00', 'c01'),
+    _seed_band('c02', 'c03', rank_from=3),
+)
+
+
+def _seed_band_surfaces(env, site_env, board, **kwargs):
+    """Return each orga surface with the link it must offer."""
+    return (
+        (_render(env, board, **kwargs), '/qualification#seeding-ties'),
+        (
+            _render_site(site_env, board, name='site', **kwargs),
+            '/orga_qualification#seeding-ties',
+        ),
+        (
+            _render_site(site_env, board, name='bote', **kwargs),
+            '/orga_qualification#seeding-ties',
+        ),
+    )
+
+
+def test_payload_lists_the_open_seed_bands_and_always_has_the_key():
+    banded = _playoff_board(
+        seed_band_ties=_TWO_BANDS
+    )
+
+    first, second = _payload(banded)['seed_band_ties']
+
+    assert first['scope'] == 'crossover'
+    assert first['kind'] == 'seeding'
+    assert first['decided'] is False
+    assert first['places'] == '1\u20132'
+    assert first['rank_from'] == 1
+    assert [c['name'] for c in first['contestants']] == [
+        'Player 00',
+        'Player 01',
+    ]
+    assert second['places'] == '3\u20134'
+    assert _payload(_playoff_board())['seed_band_ties'] == []
+
+
+def test_a_board_built_without_the_field_has_no_seed_bands():
+    assert _board().seed_band_ties == ()
+
+
+def test_playoff_board_announces_open_seed_bands(env, site_env):
+    board = _playoff_board(
+        seed_band_ties=_TWO_BANDS
+    )
+
+    for html, link in _seed_band_surfaces(env, site_env, board):
+        markup = _markup(html)
+        banner = markup[markup.index('data-lt-seed-banners') :]
+        assert 'Seeding needs attention' in banner
+        assert (
+            'All qualifiers are known, but the playoff seeding contains equal'
+            ' seeds.' in banner
+        )
+        assert (
+            'Places 1\u20132 are equal on every criterion.'
+            ' Player 00, Player 01' in banner
+        )
+        assert (
+            'Places 3\u20134 are equal on every criterion.'
+            ' Player 02, Player 03' in banner
+        )
+        assert (
+            f'<a href="{link}">Order the equal seeds to open the release.</a>'
+            in banner
+        )
+        assert 'data-seed-band-notice' in banner
+        assert '%(' not in markup
+
+
+@pytest.mark.parametrize('target', ['initial', 'ffa:SE:1'])
+def test_non_playoff_boards_never_announce_seed_bands(env, site_env, target):
+    board = dataclasses.replace(
+        _board(FFA, 8, param=4, target=target),
+        seed_band_ties=(_seed_band('c00', 'c01'),),
+    )
+
+    assert _payload(board)['seed_band_ties']
+    for html, _ in _seed_band_surfaces(env, site_env, board):
+        assert 'Seeding needs attention' not in html
+        assert 'data-seed-band-notice' not in html
+
+
+def test_playoff_board_without_seed_bands_has_no_notice(env, site_env):
+    for html, _ in _seed_band_surfaces(env, site_env, _playoff_board()):
+        assert 'Seeding needs attention' not in html
+        assert 'data-seed-band-notice' not in html
+        assert 'seeding-ties' not in _markup(html)
+
+
+def test_payload_without_the_seed_band_key_still_renders(env, site_env):
+    board = _playoff_board(seed_band_ties=(_seed_band('c00', 'c01'),))
+
+    pages = _seed_band_surfaces(
+        env, site_env, board, drop=('seed_band_ties',)
+    )
+
+    for html, _ in pages:
+        assert 'data-lt-seed-board' in html
+        assert 'Seeding needs attention' not in html

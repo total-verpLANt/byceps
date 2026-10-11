@@ -92,6 +92,9 @@
 {%- set is_leaderboard = q.source == 'leaderboard' %}
 {%- set has_release = q.source in ['groups', 'leaderboard'] %}
 {%- set open_blockers = q.blockers|rejectattr('decided')|list %}
+{#- Equal seeds are no blocker: they gate the release only. #}
+{%- set seeding_ties = q.get('seeding_ties') or [] %}
+{%- set seeding_open = q.ready and q.get('seeding_open') %}
 {%- set tag_kind = {'qualified': 'ok', 'out': 'mute', 'tie': 'warn', 'open': 'info'} %}
 {%- set closed_row = audit_rows|selectattr('event_type', 'equalto', 'qualification-leaderboard-closed')|first|default(none) %}
 {%- set closed_when = when(closed_row.occurred_at) if closed_row else none %}
@@ -190,6 +193,28 @@
   </div>
   {% endcall %}
   {%- endfor %}
+
+  {%- if seeding_ties %}
+  <div id="seeding-ties" class="lt-qual-seeding" data-seeding-ties>
+    {%- call notice('warn', _('Seeding needs attention'), 'lt-qual-seeding-head') %}
+    <div class="lt-seed-ntb">
+      <p>{{ _('All qualifiers are known, but the playoff seeding contains equal seeds.') }}</p>
+    </div>
+    {%- endcall %}
+    {%- for tie in seeding_ties %}
+    {% call notice('warn', tie.text, 'lt-qual-tie') %}
+    <div class="lt-seed-ntb" data-blocker="seeding">
+      <p>{{ tie.scope_label }}: {{ _('Places %(range)s are equal on every criterion.', range=tie.places) }}</p>
+      {%- if decisions_locked %}
+      <p class="lt-seed-why">{{ locked_text }}</p>
+      {%- else %}
+      {{ decision_form(tie) }}
+      {%- endif %}
+    </div>
+    {% endcall %}
+    {%- endfor %}
+  </div>
+  {%- endif %}
 
   {%- for decision in q.decisions %}
   {%- set outdated = decision.status == 'outdated' %}
@@ -305,6 +330,7 @@
         <header class="lt-seed-ph">
           <h3>{{ _('Release & generation') }}</h3>
           {%- if release.released %}<span class="lt-seed-pill p-ok"><i aria-hidden="true">✓</i>{{ _('Released') }}</span>
+          {%- elif seeding_open %}<span class="lt-seed-pill p-warn"><i aria-hidden="true">{{ glyph('warn') }}</i>{{ _('Seeding needs attention') }}</span>
           {%- elif q.ready %}<span class="lt-seed-pill p-ok"><i aria-hidden="true">✓</i>{{ _('Ready') }}</span>
           {%- else %}<span class="lt-seed-pill p-info"><i aria-hidden="true">i</i>{{ _('Waiting') }}</span>{% endif %}
         </header>
@@ -357,6 +383,14 @@
           <button type="submit" class="button color-primary">{{ _('Close qualification') }}</button>
         </form>
         {%- elif release.released %}
+        {%- elif seeding_open %}
+          {%- if release.mode == 'AUTOMATIC' and release.auto_suspended %}
+        {% call notice('warn', _('Automatic release suspended. Release the playoffs manually.')) %}{% endcall %}
+          {%- endif %}
+          {%- if release.mode != 'AUTOMATIC' or release.auto_suspended %}
+        <p class="lt-seed-row"><button type="button" class="button" disabled>{{ _('Release playoffs') }}</button></p>
+          {%- endif %}
+        <p class="lt-seed-why">{{ _('Order the equal seeds to open the release.') }}</p>
         {%- elif release.mode == 'AUTOMATIC' and not release.auto_suspended %}
         <p class="lt-seed-small">{{ _('No button needed: the system releases the playoffs as soon as both rows above show “Settled” and “Free”.') }}</p>
         {%- else %}

@@ -15,6 +15,7 @@ from byceps.services.lan_tournament import (
     signals,
     tournament_match_service,
     tournament_qualification_domain_service as qualification_domain,
+    tournament_qualification_repository,
     tournament_qualification_service,
     tournament_repository,
     tournament_score_service,
@@ -439,11 +440,16 @@ def test_automatic_release_waits_for_a_crossover_decision(
 
     state = _qualification(tournament)
 
-    assert not state.ready
-    assert {b.scope for b in state.blockers} == {'crossover'}
+    assert state.ready
+    assert state.blockers == ()
+    assert {tie.scope for tie in state.seeding_ties} == {'crossover'}
     assert not _phase_two(tournament)
     assert _committed_release(tournament).playoff_released_at is None
-    first, second = state.blockers
+    retried = tournament_qualification_service.try_auto_release(
+        tournament.id, triggered_by=users[0].id
+    )
+    assert retried.unwrap() is False
+    first, second = state.seeding_ties
     tournament_qualification_service.save_decision(
         tournament.id,
         'crossover',
@@ -451,7 +457,9 @@ def test_automatic_release_waits_for_a_crossover_decision(
         reason='seeded by the orga',
         initiator_id=users[0].id,
     ).unwrap()
+    assert len(_qualification(tournament).seeding_ties) == 1
     assert not _phase_two(tournament)
+    assert _committed_release(tournament).playoff_released_at is None
 
     tournament_qualification_service.save_decision(
         tournament.id,
@@ -465,6 +473,248 @@ def test_automatic_release_waits_for_a_crossover_decision(
     assert _committed_release(tournament).playoff_released_at is not None
     (entry,) = _log_entries(tournament, 'playoffs-released')
     assert entry.data['mode'] == 'automatic'
+
+
+def _play_equal_records(tournament, admin):
+    """Play every group match 1-0, the lower ID winning.
+
+    The groups end with equal records, so the winners of the groups tie
+    for the top seeds, and so do the runners-up for the next ones.
+    """
+    for matches in _groups(tournament).values():
+        for match, ids in matches:
+            low, _ = sorted(ids, key=str)
+            _confirm(match, ids, (1, 0) if ids[0] == low else (0, 1), admin)
+
+
+def _open_seed_bands(make_tournament, users):
+    """Return a tournament that qualified with two seed bands left open."""
+    tournament = make_tournament(participants=4, qualifiers_per_group=2)
+    _play_equal_records(tournament, users[0])
+    state = _qualification(tournament)
+    assert state.ready
+    assert state.blockers == ()
+    assert len(state.seeding_ties) == 2
+    return tournament
+
+
+def _decide_seed_band(tournament, tie, admin):
+    """Order the contestants of a seed band against their default order."""
+    tournament_qualification_service.save_decision(
+        tournament.id,
+        'crossover',
+        list(reversed(tie.contestant_ids)),
+        reason='seeded by the orga',
+        initiator_id=admin.id,
+    ).unwrap()
+
+
+def _first_round_seed_pairs(tournament):
+    """Return the seeds that meet in round 1 of phase 2, in bracket order."""
+    seeds = {
+        q.contestant_id: seed
+        for seed, q in enumerate(_qualification(tournament).seed_order, 1)
+    }
+    contestants = tournament_repository.get_contestants_for_tournament(
+        tournament.id
+    )
+    first_round = sorted(
+        (m for m in _phase_two(tournament) if m.round == 0),
+        key=lambda m: m.match_order,
+    )
+    return [
+        tuple(sorted(seeds[str(c.participant_id)] for c in contestants[m.id]))
+        for m in first_round
+    ]
+
+
+def _phase_two_slots(tournament):
+    """Return the participants of each phase-2 match, by bracket slot."""
+    contestants = tournament_repository.get_contestants_for_tournament(
+        tournament.id
+    )
+    return {
+        (m.bracket, m.round, m.match_order): {
+            str(c.participant_id) for c in contestants.get(m.id, ())
+        }
+        for m in _phase_two(tournament)
+    }
+
+
+def test_release_is_refused_while_a_seed_band_is_open(make_tournament, users):
+    tournament = _open_seed_bands(make_tournament, users)
+
+    result = _release(tournament, users[0])
+
+    assert result.is_err()
+    assert (
+        result.unwrap_err()
+        == tournament_seeding_service.ERR_PLAYOFF_SEEDING_OPEN
+    )
+    assert not _phase_two(tournament)
+    assert _committed_release(tournament).playoff_released_at is None
+    assert not _log_entries(tournament, 'playoffs-released')
+    assert len(_qualification(tournament).seeding_ties) == 2
+
+
+def test_playoff_generation_is_refused_while_a_seed_band_is_open(
+    make_tournament, users
+):
+    tournament = _open_seed_bands(make_tournament, users)
+
+    board = tournament_seeding_service.ensure_playoff_draft(tournament.id)
+
+    assert board.is_ok(), board.unwrap_err()
+    draft = board.unwrap()
+    assert draft.state.seed_list == tuple(
+        q.contestant_id for q in _qualification(tournament).seed_order
+    )
+    tournament_repository.lock_tournament_for_update(tournament.id)
+    staged = tournament_seeding_service.stage_generation(
+        tournament.id,
+        'playoff',
+        expected_version=draft.version,
+        initiator_id=users[0].id,
+    )
+    created = _phase_two(tournament)
+    tournament_repository.rollback_session()
+
+    assert staged.is_err()
+    assert (
+        staged.unwrap_err()
+        == tournament_seeding_service.ERR_PLAYOFF_SEEDING_OPEN
+    )
+    assert not created
+    assert tournament_seeding_service.ensure_playoff_draft(
+        tournament.id
+    ).is_ok()
+
+
+def test_playoff_regeneration_is_refused_when_a_seed_band_reopens(
+    make_tournament, users
+):
+    admin = users[0]
+    tournament = _open_seed_bands(make_tournament, users)
+    for tie in _qualification(tournament).seeding_ties:
+        _decide_seed_band(tournament, tie, admin)
+    assert _release(tournament, admin).is_ok()
+    seeding = tournament_seeding_repository.find_seeding(
+        tournament.id, 'playoff'
+    )
+    edited = _apply_playoff(
+        tournament,
+        tournament_seeding_service.Swap(0, 1),
+        seeding.version,
+        admin,
+    ).unwrap()
+    before = {m.id for m in _phase_two(tournament)}
+    # Decisions are locked after the release; a removed one reopens the bands.
+    tournament_qualification_repository.delete_decision(
+        tournament.id, 'crossover'
+    )
+    db.session.commit()
+    assert len(_qualification(tournament).seeding_ties) == 2
+
+    result = tournament_seeding_service.generate_from_seeding(
+        tournament.id,
+        'playoff',
+        expected_version=edited.version,
+        initiator_id=admin.id,
+    )
+
+    assert result.is_err()
+    assert (
+        result.unwrap_err()
+        == tournament_seeding_service.ERR_PLAYOFF_SEEDING_OPEN
+    )
+    assert {m.id for m in _phase_two(tournament)} == before
+    assert not _log_entries(tournament, 'bracket-regenerated')
+    assert tournament_seeding_service.ensure_playoff_draft(
+        tournament.id
+    ).is_ok()
+
+
+def test_a_withdrawn_seed_decision_gates_the_release_again(
+    make_tournament, users
+):
+    admin = users[0]
+    tournament = _open_seed_bands(make_tournament, users)
+    bands = _qualification(tournament).seeding_ties
+    for tie in bands:
+        _decide_seed_band(tournament, tie, admin)
+    assert _qualification(tournament).seeding_ties == ()
+
+    withdrawn = tournament_qualification_service.withdraw_decision(
+        tournament.id,
+        'crossover',
+        contestant_ids=list(bands[0].contestant_ids),
+        reason='the orga changed their mind',
+        initiator_id=admin.id,
+    )
+
+    assert withdrawn.is_ok(), withdrawn.unwrap_err()
+    (reopened,) = _qualification(tournament).seeding_ties
+    assert set(reopened.contestant_ids) == set(bands[0].contestant_ids)
+    refused = _release(tournament, admin)
+    assert refused.is_err()
+    assert (
+        refused.unwrap_err()
+        == tournament_seeding_service.ERR_PLAYOFF_SEEDING_OPEN
+    )
+    assert not _phase_two(tournament)
+
+    _decide_seed_band(tournament, reopened, admin)
+
+    assert _release(tournament, admin).is_ok()
+    assert _phase_two(tournament)
+
+
+def test_decided_seed_band_releases_with_a_deterministic_bracket(
+    make_tournament, users
+):
+    admin = users[0]
+    pairs = []
+    for _ in range(2):
+        tournament = _open_seed_bands(make_tournament, users)
+        bands = _qualification(tournament).seeding_ties
+        for tie in bands:
+            _decide_seed_band(tournament, tie, admin)
+        state = _qualification(tournament)
+        assert state.ready
+        assert state.seeding_ties == ()
+        decided = tuple(
+            cid for tie in bands for cid in reversed(tie.contestant_ids)
+        )
+        assert tuple(q.contestant_id for q in state.seed_order) == decided
+
+        released = _release(tournament, admin)
+
+        assert released.is_ok(), released.unwrap_err()
+        assert released.unwrap() == 4
+        assert _playoff_board(tournament).state.seed_list == decided
+        pairs.append(_first_round_seed_pairs(tournament))
+
+    assert pairs[0] == pairs[1] == [(1, 4), (2, 3)]
+
+
+def test_unrelease_keeps_a_decided_seed_band_decided(make_tournament, users):
+    admin = users[0]
+    tournament = _open_seed_bands(make_tournament, users)
+    for tie in _qualification(tournament).seeding_ties:
+        _decide_seed_band(tournament, tie, admin)
+    assert _release(tournament, admin).is_ok()
+    assert _qualification(tournament).seeding_ties == ()
+    slots = _phase_two_slots(tournament)
+    assert len(slots) == 4
+
+    tournament_qualification_service.unrelease_playoffs(
+        tournament.id, reason='released too early', initiator_id=admin.id
+    ).unwrap()
+
+    assert not _phase_two(tournament)
+    assert _qualification(tournament).seeding_ties == ()
+    assert _release(tournament, admin).is_ok()
+    assert _phase_two_slots(tournament) == slots
 
 
 def test_unrelease_only_without_phase_two_results(make_tournament, users):

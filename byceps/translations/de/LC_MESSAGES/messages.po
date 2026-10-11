@@ -17223,3 +17223,15 @@ msgstr "Ergebnis hier eintragen und die Partie anschließend im Kommentarbereich
 
 msgid "Enter the result here. The comment from the comments section is saved with the confirmation."
 msgstr "Ergebnis hier eintragen. Der Kommentar aus dem Kommentarbereich wird mit der Bestätigung gespeichert."
+
+msgid "The playoff seeding is not decided yet."
+msgstr "Die Playoff-Setzung ist noch nicht entschieden."
+
+msgid "Seeding needs attention"
+msgstr "Setzung braucht Aufmerksamkeit"
+
+msgid "All qualifiers are known, but the playoff seeding contains equal seeds."
+msgstr "Alle Qualifizierten stehen fest, aber die Playoff-Setzung enthält gleiche Setzränge."
+
+msgid "Order the equal seeds to open the release."
+msgstr "Lege die Reihenfolge der gleichen Setzränge fest, um die Freigabe zu öffnen."

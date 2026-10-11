@@ -122,6 +122,7 @@ class QualificationState:
     seed_order: tuple[Qualifier, ...] | None = None
     configured_qualifier_count: int | None = None
     de_fallback: bool = False
+    seeding_ties: tuple[TieBlock, ...] = ()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -778,7 +779,7 @@ def _auto_release_locked(
             return Err(e)
         case Ok(state):
             pass
-    if not state.ready:
+    if not state.ready or state.seeding_ties:
         return Ok(None)
 
     released = _release_locked(
@@ -830,6 +831,8 @@ def _release_locked(
             pass
     if not state.ready:
         return Err(tournament_seeding_service.ERR_PLAYOFF_NOT_READY)
+    if state.seeding_ties:
+        return Err(tournament_seeding_service.ERR_PLAYOFF_SEEDING_OPEN)
 
     qualifier_count = len(state.qualifiers or ())
     fallback = falls_back_to_single_elimination(tournament, qualifier_count)
@@ -1370,20 +1373,18 @@ def _groups_state(
 
     crossover = None
     seed_order = None
+    seeding_ties: tuple[TieBlock, ...] = ()
     if qualifiers is not None:
         crossover_decision = decisions.get(domain.CROSSOVER_SCOPE)
         crossover_orders = (
             crossover_decision.orders if crossover_decision else ()
         )
-        seeds = domain.crossover_seed_list(qualifiers, crossover_orders)
-        if seeds.is_ok():
-            seed_order = seeds.unwrap()
+        # `qualifiers` run by group, then rank: that is an open band's order.
+        seed_order, seeding_ties = domain.crossover_seed_order(
+            qualifiers, crossover_orders
+        )
         if not domain.crossover_is_exempt(qualifiers):
             crossover = domain.rank_crossover(qualifiers, crossover_orders)
-            open_ties = domain.blocking_ties([crossover])
-            if open_ties:
-                blockers = (*blockers, *open_ties)
-                ready = False
 
     released = tournament.playoff_released_at is not None
     configured_count = (
@@ -1413,5 +1414,6 @@ def _groups_state(
             configured_qualifier_count=configured_count,
             de_fallback=qualifiers is not None
             and falls_back_to_single_elimination(tournament, len(qualifiers)),
+            seeding_ties=seeding_ties,
         )
     )

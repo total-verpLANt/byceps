@@ -2242,6 +2242,20 @@ def serialize_seeding_board(
                 board.notices, board.notice_params, strict=True
             )
         ],
+        'seed_band_ties': [
+            {
+                'scope': tie.scope,
+                'kind': tie.kind.value,
+                'decided': tie.decided,
+                'places': _places_label(tie.rank_from, tie.rank_to),
+                'rank_from': tie.rank_from,
+                'contestants': [
+                    {'id': cid, 'name': name_of(cid)}
+                    for cid in tie.contestant_ids
+                ],
+            }
+            for tie in board.seed_band_ties
+        ],
         'undersized': [_undersized_notice(p) for p in board.undersized],
         'lobby_byes': [_bye_notice(name) for name in board.byes],
         'waiting_winners': [
@@ -3135,6 +3149,7 @@ def seeding_audit_context(
 def playoff_release_open(tournament, state):
     return (
         state.ready
+        and not state.seeding_ties
         and state.released_at is None
         and state.source != tournament_qualification_service.SOURCE_WINNER
         and tournament.tournament_status is TournamentStatus.ONGOING
@@ -3328,6 +3343,12 @@ def qualification_strings() -> dict[str, str]:
         'scope_winner': gettext('Tournament win'),
         'scope_group': gettext('Group %(letter)s'),
         'scope_crossover': gettext('Playoff seeding'),
+        'seeding_heading': gettext('Seeding needs attention'),
+        'seeding_text': gettext(
+            'All qualifiers are known, but the playoff seeding contains equal'
+            ' seeds.'
+        ),
+        'seeding_hint': gettext('Order the equal seeds to open the release.'),
         'decision_outdated': gettext('Decision outdated'),
         'decision_outdated_text': gettext(
             'This decision no longer matches a tie. Decide the tie again, or'
@@ -3633,6 +3654,8 @@ def serialize_qualification(
         'leaderboard_closed': closed if is_leaderboard else None,
         'rankings': rankings,
         'blockers': [tie_dict(tie) for tie in state.blockers],
+        'seeding_ties': [tie_dict(tie) for tie in state.seeding_ties],
+        'seeding_open': bool(state.seeding_ties),
         'qualifiers': (
             None
             if state.qualifiers is None
@@ -3861,7 +3884,9 @@ def playoff_waiting_reason(
 ) -> str | None:
     """Return why the playoffs have not started, or `None` once released.
 
-    Exactly one of `groups`, `leaderboard`, `tie` or `release`.
+    Exactly one of `groups`, `leaderboard`, `tie` or `release`. Open
+    seed bands are no `tie`: the qualifiers are set, the orga orders them
+    before the release.
     """
     if state.released_at is not None:
         return None

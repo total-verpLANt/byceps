@@ -101,6 +101,9 @@
 {%- set is_leaderboard = q.source == 'leaderboard' %}
 {%- set has_release = q.source in ['groups', 'leaderboard'] %}
 {%- set blocker_count = q.blockers|rejectattr('decided')|list|length %}
+{#- Open seed bands gate the release only; they stay out of the blocker count. #}
+{%- set seeding_ties = q.get('seeding_ties') or [] %}
+{%- set seeding_open = q.get('seeding_open') or false %}
 {%- set decide_url = url_for('.qualification_decide', tournament_id=tournament.id) %}
 {%- set elimination_names = {
   'SINGLE_ELIMINATION': _('Single knockout'),
@@ -225,6 +228,25 @@
     </div>
   </section>
   {%- endfor %}
+
+  {%- if seeding_ties %}
+  <section class="lt-seed-nt nt-warn lt-seed-tieb" id="seeding-ties" role="status" data-seeding-ties>
+    <p class="lt-seed-nth"><i aria-hidden="true">{{ glyph('warn') }}</i><span>{{ _('Seeding needs attention') }}</span></p>
+    <div class="lt-seed-ntb">
+      <p>{{ _('All qualifiers are known, but the playoff seeding contains equal seeds.') }}</p>
+      {%- for tie in seeding_ties %}
+      <div data-blocker="seeding">
+        <p>{{ tie.scope_label }}: {{ _('Places %(range)s are equal on every criterion.', range=tie.places) }}</p>
+        {%- if decisions_locked %}
+        <p class="lt-seed-why">{{ locked_text }}</p>
+        {%- else %}
+        {{ order_board(tie) }}
+        {%- endif %}
+      </div>
+      {%- endfor %}
+    </div>
+  </section>
+  {%- endif %}
 
   {%- for decision in q.decisions %}
   {%- set wd_id = 'withdraw-' ~ decision.scope|replace(':', '-') ~ '-' ~ loop.index %}
@@ -360,6 +382,7 @@
         <div class="lt-seed-ph">
           <h3>{{ _('Release & generation') }}</h3>
           {%- if release.released %}<span class="lt-seed-pill p-ok"><i aria-hidden="true">✓</i>{{ _('Released') }}</span>
+          {%- elif q.ready and seeding_open %}<span class="lt-seed-pill p-warn"><i aria-hidden="true">{{ glyph('warn') }}</i>{{ _('Seeding needs attention') }}</span>
           {%- elif q.ready %}<span class="lt-seed-pill p-ok"><i aria-hidden="true">✓</i>{{ _('Ready') }}</span>
           {%- else %}<span class="lt-seed-pill p-info"><i aria-hidden="true">i</i>{{ _('Waiting') }}</span>{% endif %}
         </div>
@@ -374,6 +397,10 @@
           {%- endif %}
           <li><span class="lt-seed-ckt">{{ _('Ties needing an orga decision: %(n)s', n=blocker_count) }}</span>
             <span class="lt-seed-ckm m-{{ 'err' if blocker_count else 'ok' }}"><i aria-hidden="true">{{ glyph('err' if blocker_count else 'ok') }}</i>{{ _('Blocked') if blocker_count else _('Free') }}</span></li>
+          {%- if seeding_open %}
+          <li><span class="lt-seed-ckt">{{ _('Seeding needs attention') }}</span>
+            <span class="lt-seed-ckm m-info"><i aria-hidden="true">{{ glyph('info') }}</i>{{ _('Open') }}</span></li>
+          {%- endif %}
           <li><span class="lt-seed-ckt">
             {%- if release.mode == 'AUTOMATIC' %}{{ _('Release is automatic: the playoffs are created as soon as nothing blocks them any more.') }}
             {%- else %}{{ _('Release is manual: the orga checks the playoff draft and releases the playoffs.') }}{% endif -%}
@@ -415,14 +442,20 @@
         </form>
         {%- elif release.released %}
         {%- elif release.mode == 'AUTOMATIC' and not release.auto_suspended %}
+        {%- if q.ready and seeding_open %}
+        <p class="lt-seed-small">{{ _('Order the equal seeds to open the release.') }}</p>
+        {%- else %}
         <p class="lt-seed-small">{{ _('No button needed: the system releases the playoffs as soon as both rows above show “Settled” and “Free”.') }}</p>
+        {%- endif %}
         {%- else %}
           {%- if release.mode == 'AUTOMATIC' %}
         <div class="lt-seed-nt nt-warn" role="status">
           <p class="lt-seed-nth"><i aria-hidden="true">▲</i><span>{{ _('Automatic release suspended. Release the playoffs manually.') }}</span></p>
         </div>
           {%- endif %}
-          {%- if playoff_version is not none %}
+          {%- if q.ready and seeding_open %}
+    {{ why_button(_('Release playoffs'), _('Order the equal seeds to open the release.')) }}
+          {%- elif playoff_version is not none %}
     <form action="{{ url_for('.qualification_release', tournament_id=tournament.id) }}" method="post"
           data-confirm-title="{{ _('Release the playoffs?') }}"
           data-confirm-body="{{ _('The playoff matches are generated from the draft.') ~ '\n' ~ _('The players of the first matches are notified (match ready).') ~ '\n' ~ _('The group results are locked.') ~ ('\n' ~ release_notices|join('\n') if release_notices else '') }}"

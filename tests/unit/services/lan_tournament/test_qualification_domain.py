@@ -594,6 +594,65 @@ def test_exactly_two_qualifiers_need_no_crossover_decision():
     assert not q.crossover_is_exempt(qualifiers)
 
 
+def test_crossover_seed_order_returns_open_bands_without_failing():
+    qualifiers = _equal_groups()
+
+    ordered, open_ties = q.crossover_seed_order(qualifiers)
+
+    assert len(ordered) == len(qualifiers) == 4
+    assert [x.rank for x in ordered] == [1, 1, 2, 2]
+    assert [
+        (t.contestant_ids, t.rank_from, t.rank_to, t.decided, t.kind)
+        for t in open_ties
+    ] == [
+        (('g1x', 'g3x'), 1, 2, False, q.TieKind.SEEDING),
+        (('g1y', 'g3y'), 3, 4, False, q.TieKind.SEEDING),
+    ]
+
+
+def test_crossover_seed_order_is_deterministic_in_group_order():
+    qualifiers = _equal_groups()
+
+    first, _ = q.crossover_seed_order(qualifiers)
+    second, _ = q.crossover_seed_order(qualifiers)
+
+    assert [x.contestant_id for x in first] == ['g1x', 'g3x', 'g1y', 'g3y']
+    assert [x.contestant_id for x in second] == [x.contestant_id for x in first]
+
+
+def test_crossover_seed_order_decided_band_has_no_open_ties():
+    qualifiers = _equal_groups()
+    orders = [('g3x', 'g1x'), ('g1y', 'g3y')]
+
+    ordered, open_ties = q.crossover_seed_order(qualifiers, orders)
+
+    assert open_ties == ()
+    assert [x.contestant_id for x in ordered] == ['g3x', 'g1x', 'g1y', 'g3y']
+
+
+def test_crossover_seed_order_exempt_with_two_qualifiers():
+    qualifiers = _equal_groups()
+    final = tuple(x for x in qualifiers if x.rank == 1)
+    assert len(final) == 2
+
+    ordered, open_ties = q.crossover_seed_order(final)
+
+    assert open_ties == ()
+    assert {x.contestant_id for x in ordered} == {'g1x', 'g3x'}
+
+
+def test_crossover_seed_list_still_fails_on_an_open_tie():
+    qualifiers = _equal_groups()
+
+    result = q.crossover_seed_list(qualifiers)
+
+    assert isinstance(result, Err)
+    assert [b.contestant_ids for b in result.unwrap_err()] == [
+        ('g1x', 'g3x'),
+        ('g1y', 'g3y'),
+    ]
+
+
 def test_inactive_contestant_is_not_ranked_but_results_still_count():
     # r leads on points, but is no longer in the tournament.
     ids = ['r', 'a', 'b']

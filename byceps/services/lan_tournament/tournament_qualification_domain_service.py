@@ -510,6 +510,23 @@ def crossover_seed_list(
     return Ok(tuple(by_id[e.contestant_id] for e in ranking.entries))
 
 
+def crossover_seed_order(
+    qualifiers: Sequence[Qualifier],
+    orders: Sequence[Sequence[str]] = (),
+) -> tuple[tuple[Qualifier, ...], tuple[TieBlock, ...]]:
+    """Return the qualifiers in seed order and the seed bands still open.
+
+    Never fails on a tie: an open band keeps the order of `qualifiers`.
+    """
+    ranking = rank_crossover(qualifiers, orders)
+    by_id = {q.contestant_id: q for q in qualifiers}
+    ordered = tuple(by_id[e.contestant_id] for e in ranking.entries)
+    open_ties = (
+        () if crossover_is_exempt(qualifiers) else blocking_ties([ranking])
+    )
+    return ordered, open_ties
+
+
 # -------------------------------------------------------------------- #
 # same-group separation
 
