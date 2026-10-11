@@ -233,11 +233,63 @@ function initMatchFilter() {
 
 
 /**
+ * Bracket quick filter on the match list. Client-side, combines with the
+ * status filter (server) and "My Matches". State lives in ?bracket= and
+ * is carried along on the status filter links.
+ */
+function initBracketFilter() {
+  var bar = document.getElementById('match-bracket-bar');
+  if (!bar) return;
+
+  var buttons = bar.querySelectorAll('.match-bracket-bar__item');
+  var groups = document.querySelectorAll('.match-group');
+  var current = new URLSearchParams(window.location.search).get('bracket') || '';
+
+  var known = Array.prototype.some.call(buttons, function(b) {
+    return b.getAttribute('data-bracket') === current;
+  });
+  if (!known) current = '';
+
+  function apply() {
+    buttons.forEach(function(b) {
+      b.setAttribute('aria-pressed', String(b.getAttribute('data-bracket') === current));
+    });
+    groups.forEach(function(g) {
+      g.classList.toggle('match-group--hidden',
+        current !== '' && g.getAttribute('data-bracket') !== current);
+    });
+
+    var url = new URL(window.location.href);
+    if (current) url.searchParams.set('bracket', current);
+    else url.searchParams.delete('bracket');
+    history.replaceState(null, '', url);
+
+    document.querySelectorAll('.match-filter-bar__item').forEach(function(link) {
+      var target = new URL(link.getAttribute('href'), window.location.href);
+      if (current) target.searchParams.set('bracket', current);
+      else target.searchParams.delete('bracket');
+      link.setAttribute('href', target.pathname + target.search + target.hash);
+    });
+  }
+
+  buttons.forEach(function(b) {
+    b.addEventListener('click', function() {
+      current = b.getAttribute('data-bracket') || '';
+      apply();
+    });
+  });
+
+  apply();
+}
+
+
+/**
  * Init on DOM ready + debounced resize handler for pannable state.
  */
 document.addEventListener('DOMContentLoaded', function() {
   initBracketViewSwitcher();
   initMatchFilter();
+  initBracketFilter();
 
   document.querySelectorAll('.bracket-desktop').forEach(enableBracketPan);
 

@@ -12,9 +12,6 @@ from jinja2 import DictLoader, Environment, StrictUndefined
 import pytest
 
 from byceps.services.lan_tournament.blueprints.site import views
-from byceps.services.lan_tournament.lan_tournament_view_helpers import (
-    build_match_label,
-)
 from byceps.services.lan_tournament.models.bracket import Bracket
 from byceps.services.lan_tournament.models.tournament_match import (
     TournamentMatch,
@@ -29,13 +26,13 @@ _TEMPLATE = pathlib.Path(
     '/site/lan_tournament/matches.html'
 )
 
-_MACROS = """
+_MACROS = '''
 {% macro render_hover_name(name) %}{{ name }}{% endmacro %}
 {% macro render_tournament_subnav(tournament, active_tab) %}{% endmacro %}
 {% macro render_match_ref(match) -%}
 {{ match.bracket.value }} R{{ match.round + 1 }} M{{ match.match_order + 1 }}
 {%- endmacro %}
-"""
+'''
 
 
 def _make_match(*, bracket, round_number, match_order):
@@ -126,7 +123,7 @@ def render_list(monkeypatch):
     return render
 
 
-def test_match_list_shows_the_spelled_out_label(render_list):
+def test_match_list_spells_out_the_bracket_position(render_list):
     winners = _make_match(
         bracket=Bracket.WINNERS, round_number=1, match_order=2
     )
@@ -136,8 +133,10 @@ def test_match_list_shows_the_spelled_out_label(render_list):
 
     html = render_list([winners, final])
 
-    assert build_match_label(winners) in html
-    assert build_match_label(final) in html
+    assert "<span class='match-group__kicker'>Winners bracket</span> Round 2" in html
+    assert 'Match 3' in html
+    assert "<span class='match-group__kicker'>Grand final</span>" not in html
+    assert 'Grand final' in html
 
 
 def test_match_list_no_longer_shows_only_the_short_code(render_list):
@@ -148,4 +147,44 @@ def test_match_list_no_longer_shows_only_the_short_code(render_list):
     html = render_list([winners])
 
     assert 'WB R2 M3' not in html
-    assert build_match_label(winners) in html
+    assert 'Winners bracket' in html
+    assert 'Match 3' in html
+
+
+def test_match_list_groups_consecutive_matches_under_one_heading(render_list):
+    matches = [
+        _make_match(bracket=Bracket.WINNERS, round_number=0, match_order=0),
+        _make_match(bracket=Bracket.WINNERS, round_number=0, match_order=1),
+        _make_match(bracket=Bracket.WINNERS, round_number=1, match_order=0),
+    ]
+
+    html = render_list(matches)
+
+    assert html.count("<section class='match-group'") == 2
+    assert html.count('</section>') == 2
+    assert html.count('match-group__title') == 2
+
+
+def test_bracket_filter_lists_each_bracket_once(render_list):
+    matches = [
+        _make_match(bracket=Bracket.WINNERS, round_number=0, match_order=0),
+        _make_match(bracket=Bracket.WINNERS, round_number=1, match_order=0),
+        _make_match(bracket=Bracket.LOSERS, round_number=0, match_order=0),
+    ]
+
+    html = render_list(matches)
+
+    assert "id='match-bracket-bar'" in html
+    assert html.count("data-bracket='Winners bracket' aria-pressed") == 1
+    assert html.count("data-bracket='Losers bracket' aria-pressed") == 1
+
+
+def test_bracket_filter_is_hidden_for_a_single_bracket(render_list):
+    matches = [
+        _make_match(bracket=Bracket.WINNERS, round_number=0, match_order=0),
+        _make_match(bracket=Bracket.WINNERS, round_number=0, match_order=1),
+    ]
+
+    html = render_list(matches)
+
+    assert 'match-bracket-bar' not in html

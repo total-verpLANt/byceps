@@ -31,6 +31,26 @@
     {%- endif %}
   </nav>
 
+  {#- Distinct brackets in display order, from the same labels as the
+      group headings ("Winners bracket, round 1, match 1" -> "Winners bracket"). #}
+  {%- set bracket_names = [] %}
+  {%- for data in match_data %}
+  {%- set _lp = match_labels.get(data.match.id|string, '').rsplit(', ', 1) %}
+  {%- if _lp|length > 1 %}
+  {%- set _b = _lp[0].split(', ', 1)[0] %}
+  {%- if _b not in bracket_names %}{% set _ = bracket_names.append(_b) %}{% endif %}
+  {%- endif %}
+  {%- endfor %}
+  {%- if bracket_names|length > 1 %}
+  <nav class='match-bracket-bar' id='match-bracket-bar' aria-label='{{ _('Filter by bracket') }}'>
+    <span class='match-bracket-bar__label'>{{ _('Bracket') }}</span>
+    <button type='button' class='match-bracket-bar__item' data-bracket='' aria-pressed='true'>{{ _('All') }}</button>
+    {%- for name in bracket_names %}
+    <button type='button' class='match-bracket-bar__item' data-bracket='{{ name }}' aria-pressed='false'>{{ name }}</button>
+    {%- endfor %}
+  </nav>
+  {%- endif %}
+
   <div class='match-table'>
     <div class='match-row match-row--head'>
       <span>{{ _('Match') }}</span>
@@ -38,16 +58,37 @@
       <span>{{ _('Result') }}</span>
       <span>{{ _('Status') }}</span>
     </div>
+    {#- Labels look like "Winners bracket, round 1, match 1". Everything
+        before the last comma becomes a group heading, the rest stays in
+        the row, so the match column holds a single short line. #}
+    {%- set ns = namespace(group=none) %}
     {%- for data in match_data %}
     {%- set match = data.match %}
     {%- set contestants = data.contestants %}
+    {%- set label_parts = match_labels.get(match.id|string, '').rsplit(', ', 1) %}
+    {%- set group = label_parts[0] if label_parts|length > 1 else '' %}
+    {%- set match_no = label_parts[-1] %}
+    {%- if loop.first or group != ns.group %}
+    {%- if not loop.first %}
+    </section>
+    {%- endif %}
+    <section class='match-group' data-bracket='{{ group.split(', ', 1)[0] if group else '' }}'>
+      {%- if group %}
+      {%- set group_parts = group.split(', ', 1) %}
+      <h3 class='match-group__title'>
+        {%- if group_parts|length > 1 %}<span class='match-group__kicker'>{{ group_parts[0] }}</span> {{ group_parts[1]|capitalize }}
+        {%- else %}{{ group }}{% endif -%}
+      </h3>
+      {%- endif %}
+      {%- set ns.group = group %}
+    {%- endif %}
     <a href='{{ url_for('.view_match', match_id=match.id) }}'
        class='match-link-reset'
        data-team-ids='{{ contestants|selectattr("team_id")|map(attribute="team_id")|join(",") }}'
        data-participant-ids='{{ contestants|selectattr("participant_id")|map(attribute="participant_id")|join(",") }}'>
       <div class='match-row'>
         <div class='match-number'>
-          {{ match_labels.get(match.id|string, '') }}
+          {{ match_no|capitalize }}
         </div>
         <div class='match-contestants'>
           {%- for contestant in contestants %}
@@ -107,6 +148,9 @@
         </div>
       </div>
     </a>
+    {%- if loop.last %}
+    </section>
+    {%- endif %}
     {%- endfor %}
     {%- if not match_data %}
     <p class='match-list-empty'>

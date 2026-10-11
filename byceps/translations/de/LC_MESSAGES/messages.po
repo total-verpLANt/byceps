@@ -17241,3 +17241,6 @@ msgstr "Gruppe %(letter)s, Platz %(rank)s"
 
 msgid "The code before a name shows where the player qualified from: group letter and place, for example C2 = group C, place 2."
 msgstr "Das Kürzel vor einem Namen zeigt, aus welcher Gruppe und von welchem Platz sich der Spieler qualifiziert hat, zum Beispiel C2 = Gruppe C, Platz 2."
+
+msgid "Filter by bracket"
+msgstr "Nach Turnierbaum filtern"

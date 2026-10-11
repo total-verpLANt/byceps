@@ -482,9 +482,12 @@ def test_site_list_has_one_header_row_before_the_rows(site):
     assert len(heads) == 1
     assert [s.text for s in _elements(heads[0])] == ['Match', 'Participants', 'Result', 'Status']
     assert _elements(table)[0] is heads[0]
-    rows = _elements(table)[1:]
+    sections = _elements(table)[1:]
+    assert sections
+    assert all(s.tag == 'section' and 'match-group' in s.classes for s in sections)
+    rows = [row for s in sections for row in _elements(s) if row.tag == 'a']
     assert len(rows) == 2
-    assert all(row.tag == 'a' and 'match-link-reset' in row.classes for row in rows)
+    assert all('match-link-reset' in row.classes for row in rows)
     assert list(dom.find_all('match-list-empty')) == []
 
 
