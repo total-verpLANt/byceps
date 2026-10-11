@@ -383,7 +383,7 @@ def test_site_index_labels_use_one_based_rounds(site, render):
         'Match 1 · Round 1',
         'Match 2 · Round 2',
         'Match 3 · WB · Round 1',
-        'Match 4 · Third-place match',
-        'Match 5 · Grand Final',
+        'Match 4 · Grand Final',
+        'Match 5 · Third-place match',
     ]
     assert 'Round 0' not in _index(html)

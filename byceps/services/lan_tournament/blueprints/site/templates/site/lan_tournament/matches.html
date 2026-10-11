@@ -76,7 +76,7 @@
       {%- if group %}
       {%- set group_parts = group.split(', ', 1) %}
       <h3 class='match-group__title'>
-        {%- if group_parts|length > 1 %}<span class='match-group__kicker'>{{ group_parts[0] }}</span> {{ group_parts[1]|capitalize }}
+        {%- if group_parts|length > 1 %}<span class='match-group__kicker'>{{ group_parts[0] }}</span> {{ (group_parts[1][:1]|upper) ~ group_parts[1][1:] }}
         {%- else %}{{ group }}{% endif -%}
       </h3>
       {%- endif %}
@@ -88,7 +88,7 @@
        data-participant-ids='{{ contestants|selectattr("participant_id")|map(attribute="participant_id")|join(",") }}'>
       <div class='match-row'>
         <div class='match-number'>
-          {{ match_no|capitalize }}
+          {{ (match_no[:1]|upper) ~ match_no[1:] }}
         </div>
         <div class='match-contestants'>
           {%- for contestant in contestants %}

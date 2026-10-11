@@ -492,6 +492,51 @@ def build_match_label(match: TournamentMatch) -> str:
     )
 
 
+_BRACKET_DISPLAY_RANK = {None: 0, 'WB': 1, 'LB': 2, 'GF': 3}
+
+
+def _is_round_robin_group_row(
+    tournament: Tournament, match: TournamentMatch
+) -> bool:
+    """Return `True` for a phase 1 round-robin group, not an FFA lobby."""
+    return (
+        match.phase == 1
+        and match.bracket is None
+        and match.group_order is not None
+        and not match_uses_placements(tournament, match)
+    )
+
+
+def match_display_sort_key(
+    match: TournamentMatch, *, tournament: Tournament
+) -> tuple[int, int, int, int, int]:
+    """Order matches as the list reads: phase, group, bracket, round, match."""
+    bracket = match.bracket.value if match.bracket else None
+    group = -1
+    if _is_round_robin_group_row(tournament, match):
+        group = match.group_order or 0
+    return (
+        match.phase or 1,
+        group,
+        _BRACKET_DISPLAY_RANK.get(bracket, 4),
+        match.round or 0,
+        match.match_order or 0,
+    )
+
+
+def build_site_match_list_label(
+    match: TournamentMatch, *, tournament: Tournament
+) -> str:
+    """Spell out a match's position, naming its group or the playoffs."""
+    label = build_match_label(match)
+    if match.phase == 2:
+        return gettext('Playoffs \u00b7 %(label)s', label=label)
+    if _is_round_robin_group_row(tournament, match):
+        letter = chr(ord('A') + (match.group_order or 0))
+        return gettext('Group %(letter)s', letter=letter) + ', ' + label
+    return label
+
+
 def _classify_match_state(
     match: TournamentMatch,
     contestants: list[TournamentMatchToContestant],

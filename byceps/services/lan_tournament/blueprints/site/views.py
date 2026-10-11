@@ -92,6 +92,7 @@ from byceps.services.lan_tournament.lan_tournament_view_helpers import (
     build_match_readiness_projections,
     build_match_label,
     build_round_robin_standings,
+    build_site_match_list_label,
     build_seat_lookup,
     compute_feed_counts,
     count_match_projections,
@@ -103,6 +104,7 @@ from byceps.services.lan_tournament.lan_tournament_view_helpers import (
     ffa_phase,
     group_tournaments_by_category,
     is_walkover_match,
+    match_display_sort_key,
     match_filter_options,
     match_uses_placements,
     parse_match_ids,
@@ -1181,7 +1183,10 @@ def _get_team_or_404(team_id) -> TournamentTeam:
 
 def _site_match_projections(tournament):
     """Read matches, contestants and current pairs in fixed batches, without writes."""
-    matches = tournament_match_service.get_matches_for_tournament_ordered(tournament.id)
+    matches = sorted(
+        tournament_match_service.get_matches_for_tournament_ordered(tournament.id),
+        key=lambda match: match_display_sort_key(match, tournament=tournament),
+    )
     contestants_by_match = tournament_match_service.get_contestants_for_tournament(tournament.id)
     readiness_by_match_id = build_match_readiness_projections(
         tournament, matches, contestants_by_match
@@ -1244,7 +1249,9 @@ def matches(tournament_id):
         entry['match'].id: entry['readiness'] for entry in match_data
     }
     match_labels = {
-        str(entry['match'].id): build_match_label(entry['match'])
+        str(entry['match'].id): build_site_match_list_label(
+            entry['match'], tournament=tournament
+        )
         for entry in match_data
     }
     all_contestants = [entry['contestants'] for entry in match_data]
