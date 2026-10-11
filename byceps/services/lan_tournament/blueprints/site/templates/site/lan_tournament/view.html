@@ -3,7 +3,12 @@
 {% from 'macros/misc.html' import render_tag %}
 {% from 'macros/lan_tournament.html' import render_tournament_subnav %}
 {% from 'site/lan_tournament/orga_actions.html' import render_orga_tournament_status_actions %}
+{% from 'site/lan_tournament/_seat_badge.html' import render_seat_badge %}
 {% set page_title = [_('Tournament'), tournament.name] %}
+
+{% block head %}{{ super() }}
+  <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_personal.css') }}">
+{%- endblock %}
 
 {% block body %}
 
@@ -238,10 +243,10 @@
                 {{ _user.screen_name }}
               {%- endif -%}
             </span>
-            {%- set _seat = seats_by_user_id.get(_user.id) -%}
-            {%- if _seat -%}
+            {%- set _seat_links = seat_links_by_user_id.get(_user.id) -%}
+            {%- if _seat_links -%}
               <span class="lt-player-sep" aria-hidden="true"></span>
-              <span class="lt-player-seat">{{ _seat }}</span>
+              {{ render_seat_badge(_seat_links) }}
             {%- endif -%}
           {%- else -%}
             <span class="lt-player-name">{{ participant.user_id|string }}</span>
@@ -269,10 +274,10 @@
               {{ _user.screen_name }}
             {%- endif -%}
           </span>
-          {%- set _seat = seats_by_user_id.get(_user.id) -%}
-          {%- if _seat -%}
+          {%- set _seat_links = seat_links_by_user_id.get(_user.id) -%}
+          {%- if _seat_links -%}
             <span class="lt-player-sep" aria-hidden="true"></span>
-            <span class="lt-player-seat">{{ _seat }}</span>
+            {{ render_seat_badge(_seat_links) }}
           {%- endif -%}
         {%- else -%}
           <span class="lt-player-name">{{ participant.user_id|string }}</span>

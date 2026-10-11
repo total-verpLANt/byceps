@@ -17220,3 +17220,6 @@ msgstr "Partie-Bestätigung durch Turnier-Orga"
 
 msgid "Enter the result here, then confirm the match with a comment in the comments section."
 msgstr "Ergebnis hier eintragen und die Partie anschließend im Kommentarbereich mit einem Kommentar bestätigen."
+
+msgid "Enter the result here. The comment from the comments section is saved with the confirmation."
+msgstr "Ergebnis hier eintragen. Der Kommentar aus dem Kommentarbereich wird mit der Bestätigung gespeichert."

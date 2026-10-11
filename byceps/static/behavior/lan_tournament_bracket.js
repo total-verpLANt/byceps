@@ -359,6 +359,7 @@ function parseBracketData(json) {
       bracket: parsed.bracket || (m.bracket || null),
       roundNo: parsed.round || ((m.round || 0) + 1),
       matchNo: parsed.match || ((m.match_order || 0) + 1),
+      longLabel: m.label_long || null,
       confirmed: !!m.confirmed,
       // Canonical server facts only; never derive claims from entrants or time.
       readiness: m.readiness || null,
@@ -1281,6 +1282,8 @@ function createMatchEl(match, dims, options, matchUrls) {
   var el = document.createElement(tagName);
   var statusMeta = _ltGetMatchStatusMetaFromMatch(match);
   var matchRefDisplay = _ltFormatMatchRefDisplay(match.ref);
+  // Payloads cached before label_long existed fall back to the short display.
+  var longLabel = match.longLabel || matchRefDisplay;
   el.className = 'lt-match' + (url ? ' clickable' : '');
   el.style.left = match.geom.boxLeft + 'px';
   el.style.top = match.geom.boxTop + 'px';
@@ -1292,7 +1295,7 @@ function createMatchEl(match, dims, options, matchUrls) {
   el.setAttribute('data-match-ref', match.ref);
   el.setAttribute('data-match-id', match.id);
   el.setAttribute('data-players', _ltPackPlayerData(match.playerKeys));
-  el.title = matchRefDisplay + ' - ' + statusMeta.label;
+  el.title = longLabel + ' - ' + statusMeta.label;
   el.setAttribute('role', 'listitem');
 
   // Build descriptive ARIA label with contestant names
@@ -1335,7 +1338,7 @@ function createMatchEl(match, dims, options, matchUrls) {
 
   el.innerHTML =
     '<div class="lt-match-label" style="font-size:' + (0.72 * dims.fontScale) + 'rem">' +
-    '<span class="lt-match-ref-wrap" title="' + _ltEscapeHtml(matchRefDisplay) + ' - ' + _ltEscapeHtml(statusMeta.label) + '">' +
+    '<span class="lt-match-ref-wrap" title="' + _ltEscapeHtml(longLabel) + ' - ' + _ltEscapeHtml(statusMeta.label) + '">' +
     '<span class="lt-match-state-dot lt-match-state-dot--' + _ltEscapeHtml(statusMeta.key) + '" aria-hidden="true"></span>' +
     '<span class="lt-match-ref-text">' + _ltEscapeHtml(matchRefDisplay) + '</span>' +
     '</span>' +

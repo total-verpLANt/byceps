@@ -693,6 +693,7 @@ def serialize_bracket_json(
                 'id': str(match.id),
                 'round': match.round,
                 'match_order': match.match_order,
+                'label_long': build_match_label(match),
                 'bracket': match.bracket.value if match.bracket else None,
                 'phase': match.phase,
                 'next_match_id': str(match.next_match_id) if match.next_match_id else None,

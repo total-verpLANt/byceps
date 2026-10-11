@@ -37,6 +37,7 @@ from byceps.services.lan_tournament.models.tournament_match_to_contestant import
 )
 from byceps.services.lan_tournament.models.tournament_status import TournamentStatus
 from byceps.util.result import Ok
+from byceps.util.templatefilters import fallback
 
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -117,6 +118,7 @@ def render_readiness(request, monkeypatch):
     )
     env.filters['dateformat'] = lambda value: value.date().isoformat()
     env.filters['timeformat'] = lambda value, *args: value.time().isoformat()
+    env.filters['fallback'] = fallback
     assert Path(env.get_template(PARTIAL).filename) == GENERIC / PARTIAL
     assert Path(env.get_template(DETAIL).filename) == GENERIC / DETAIL
 
@@ -167,6 +169,7 @@ def render_readiness(request, monkeypatch):
         monkeypatch.setattr(views.tournament_service, 'find_tournament', lambda _: tournament)
         monkeypatch.setattr(views, 'build_contestant_name_lookups', lambda *a: (teams, people))
         monkeypatch.setattr(views, 'build_hover_lookups', lambda *a: ({}, {}))
+        monkeypatch.setattr(views.tournament_participant_service, 'get_seat_links_for_users', lambda *a: {})
         monkeypatch.setattr(views, 'may_administrate_tournament', lambda *a: False)
         monkeypatch.setattr(views, 'get_permissions_for_user', lambda _: {'lan_tournament.administrate'} if role == 'global_orga' else set())
         monkeypatch.setattr(views.tournament_orga_service, 'is_orga_for_tournament', lambda *a: role in {'scoped_orga', 'member_orga'})

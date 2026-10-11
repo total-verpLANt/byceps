@@ -4,6 +4,7 @@ tests.integration.blueprints.site.lan_tournament.test_orga_match_panel
 """
 
 from html.parser import HTMLParser
+import re
 
 import pytest
 
@@ -142,6 +143,18 @@ class _FormMap(HTMLParser):
     def confirm_buttons(self):
         return [(a, f) for a, f in self.buttons if 'formaction' in a]
 
+    def submit_buttons_of(self, form_id):
+        """Return the form's submit buttons in tree order.
+
+        A `form` attribute overrides the enclosing form, as in HTML.
+        """
+        return [
+            a
+            for a, f in self.buttons
+            if a.get('type', 'submit') == 'submit'
+            and (a.get('form') or f) == form_id
+        ]
+
 
 def _form_map(response):
     parsed = _FormMap()
@@ -156,26 +169,42 @@ def _assert_results_belong_to_the_comment_form(
     assert len(parsed.result_controls) == control_count
     assert all(c.get('form') == COMMENT_FORM_ID for c in parsed.result_controls)
 
-    ((confirm, enclosing),) = parsed.confirm_buttons()
-    assert enclosing == COMMENT_FORM_ID
+    # Enter in a result control submits the form's first submit button.
+    # That is a hidden twin of the confirm action, ahead of Post Comment;
+    # the visible confirm button sits in the orga panel, outside the
+    # form, and is bound to it.
+    submit_buttons = parsed.submit_buttons_of(COMMENT_FORM_ID)
+    assert len(submit_buttons) == 3
+    twin, post, confirm = submit_buttons
+    enclosing = {id(a): f for a, f in parsed.buttons}
+
+    assert enclosing[id(twin)] == COMMENT_FORM_ID
+    assert twin['formaction'].endswith(formaction_suffix)
+    assert 'lt-default-submit' in twin['class'].split()
+    assert twin['tabindex'] == '-1'
+    assert twin['aria-hidden'] == 'true'
+
+    assert enclosing[id(post)] == COMMENT_FORM_ID
+    assert 'formaction' not in post
+    assert 'formnovalidate' in post
+
+    assert enclosing[id(confirm)] is None
+    assert confirm['form'] == COMMENT_FORM_ID
     assert confirm['formaction'].endswith(formaction_suffix)
+    assert 'lt-orga-confirm' in confirm['class'].split()
 
-    post_buttons = [
-        a
-        for a, f in parsed.buttons
-        if f == COMMENT_FORM_ID and 'formaction' not in a
-    ]
-    assert len(post_buttons) == 1
-    assert 'formnovalidate' in post_buttons[0]
+    assert [a for a, _ in parsed.confirm_buttons()] == [twin, confirm]
 
-    # Enter in a result control submits the first button of the form.
-    form_buttons = [a for a, f in parsed.buttons if f == COMMENT_FORM_ID]
-    assert form_buttons.index(confirm) < form_buttons.index(post_buttons[0])
-
-    ((textarea, enclosing),) = parsed.textareas
-    assert enclosing == COMMENT_FORM_ID
+    ((textarea, enclosing_form),) = parsed.textareas
+    assert enclosing_form == COMMENT_FORM_ID
     assert 'required' in textarea
     assert textarea['maxlength'] == '1000'
+
+
+def _offset(html, pattern):
+    match = re.search(pattern, html)
+    assert match is not None, pattern
+    return match.start()
 
 
 def test_orga_gets_correction_but_no_unconfirm_on_bracket_match(
@@ -237,6 +266,50 @@ def test_contestant_sees_no_confirm_button(site_app, bracket, players):
     assert 'orga_score_' not in html
     assert 'confirm_with_scores' not in html
     assert parsed.form_ids.count(COMMENT_FORM_ID) == 1
+
+
+def test_post_comment_precedes_confirm_in_page_order(site_app, bracket, orga):
+    _, _, open_ = bracket
+
+    response = _get(site_app, f'/matches/{open_.id}', orga)
+
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    twin = _offset(html, r'<button[^>]*\blt-default-submit\b')
+    post_comment = _offset(html, r'>\s*Post Comment\s*</button>')
+    confirm = _offset(html, r'<button[^>]*\blt-orga-confirm\b')
+    assert twin < post_comment < confirm
+
+
+def test_confirm_button_absent_without_comment_permission(
+    site_app, bracket, players
+):
+    """Viewers who cannot comment get no form to bind a confirm button to.
+
+    Whoever may confirm a match may also comment on it, so the mixed
+    state is pinned by the unit render test.
+    """
+    _, _, open_ = bracket
+    in_match = {
+        tournament_participant_service.get_participant(c.participant_id).user_id
+        for c in tournament_match_service.get_contestants_for_match(open_.id)
+    }
+    bystander = next(p for p in players if p.id not in in_match)
+    log_in_user(bystander.id)
+
+    for viewer in (None, bystander):
+        response = _get(site_app, f'/matches/{open_.id}', viewer)
+
+        assert response.status_code == 200
+        html = response.get_data(as_text=True)
+        parsed = _form_map(response)
+        assert parsed.form_ids.count(COMMENT_FORM_ID) == 0
+        assert parsed.confirm_buttons() == []
+        assert parsed.result_controls == []
+        assert 'lt-default-submit' not in html
+        assert 'lt-orga-confirm' not in html
+        assert 'orga_score_' not in html
+        assert 'confirm_with_scores' not in html
 
 
 def test_anonymous_visitor_gets_no_orga_panel(site_app, bracket):

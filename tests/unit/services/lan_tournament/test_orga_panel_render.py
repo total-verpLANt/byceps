@@ -3,11 +3,13 @@ tests.unit.services.lan_tournament.test_orga_panel_render
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 """
 
+from html.parser import HTMLParser
 import pathlib
 import re
 from types import SimpleNamespace
 
 from jinja2 import DictLoader, Environment, StrictUndefined
+from markupsafe import Markup
 import pytest
 
 from byceps.services.lan_tournament.models.tournament_match import (
@@ -179,12 +181,12 @@ def test_unconfirmed_ffa_match_offers_one_submit_for_the_whole_result(env):
 
     The panel used to post the placements first and only then render a
     separate confirm form, which left a match sitting half-entered
-    between the two clicks. The selects now belong to the comment form,
-    which carries the one confirm button.
+    between the two clicks. The selects and the one confirm button now
+    belong to the comment form.
     """
     out = _render_match_actions(env, case=None, is_ffa=True, confirmed=None)
     assert out.count('<form') == 0
-    assert '.orga_submit_ffa_result' not in out
+    assert out.count('formaction=".orga_submit_ffa_result"') == 1
     selects = re.findall(r'<select[^>]*>', out)
     assert len(selects) == 2
     assert all('form="lt-match-comment-form"' in tag for tag in selects)
@@ -283,10 +285,9 @@ def test_score_inputs_bind_to_comment_form(env):
     inputs = re.findall(r'<input[^>]*name="score_[^"]*"[^>]*>', out)
     assert len(inputs) == 2
     assert all('form="lt-match-comment-form"' in tag for tag in inputs)
-    assert '.orga_confirm_match_with_scores' not in out
     assert (
-        'Enter the result here, then confirm the match with a comment '
-        'in the comments section.'
+        'Enter the result here. The comment from the comments section '
+        'is saved with the confirmation.'
     ) in out
 
 
@@ -303,6 +304,288 @@ def test_no_score_inputs_when_confirm_unavailable(env, is_ffa):
     assert 'name="placement_' not in out
     assert 'lt-match-comment-form' not in out
     assert 'Enter the result here' not in out
+
+
+_VIEW_MATCH_TEMPLATE = pathlib.Path(
+    'byceps/services/lan_tournament/blueprints/site/templates'
+    '/site/lan_tournament/view_match.html'
+)
+_COMMENT_FORM_ID = 'lt-match-comment-form'
+_VOID_TAGS = frozenset({'br', 'hr', 'img', 'input', 'link', 'meta'})
+
+
+class _Dom(HTMLParser):
+    """Collect the elements of a rendered page in tree order."""
+
+    def __init__(self, html):
+        super().__init__()
+        self.elements = []
+        self._open = []
+        self.feed(html)
+
+    def handle_starttag(self, tag, attrs):
+        element = SimpleNamespace(
+            tag=tag,
+            attrs=dict(attrs),
+            parent=self._open[-1] if self._open else None,
+            order=len(self.elements),
+            text='',
+        )
+        self.elements.append(element)
+        if tag not in _VOID_TAGS:
+            self._open.append(element)
+
+    def handle_endtag(self, tag):
+        for depth in range(len(self._open) - 1, -1, -1):
+            if self._open[depth].tag == tag:
+                del self._open[depth:]
+                break
+
+    def handle_data(self, data):
+        if self._open:
+            self._open[-1].text += data
+
+
+def _classes(element):
+    return element.attrs.get('class', '').split()
+
+
+def _result_controls(dom, name_prefix):
+    return [
+        e
+        for e in dom.elements
+        if e.tag in ('input', 'select')
+        and e.attrs.get('name', '').startswith(name_prefix)
+    ]
+
+
+def _confirm_buttons(dom):
+    return [
+        e
+        for e in dom.elements
+        if e.tag == 'button' and 'lt-orga-confirm' in _classes(e)
+    ]
+
+
+def _form_owner(element):
+    """Return the ID of the form the element belongs to, if any."""
+    if 'form' in element.attrs:
+        return element.attrs['form']
+    parent = element.parent
+    while parent is not None:
+        if parent.tag == 'form':
+            return parent.attrs.get('id')
+        parent = parent.parent
+    return None
+
+
+def _submit_buttons_of(dom, form_id):
+    """Return the form's submit buttons in tree order."""
+    return [
+        e
+        for e in dom.elements
+        if e.tag == 'button'
+        and e.attrs.get('type', 'submit') == 'submit'
+        and _form_owner(e) == form_id
+    ]
+
+
+def test_confirm_button_follows_score_inputs(env):
+    dom = _Dom(_render_match_actions(env, case=None, confirmed=None))
+
+    scores = _result_controls(dom, 'score_')
+    confirm_buttons = _confirm_buttons(dom)
+    assert len(scores) == 2
+    assert len(confirm_buttons) == 1
+    confirm = confirm_buttons[0]
+    assert confirm.order > scores[-1].order
+    assert confirm.attrs['type'] == 'submit'
+    assert confirm.attrs['form'] == _COMMENT_FORM_ID
+    assert confirm.attrs['formaction'] == '.orga_confirm_match_with_scores'
+    assert 'lt-orga-panel' in _classes(confirm.parent)
+
+
+def test_ffa_confirm_button_follows_placement_selects(env):
+    dom = _Dom(
+        _render_match_actions(env, case=None, is_ffa=True, confirmed=None)
+    )
+
+    selects = _result_controls(dom, 'placement_')
+    confirm_buttons = _confirm_buttons(dom)
+    assert len(selects) == 2
+    assert len(confirm_buttons) == 1
+    confirm = confirm_buttons[0]
+    assert confirm.order > selects[-1].order
+    assert confirm.attrs['type'] == 'submit'
+    assert confirm.attrs['form'] == _COMMENT_FORM_ID
+    assert confirm.attrs['formaction'] == '.orga_submit_ffa_result'
+    assert 'lt-orga-panel' in _classes(confirm.parent)
+
+
+@pytest.mark.parametrize('is_ffa', [False, True])
+def test_no_confirm_button_when_confirm_unavailable(env, is_ffa):
+    out = _render_match_actions(
+        env,
+        case=None,
+        is_ffa=is_ffa,
+        confirmed=None,
+        orga_confirm_available=False,
+    )
+    assert 'lt-orga-confirm' not in out
+    assert 'orga_confirm_match_with_scores' not in out
+    assert 'orga_submit_ffa_result' not in out
+    assert 'name="score_' not in out
+    assert 'name="placement_' not in out
+
+
+@pytest.fixture(scope='module')
+def match_page_env():
+    """Render the real match and panel templates between stubbed shell parts."""
+    e = Environment(
+        undefined=StrictUndefined,
+        autoescape=True,
+        loader=DictLoader(
+            {
+                'site/lan_tournament/view_match.html': (
+                    _VIEW_MATCH_TEMPLATE.read_text()
+                ),
+                'site/lan_tournament/orga_actions.html': _TEMPLATE.read_text(),
+                'layout/site/lan_tournament.html': (
+                    '{% block head %}{% endblock %}'
+                    '{% block body %}{% endblock %}'
+                ),
+                'site/lan_tournament/_match_readiness.html': '',
+                'site/lan_tournament/_seat_badge.html': (
+                    '{% macro render_seat_badge(seats) %}{% endmacro %}'
+                ),
+                'macros/icons.html': (
+                    '{% macro render_icon(name) %}{% endmacro %}'
+                ),
+                'macros/misc.html': (
+                    '{% macro render_tag(label, class=none) %}{% endmacro %}'
+                ),
+                'macros/lan_tournament.html': (
+                    '{% macro render_match_ref(m) %}{{ m.id }}{% endmacro %}'
+                    '{% macro render_hover_name(name, user_id=none,'
+                    ' user_deleted=false, seats_by_user_id=none,'
+                    ' team_id=none, team_members_by_team_id=none)'
+                    ' %}{{ name }}{% endmacro %}'
+                    '{% macro render_tournament_subnav(t, tab) %}'
+                    '{% endmacro %}'
+                ),
+            }
+        ),
+    )
+    e.globals['_'] = lambda s, **kw: s
+    e.globals['url_for'] = lambda endpoint, **k: endpoint
+    e.filters['dateformat'] = str
+    e.filters['timeformat'] = lambda value, *args: str(value)
+    return e
+
+
+def _render_match_page(
+    env,
+    *,
+    is_ffa=False,
+    orga_confirm_available=True,
+    current_user_can_comment=True,
+):
+    people = {
+        key: SimpleNamespace(id=key, screen_name=name, deleted=False)
+        for key, name in (('u1', 'PlayerOne'), ('u2', 'PlayerTwo'))
+    }
+    comment_form = SimpleNamespace(
+        comment=lambda **kw: Markup('<textarea name="comment"></textarea>')
+    )
+    return env.get_template('site/lan_tournament/view_match.html').render(
+        tournament=SimpleNamespace(
+            id='t0', name='Cup', contestant_type=SimpleNamespace(name='SOLO')
+        ),
+        active_tab='matches',
+        match=SimpleNamespace(id='m0', confirmed_by=None),
+        match_label=None,
+        contestants=[_solo('u1'), _solo('u2')],
+        teams_by_id={},
+        participants_by_id=people,
+        team_members_by_team_id={},
+        seats_by_user_id={},
+        seat_links_by_user_id={},
+        is_ffa=is_ffa,
+        current_user_can_submit=False,
+        comments=[],
+        comment_users_by_id={},
+        current_user_can_comment=current_user_can_comment,
+        comment_form=comment_form if current_user_can_comment else None,
+        orga_confirm_available=orga_confirm_available,
+        may_administrate=True,
+        max_match_score=999_999_999,
+        correction_case=None,
+        affected_downstream_matches=[],
+        ack_match_ids=[],
+        is_walkover=False,
+        ffa_result_consumed=False,
+        results_editable=True,
+        phase_lock=None,
+    )
+
+
+@pytest.mark.parametrize(
+    ('is_ffa', 'result_prefix', 'formaction'),
+    [
+        (False, 'score_', '.orga_confirm_match_with_scores'),
+        (True, 'placement_', '.orga_submit_ffa_result'),
+    ],
+)
+def test_default_submit_of_comment_form_is_the_confirm_action(
+    match_page_env, is_ffa, result_prefix, formaction
+):
+    """Enter in a result control must confirm, not post a comment.
+
+    A control bound with `form=` submits the first submit button of its
+    form in tree order, so the hidden twin has to come before Post
+    Comment. The visible confirm button sits in the orga panel.
+    """
+    dom = _Dom(_render_match_page(match_page_env, is_ffa=is_ffa))
+
+    controls = _result_controls(dom, result_prefix)
+    assert len(controls) == 2
+    assert all(c.attrs['form'] == _COMMENT_FORM_ID for c in controls)
+
+    submit_buttons = _submit_buttons_of(dom, _COMMENT_FORM_ID)
+    assert len(submit_buttons) == 3
+    twin, post_comment, confirm = submit_buttons
+
+    assert twin.parent.attrs['id'] == _COMMENT_FORM_ID
+    assert 'lt-default-submit' in _classes(twin)
+    assert twin.attrs['formaction'] == formaction
+    assert twin.attrs['tabindex'] == '-1'
+    assert twin.attrs['aria-hidden'] == 'true'
+
+    assert post_comment.parent.attrs['id'] == _COMMENT_FORM_ID
+    assert post_comment.text == 'Post Comment'
+    assert 'formaction' not in post_comment.attrs
+
+    assert 'lt-orga-confirm' in _classes(confirm)
+    assert confirm.attrs['formaction'] == formaction
+
+
+@pytest.mark.parametrize('is_ffa', [False, True])
+def test_no_default_submit_or_confirm_button_without_comment_form(
+    match_page_env, is_ffa
+):
+    """The confirm action is bound to the comment form, so it needs it."""
+    out = _render_match_page(
+        match_page_env,
+        is_ffa=is_ffa,
+        orga_confirm_available=True,
+        current_user_can_comment=False,
+    )
+    assert 'Orga Actions' in out
+    assert _COMMENT_FORM_ID not in out
+    assert 'lt-default-submit' not in out
+    assert 'lt-orga-confirm' not in out
+    assert 'name="score_' not in out
+    assert 'name="placement_' not in out
 
 
 def test_score_inputs_are_keyed_by_contestant_not_position(env):

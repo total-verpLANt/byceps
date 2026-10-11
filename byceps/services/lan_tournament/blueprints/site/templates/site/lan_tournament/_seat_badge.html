@@ -1,0 +1,6 @@
+{% from 'macros/seating.html' import render_seat_link %}
+{%- macro render_seat_badge(seats) -%}
+  {%- if seats -%}
+  <span class="personal-seat-links lt-seat-badge">{% for seat in seats %}{{ render_seat_link(seat) }}{% endfor %}</span>
+  {%- endif -%}
+{%- endmacro -%}

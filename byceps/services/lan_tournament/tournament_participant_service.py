@@ -3,7 +3,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, UTC
 from functools import wraps
-from typing import Any
+from typing import Any, TYPE_CHECKING
 from uuid import UUID
 
 from sqlalchemy import select
@@ -39,6 +39,9 @@ from .models.tournament_participant import (
 from .models.tournament_status import TournamentStatus
 from .models.tournament import Tournament, TournamentID
 from .models.tournament_team import TournamentTeam, TournamentTeamID
+
+if TYPE_CHECKING:
+    from .tournament_personal_repository import ContactSeat
 
 
 def _rollback_roster_on_failure(operation):
@@ -1176,3 +1179,21 @@ def get_seats_for_users(
             continue
         result[ticket.used_by_id] = label
     return result
+
+
+def get_seat_links_for_users(
+    user_ids: set[UserID],
+    party_id: PartyID,
+) -> dict[UserID, list['ContactSeat']]:
+    """Return the seats users occupy at the party.
+
+    The seats are ready for `render_seat_link`. Users without seats are
+    omitted.
+    """
+    if not user_ids:
+        return {}
+
+    # Local import to avoid circular dependency with seating/ticketing modules.
+    from .tournament_personal_repository import get_contact_seats
+
+    return get_contact_seats(party_id, user_ids)

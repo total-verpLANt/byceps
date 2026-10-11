@@ -14,7 +14,9 @@ from .test_readiness_surface_policy import NOW, _project, _row, _tournament
 
 
 def _serialize(tournament, rows, **kwargs):
-    with patch.object(helpers, 'gettext', side_effect=lambda text: f'de:{text}'):
+    with patch.object(
+        helpers, 'gettext', side_effect=lambda text, **kw: f'de:{text}'
+    ):
         return helpers.serialize_bracket_json(
             tournament,
             [{'match': match, 'contestants': contestants}

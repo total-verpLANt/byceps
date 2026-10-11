@@ -40,6 +40,7 @@ from byceps.services.lan_tournament.models.tournament_team import (
 )
 from byceps.services.lan_tournament.lan_tournament_view_helpers import (
     _resolve_contestant_name,
+    build_match_label,
     serialize_bracket_json,
 )
 from byceps.services.party.models import PartyID
@@ -672,3 +673,45 @@ def test_resolve_contestant_name_team_id_missing_falls_to_participant():
     # teams_by_id does NOT contain phantom_team_id
     result = _resolve_contestant_name(contestant, {}, {pid: user})
     assert result == 'FallbackPlayer'
+
+
+# -------------------------------------------------------------------- #
+# serialize_bracket_json — spelled-out match label
+# -------------------------------------------------------------------- #
+
+
+def test_serialized_matches_carry_label_long():
+    """Every match carries the spelled-out label, bracket or not."""
+    tournament = _make_tournament()
+    matches = [
+        _make_match(round_num=0, match_order=0, bracket=Bracket.WINNERS),
+        _make_match(round_num=1, match_order=1, bracket=Bracket.WINNERS),
+        _make_match(round_num=0, match_order=2),
+    ]
+    match_data = [{'match': m, 'contestants': []} for m in matches]
+
+    result = serialize_bracket_json(tournament, match_data, {}, {}, {}, {})
+
+    assert len(result['matches']) == 3
+    for serialized in result['matches']:
+        assert isinstance(serialized['label_long'], str)
+        assert serialized['label_long']
+
+
+def test_label_long_matches_build_match_label_for_wb_lb_gf():
+    """The payload reuses `build_match_label` instead of its own text."""
+    tournament = _make_tournament(
+        elimination_mode=EliminationMode.DOUBLE_ELIMINATION
+    )
+    matches = [
+        _make_match(round_num=1, match_order=2, bracket=Bracket.WINNERS),
+        _make_match(round_num=2, match_order=0, bracket=Bracket.LOSERS),
+        _make_match(round_num=0, match_order=1, bracket=Bracket.GRAND_FINAL),
+    ]
+    match_data = [{'match': m, 'contestants': []} for m in matches]
+
+    result = serialize_bracket_json(tournament, match_data, {}, {}, {}, {})
+
+    labels = [serialized['label_long'] for serialized in result['matches']]
+    assert labels == [build_match_label(m) for m in matches]
+    assert len(set(labels)) == 3

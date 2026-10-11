@@ -416,6 +416,11 @@ def view(tournament_id):
 
     # Build seat lookup
     seats_by_user_id = build_seat_lookup(user_ids, tournament.party_id)
+    seat_links_by_user_id = (
+        tournament_participant_service.get_seat_links_for_users(
+            user_ids, tournament.party_id
+        )
+    )
 
     winner_name = tournament_service.resolve_winner_display_name(tournament)
     podium = tournament_service.resolve_podium_display_names(tournament)
@@ -444,6 +449,7 @@ def view(tournament_id):
         'can_leave': can_leave,
         'users_by_id': users_by_id,
         'seats_by_user_id': seats_by_user_id,
+        'seat_links_by_user_id': seat_links_by_user_id,
         'winner_name': winner_name,
         'runner_up_name': runner_up_name,
         'bronze_name': bronze_name,
@@ -1237,6 +1243,10 @@ def matches(tournament_id):
     readiness_by_match_id = {
         entry['match'].id: entry['readiness'] for entry in match_data
     }
+    match_labels = {
+        str(entry['match'].id): build_match_label(entry['match'])
+        for entry in match_data
+    }
     all_contestants = [entry['contestants'] for entry in match_data]
 
     teams_by_id, participants_by_id = build_contestant_name_lookups(
@@ -1251,6 +1261,7 @@ def matches(tournament_id):
     return {
         'tournament': tournament,
         'match_data': match_data,
+        'match_labels': match_labels,
         'only': only,
         'match_quantities': match_quantities,
         'match_filter_options': filter_options,
@@ -1297,6 +1308,11 @@ def view_match(match_id):
 
     seats_by_user_id, team_members_by_team_id = build_hover_lookups(
         tournament, participants_by_id, teams_by_id, tournament.party_id
+    )
+    seat_links_by_user_id = (
+        tournament_participant_service.get_seat_links_for_users(
+            {u.id for u in participants_by_id.values()}, tournament.party_id
+        )
     )
 
     # Resolve comment author names
@@ -1453,6 +1469,7 @@ def view_match(match_id):
         'teams_by_id': teams_by_id,
         'participants_by_id': participants_by_id,
         'seats_by_user_id': seats_by_user_id,
+        'seat_links_by_user_id': seat_links_by_user_id,
         'team_members_by_team_id': team_members_by_team_id,
         'comment_users_by_id': comment_users_by_id,
         'current_user_contestant': current_user_contestant,

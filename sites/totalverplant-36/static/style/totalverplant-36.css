@@ -2448,6 +2448,15 @@
   body.lt-dark .lt-orga-panel .button-row .button {
     width: auto;
   }
+  /* The confirm button sits directly in the desk, bound to the comment
+     form: 18px under the fields, whose stock 16px bottom margin does
+     not collapse into an inline-level button. */
+  body.lt-dark .lt-orga-panel > .lt-orga-fields:has(+ .lt-orga-confirm) {
+    margin-bottom: 0;
+  }
+  body.lt-dark .lt-orga-panel > .lt-orga-confirm {
+    margin-top: 18px;
+  }
 
   /* Score pair: two equal fields filling the sidebar, as `.fldrow`. */
   body.lt-dark .lt-orga-fields:has(.lt-orga-score) {

@@ -124,8 +124,8 @@
   {%- else %}
 
   {%- if not is_ffa and orga_confirm_available %}
-  {# Inputs are named by contestant key, not by position. They belong to the
-     comment form in the comments section, which carries the confirm button. #}
+  {# Inputs are named by contestant key, not by position. They and the
+     confirm button belong to the comment form in the comments section. #}
   <div class="lt-orga-fields block">
     {%- for contestant in contestants if contestant.team_id or contestant.participant_id %}
     {%- set _key = (contestant.team_id or contestant.participant_id)|string %}
@@ -141,7 +141,8 @@
     </div>
     {%- endfor %}
   </div>
-  <p class="dimmed">{{ _('Enter the result here, then confirm the match with a comment in the comments section.') }}</p>
+  <button type="submit" class="button is-compact color-success lt-orga-confirm" form="lt-match-comment-form" formaction="{{ url_for('.orga_confirm_match_with_scores', match_id=match.id) }}">{{ render_icon('success') }} {{ _('Confirm Match') }}</button>
+  <p class="dimmed">{{ _('Enter the result here. The comment from the comments section is saved with the confirmation.') }}</p>
   {%- endif %}
 
   {%- if is_ffa and orga_confirm_available %}
@@ -164,7 +165,8 @@
     </div>
     {%- endfor %}
   </div>
-  <p class="dimmed">{{ _('Enter the result here, then confirm the match with a comment in the comments section.') }}</p>
+  <button type="submit" class="button is-compact color-success lt-orga-confirm" form="lt-match-comment-form" formaction="{{ url_for('.orga_submit_ffa_result', match_id=match.id) }}">{{ render_icon('success') }} {{ _('Confirm FFA Match') }}</button>
+  <p class="dimmed">{{ _('Enter the result here. The comment from the comments section is saved with the confirmation.') }}</p>
   {%- endif %}
 
   {#- After the release, a group result is locked: the correction forms give way to a notice. #}

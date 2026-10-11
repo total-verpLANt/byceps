@@ -366,7 +366,7 @@
 
 .match-row {
   display: grid;
-  grid-template-columns: minmax(3.5rem, 110px) minmax(10rem, 1fr) minmax(4rem, 90px) minmax(8rem, min(20rem, 35%));
+  grid-template-columns: minmax(6rem, 12rem) minmax(10rem, 1fr) minmax(4rem, 90px) minmax(8rem, min(20rem, 35%));
   gap: 0.375rem 1rem;
   align-items: center;
   padding: 0.75rem 0;
@@ -385,6 +385,8 @@
 }
 
 .match-number {
+  min-width: 0;
+  overflow-wrap: anywhere;
   font-family: var(--mono, monospace);
   font-size: 0.75rem;
   font-weight: 700;
@@ -559,7 +561,7 @@
 
 @media (max-width: 600px) {
   .match-row {
-    grid-template-columns: 3.5rem minmax(0, 1fr) auto;
+    grid-template-columns: minmax(5.5rem, 8rem) minmax(0, 1fr) auto;
     font-size: 1.125rem;
   }
 
@@ -2219,6 +2221,21 @@ a.lt-hover-name-link:hover {
   height: auto;
   min-height: 0;
   resize: vertical;
+}
+
+/* The confirm twin that stays the first submit button of the comment
+   form, so Enter in a bound result control confirms. Clipped rather than
+   `display: none`, which some browsers skip as the default button. */
+.lt-default-submit {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 

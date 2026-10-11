@@ -3,6 +3,7 @@
 {% from 'macros/misc.html' import render_tag %}
 {% from 'macros/lan_tournament.html' import render_hover_name, render_match_ref, render_tournament_subnav %}
 {% from 'site/lan_tournament/orga_actions.html' import render_orga_match_actions %}
+{% from 'site/lan_tournament/_seat_badge.html' import render_seat_badge %}
 {% set page_title = [_('Match'), tournament.name] %}
 
 {%- macro render_contestant_name(contestant) -%}
@@ -17,6 +18,7 @@
     {%- set _user = participants_by_id.get(contestant.participant_id) -%}
     {%- if _user -%}
       {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted, seats_by_user_id=seats_by_user_id) }}
+      {{- render_seat_badge(seat_links_by_user_id.get(_user.id)) -}}
     {%- else -%}
       {{ contestant.participant_id|string }}
     {%- endif -%}
@@ -27,6 +29,7 @@
 
 {% block head %}{{ super() }}
   <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_seeding.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_personal.css') }}">
 {%- endblock %}
 
 {% block body %}
@@ -225,6 +228,7 @@
             {%- set _user = participants_by_id.get(contestant.participant_id) -%}
             {%- if _user -%}
               {{ render_hover_name(_user.screen_name, user_id=_user.id, user_deleted=_user.deleted, seats_by_user_id=seats_by_user_id) }}
+              {{- render_seat_badge(seat_links_by_user_id.get(_user.id)) -}}
             {%- else -%}
               {{ contestant.participant_id|string }}
             {%- endif -%}
@@ -318,12 +322,13 @@
       <p class='dimmed'>{{ _('No comments yet.') }}</p>
       {%- endif %}
 
+      {%- set _can_confirm = orga_confirm_available and current_user_can_comment %}
       {%- if current_user_can_comment %}
       <form method='post' action='{{ url_for('.add_comment', match_id=match.id) }}' class='comment-form' id='lt-match-comment-form'>
         {{ comment_form.comment(class='form-control', rows='3', placeholder=_('Write a comment...'), maxlength='1000') }}
-        {#- The confirm button comes first: Enter in a result control bound by `form=` submits the first submit button. #}
-        {%- if orga_confirm_available %}
-        <button type='submit' class='button is-compact color-success' formaction='{{ url_for('.orga_submit_ffa_result' if is_ffa else '.orga_confirm_match_with_scores', match_id=match.id) }}'>{{ render_icon('success') }} {{ _('Confirm FFA Match') if is_ffa else _('Confirm Match') }}</button>
+        {%- if _can_confirm %}
+        {#- Enter in a result control bound by `form=` submits the first submit button in tree order; this twin keeps that the confirm action. #}
+        <button type='submit' class='lt-default-submit' tabindex='-1' aria-hidden='true' formaction='{{ url_for('.orga_submit_ffa_result' if is_ffa else '.orga_confirm_match_with_scores', match_id=match.id) }}'>{{ _('Confirm FFA Match') if is_ffa else _('Confirm Match') }}</button>
         {%- endif %}
         <button type='submit' class='button is-compact' formnovalidate>{{ _('Post Comment') }}</button>
       </form>
@@ -348,7 +353,7 @@
          ffa_result_consumed=ffa_result_consumed,
          results_editable=results_editable,
          phase_lock=phase_lock,
-         orga_confirm_available=orga_confirm_available,
+         orga_confirm_available=_can_confirm,
        ) }}
 
   </div>

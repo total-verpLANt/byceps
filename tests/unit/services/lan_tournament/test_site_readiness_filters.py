@@ -26,6 +26,7 @@ from byceps.services.lan_tournament.models.match_readiness import ContestantIden
 from byceps.services.lan_tournament.models.tournament_participant import TournamentParticipant
 from byceps.services.lan_tournament.models.tournament_status import TournamentStatus
 from byceps.util.result import Err, Ok
+from byceps.util.templatefilters import fallback
 from tests.unit.services.lan_tournament.test_readiness_surface_policy import NOW, _row, _tournament
 
 
@@ -63,6 +64,7 @@ def site(monkeypatch):
     monkeypatch.setattr(views, 'build_contestant_name_lookups', names)
     monkeypatch.setattr(views, 'build_hover_lookups', hover)
     monkeypatch.setattr(views, 'build_seat_lookup', lambda *a: {})
+    monkeypatch.setattr(views.tournament_participant_service, 'get_seat_links_for_users', lambda *a: {})
     monkeypatch.setattr(views, 'may_administrate_tournament', lambda *a: False)
     monkeypatch.setattr(views.tournament_service, 'resolve_winner_display_name', lambda _: None)
     monkeypatch.setattr(views.tournament_service, 'resolve_podium_display_names', lambda _: {})
@@ -101,6 +103,7 @@ def site(monkeypatch):
         )
         env.filters['dateformat'] = lambda value, *a: value.date().isoformat()
         env.filters['timeformat'] = lambda value, *a: value.time().isoformat()
+        env.filters['fallback'] = fallback
         with app.test_request_context('/lan-tournaments/'):
             g.user = SimpleNamespace(authenticated=False, has_permission=lambda _: False)
             g.party = SimpleNamespace(id=state.tournament.party_id)
