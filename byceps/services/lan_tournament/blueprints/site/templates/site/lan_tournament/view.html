@@ -1,8 +1,8 @@
 {% extends 'layout/site/lan_tournament.html' %}
 {% from 'macros/icons.html' import render_icon %}
-{% from 'macros/misc.html' import render_tag %}
 {% from 'macros/lan_tournament.html' import render_tournament_subnav %}
 {% from 'site/lan_tournament/orga_actions.html' import render_orga_tournament_status_actions %}
+{% from 'site/lan_tournament/_overview_icons.html' import render_overview_icon %}
 {% from 'site/lan_tournament/_seat_badge.html' import render_seat_badge %}
 {% set page_title = [_('Tournament'), tournament.name] %}
 
@@ -11,6 +11,44 @@
 {%- endblock %}
 
 {% block body %}
+
+  {%- macro render_list_head(name_label, last_label) %}
+  <div class="ov-th" aria-hidden="true">
+    <div class="ov-th__col"><span>#</span><span>{{ name_label }}</span><span>{{ last_label }}</span></div>
+    <div class="ov-th__col ov-th__col--second"><span>#</span><span>{{ name_label }}</span><span>{{ last_label }}</span></div>
+  </div>
+  {%- endmacro %}
+
+  {%- macro render_player_rows(rows) %}
+  <ul class="ov-list">
+    {%- for participant in rows %}
+    <li class="lt-player-row">
+      {%- set _user = users_by_id.get(participant.user_id) %}
+      <span class="ov-no">{{ '%02d'|format(loop.index) }}</span>
+      <span class="lt-player-name">
+        {{- render_overview_icon('person') -}}
+        <span class="ov-name-text">
+        {%- if _user -%}
+          {%- if not _user.deleted -%}
+            <a href="{{ url_for('user_profile.view', user_id=_user.id) }}" class="lt-hover-name-link">{{ _user.screen_name }}</a>
+          {%- else -%}
+            {{ _user.screen_name }}
+          {%- endif -%}
+        {%- else -%}
+          {{ participant.user_id|string }}
+        {%- endif -%}
+        </span>
+      </span>
+      {%- set _seat_links = seat_links_by_user_id.get(_user.id) if _user else none %}
+      {%- if _seat_links %}
+      <span class="ov-seat ov-seat--set">{{ render_seat_badge(_seat_links) }}</span>
+      {%- else %}
+      <span class="ov-seat" aria-hidden="true">–</span>
+      {%- endif %}
+    </li>
+    {%- endfor %}
+  </ul>
+  {%- endmacro %}
 
   <nav class="breadcrumbs">
     <ol>
@@ -24,57 +62,69 @@
   <p class="ltd-back"><a href="{{ dashboard_back_link.url }}">{{ dashboard_back_link.label }}</a> <span class="dimmed">{{ dashboard_back_link.context }}</span></p>
   {%- endif %}
 
-  <div class="tournament-header">
-    <div class="row is-vcentered">
-      <div class="tournament-icon">
-        {%- if tournament.image_url %}
-          <div class="tournament-media tournament-media--hero">
-            <img src="{{ tournament.image_url }}" alt="{{ tournament.image_alt_text or '' }}">
-          </div>
-        {%- else %}
-          {{ render_icon('trophy') }}
-        {%- endif %}
-      </div>
-      <div>
-        <h1 class="title">{{ tournament.name }}</h1>
-        {%- if tournament.game %}
-        <div class="dimmed">{{ tournament.game }}</div>
+  {%- set status_stamps = {
+    'REGISTRATION_OPEN': (_('Registration open'), 'info'),
+    'REGISTRATION_CLOSED': (_('Registration closed'), 'warning'),
+    'ONGOING': (_('Ongoing'), 'success'),
+    'PAUSED': (_('Paused'), 'warning'),
+    'COMPLETED': (_('Completed'), 'success'),
+    'CANCELLED': (_('Cancelled'), 'danger'),
+  } %}
+  {%- set stamp = status_stamps.get(tournament.tournament_status.name) if tournament.tournament_status else none %}
+
+  {%- if is_team_tournament %}
+    {%- set capacity_label = _('Teams') %}
+    {%- set capacity_count = team_count %}
+    {%- set capacity_max = tournament.max_teams %}
+  {%- else %}
+    {%- set capacity_label = _('Participants') %}
+    {%- set capacity_count = participant_count %}
+    {%- set capacity_max = tournament.max_players %}
+  {%- endif %}
+
+  <header class="ov-head">
+    <div class="ov-logo tournament-icon">
+      {%- if tournament.image_url %}
+        <div class="tournament-media tournament-media--hero">
+          <img src="{{ tournament.image_url }}" alt="{{ tournament.image_alt_text or '' }}">
+        </div>
+      {%- else %}
+        {{ render_icon('trophy') }}
+      {%- endif %}
+    </div>
+
+    <div class="ov-title">
+      <h1 class="title">{{ tournament.name }}</h1>
+      {%- if tournament.game %}
+      <div class="dimmed">{{ tournament.game }}</div>
+      {%- endif %}
+      <div class="ov-tags">
+        <span>{{ tournament.category.label }}</span>
+        {%- if elimination_mode_label %}
+        <span>{{ elimination_mode_label }}</span>
         {%- endif %}
       </div>
     </div>
-  </div>
 
-  {# Status badge #}
-  {%- if tournament.tournament_status %}
-  <div class="block">
-    {%- if tournament.tournament_status.name == 'REGISTRATION_OPEN' %}
-      {{ render_tag(_('Registration open'), class='color-info') }}
-    {%- elif tournament.tournament_status.name == 'REGISTRATION_CLOSED' %}
-      {{ render_tag(_('Registration closed'), class='color-warning') }}
-    {%- elif tournament.tournament_status.name == 'ONGOING' %}
-      {{ render_tag(_('Ongoing'), class='color-success') }}
-    {%- elif tournament.tournament_status.name == 'PAUSED' %}
-      {{ render_tag(_('Paused'), class='color-warning') }}
-    {%- elif tournament.tournament_status.name == 'COMPLETED' %}
-      {{ render_tag(_('Completed'), class='color-success') }}
-    {%- elif tournament.tournament_status.name == 'CANCELLED' %}
-      {{ render_tag(_('Cancelled'), class='color-danger') }}
-    {%- endif %}
-  </div>
-  {%- endif %}
+    <div class="ov-side">
+      {%- if stamp %}
+      <span class="ov-stamp ov-stamp--{{ stamp[1] }}">{{ stamp[0] }}</span>
+      {%- endif %}
+      <div class="ov-cap">
+        <div class="ov-cap__row">
+          <span class="ov-label">{{ render_overview_icon('group') }}{{ capacity_label }}</span>
+          <b class="ov-cap__num">{{ capacity_count }}{% if capacity_max %} <small>/ {{ capacity_max }}</small>{% endif %}</b>
+        </div>
+        {%- if capacity_max %}
+        {%- set percentage = [100 * capacity_count / capacity_max, 100]|min %}
+        <div class="ov-cap__bar ov-cap__bar--{{ 'full' if percentage >= 100 else 'scarce' if percentage >= 70 else 'available' }}" aria-hidden="true"><i style="width: {{ percentage|round|int }}%"></i></div>
+        <p class="ov-cap__pct">{{ percentage|round|int }} %</p>
+        {%- endif %}
+      </div>
+    </div>
+  </header>
 
   {{ render_orga_tournament_status_actions(tournament, may_administrate, start_gate, grand_final=grand_final, winner_tie=winner_tie) }}
-
-  <div class="match-filter-nav">
-    <span class="match-filter-nav__label">{{ _('Matches') }}</span>
-    <nav class="match-filter-bar" aria-label="{{ _('Filter matches') }}">
-      {%- for key, label, count in match_filter_options %}
-      <a class="button match-filter-bar__item" href="{{ url_for('.matches', tournament_id=tournament.id, only=key) }}"
-         {%- if key == only %} aria-current="page"{% endif %}>
-        {{- label }}<span class="match-filter-bar__count">{{ count }}</span></a>
-      {%- endfor %}
-    </nav>
-  </div>
 
   {%- if tournament.tournament_status and tournament.tournament_status.name == 'COMPLETED' and winner_name %}
   {%- set is_ffa = ffa_phase is defined and ffa_phase is not none %}
@@ -99,92 +149,74 @@
   </div>
   {%- endif %}
 
-  {# Tournament details #}
-  <div class="overview-grid block">
+  {# Tournament facts #}
+  {%- if tournament.start_time or tournament.game_format or tournament.contestant_type or orgas %}
+  <div class="ov-facts block">
     {%- if tournament.start_time %}
-    <div class="box">
-      <div class="data-label">{{ _('Start') }}</div>
-      <div class="data-value">{{ tournament.start_time|dateformat('EEEE') }}, {{ tournament.start_time|timeformat('short') }}</div>
+    <div class="ov-fact">
+      {{ render_overview_icon('calendar') }}
+      <div>
+        <span class="ov-label">{{ _('Start') }}</span>
+        <p>{{ tournament.start_time|dateformat('EEEE') }}, {{ tournament.start_time|timeformat('short') }}</p>
+      </div>
     </div>
     {%- endif %}
 
-    {%- if tournament.game_format and tournament.elimination_mode %}
-    <div class="box">
-      <div class="data-label">{{ _('Mode') }}</div>
-      <div class="data-value">{{ tournament.game_format.label }} / {{ elimination_mode_label }}</div>
-    </div>
-    {%- elif tournament.game_format %}
-    <div class="box">
-      <div class="data-label">{{ _('Mode') }}</div>
-      <div class="data-value">{{ tournament.game_format.label }}</div>
+    {%- if tournament.game_format %}
+    <div class="ov-fact">
+      {{ render_overview_icon('gamepad') }}
+      <div>
+        <span class="ov-label">{{ _('Mode') }}</span>
+        <p>{{ tournament.game_format.label }}</p>
+        {%- if tournament.elimination_mode %}
+        <small>{{ elimination_mode_label }}</small>
+        {%- endif %}
+      </div>
     </div>
     {%- endif %}
 
     {%- if tournament.contestant_type %}
-    <div class="box">
-      <div class="data-label">{{ _('Type') }}</div>
-      <div class="data-value">{{ tournament.contestant_type.name|title }}</div>
-    </div>
-    {%- endif %}
-
-    {%- if is_team_tournament %}
-    <div class="box">
-      <div class="data-label">{{ _('Teams') }}</div>
-      {%- if tournament.max_teams %}
-      <div class="row is-vcentered">
-        {%- set percentage = (100 * team_count / tournament.max_teams) if tournament.max_teams else 0 %}
-        <span class="progress">
-          <span class="progress-bar color--{% if percentage < 100 %}{% if percentage < 70 %}available{% else %}scarce{% endif %}{% else %}full{% endif %}" style="width: {{ percentage }}%"></span>
-        </span>
-        <small class="dimmed nowrap">{{ team_count }} / {{ tournament.max_teams }}</small>
+    <div class="ov-fact">
+      {{ render_overview_icon('person') }}
+      <div>
+        <span class="ov-label">{{ _('Type') }}</span>
+        <p>{{ tournament.contestant_type.name|title }}</p>
       </div>
-      {%- else %}
-      <div class="data-value">{{ team_count }}</div>
-      {%- endif %}
-    </div>
-    {%- else %}
-    <div class="box">
-      <div class="data-label">{{ _('Participants') }}</div>
-      {%- if tournament.max_players %}
-      <div class="row is-vcentered">
-        {%- set percentage = (100 * participant_count / tournament.max_players) if tournament.max_players else 0 %}
-        <span class="progress">
-          <span class="progress-bar color--{% if percentage < 100 %}{% if percentage < 70 %}available{% else %}scarce{% endif %}{% else %}full{% endif %}" style="width: {{ percentage }}%"></span>
-        </span>
-        <small class="dimmed nowrap">{{ participant_count }} / {{ tournament.max_players }}</small>
-      </div>
-      {%- else %}
-      <div class="data-value">{{ participant_count }}</div>
-      {%- endif %}
     </div>
     {%- endif %}
 
     {%- if orgas %}
-    <div class="box">
-      <div class="data-label">{{ _('Organizers') }}</div>
-      <div class="data-value">
-        {%- for orga in orgas %}
-        <div>
-          {{- orga.user.screen_name -}}
-          {%- if orga.duties %} <span class="dimmed">({{ orga.duties }})</span>{%- endif -%}
-        </div>
-        {%- endfor %}
+    <div class="ov-fact">
+      {{ render_overview_icon('award') }}
+      <div>
+        <span class="ov-label">{{ _('Organizers') }}</span>
+        <p>
+          {%- for orga in orgas %}
+          {{ orga.user.screen_name }}
+          {%- if orga.duties %} <em>({{ orga.duties }})</em>{% endif %}
+          {%- if not loop.last %}<br>{% endif %}
+          {%- endfor %}
+        </p>
       </div>
     </div>
     {%- endif %}
   </div>
-
-  {%- if tournament.description %}
-  <div class="box block">
-    <div class="data-label">{{ _('Description') }}</div>
-    <div class="data-value text-pre-wrap">{{ tournament.description }}</div>
-  </div>
   {%- endif %}
 
-  {%- if tournament.ruleset %}
-  <div class="box block">
-    <div class="data-label">{{ _('Ruleset') }}</div>
-    <div class="data-value text-pre-wrap">{{ tournament.ruleset }}</div>
+  {%- if tournament.description or tournament.ruleset %}
+  <div class="ov-txt">
+    {%- if tournament.description %}
+    <section>
+      <span class="ov-label ov-label--accent">{{ render_overview_icon('info') }}{{ _('Description') }}</span>
+      <p class="text-pre-wrap">{{ tournament.description }}</p>
+    </section>
+    {%- endif %}
+    {%- if tournament.ruleset %}
+    <section>
+      <span class="ov-label ov-label--accent">{{ render_overview_icon('document') }}{{ _('Ruleset') }}</span>
+      <p class="text-pre-wrap">{{ tournament.ruleset }}</p>
+    </section>
+    {%- endif %}
   </div>
   {%- endif %}
 
@@ -209,86 +241,50 @@
 
   {%- if is_team_tournament %}
   {# Team tournament: show teams as primary, players collapsed #}
-  <div class="main-body-box box block">
-    <div class="data-label">{{ _('Registered teams') }}</div>
+  <section class="ov-players block">
+    <div class="ov-sec">
+      <h2 class="ov-sec__title">{{ _('Registered teams') }}</h2>
+      <span class="ov-sec__n">{{ render_overview_icon('group') }}{{ team_count }} {{ _('Teams') }}</span>
+    </div>
   {%- if teams %}
-    <ul class="lt-player-list">
+    {{ render_list_head(_('Team'), _('Members')) }}
+    <ul class="ov-list">
       {%- for team in teams %}
       <li class="lt-player-row">
+        <span class="ov-no">{{ '%02d'|format(loop.index) }}</span>
         <span class="lt-player-name">
-          <a href="{{ url_for('.view_team', team_id=team.id) }}">{{ team.name }}</a>
+          {{- render_overview_icon('group') -}}
+          <span class="ov-name-text"><a href="{{ url_for('.view_team', team_id=team.id) }}">{{ team.name }}</a></span>
         </span>
-        <span class="lt-player-sep" aria-hidden="true"></span>
-        <span class="lt-player-seat">{{ member_counts.get(team.id, 0) }} {{ _('members') }}</span>
+        <span class="ov-seat ov-seat--text">{{ member_counts.get(team.id, 0) }} {{ _('members') }}</span>
       </li>
       {%- endfor %}
     </ul>
   {%- else %}
     <p class="dimmed">{{ _('No teams have registered yet.') }}</p>
   {%- endif %}
-  </div>
+  </section>
   {%- if participants %}
-  <details class="block">
+  <details class="ov-players ov-players--folded block">
     <summary class="dimmed">{{ _('Show all players') }} ({{ participant_count }})</summary>
-    <div class="main-body-box box mt">
-      <ul class="lt-player-list">
-        {%- for participant in participants %}
-        <li class="lt-player-row">
-          {%- set _user = users_by_id.get(participant.user_id) -%}
-          {%- if _user -%}
-            <span class="lt-player-name">
-              {%- if not _user.deleted -%}
-                <a href="{{ url_for('user_profile.view', user_id=_user.id) }}" class="lt-hover-name-link">{{ _user.screen_name }}</a>
-              {%- else -%}
-                {{ _user.screen_name }}
-              {%- endif -%}
-            </span>
-            {%- set _seat_links = seat_links_by_user_id.get(_user.id) -%}
-            {%- if _seat_links -%}
-              <span class="lt-player-sep" aria-hidden="true"></span>
-              {{ render_seat_badge(_seat_links) }}
-            {%- endif -%}
-          {%- else -%}
-            <span class="lt-player-name">{{ participant.user_id|string }}</span>
-          {%- endif -%}
-        </li>
-        {%- endfor %}
-      </ul>
-    </div>
+    {{ render_list_head(_('Player'), _('Seat')) }}
+    {{ render_player_rows(participants) }}
   </details>
   {%- endif %}
   {%- else %}
-  {# Solo tournament: show players as primary (unchanged) #}
-  <div class="main-body-box box block">
-    <div class="data-label">{{ _('Checked-in players') }}</div>
+  {# Solo tournament: show players as primary #}
+  <section class="ov-players block">
+    <div class="ov-sec">
+      <h2 class="ov-sec__title">{{ _('Checked-in players') }}</h2>
+      <span class="ov-sec__n">{{ render_overview_icon('group') }}{{ participant_count }} {{ _('Players') }}</span>
+    </div>
   {%- if participants %}
-    <ul class="lt-player-list">
-      {%- for participant in participants %}
-      <li class="lt-player-row">
-        {%- set _user = users_by_id.get(participant.user_id) -%}
-        {%- if _user -%}
-          <span class="lt-player-name">
-            {%- if not _user.deleted -%}
-              <a href="{{ url_for('user_profile.view', user_id=_user.id) }}" class="lt-hover-name-link">{{ _user.screen_name }}</a>
-            {%- else -%}
-              {{ _user.screen_name }}
-            {%- endif -%}
-          </span>
-          {%- set _seat_links = seat_links_by_user_id.get(_user.id) -%}
-          {%- if _seat_links -%}
-            <span class="lt-player-sep" aria-hidden="true"></span>
-            {{ render_seat_badge(_seat_links) }}
-          {%- endif -%}
-        {%- else -%}
-          <span class="lt-player-name">{{ participant.user_id|string }}</span>
-        {%- endif -%}
-      </li>
-      {%- endfor %}
-    </ul>
+    {{ render_list_head(_('Player'), _('Seat')) }}
+    {{ render_player_rows(participants) }}
   {%- else %}
     <p class="dimmed">{{ _('No participants have registered yet.') }}</p>
   {%- endif %}
-  </div>
+  </section>
   {%- endif %}
 
 {%- endblock %}

@@ -38,14 +38,17 @@ def _url_for(endpoint, **values):
     return f'{url}#{anchor}' if anchor else url
 
 
-@pytest.fixture(scope='module')
-def env():
+def make_env():
     e = Environment(
         undefined=StrictUndefined,
         autoescape=True,
         loader=DictLoader(
             {
                 VIEW: (SITE_TEMPLATES / VIEW).read_text(),
+                'site/lan_tournament/_overview_icons.html': (
+                    SITE_TEMPLATES
+                    / 'site/lan_tournament/_overview_icons.html'
+                ).read_text(),
                 'site/lan_tournament/_seat_badge.html': (
                     SITE_TEMPLATES / 'site/lan_tournament/_seat_badge.html'
                 ).read_text(),
@@ -58,9 +61,6 @@ def env():
                 ),
                 'macros/icons.html': (
                     '{% macro render_icon(name) %}{% endmacro %}'
-                ),
-                'macros/misc.html': (
-                    '{% macro render_tag(text) %}{% endmacro %}'
                 ),
                 'macros/lan_tournament.html': (
                     '{% macro render_tournament_subnav(t, tab) %}{% endmacro %}'
@@ -79,6 +79,11 @@ def env():
     return e
 
 
+@pytest.fixture(scope='module')
+def env():
+    return make_env()
+
+
 def _seat(label='B-07'):
     return ContactSeat(
         id=uuid4(),
@@ -93,12 +98,23 @@ def _player(screen_name):
     return user, participant
 
 
-def _render(env, players, seat_links, *, teams=(), member_counts=None):
+def _render(
+    env,
+    players,
+    seat_links,
+    *,
+    teams=(),
+    member_counts=None,
+    tournament_fields=None,
+    orgas=(),
+    elimination_mode_label=None,
+):
     tournament = SimpleNamespace(
         id='t0',
         name='Cup',
         image_url=None,
         image_alt_text=None,
+        category=SimpleNamespace(label='Main tournaments'),
         game=None,
         tournament_status=None,
         start_time=None,
@@ -110,6 +126,7 @@ def _render(env, players, seat_links, *, teams=(), member_counts=None):
         description=None,
         ruleset=None,
     )
+    vars(tournament).update(tournament_fields or {})
     return env.get_template(VIEW).render(
         tournament=tournament,
         active_tab='overview',
@@ -117,13 +134,12 @@ def _render(env, players, seat_links, *, teams=(), member_counts=None):
         start_gate=None,
         grand_final=None,
         winner_tie=None,
-        only='all',
-        match_filter_options=[],
+        elimination_mode_label=elimination_mode_label,
         winner_name=None,
         is_team_tournament=bool(teams),
         team_count=len(teams),
         participant_count=len(players),
-        orgas=[],
+        orgas=list(orgas),
         can_join=False,
         can_leave=False,
         current_user_participant=None,
@@ -156,13 +172,13 @@ def test_checked_in_player_with_seat_gets_a_linked_badge(env):
 
     (row,) = _rows(html)
     assert _badge(seat) in row
-    assert row.index('lt-player-sep') < row.index('lt-seat-badge')
+    assert row.index('ov-seat--set') < row.index('lt-seat-badge')
     assert LEGACY_LABEL not in html
     assert 'lt-player-seat' not in html
     assert html.index('<!-- layout head -->') < html.index(STYLESHEET)
 
 
-def test_checked_in_player_without_seat_gets_no_badge_or_separator(env):
+def test_checked_in_player_without_seat_gets_a_placeholder_not_a_badge(env):
     seated, seated_participant = _player('Seated')
     unknown, unknown_participant = _player('Unknown')
     emptied, emptied_participant = _player('Emptied')
@@ -183,9 +199,10 @@ def test_checked_in_player_without_seat_gets_no_badge_or_separator(env):
     for row in (unknown_row, emptied_row):
         assert 'lt-seat-badge' not in row
         assert 'personal-seat-links' not in row
-        assert 'lt-player-sep' not in row
+        assert 'ov-seat--set' not in row
+        assert 'ov-seat' in row
     assert html.count('lt-seat-badge') == 1
-    assert html.count('lt-player-sep') == 1
+    assert html.count('ov-seat--set') == 1
 
 
 def test_team_tournament_player_list_uses_badges(env):

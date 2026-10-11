@@ -435,9 +435,6 @@ def view(tournament_id):
         tournament.id
     )
 
-    match_data, readiness_by_match_id = _site_match_projections(tournament)
-    match_quantities = _site_match_quantities(match_data)
-
     return {
         'tournament': tournament,
         'participants': participants,
@@ -470,10 +467,6 @@ def view(tournament_id):
             else None
         ),
         'orgas': orgas,
-        'match_quantities': match_quantities,
-        'match_filter_options': match_filter_options(match_quantities),
-        'only': 'all',
-        'readiness_by_match_id': readiness_by_match_id,
         'ffa_phase': ffa_phase(tournament),
         'elimination_mode_label': (
             request_mode_label(tournament.elimination_mode)

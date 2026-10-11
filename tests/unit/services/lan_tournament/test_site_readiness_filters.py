@@ -301,7 +301,7 @@ def test_default_filter_counts_are_disjoint(site):
 
 
 # fmt: off
-@pytest.mark.parametrize('surface', ['matches', 'view', 'bracket'])
+@pytest.mark.parametrize('surface', ['matches', 'bracket'])
 @pytest.mark.parametrize('mode', ['confirmed', 'defwin', 'completed', 'cancelled', 'ffa', 'playoff', 'stale'])
 # fmt: on
 def test_contexts_use_canonical_format_and_outcome(site, surface, mode):
@@ -325,8 +325,7 @@ def test_contexts_use_canonical_format_and_outcome(site, surface, mode):
         assert bool(projection.ready_sides) is (mode == 'playoff')
     assert projection.supports_readiness is (mode != 'ffa')
     assert site.batches[2].call_count == 1
-    if surface != 'view':
-        assert result['match_data'][0]['readiness'] is projection
+    assert result['match_data'][0]['readiness'] is projection
 
 
 # fmt: off
@@ -512,50 +511,27 @@ def test_site_list_empty_states_follow_design(site, query, rows, message):
 @pytest.mark.parametrize('theme', ['generic', 'totalverplant-36'])
 @pytest.mark.parametrize('status', [TournamentStatus.ONGOING, TournamentStatus.COMPLETED, TournamentStatus.CANCELLED])
 # fmt: on
-def test_real_overview_counts_and_terminal_delete_hidden(site, theme, status):
+def test_real_overview_hides_terminal_delete_and_match_filter(site, theme, status):
     site.tournament = replace(site.tournament, tournament_status=status)
     site.rows = [_row(site.tournament, claims=n) for n in (0, 1, 2)]
     context = site.context('view')
     if status in {TournamentStatus.COMPLETED, TournamentStatus.CANCELLED}:
         context['may_administrate'] = True
     html = site.render(context, 'view', theme)
-    assert 'only=waiting' in html and 'only=both_ready' in html
-    assert 'only=playable' not in html and 'only=open' not in html
+    assert 'only=' not in html and 'match-filter' not in html
     assert 'Delete' not in html
-    ongoing = status is TournamentStatus.ONGOING
-    assert context['match_quantities']['both_ready'] == (1 if ongoing else 0)
-    assert context['match_quantities']['finished'] == (0 if ongoing else 3)
 
 
 # fmt: off
 @pytest.mark.parametrize('theme', ['generic', 'totalverplant-36'])
 # fmt: on
-def test_overview_nav_has_matches_label(site, theme):
-    _personal_rows(site)
-    html = site.render(site.context('view'), 'view', theme)
-    wrappers = list(_dom(html).find_all('match-filter-nav'))
-    assert len(wrappers) == 1
-    labels = list(wrappers[0].find_all('match-filter-nav__label'))
-    assert [(label.tag, label.text) for label in labels] == [('span', 'Matches')]
-    bar, items = _filter_bar(wrappers[0])
-    assert bar.attrs['aria-label'] == 'Filter matches'
-    assert [(i['key'], i['count']) for i in items] == [
-        ('waiting', 0), ('not_ready', 1), ('partially_ready', 2),
-        ('both_ready', 1), ('finished', 0), ('all', 4),
-    ]
-    assert all(i['href'].endswith('/matches?only=' + i['key']) for i in items)
-    assert [i['key'] for i in items if i['current'] is not None] == ['all']
-    assert list(wrappers[0].find_all(tag='button')) == []
-    assert 'match-filter-mine' not in html
-
-
-def test_overview_counts_match_list(site):
+def test_overview_leaves_the_match_filter_to_the_match_list(site, theme):
     _personal_rows(site)
     overview = site.context('view')
-    matches = site.context()
-    assert overview['match_quantities'] == matches['match_quantities']
-    assert overview['match_filter_options'] == matches['match_filter_options']
-    assert overview['match_quantities']['both_ready'] == 1
+    assert 'match_filter_options' not in overview
+    html = site.render(overview, 'view', theme)
+    assert 'match-filter' not in html
+    assert 'only=' not in html
 
 
 def test_bracket_serializer_receives_canonical_projection(site):
@@ -586,7 +562,7 @@ def test_playoff_bracket_serializer_receives_effective_projection(site, monkeypa
 
 
 # fmt: off
-@pytest.mark.parametrize('surface', ['matches', 'view', 'bracket'])
+@pytest.mark.parametrize('surface', ['matches', 'bracket'])
 # fmt: on
 def test_projection_batch_query_growth(site, surface):
     observed = []
@@ -601,5 +577,5 @@ def test_projection_batch_query_growth(site, surface):
         site.batches[2].assert_called_once_with([m.id for m, _, _ in site.rows])
         observed.append(tuple(batch.call_count for batch in site.batches))
     assert observed[0] == observed[1]
-    expected = (1, 1, 1, 1, 0, 0, 1) if surface == 'view' else (1, 1, 1, 1, 1, 1, 0)
+    expected = (1, 1, 1, 1, 1, 1, 0)
     assert observed == [expected, expected]

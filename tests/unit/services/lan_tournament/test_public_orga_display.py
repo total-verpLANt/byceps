@@ -34,6 +34,7 @@ def env():
         loader=DictLoader({'orga_block': src[start:end]}),
     )
     e.globals['_'] = lambda s, **kw: s
+    e.globals['render_overview_icon'] = lambda name: ''
     return e
 
 

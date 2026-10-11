@@ -94,11 +94,6 @@ def test_filter_buttons_are_44px_and_wrap():
     assert count['font-weight'] == '400'
     assert count['color'] == MUTED
 
-    label = _rule('.match-filter-nav__label')
-    assert label['font-family'] == MONO
-    assert label['text-transform'] == 'uppercase'
-    assert label['letter-spacing'] and label['color'] == MUTED
-
 
 def test_active_filter_and_toggle_states_styled():
     current = _rule('.match-filter-bar .button[aria-current="page"]')
