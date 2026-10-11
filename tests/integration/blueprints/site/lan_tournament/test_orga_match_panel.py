@@ -517,6 +517,34 @@ def test_orga_gets_placement_form_on_open_ffa_match(site_app, ffa, orga):
     )
 
 
+def test_confirmed_two_player_ffa_match_renders_a_podium_without_third_place(
+    site_app, ffa, orga, players
+):
+    played, _, _, _ = ffa
+    placed = {
+        c.placement: tournament_participant_service.get_participant(
+            c.participant_id
+        ).user_id
+        for c in tournament_match_service.get_contestants_for_match(played.id)
+    }
+    screen_names = {p.id: p.screen_name for p in players}
+    assert sorted(placed) == [1, 2]
+
+    for viewer in (orga, None):
+        response = _get(site_app, f'/matches/{played.id}', viewer)
+
+        assert response.status_code == 200
+        html = response.get_data(as_text=True)
+        second = _offset(html, r'podium__card--2nd')
+        first = _offset(html, r'podium__card--1st')
+        third = _offset(html, r'podium__card--3rd')
+        assert second < first < third
+        assert screen_names[placed[2]] in html[second:first]
+        assert screen_names[placed[1]] in html[first:third]
+        assert 'podium__card--3rd podium__card--empty' in html
+        assert html.count('podium__card--empty') == 1
+
+
 def test_orga_can_reenter_and_confirm_an_unconfirmed_ffa_result(
     site_app, ffa, orga
 ):

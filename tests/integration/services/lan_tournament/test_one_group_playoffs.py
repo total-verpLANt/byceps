@@ -484,3 +484,92 @@ def test_one_group_seeding_board_shows_no_same_group_warning(
     assert board.origin_labels
     assert drawn.same_group_matches == ()
     assert board.same_group_matches == ()
+
+
+def _play_to_the_final(tournament, admin, scores_of):
+    """Play the group and the lone final of a one-group playoff."""
+    _start(tournament, admin)
+    _confirm_group(tournament, admin, scores_of)
+    _release(tournament, admin)
+    (final,) = _matches(tournament, 2)
+    assert final.next_match_id is None
+    _play_phase_two(tournament, admin, scores_of)
+    found = tournament_repository.get_tournament(tournament.id)
+    assert found.tournament_status is TournamentStatus.COMPLETED
+    return found
+
+
+def test_one_group_final_only_playoff_podium_takes_third_place_from_the_group_table(
+    make_tournament, users
+):
+    admin = users[0]
+    tournament = make_tournament(4, qualifiers=2)
+    ids = _participant_ids(tournament, users[:4])
+
+    found = _play_to_the_final(tournament, admin, _stronger_wins(ids))
+
+    assert not any(
+        m.bracket is Bracket.THIRD_PLACE for m in _matches(tournament, 2)
+    )
+    assert tournament_service.resolve_podium_display_names(found) == {
+        'runner_up': users[1].screen_name,
+        'bronze': users[2].screen_name,
+    }
+
+
+def test_one_group_podium_joins_a_shared_third_place(make_tournament, users):
+    admin = users[0]
+    tournament = make_tournament(4, qualifiers=2)
+    ids = _participant_ids(tournament, users[:4])
+    stronger_wins = _stronger_wins(ids)
+    drawn = frozenset(ids[2:])
+
+    # The last two draw with each other, so they share the third place.
+    def scores_of(a, b):
+        return (1, 1) if frozenset((a, b)) == drawn else stronger_wins(a, b)
+
+    found = _play_to_the_final(tournament, admin, scores_of)
+
+    state = _qualification(tournament)
+    (shared,) = state.rankings[0].ties
+    assert set(shared.contestant_ids) == set(ids[2:])
+    assert (shared.rank_from, shared.rank_to) == (3, 4)
+    assert state.blockers == ()
+    name_of = {cid: users[n].screen_name for n, cid in enumerate(ids)}
+    table_order = [
+        name_of[e.contestant_id]
+        for e in state.rankings[0].entries
+        if e.rank == 3
+    ]
+    assert sorted(table_order) == sorted(
+        [users[2].screen_name, users[3].screen_name]
+    )
+    assert tournament_service.resolve_podium_display_names(found) == {
+        'runner_up': users[1].screen_name,
+        'bronze': ' / '.join(table_order),
+    }
+
+
+def test_one_group_force_completed_before_the_final_has_no_third_place(
+    make_tournament, users
+):
+    admin = users[0]
+    tournament = make_tournament(4, qualifiers=2)
+    ids = _participant_ids(tournament, users[:4])
+    _start(tournament, admin)
+    _confirm_group(tournament, admin, _stronger_wins(ids))
+    _release(tournament, admin)
+    (final,) = _matches(tournament, 2)
+    assert final.confirmed_by is None
+
+    completed = tournament_service.change_status(
+        tournament.id, TournamentStatus.COMPLETED, admin.id
+    )
+
+    assert completed.is_ok(), completed.unwrap_err()
+    found = tournament_repository.get_tournament(tournament.id)
+    assert found.tournament_status is TournamentStatus.COMPLETED
+    assert tournament_service.resolve_podium_display_names(found) == {
+        'runner_up': None,
+        'bronze': None,
+    }

@@ -89,6 +89,41 @@ def tournament(party, users):
         tournament_service.delete_tournament(tournament.id)
 
 
+@pytest.fixture
+def final_only_tournament(party, users):
+    result = tournament_service.create_tournament(
+        PARTY_ID,
+        f'Playoff Podium Tournament {next(_counter)}',
+        contestant_type=ContestantType.SOLO,
+        game_format=GameFormat.ONE_V_ONE,
+        elimination_mode=EliminationMode.ROUND_ROBIN,
+        tournament_status=TournamentStatus.REGISTRATION_CLOSED,
+        playoff_game_format=GameFormat.ONE_V_ONE,
+        playoff_elimination_mode=EliminationMode.SINGLE_ELIMINATION,
+        playoff_group_count=2,
+        playoff_qualifiers_per_group=1,
+        playoff_release_mode=PlayoffReleaseMode.MANUAL,
+    )
+    assert result.is_ok(), result.unwrap_err()
+    tournament, _ = result.unwrap()
+    for user in users:
+        tournament_repository.create_participant(
+            TournamentParticipant(
+                id=TournamentParticipantID(generate_uuid7()),
+                user_id=user.id,
+                tournament_id=tournament.id,
+                substitute_player=False,
+                team_id=None,
+                created_at=datetime.now(UTC),
+            )
+        )
+    db.session.commit()
+    yield tournament
+    db.session.rollback()
+    if tournament_repository.find_tournament(tournament.id) is not None:
+        tournament_service.delete_tournament(tournament.id)
+
+
 def _matches(tournament, phase):
     return [
         m
@@ -206,5 +241,55 @@ def test_completed_before_phase_two_has_an_empty_podium(tournament, users):
     assert found.tournament_status is TournamentStatus.COMPLETED
     assert tournament_service.resolve_podium_display_names(found) == {
         'runner_up': None,
+        'bronze': None,
+    }
+
+
+def test_final_only_playoff_of_several_groups_has_no_third_place(
+    final_only_tournament, users
+):
+    tournament = final_only_tournament
+    admin = users[0]
+    user_of = {
+        str(p.id): u
+        for p in tournament_repository.get_participants_for_tournament(
+            tournament.id
+        )
+        for u in users
+        if u.id == p.user_id
+    }
+
+    board = tournament_seeding_service.get_board(
+        tournament.id, initiator_id=admin.id
+    ).unwrap()
+    tournament_seeding_service.generate_from_seeding(
+        tournament.id, expected_version=board.version, initiator_id=admin.id
+    ).unwrap()
+    tournament_service.change_status(
+        tournament.id, TournamentStatus.ONGOING, admin.id
+    ).unwrap()
+    for match in _matches(tournament, 1):
+        stronger, weaker = sorted(_contestants(match))
+        tournament_match_service.admin_set_and_confirm_match(
+            match.id, admin.id, {UUID(stronger): 2, UUID(weaker): 0}
+        ).unwrap()
+    draft = tournament_seeding_service.ensure_playoff_draft(
+        tournament.id
+    ).unwrap()
+    tournament_qualification_service.release_playoffs(
+        tournament.id, expected_version=draft.version, initiator_id=admin.id
+    ).unwrap()
+
+    (final,) = _matches(tournament, 2)
+    assert final.bracket is not Bracket.THIRD_PLACE
+    stronger, weaker = sorted(_contestants(final))
+    tournament_match_service.admin_set_and_confirm_match(
+        final.id, admin.id, {UUID(weaker): 3, UUID(stronger): 1}
+    ).unwrap()
+
+    found = tournament_repository.get_tournament(tournament.id)
+    assert found.tournament_status is TournamentStatus.COMPLETED
+    assert tournament_service.resolve_podium_display_names(found) == {
+        'runner_up': user_of[stronger].screen_name,
         'bronze': None,
     }

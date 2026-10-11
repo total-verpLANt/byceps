@@ -1443,6 +1443,8 @@ def resolve_podium_display_names(
         EliminationMode.DOUBLE_ELIMINATION,
     ):
         runner_up, bronze = _resolve_bracket_podium(tournament, phase=phase)
+        if bronze is None and phase == 2 and runner_up is not None:
+            bronze = _resolve_group_table_bronze(tournament)
     elif em == EliminationMode.ROUND_ROBIN:
         runner_up, bronze = _resolve_rr_podium(tournament)
     elif gf == GameFormat.HIGHSCORE:
@@ -1587,6 +1589,41 @@ def _resolve_plain_rr_podium(
         return ' / '.join(n for n in names if n) or None
 
     return _names(2), _names(3)
+
+
+def _resolve_group_table_bronze(tournament: Tournament) -> str | None:
+    """Return the best non-qualifier of a single group, for a lone final."""
+    matches = _matches_of_phase(tournament, 2)
+    if not matches or any(m.bracket == Bracket.THIRD_PLACE for m in matches):
+        return None
+
+    from . import tournament_qualification_service
+
+    match tournament_qualification_service.get_qualification(tournament.id):
+        case Ok(state):
+            if (
+                state.source != tournament_qualification_service.SOURCE_GROUPS
+                or len(state.rankings) != 1
+                or state.qualifiers is None
+            ):
+                return None
+            qualified = {q.contestant_id for q in state.qualifiers}
+            rest = [
+                e
+                for e in state.rankings[0].entries
+                if e.contestant_id not in qualified
+            ]
+            if not rest:
+                return None
+            best = min(e.rank for e in rest)
+            names = [
+                _resolve_contestant_name(tournament, e.contestant_id)
+                for e in rest
+                if e.rank == best
+            ]
+            return ' / '.join(n for n in names if n) or None
+        case _:
+            return None
 
 
 def _resolve_hs_podium(

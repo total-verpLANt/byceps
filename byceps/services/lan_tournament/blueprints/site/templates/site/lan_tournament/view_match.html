@@ -85,9 +85,9 @@
     <div class='ffa-match-box'>
       <h2 class="title">{{ _('Placements') }}</h2>
       {# -- Podium: 2nd | 1st | 3rd -- #}
-      {%- set p1 = placed_contestants|selectattr('placement', 'equalto', 1)|first %}
-      {%- set p2 = placed_contestants|selectattr('placement', 'equalto', 2)|first %}
-      {%- set p3 = placed_contestants|selectattr('placement', 'equalto', 3)|first %}
+      {%- set p1 = placed_contestants|selectattr('placement', 'equalto', 1)|first|default(none) %}
+      {%- set p2 = placed_contestants|selectattr('placement', 'equalto', 2)|first|default(none) %}
+      {%- set p3 = placed_contestants|selectattr('placement', 'equalto', 3)|first|default(none) %}
       <div class="podium">
         {# 2nd place -- LEFT #}
         <div class="podium__card podium__card--2nd">
