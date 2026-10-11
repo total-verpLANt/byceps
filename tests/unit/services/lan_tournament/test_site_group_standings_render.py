@@ -85,6 +85,15 @@ def test_each_card_uses_its_own_layout():
     assert 'Pld.' not in second
 
 
+def test_only_a_table_card_carries_the_column_grid():
+    html = _render([_ranking((1,)), _ranking((1,), is_table=False)])
+    first, second = re.findall(r'<section.*?</section>', html, re.S)
+    columns = re.findall(r'<col\b', first)
+    headers = re.findall(r"<th scope='col'", first)
+    assert len(columns) == len(headers) == 10
+    assert '<colgroup' not in second
+
+
 def _assert_cut_after_second_row(ranks):
     html = _render([_ranking(ranks)])
     assert html.count("class='lt-cut'") == 1

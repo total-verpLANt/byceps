@@ -1,12 +1,15 @@
 /* lan_tournament: participant views of the group phase, the playoff wait state and the playoffs */
 
 /* Only --lt-* tokens: a site that re-points them (and its dark edition)
-   re-skins everything here. */
+   re-skins everything here. The few draft colours without a --lt-* twin
+   (soft ink, green, the hard shadow) read the site token and fall back to
+   a --lt-* one, so a site without them keeps a plain look. */
 
 .lt-phase {
   display: inline-flex;
-  margin: 0 0 1.25rem;
-  border: 1.5px solid var(--lt-line-strong);
+  margin: 0 0 24px;
+  line-height: normal;
+  border: 1.5px solid var(--lt-text);
   border-radius: var(--lt-radius-sm);
   overflow: hidden;
 }
@@ -15,25 +18,20 @@
   display: inline-flex;
   align-items: center;
   min-height: 44px;
-  padding: 0 1rem;
-  border-left: 1px solid var(--lt-line);
+  padding: 0 18px;
   background: var(--lt-card);
   color: var(--lt-text);
-  font-size: .85rem;
+  font-size: 13px;
   font-weight: 700;
-  letter-spacing: .06em;
+  letter-spacing: .14em;
   text-decoration: none;
   text-transform: uppercase;
   white-space: nowrap;
 }
 
-.lt-phase__link:first-child {
-  border-left: 0;
-}
-
 .lt-phase__link.is-on {
   background: var(--lt-text);
-  color: var(--lt-bg);
+  color: var(--lt-card);
 }
 
 .lt-phase__link:focus-visible,
@@ -44,36 +42,48 @@
 }
 
 .lt-chain {
-  margin: 0 0 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: .25rem 14px;
+  margin: 0 0 28px;
+  font-size: 19px;
+  font-weight: 400;
+  line-height: normal;
 }
 
 .lt-chain__label {
-  margin-right: .5rem;
-  color: var(--lt-muted);
-  font-size: .75rem;
+  color: var(--inkSoft, var(--lt-muted));
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: .12em;
+  letter-spacing: .2em;
   text-transform: uppercase;
 }
 
 .lt-gcards {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1.5rem;
+  align-items: start;
+  gap: 28px;
   margin-bottom: 1.5rem;
 }
 
 .lt-gcard {
   min-width: 0;
+  border: 1.5px solid var(--lt-text);
+  background: var(--lt-card);
+  box-shadow: 4px 4px 0 var(--ink, transparent);
+  line-height: normal;
 }
 
 .lt-gcard__head {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: .4rem .6rem;
-  padding-bottom: .4rem;
-  border-bottom: 1.5px solid var(--lt-line-strong);
+  gap: .4rem 12px;
+  padding: 14px 18px;
+  border-bottom: 1.5px solid var(--lt-text);
+  background: var(--lt-bg);
 }
 
 .lt-gcard.is-tie .lt-gcard__head {
@@ -82,11 +92,12 @@
 
 .lt-gcard__head b {
   margin-right: auto;
-  font-size: 24px;
+  font-size: 28px;
+  line-height: 1;
 }
 
 .lt-gcard__scroll.table-scroll-wrap {
-  margin: .5rem 0 0;
+  margin: 0;
   border: 0;
   border-radius: 0;
   background: none;
@@ -105,9 +116,16 @@
   white-space: nowrap;
 }
 
+.lt-gcard__head .lt-tag {
+  padding: 5px 10px;
+  border-width: 1.5px;
+  font-size: 11px;
+  letter-spacing: .2em;
+}
+
 .lt-tag--ok {
-  border-color: var(--lt-brand-success);
-  color: var(--lt-brand-success);
+  border-color: currentcolor;
+  color: var(--green, var(--lt-brand-success));
 }
 
 .lt-tag--warn {
@@ -128,39 +146,108 @@
 .lt-st {
   width: 100%;
   border-collapse: collapse;
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+/* Fixed columns keep the numbers on one grid across the group cards. */
+.lt-st:not(.lt-st--board) {
+  min-width: 560px;
+  table-layout: fixed;
+}
+
+.lt-st col.lt-col-rk {
+  width: 40px;
+}
+
+.lt-st col.lt-col-s {
+  width: 36px;
+}
+
+.lt-st col.lt-col-d {
+  width: 52px;
+}
+
+.lt-st col.lt-col-p {
+  width: 44px;
+}
+
+.lt-st col.lt-col-st {
+  width: 118px;
 }
 
 .lt-st th,
 .lt-st td {
-  padding: .5rem .6rem .5rem 0;
-  border-bottom: 1px dotted var(--lt-line);
-  text-align: left;
+  padding: 14px 4px;
+  border-bottom: 1px dotted var(--inkMute, var(--lt-muted));
+  text-align: center;
+  vertical-align: middle;
   white-space: nowrap;
 }
 
+.lt-st th:first-child,
+.lt-st td:first-child {
+  padding-left: 18px;
+  text-align: left;
+}
+
+.lt-st th:last-child,
+.lt-st td:last-child {
+  padding-right: 18px;
+}
+
+.lt-st .c-nm,
+.lt-st .c-st {
+  text-align: left;
+}
+
+/* The tie label is longer than the draft's 118 px column. */
+.lt-st td.c-st {
+  white-space: normal;
+}
+
+.lt-st tbody .c-st {
+  font-size: 10.5px;
+}
+
+.lt-st tbody tr:last-child th,
+.lt-st tbody tr:last-child td {
+  border-bottom: 0;
+}
+
 .lt-st thead th {
-  border-bottom: 1px solid var(--lt-line-strong);
-  color: var(--lt-muted);
-  font-size: 9.5px;
-  letter-spacing: .1em;
+  padding-top: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--lt-text);
+  color: var(--inkSoft, var(--lt-muted));
+  font-size: 10.5px;
+  letter-spacing: .14em;
   text-transform: uppercase;
 }
 
 .lt-st tbody th,
 .lt-st tbody td {
-  font-size: 17px;
+  font-size: 21px;
   font-weight: 400;
 }
 
+.lt-st tbody .c-nm {
+  overflow: hidden;
+  font-size: 22px;
+  text-overflow: ellipsis;
+}
+
+.lt-st tbody .c-pk {
+  font-size: 22px;
+  font-weight: 900;
+}
+
 .lt-st .c-pk b {
-  font-size: 19px;
-  font-weight: 700;
+  font-size: inherit;
+  font-weight: inherit;
 }
 
 .lt-st .c-rk {
-  width: 2.5rem;
-  padding-left: .6rem;
+  width: 40px;
 }
 
 .lt-st tbody .c-rk {
@@ -168,13 +255,9 @@
   font-weight: 700;
 }
 
-.lt-st .c-n,
-.lt-st .c-pk {
+.lt-st--board .c-n,
+.lt-st--board .c-pk {
   text-align: right;
-}
-
-.lt-st .c-st {
-  width: auto;
 }
 
 .lt-st tr.is-tie td,
@@ -182,40 +265,38 @@
   background: color-mix(in srgb, var(--lt-brand-warning) 12%, transparent);
 }
 
+/* The line is the top rule of its label row, which sits beneath it. */
 .lt-st tr.lt-cut td {
-  height: 0;
-  padding: 0;
-  border-top: 2.5px solid var(--lt-line-strong);
+  padding: 4px 18px 2px;
+  border-top: 2.5px solid var(--lt-text);
   border-bottom: 0;
+  color: var(--inkSoft, var(--lt-muted));
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .2em;
+  text-align: left;
+  text-transform: uppercase;
 }
 
 .lt-st tr.lt-cut span {
   position: sticky;
-  left: 0;
+  left: 18px;
   display: inline-block;
-  padding: 0 .5rem 0 .6rem;
-  background: var(--lt-bg);
-  color: var(--lt-text);
-  font-size: .65rem;
-  font-weight: 700;
-  letter-spacing: .16em;
-  text-transform: uppercase;
-  transform: translateY(-55%);
 }
 
 .lt-stw {
-  font-size: .7rem;
+  font-size: 10.5px;
   font-weight: 700;
-  letter-spacing: .08em;
+  letter-spacing: .14em;
   text-transform: uppercase;
 }
 
 .lt-stw.is-qualified {
-  color: var(--lt-brand-success);
+  color: var(--green, var(--lt-brand-success));
 }
 
 .lt-stw.is-out {
-  color: var(--lt-muted);
+  color: var(--inkMute, var(--lt-muted));
 }
 
 .lt-stw.is-tie {
@@ -385,18 +466,18 @@
     position: sticky;
     left: 0;
     z-index: 2;
-    width: 36px;
-    min-width: 36px;
-    background: var(--lt-bg);
+    width: 40px;
+    min-width: 40px;
+    background: var(--lt-card);
   }
 
   .lt-st:not(.lt-st--board) .c-nm {
     position: sticky;
-    left: 36px;
+    left: 40px;
     z-index: 2;
     max-width: 118px;
     overflow: hidden;
-    background: var(--lt-bg);
+    background: var(--lt-card);
     text-overflow: ellipsis;
   }
 
@@ -405,7 +486,7 @@
     right: 118px;
     z-index: 2;
     min-width: 40px;
-    background: var(--lt-bg);
+    background: var(--lt-card);
   }
 
   .lt-st .c-st {
@@ -415,13 +496,16 @@
     width: 118px;
     min-width: 118px;
     max-width: 118px;
-    background: var(--lt-bg);
+    background: var(--lt-card);
     white-space: normal;
   }
 
   .lt-st tr.is-tie td,
-  .lt-st tr.is-tie th {
-    background: color-mix(in srgb, var(--lt-brand-warning) 12%, var(--lt-bg));
+  .lt-st tr.is-tie th,
+  .lt-st:not(.lt-st--board) tr.is-tie .c-rk,
+  .lt-st:not(.lt-st--board) tr.is-tie .c-nm,
+  .lt-st:not(.lt-st--board) tr.is-tie .c-pk {
+    background: color-mix(in srgb, var(--lt-brand-warning) 12%, var(--lt-card));
   }
 }
 

@@ -67,6 +67,14 @@
     <div class='lt-gcard__scroll table-scroll-wrap' tabindex='0' role='region'
          aria-label='{{ _("Table: %(name)s", name=ranking.label) }}'>
       <table class='lt-st{% if not is_table %} lt-st--board{% endif %}'>
+        {%- if is_table %}
+        <colgroup>
+          <col class='lt-col-rk'><col>
+          <col class='lt-col-s'><col class='lt-col-s'><col class='lt-col-s'><col class='lt-col-s'>
+          <col class='lt-col-d'><col class='lt-col-d'>
+          <col class='lt-col-p'><col class='lt-col-st'>
+        </colgroup>
+        {%- endif %}
         <thead>
           <tr>
             <th scope='col' class='c-rk'>{% if is_table %}#{% else %}{{ _('Place') }}{% endif %}</th>
