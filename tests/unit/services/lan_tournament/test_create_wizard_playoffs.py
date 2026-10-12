@@ -1023,8 +1023,11 @@ _PARITY_CASES = {
     'rr no qualifiers': {**_RR, 'playoff_qualifiers_per_group': ''},
     'rr no mode': {**_RR, 'playoff_elimination_mode': None},
     'rr no release': {**_RR, 'playoff_release_mode': None},
-    'rr minimum too small': {**_RR, 'min_players': '5'},
-    'rr qualifiers reach the group': {**_RR, 'playoff_qualifiers_per_group': '4'},
+    'rr minimum too small is no error': {**_RR, 'min_players': '5'},
+    'rr qualifiers reach the group is no error': {**_RR, 'playoff_qualifiers_per_group': '4'},
+    'rr maximum too small': {**_RR, 'min_players': '', 'max_players': '5'},
+    'rr team maximum too small': {**_RR, 'contestant_type': 'TEAM', 'min_players': '',
+                                  'max_players': '', 'min_teams': '2', 'max_teams': '5'},
     'rr double 2x1': {**_RR, 'min_players': '', 'playoff_group_count': '2',
                       'playoff_qualifiers_per_group': '1',
                       'playoff_elimination_mode': 'DOUBLE_ELIMINATION'},
@@ -1079,8 +1082,14 @@ def test_the_parity_table_reaches_every_playoff_rule():
         'Please choose how the playoffs are released.',
         'Please enter the number of groups.',
         'Please enter how many advance from each group.',
-        'The minimum number of contestants is too small for this many groups.',
-        'Fewer must advance from each group than the smallest group holds.',
+        (
+            'With at most %(maximum)s players, no more than %(fit)s groups of '
+            '2 can form. Raise "Max. players" or lower the number of groups.'
+        ),
+        (
+            'With at most %(maximum)s teams, no more than %(fit)s groups of 2 '
+            'can form. Raise "Max. teams" or lower the number of groups.'
+        ),
         'Playoffs need at least 2 qualifiers in total.',
         'Please enter the number of qualifiers.',
         'Please enter how many advance per lobby.',

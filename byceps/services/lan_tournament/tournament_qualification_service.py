@@ -59,6 +59,9 @@ MIN_DOUBLE_ELIMINATION_QUALIFIERS = MIN_DOUBLE_ELIMINATION
 
 ERR_ALREADY_RELEASED = 'The playoffs are already released.'
 ERR_NOT_RELEASED = 'The playoffs are not released.'
+ERR_TOO_FEW_QUALIFIERS = (
+    'Fewer than 2 contestants qualified, so there are no playoffs to release.'
+)
 REASON_MISSING_ERROR = 'Please give a reason for the decision.'
 UNRELEASE_REASON_MISSING_ERROR = (
     'Please give a reason for taking the release back.'
@@ -835,6 +838,8 @@ def _release_locked(
         return Err(tournament_seeding_service.ERR_PLAYOFF_SEEDING_OPEN)
 
     qualifier_count = len(state.qualifiers or ())
+    if qualifier_count < 2:
+        return Err(ERR_TOO_FEW_QUALIFIERS)
     fallback = falls_back_to_single_elimination(tournament, qualifier_count)
     if fallback:
         tournament_repository.set_playoff_elimination_mode(

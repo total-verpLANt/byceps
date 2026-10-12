@@ -14311,12 +14311,6 @@ msgstr "Bitte gib ein, wie viele pro Gruppe weiterkommen."
 msgid "At least one contestant must advance from each group."
 msgstr "Mindestens ein Teilnehmer muss pro Gruppe weiterkommen."
 
-msgid "The minimum number of contestants is too small for this many groups."
-msgstr "Die Mindestteilnehmerzahl ist für so viele Gruppen zu klein."
-
-msgid "Fewer must advance from each group than the smallest group holds."
-msgstr "Pro Gruppe müssen weniger weiterkommen, als die kleinste Gruppe Teilnehmer hat."
-
 msgid "Double elimination playoffs need at least 4 qualifiers in total."
 msgstr "Doppeltes K.-o. braucht mindestens 4 Qualifizierte."
 
@@ -15673,9 +15667,6 @@ msgstr "Playoff-Setzung"
 
 msgid "Across groups: points per match → difference per match → scored per match → orga decision."
 msgstr "Gruppenübergreifend: Punkte pro Spiel → Differenz pro Spiel → Erzielte pro Spiel → Orgaentscheidung."
-
-msgid "The maximum number of contestants is too small for this many groups."
-msgstr "Die Höchstteilnehmerzahl ist für so viele Gruppen zu klein."
 
 msgid "The qualifiers cannot be split into lobbies between the minimum and maximum group size."
 msgstr "Die Qualifizierten lassen sich nicht in Lobbys zwischen minimaler und maximaler Gruppengröße aufteilen."
@@ -17188,9 +17179,6 @@ msgstr "Das Turnier „%(name)s“ wurde als Entwurf importiert."
 msgid "Export configuration"
 msgstr "Konfiguration exportieren"
 
-msgid "At least 1; each group needs at least 2 players."
-msgstr "Mindestens 1; jede Gruppe mindestens 2 Spieler."
-
 msgid "Fewer than the smallest group. Groups × qualifiers: at least 2. Double knockout with fewer than 4 runs as single knockout."
 msgstr "Weniger als die kleinste Gruppe. Gruppen × Qualifizierte ≥ 2. Doppeltes K.-o. mit weniger als 4 läuft als Einfaches K.-o."
 
@@ -17475,3 +17463,30 @@ msgstr "Du kannst trotzdem speichern: Der Server prüft beim Speichern alles ern
 
 msgid "Changes are saved only when you press Save changes."
 msgstr "Änderungen werden erst gespeichert, wenn du „Änderungen speichern“ drückst."
+
+msgid "With at most %(maximum)s teams, no more than %(fit)s groups of 2 can form. Raise \"Max. teams\" or lower the number of groups."
+msgstr "Bei höchstens %(maximum)s Teams können nicht mehr als %(fit)s Gruppen mit je 2 Teams entstehen. Erhöhe „Max. Teams“ oder verringere die Gruppenzahl."
+
+msgid "With at most %(maximum)s players, no more than %(fit)s groups of 2 can form. Raise \"Max. players\" or lower the number of groups."
+msgstr "Bei höchstens %(maximum)s Spielern können nicht mehr als %(fit)s Gruppen mit je 2 Spielern entstehen. Erhöhe „Max. Spieler“ oder verringere die Gruppenzahl."
+
+msgid "%(groups)s groups need at least %(need)s teams, but \"Min. teams\" is %(min)s. Fewer groups will form if fewer register."
+msgstr "%(groups)s Gruppen brauchen mindestens %(need)s Teams, aber „Min. Teams“ ist %(min)s. Bei weniger Anmeldungen entstehen weniger Gruppen."
+
+msgid "%(groups)s groups need at least %(need)s players, but \"Min. players\" is %(min)s. Fewer groups will form if fewer register."
+msgstr "%(groups)s Gruppen brauchen mindestens %(need)s Spieler, aber „Min. Spieler“ ist %(min)s. Bei weniger Anmeldungen entstehen weniger Gruppen."
+
+msgid "The smallest group would hold only %(size)s teams while %(n)s advance, so nobody is eliminated from it."
+msgstr "Die kleinste Gruppe hätte nur %(size)s Teams, während %(n)s weiterkommen. Aus ihr scheidet also niemand aus."
+
+msgid "The smallest group would hold only %(size)s players while %(n)s advance, so nobody is eliminated from it."
+msgstr "Die kleinste Gruppe hätte nur %(size)s Spieler, während %(n)s weiterkommen. Aus ihr scheidet also niemand aus."
+
+msgid "At least 1; each group needs at least 2 %(unit)s."
+msgstr "Mindestens 1; jede Gruppe braucht mindestens 2 %(unit)s."
+
+msgid "The smallest group has %(size)s contestants and %(per_group)s advance, so nobody is eliminated from it."
+msgstr "Die kleinste Gruppe hat %(size)s Teilnehmer, und %(per_group)s kommen weiter. Aus ihr scheidet also niemand aus."
+
+msgid "Fewer than 2 contestants qualified, so there are no playoffs to release."
+msgstr "Weniger als 2 Teilnehmer haben sich qualifiziert, daher gibt es keine Playoffs freizugeben."

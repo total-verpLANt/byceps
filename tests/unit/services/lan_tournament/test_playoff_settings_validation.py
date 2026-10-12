@@ -50,8 +50,13 @@ ONE = GameFormat.ONE_V_ONE
 FFA = GameFormat.FREE_FOR_ALL
 HS = GameFormat.HIGHSCORE
 
-GROUPS_TOO_MANY = (
-    'The minimum number of contestants is too small for this many groups.'
+GROUPS_EXCEED_MAX_PLAYERS = (
+    'With at most %(maximum)s players, no more than %(fit)s groups of 2 can '
+    'form. Raise "Max. players" or lower the number of groups.'
+)
+GROUPS_EXCEED_MAX_TEAMS = (
+    'With at most %(maximum)s teams, no more than %(fit)s groups of 2 can '
+    'form. Raise "Max. teams" or lower the number of groups.'
 )
 PLAYOFFS_TOO_FEW = 'Playoffs need at least 2 qualifiers in total.'
 _REPO = (
@@ -157,12 +162,37 @@ def test_more_groups_than_the_maximum_allows_is_refused():
     capped = {'min_players': None, 'max_players': 6}
 
     assert _msgids(_rr_settings(**capped, playoff_group_count=4)) == {
-        'playoff_group_count': (
-            'The maximum number of contestants is too small for this many '
-            'groups.'
-        )
+        'playoff_group_count': GROUPS_EXCEED_MAX_PLAYERS
     }
     assert _msgids(_rr_settings(**capped, playoff_group_count=3)) == {}
+
+
+# fmt: off
+@pytest.mark.parametrize(
+    ('contestant_type', 'bounds', 'msgid'),
+    [
+        (ContestantType.SOLO, {'min_players': None, 'max_players': 7},
+         GROUPS_EXCEED_MAX_PLAYERS),
+        (ContestantType.TEAM, {'min_teams': 2, 'max_teams': 7},
+         GROUPS_EXCEED_MAX_TEAMS),
+    ],
+)
+# fmt: on
+def test_groups_above_the_maximum_name_the_unit_and_the_fit(
+    contestant_type, bounds, msgid
+):
+    settings = _rr_settings(
+        contestant_type=contestant_type,
+        playoff_group_count=4,
+        **bounds,
+    )
+
+    refused = validate_tournament_settings(settings, require_structure=True)
+
+    message = refused.unwrap_err()['playoff_group_count']
+    assert message.msgid == msgid
+    assert dict(message.params) == {'maximum': 7, 'fit': 3}
+    assert len(refused.unwrap_err()) == 1
 
 
 # fmt: off
@@ -177,10 +207,8 @@ def test_more_groups_than_the_maximum_allows_is_refused():
          'At least one group is needed.'),
         ({'playoff_qualifiers_per_group': 0}, 'playoff_qualifiers_per_group',
          'At least one contestant must advance from each group.'),
-        ({'playoff_qualifiers_per_group': 4}, 'playoff_qualifiers_per_group',
-         'Fewer must advance from each group than the smallest group holds.'),
-        ({'playoff_group_count': 5}, 'playoff_group_count',
-         GROUPS_TOO_MANY),
+        ({'playoff_group_count': 9}, 'playoff_group_count',
+         GROUPS_EXCEED_MAX_PLAYERS),
         ({'playoff_qualifier_count': 4}, 'playoff_qualifier_count',
          'Only used for highscore playoffs.'),
         ({'playoff_game_format': FFA}, 'playoff_game_format',
@@ -220,12 +248,8 @@ def test_rr_playoffs_accept_one_group(mode, per_group, min_players):
 @pytest.mark.parametrize(
     ('overrides', 'field', 'msgid'),
     [
-        ({'playoff_qualifiers_per_group': 4, 'min_players': 4},
-         'playoff_qualifiers_per_group',
-         'Fewer must advance from each group than the smallest group holds.'),
         ({'playoff_qualifiers_per_group': 1, 'min_players': 4},
          'playoff_qualifiers_per_group', PLAYOFFS_TOO_FEW),
-        ({'min_players': 1}, 'playoff_group_count', GROUPS_TOO_MANY),
     ],
 )
 # fmt: on
@@ -236,20 +260,51 @@ def test_rr_one_group_still_validates_qualifiers(overrides, field, msgid):
     assert _msgids(settings) == {field: msgid}
 
 
-def test_rr_playoffs_use_the_team_minimum_for_team_tournaments():
+# fmt: off
+@pytest.mark.parametrize(
+    ('contestant_type', 'bounds', 'groups', 'per_group'),
+    [
+        (ContestantType.TEAM, {'min_teams': 2, 'max_teams': 16}, 4, 1),
+        (ContestantType.TEAM, {'min_teams': 2, 'max_teams': 16}, 4, 2),
+        (ContestantType.TEAM, {'min_teams': 4, 'max_teams': None}, 2, 2),
+        (ContestantType.TEAM, {'min_teams': 4, 'max_teams': 16}, 8, 4),
+        (ContestantType.SOLO, {'min_players': 2, 'max_players': 16}, 4, 2),
+        (ContestantType.SOLO, {'min_players': 1, 'max_players': 16}, 8, 1),
+        (ContestantType.SOLO, {'min_players': 4, 'max_players': 16}, 1, 4),
+    ],
+)
+# fmt: on
+def test_the_minimum_never_blocks_the_group_settings(
+    contestant_type, bounds, groups, per_group
+):
+    settings = _rr_settings(
+        **{
+            'contestant_type': contestant_type,
+            'min_players': None,
+            'max_players': None,
+            'playoff_group_count': groups,
+            'playoff_qualifiers_per_group': per_group,
+            **bounds,
+        }
+    )
+
+    result = validate_tournament_settings(settings, require_structure=True)
+
+    assert result.is_ok()
+
+
+def test_the_maximum_of_the_other_contestant_type_is_ignored():
     settings = _rr_settings(
         contestant_type=ContestantType.TEAM,
-        min_players=2,
-        min_teams=4,
-        playoff_group_count=2,
+        min_teams=2,
+        max_teams=16,
+        min_players=None,
+        max_players=4,
+        playoff_group_count=4,
         playoff_qualifiers_per_group=2,
     )
-    assert _msgids(settings) == {
-        'playoff_qualifiers_per_group': (
-            'Fewer must advance from each group than the smallest group '
-            'holds.'
-        )
-    }
+
+    assert _msgids(settings) == {}
 
 
 # fmt: off

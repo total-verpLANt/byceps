@@ -769,6 +769,10 @@ const HS_PLAYOFFS = {
   advancement_count: '2',
 };
 
+function warningsOf(over) {
+  return rules.validate(basics(Object.assign({}, RR_PLAYOFFS, over)), CTX).warnings;
+}
+
 function msgids(values, ctx) {
   const errors = errorsOf(values, ctx);
   return Object.fromEntries(
@@ -913,33 +917,105 @@ test('round robin playoff rules', async (t) => {
   });
 
   await t.test('every group needs two contestants at the maximum', () => {
-    assert.deepStrictEqual(check({min_players: '', max_players: '6', playoff_group_count: '4'}), {
-      playoff_group_count: 'The maximum number of contestants is too small for this many groups.',
-    });
-    assert.deepStrictEqual(check({min_players: '', max_players: '6', playoff_group_count: '3'}), {});
-    assert.deepStrictEqual(check({
+    const over = errorsOf(Object.assign({}, RR_PLAYOFFS, {
+      min_players: '', max_players: '7', playoff_group_count: '4',
+    }));
+    assert.deepStrictEqual(Object.keys(over), ['playoff_group_count']);
+    assert.strictEqual(
+      over.playoff_group_count.msgid,
+      'With at most %(maximum)s players, no more than %(fit)s groups of 2 can form. Raise "Max. players" or lower the number of groups.'
+    );
+    assert.deepStrictEqual(over.playoff_group_count.params, {maximum: 7, fit: 3});
+    assert.deepStrictEqual(check({min_players: '', max_players: '8', playoff_group_count: '4'}), {});
+
+    const teams = errorsOf(Object.assign({}, RR_PLAYOFFS, {
       contestant_type: 'TEAM', min_teams: '', max_teams: '6', min_players: '', max_players: '',
       playoff_group_count: '4',
-    }), {playoff_group_count: 'The maximum number of contestants is too small for this many groups.'});
+    }));
+    assert.strictEqual(
+      teams.playoff_group_count.msgid,
+      'With at most %(maximum)s teams, no more than %(fit)s groups of 2 can form. Raise "Max. teams" or lower the number of groups.'
+    );
+    assert.deepStrictEqual(teams.playoff_group_count.params, {maximum: 6, fit: 3});
   });
 
-  await t.test('every group needs two contestants at the minimum', () => {
-    assert.deepStrictEqual(check({min_players: '5', playoff_group_count: '3'}), {
-      playoff_group_count: 'The minimum number of contestants is too small for this many groups.',
-    });
-  });
-
-  await t.test('fewer advance than the smallest group holds', () => {
-    assert.deepStrictEqual(check({min_players: '12', playoff_group_count: '3', playoff_qualifiers_per_group: '4'}), {
-      playoff_qualifiers_per_group: 'Fewer must advance from each group than the smallest group holds.',
-    });
-  });
-
-  await t.test('the smallest group comes from the team minimum for teams', () => {
+  await t.test('the minimum never blocks the group settings', () => {
+    assert.deepStrictEqual(check({min_players: '5', playoff_group_count: '3'}), {});
+    assert.deepStrictEqual(check({min_players: '12', playoff_group_count: '3', playoff_qualifiers_per_group: '4'}), {});
+    assert.deepStrictEqual(check({
+      contestant_type: 'TEAM', min_teams: '2', max_teams: '16', min_players: '', max_players: '',
+      playoff_group_count: '4', playoff_qualifiers_per_group: '1',
+    }), {});
     assert.deepStrictEqual(check({
       contestant_type: 'TEAM', min_teams: '6', min_players: '', max_players: '',
       playoff_group_count: '3', playoff_qualifiers_per_group: '2',
-    }), {playoff_qualifiers_per_group: 'Fewer must advance from each group than the smallest group holds.'});
+    }), {});
+  });
+
+  await t.test('a minimum too small for the groups only warns', () => {
+    const teams = {
+      contestant_type: 'TEAM', min_teams: '2', max_teams: '16', min_players: '', max_players: '',
+      playoff_group_count: '4', playoff_qualifiers_per_group: '1',
+    };
+    const result = rules.validate(basics(Object.assign({}, RR_PLAYOFFS, teams)), CTX);
+    assert.deepStrictEqual(result.errors, {});
+    assert.deepStrictEqual(Object.keys(result.warnings), ['playoff_group_count']);
+    assert.strictEqual(
+      result.warnings.playoff_group_count.msgid,
+      '%(groups)s groups need at least %(need)s teams, but "Min. teams" is %(min)s. Fewer groups will form if fewer register.'
+    );
+    assert.deepStrictEqual(result.warnings.playoff_group_count.params, {groups: 4, need: 8, min: 2});
+
+    const solo = warningsOf({min_players: '5', playoff_group_count: '3'});
+    assert.strictEqual(
+      solo.playoff_group_count.msgid,
+      '%(groups)s groups need at least %(need)s players, but "Min. players" is %(min)s. Fewer groups will form if fewer register.'
+    );
+    assert.deepStrictEqual(solo.playoff_group_count.params, {groups: 3, need: 6, min: 5});
+  });
+
+  await t.test('the warning goes away when the minimum fits the groups', () => {
+    assert.deepStrictEqual(warningsOf({min_players: '6', playoff_group_count: '3', playoff_qualifiers_per_group: '1'}), {});
+    assert.deepStrictEqual(warningsOf({min_players: '', playoff_group_count: '3'}), {});
+    assert.deepStrictEqual(warningsOf({min_players: '1', playoff_group_count: '1', playoff_qualifiers_per_group: '2'}), {});
+  });
+
+  await t.test('qualifiers that reach the smallest group warn on their field', () => {
+    const warnings = warningsOf({min_players: '12', playoff_group_count: '3', playoff_qualifiers_per_group: '4'});
+    assert.deepStrictEqual(Object.keys(warnings), ['playoff_qualifiers_per_group']);
+    assert.strictEqual(
+      warnings.playoff_qualifiers_per_group.msgid,
+      'The smallest group would hold only %(size)s players while %(n)s advance, so nobody is eliminated from it.'
+    );
+    assert.deepStrictEqual(warnings.playoff_qualifiers_per_group.params, {size: 4, n: 4});
+
+    const teams = warningsOf({
+      contestant_type: 'TEAM', min_teams: '6', min_players: '', max_players: '',
+      playoff_group_count: '3', playoff_qualifiers_per_group: '2',
+    });
+    assert.strictEqual(
+      teams.playoff_qualifiers_per_group.msgid,
+      'The smallest group would hold only %(size)s teams while %(n)s advance, so nobody is eliminated from it.'
+    );
+    assert.deepStrictEqual(warningsOf({min_players: '12', playoff_group_count: '3', playoff_qualifiers_per_group: '3'}), {});
+  });
+
+  await t.test('the two warnings never show together', () => {
+    const warnings = warningsOf({min_players: '5', playoff_group_count: '3', playoff_qualifiers_per_group: '4'});
+    assert.deepStrictEqual(Object.keys(warnings), ['playoff_group_count']);
+  });
+
+  await t.test('a hard error on the group count hides its warning', () => {
+    const result = rules.validate(basics(Object.assign({}, RR_PLAYOFFS, {
+      min_players: '5', max_players: '7', playoff_group_count: '4',
+    })), CTX);
+    assert.deepStrictEqual(Object.keys(result.errors), ['playoff_group_count']);
+    assert.deepStrictEqual(result.warnings, {});
+  });
+
+  await t.test('the warnings only exist for round robin playoffs', () => {
+    assert.deepStrictEqual(warningsOf({min_players: '5', playoff_group_count: '3', playoff_enabled: false}), {});
+    assert.deepStrictEqual(Object.keys(rules.validate(basics(HS_PLAYOFFS), CTX).warnings), []);
   });
 
   await t.test('double knockout takes the same two qualifiers as single knockout', () => {

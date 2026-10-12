@@ -49,6 +49,8 @@ class Shortfall:
     `groups` and `configured_groups` are `None` outside a group stage.
     `knockout_fallback` marks a 1v1 double elimination that runs as single
     elimination because fewer than four contestants qualify.
+    `smallest_group` and `per_group` are set for a group stage. Nobody is
+    eliminated from the smallest group when `per_group` reaches its size.
     """
 
     configured_groups: int | None
@@ -56,6 +58,8 @@ class Shortfall:
     configured_qualifiers: int
     qualifiers: int
     knockout_fallback: bool = False
+    smallest_group: int | None = None
+    per_group: int | None = None
 
 
 # -------------------------------------------------------------------- #
@@ -122,14 +126,22 @@ def group_shortfall(
     fallback = _knockout_fallback(
         qualifiers, double_elimination=double_elimination
     )
+    smallest = min(sizes)
     if (
         len(sizes) == configured_groups
         and qualifiers == configured
         and not fallback
+        and per_group < smallest
     ):
         return None
     return Shortfall(
-        configured_groups, len(sizes), configured, qualifiers, fallback
+        configured_groups,
+        len(sizes),
+        configured,
+        qualifiers,
+        fallback,
+        smallest,
+        per_group,
     )
 
 

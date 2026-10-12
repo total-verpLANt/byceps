@@ -16,6 +16,7 @@ from sqlalchemy import select
 from byceps.database import db
 from byceps.services.lan_tournament import (
     tournament_match_service,
+    tournament_participant_service,
     tournament_qualification_domain_service as qualification_domain,
     tournament_qualification_service,
     tournament_repository,
@@ -573,3 +574,88 @@ def test_one_group_force_completed_before_the_final_has_no_third_place(
         'runner_up': None,
         'bronze': None,
     }
+
+
+def _remove_all_but_the_leader(tournament, admin, ids):
+    for participant_id in ids[1:]:
+        removed = tournament_participant_service.admin_remove_participant(
+            tournament.id,
+            TournamentParticipantID(UUID(participant_id)),
+            initiator=admin,
+        )
+        assert removed.is_ok(), removed.unwrap_err()
+
+
+def test_release_with_fewer_than_two_qualifiers_is_refused_untouched(
+    make_tournament, users, monkeypatch
+):
+    admin = users[0]
+    tournament = make_tournament(4, qualifiers=2)
+    ids = _participant_ids(tournament, users[:4])
+    _start(tournament, admin)
+    _confirm_group(tournament, admin, _stronger_wins(ids))
+    _remove_all_but_the_leader(tournament, admin, ids)
+    state = _qualification(tournament)
+    assert state.ready
+    assert len(state.qualifiers) == 1
+
+    def no_draft(*args, **kwargs):
+        raise AssertionError('the release must stop before staging a draft')
+
+    rollbacks = []
+    real_rollback = tournament_repository.rollback_session
+
+    def spy_rollback():
+        rollbacks.append(True)
+        real_rollback()
+
+    monkeypatch.setattr(
+        tournament_seeding_service, 'stage_playoff_draft', no_draft
+    )
+    monkeypatch.setattr(tournament_repository, 'rollback_session', spy_rollback)
+
+    released = tournament_qualification_service.release_playoffs(
+        tournament.id, expected_version=1, initiator_id=admin.id
+    )
+
+    assert released.is_err()
+    assert (
+        released.unwrap_err()
+        == tournament_qualification_service.ERR_TOO_FEW_QUALIFIERS
+    )
+    assert rollbacks == [True]
+    found = tournament_repository.get_tournament(tournament.id)
+    assert found.playoff_released_at is None
+    assert found.playoff_elimination_mode is SINGLE
+    assert not _matches(tournament, 2)
+    assert 'playoffs-released' not in _log_types(tournament)
+
+
+def test_automatic_release_with_fewer_than_two_qualifiers_stays_untouched(
+    make_tournament, users
+):
+    admin = users[0]
+    tournament = make_tournament(2, qualifiers=2, release_mode=AUTOMATIC)
+    ids = _participant_ids(tournament, users[:2])
+    _start(tournament, admin)
+
+    _remove_all_but_the_leader(tournament, admin, ids)
+
+    state = _qualification(tournament)
+    assert state.ready
+    assert len(state.qualifiers) == 1
+    found = tournament_repository.get_tournament(tournament.id)
+    assert found.playoff_released_at is None
+    assert not _matches(tournament, 2)
+    assert 'playoffs-released' not in _log_types(tournament)
+    attempt = tournament_qualification_service.try_auto_release(
+        tournament.id, triggered_by=admin.id
+    )
+    assert attempt.is_err()
+    assert (
+        attempt.unwrap_err()
+        == tournament_qualification_service.ERR_TOO_FEW_QUALIFIERS
+    )
+    found = tournament_repository.get_tournament(tournament.id)
+    assert found.playoff_released_at is None
+    assert not _matches(tournament, 2)

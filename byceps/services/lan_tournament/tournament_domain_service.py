@@ -441,6 +441,18 @@ def _check_playoffs(
         _check_highscore_playoffs(settings, add)
 
 
+ROUND_ROBIN_GROUPS_EXCEED_MAX_TEAMS_MSGID = (
+    'With at most %(maximum)s teams, no more than %(fit)s groups of 2 can '
+    'form. Raise "Max. teams" or lower the number of groups.'
+)
+
+
+ROUND_ROBIN_GROUPS_EXCEED_MAX_PLAYERS_MSGID = (
+    'With at most %(maximum)s players, no more than %(fit)s groups of 2 can '
+    'form. Raise "Max. players" or lower the number of groups.'
+)
+
+
 def _check_round_robin_playoffs(
     settings: TournamentSettings, add: Callable[..., None]
 ) -> None:
@@ -486,35 +498,19 @@ def _check_round_robin_playoffs(
         return
 
     if settings.contestant_type == ContestantType.TEAM:
-        minimum = settings.min_teams
-    else:
-        minimum = settings.min_players
-    if minimum is not None:
-        smallest = minimum // groups
-        if smallest < 2:
-            add(
-                'playoff_group_count',
-                'The minimum number of contestants is too small for this '
-                'many groups.',
-            )
-            return
-        if per_group >= smallest:
-            add(
-                'playoff_qualifiers_per_group',
-                'Fewer must advance from each group than the smallest '
-                'group holds.',
-            )
-            return
-
-    if settings.contestant_type == ContestantType.TEAM:
         maximum = settings.max_teams
     else:
         maximum = settings.max_players
     if maximum is not None and groups > maximum // 2:
+        if settings.contestant_type == ContestantType.TEAM:
+            msgid = ROUND_ROBIN_GROUPS_EXCEED_MAX_TEAMS_MSGID
+        else:
+            msgid = ROUND_ROBIN_GROUPS_EXCEED_MAX_PLAYERS_MSGID
         add(
             'playoff_group_count',
-            'The maximum number of contestants is too small for this many '
-            'groups.',
+            msgid,
+            maximum=maximum,
+            fit=maximum // 2,
         )
         return
 

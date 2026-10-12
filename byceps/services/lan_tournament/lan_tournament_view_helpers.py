@@ -1750,14 +1750,23 @@ def build_create_wizard_strings() -> dict[str, str]:
         'Please enter how many advance from each group.': gettext(
             'Please enter how many advance from each group.'
         ),
-        'The minimum number of contestants is too small for this many groups.': gettext(
-            'The minimum number of contestants is too small for this many groups.'
+        'With at most %(maximum)s teams, no more than %(fit)s groups of 2 can form. Raise "Max. teams" or lower the number of groups.': gettext(
+            'With at most %(maximum)s teams, no more than %(fit)s groups of 2 can form. Raise "Max. teams" or lower the number of groups.'
         ),
-        'The maximum number of contestants is too small for this many groups.': gettext(
-            'The maximum number of contestants is too small for this many groups.'
+        'With at most %(maximum)s players, no more than %(fit)s groups of 2 can form. Raise "Max. players" or lower the number of groups.': gettext(
+            'With at most %(maximum)s players, no more than %(fit)s groups of 2 can form. Raise "Max. players" or lower the number of groups.'
         ),
-        'Fewer must advance from each group than the smallest group holds.': gettext(
-            'Fewer must advance from each group than the smallest group holds.'
+        '%(groups)s groups need at least %(need)s teams, but "Min. teams" is %(min)s. Fewer groups will form if fewer register.': gettext(
+            '%(groups)s groups need at least %(need)s teams, but "Min. teams" is %(min)s. Fewer groups will form if fewer register.'
+        ),
+        '%(groups)s groups need at least %(need)s players, but "Min. players" is %(min)s. Fewer groups will form if fewer register.': gettext(
+            '%(groups)s groups need at least %(need)s players, but "Min. players" is %(min)s. Fewer groups will form if fewer register.'
+        ),
+        'The smallest group would hold only %(size)s teams while %(n)s advance, so nobody is eliminated from it.': gettext(
+            'The smallest group would hold only %(size)s teams while %(n)s advance, so nobody is eliminated from it.'
+        ),
+        'The smallest group would hold only %(size)s players while %(n)s advance, so nobody is eliminated from it.': gettext(
+            'The smallest group would hold only %(size)s players while %(n)s advance, so nobody is eliminated from it.'
         ),
         'Playoffs need at least 2 qualifiers in total.': gettext(
             'Playoffs need at least 2 qualifiers in total.'
@@ -1989,6 +1998,9 @@ def build_create_wizard_strings() -> dict[str, str]:
         'Groups · size in %(unit)s': gettext('Groups · size in %(unit)s'),
         'At most this many %(unit)s play at once.': gettext(
             'At most this many %(unit)s play at once.'
+        ),
+        'At least 1; each group needs at least 2 %(unit)s.': gettext(
+            'At least 1; each group needs at least 2 %(unit)s.'
         ),
         'Points carry to losers pool': gettext('Points carry to losers pool'),
         'On: all points from winners and losers bracket count for final seeding. Off: only points scored in the losers bracket count there; winners-bracket survivors are seeded first.': gettext(

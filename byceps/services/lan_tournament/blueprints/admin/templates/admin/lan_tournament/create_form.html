@@ -457,7 +457,7 @@
           <fieldset class="lt-wiz-scope" data-wiz-scope="playoff-rr">
             <legend>{{ _('Group phase') }}</legend>
             <div class="lt-wiz-row lt-wiz-row--keep">
-              {{ wiz_field(form.playoff_group_count, required=True, caption=_('At least 1; each group needs at least 2 players.'), locked=('playoff_group_count' in locked_names), **numeric) }}
+              {{ wiz_field(form.playoff_group_count, required=True, caption=_('At least 1; each group needs at least 2 %(unit)s.', unit=_('teams or players')), locked=('playoff_group_count' in locked_names), **numeric) }}
               {{ wiz_field(form.playoff_qualifiers_per_group, required=True, caption=_('Fewer than the smallest group. Groups × qualifiers: at least 2. Double knockout with fewer than 4 runs as single knockout.'), locked=('playoff_qualifiers_per_group' in locked_names), **numeric) }}
             </div>
           </fieldset>

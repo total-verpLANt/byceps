@@ -410,11 +410,14 @@ def test_balance_allowed_rounds_up_for_uneven_tiers():
 @pytest.mark.parametrize(
     ('n', 'param', 'groups', 'per_group', 'de', 'expected'),
     [
-        (7, 4, 4, 2, False, s.Shortfall(4, 3, 8, 6)),
-        (5, 2, 2, 3, False, s.Shortfall(2, 2, 6, 5)),
-        (6, 4, 4, 1, True, s.Shortfall(4, 3, 4, 3, True)),
+        (7, 4, 4, 2, False, s.Shortfall(4, 3, 8, 6, False, 2, 2)),
+        (5, 2, 2, 3, False, s.Shortfall(2, 2, 6, 5, False, 2, 3)),
+        (6, 4, 4, 1, True, s.Shortfall(4, 3, 4, 3, True, 2, 1)),
         (8, 4, 4, 1, True, None),
         (16, 4, 4, 2, False, None),
+        (8, 2, 2, 4, False, s.Shortfall(2, 2, 8, 8, False, 4, 4)),
+        (8, 2, 2, 3, False, None),
+        (3, 2, 1, 3, False, s.Shortfall(1, 1, 3, 3, False, 3, 3)),
     ],
 )
 # fmt: on

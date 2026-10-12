@@ -1289,7 +1289,8 @@
     function paintGroupUnit(values) {
       var legend = qs(form, '.lt-wiz-groups > legend');
       var caption = document.getElementById('group_size_max-cap');
-      [legend, caption].forEach(function (node) {
+      var playoffCaption = document.getElementById('playoff_group_count-cap');
+      [legend, caption, playoffCaption].forEach(function (node) {
         if (node && node.getAttribute('data-wiz-default') === null) {
           node.setAttribute('data-wiz-default', node.textContent);
         }
@@ -1305,6 +1306,11 @@
         caption.textContent = unit
           ? t('At most this many %(unit)s play at once.', {unit: unit})
           : caption.getAttribute('data-wiz-default');
+      }
+      if (playoffCaption) {
+        playoffCaption.textContent = unit
+          ? t('At least 1; each group needs at least 2 %(unit)s.', {unit: unit})
+          : playoffCaption.getAttribute('data-wiz-default');
       }
     }
 

@@ -261,36 +261,18 @@
       return;
     }
 
-    var minimum = values.contestant_type === 'TEAM'
-      ? counts.min_teams
-      : counts.min_players;
-    if (minimum !== null) {
-      var smallest = Math.floor(minimum / groups);
-      if (smallest < 2) {
-        add(
-          'playoff_group_count',
-          'The minimum number of contestants is too small for this many ' +
-            'groups.'
-        );
-        return;
-      }
-      if (perGroup >= smallest) {
-        add(
-          'playoff_qualifiers_per_group',
-          'Fewer must advance from each group than the smallest group holds.'
-        );
-        return;
-      }
-    }
-
-    var maximum = values.contestant_type === 'TEAM'
-      ? counts.max_teams
-      : counts.max_players;
+    var isTeam = values.contestant_type === 'TEAM';
+    var maximum = isTeam ? counts.max_teams : counts.max_players;
     if (maximum !== null && groups > Math.floor(maximum / 2)) {
       add(
         'playoff_group_count',
-        'The maximum number of contestants is too small for this many ' +
-          'groups.'
+        isTeam
+          ? 'With at most %(maximum)s teams, no more than %(fit)s groups of ' +
+            '2 can form. Raise "Max. teams" or lower the number of groups.'
+          : 'With at most %(maximum)s players, no more than %(fit)s groups ' +
+            'of 2 can form. Raise "Max. players" or lower the number of ' +
+            'groups.',
+        {maximum: maximum, fit: Math.floor(maximum / 2)}
       );
       return;
     }
@@ -299,6 +281,48 @@
       add(
         'playoff_qualifiers_per_group',
         'Playoffs need at least 2 qualifiers in total.'
+      );
+    }
+  }
+
+  // The minimum is only informational: fewer groups form if fewer register.
+  // So a minimum that is too small for the groups is a hint, not an error.
+  function roundRobinPlayoffWarnings(values, counts, errors, warnings) {
+    var groups = counts.playoff_group_count;
+    var perGroup = counts.playoff_qualifiers_per_group;
+    var isTeam = values.contestant_type === 'TEAM';
+    var minimum = isTeam ? counts.min_teams : counts.min_players;
+    if (
+      minimum === null || groups === null || perGroup === null || groups < 1 ||
+      perGroup < 1 || errors.playoff_group_count
+    ) {
+      return;
+    }
+
+    var smallest = Math.floor(minimum / groups);
+    if (smallest < 2) {
+      if (groups >= 2) {
+        warnings.playoff_group_count = message(
+          isTeam
+            ? '%(groups)s groups need at least %(need)s teams, but ' +
+              '"Min. teams" is %(min)s. Fewer groups will form if fewer ' +
+              'register.'
+            : '%(groups)s groups need at least %(need)s players, but ' +
+              '"Min. players" is %(min)s. Fewer groups will form if fewer ' +
+              'register.',
+          {groups: groups, need: groups * 2, min: minimum}
+        );
+      }
+      return;
+    }
+    if (perGroup >= smallest && !errors.playoff_qualifiers_per_group) {
+      warnings.playoff_qualifiers_per_group = message(
+        isTeam
+          ? 'The smallest group would hold only %(size)s teams while %(n)s ' +
+            'advance, so nobody is eliminated from it.'
+          : 'The smallest group would hold only %(size)s players while ' +
+            '%(n)s advance, so nobody is eliminated from it.',
+        {size: smallest, n: perGroup}
       );
     }
   }
@@ -584,6 +608,9 @@
     }
 
     // Warnings: hints only, never enforced.
+    if (playoffOn && kind === 'rr') {
+      roundRobinPlayoffWarnings(values, counts, errors, warnings);
+    }
     var seats = ctx.capacity;
     if (seats !== undefined && seats !== null) {
       if (contestantType === 'SOLO') {

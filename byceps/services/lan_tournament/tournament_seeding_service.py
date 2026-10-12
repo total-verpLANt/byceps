@@ -156,6 +156,10 @@ NOTICE_FEWER_QUALIFIERS = (
 NOTICE_KNOCKOUT_FALLBACK = (
     'With fewer than 4 qualifiers the playoffs run as single knockout.'
 )
+NOTICE_NOBODY_ELIMINATED = (
+    'The smallest group has %(size)s contestants and %(per_group)s advance, '
+    'so nobody is eliminated from it.'
+)
 NOTICE_SMALL_PLAYOFF_LOBBIES = (
     'Too few qualifiers for full lobbies: lobby sizes %(sizes)s, below the '
     'minimum of %(minimum)s. The playoffs start with them anyway.'
@@ -2368,6 +2372,20 @@ def shortfall_notices(
         )
     if shortfall.knockout_fallback:
         notices.append((NOTICE_KNOCKOUT_FALLBACK, {}))
+    if (
+        shortfall.smallest_group is not None
+        and shortfall.per_group is not None
+        and shortfall.per_group >= shortfall.smallest_group
+    ):
+        notices.append(
+            (
+                NOTICE_NOBODY_ELIMINATED,
+                {
+                    'size': shortfall.smallest_group,
+                    'per_group': shortfall.per_group,
+                },
+            )
+        )
     return notices
 
 
