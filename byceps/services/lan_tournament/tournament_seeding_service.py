@@ -144,6 +144,14 @@ PROBLEM_LOBBY_BELOW_MIN = (
 )
 PROBLEM_FFA_STALLS = tournament_domain_service.FFA_STALLS_MSGID
 PROBLEM_FFA_NO_PROGRESS = tournament_domain_service.FFA_NO_PROGRESS_MSGID
+PROBLEM_PLAYOFF_GROUPS_TEAMS = (
+    'Playoffs need at least 2 groups of 2, so at least 4 teams. '
+    'Registered: %(n)s. Add teams or remove the playoff phase.'
+)
+PROBLEM_PLAYOFF_GROUPS_PLAYERS = (
+    'Playoffs need at least 2 groups of 2, so at least 4 players. '
+    'Registered: %(n)s. Add players or remove the playoff phase.'
+)
 
 NOTICE_FEWER_GROUPS = (
     'The roster gives %(groups)s groups instead of the configured '
@@ -854,6 +862,7 @@ def _generate_locked(
         lobby_minimum=_lobby_minimum(view, state),
         stall=_initial_stall(view, state),
         cut=tournament.advancement_count,
+        teams=_is_team_tournament(tournament),
     )
     if problems:
         return Err(ERR_PROBLEMS)
@@ -1595,6 +1604,17 @@ def _prefill_playoff_state(
     return state
 
 
+def _is_team_tournament(tournament: Tournament) -> bool:
+    return (
+        derive_contestant_type(
+            tournament.contestant_type,
+            tournament.max_players_in_team,
+            tournament.min_players_in_team,
+        )
+        == ContestantType.TEAM
+    )
+
+
 def _roster(tournament: Tournament) -> _Roster:
     """Return the active contestants, the same set the generators use."""
     contestant_type = derive_contestant_type(
@@ -2191,6 +2211,7 @@ def _board(
         lobby_minimum=_lobby_minimum(view, state),
         stall=_initial_stall(view, state),
         cut=tournament.advancement_count,
+        teams=_is_team_tournament(tournament),
     )
     notices: list[tuple[str, dict[str, Any]]] = [
         *shortfall_notices(_shortfall(view))
@@ -2411,7 +2432,31 @@ def start_notices(tournament: Tournament) -> list[tuple[str, dict[str, int]]]:
                 double_elimination=_playoff_double_elimination(tournament),
             )
         )
-    return shortfall_notices(_group_stage_shortfall(tournament, roster))
+    notices = shortfall_notices(_group_stage_shortfall(tournament, roster))
+    blocker = _playoff_groups_blocker(tournament, roster)
+    return [blocker, *notices] if blocker else notices
+
+
+def _playoff_groups_blocker(
+    tournament: Tournament, roster: _Roster
+) -> tuple[str, dict[str, int]] | None:
+    """Return the notice for a roster too small for the playoff groups.
+
+    The seeding board refuses to generate such a roster; the start gate
+    says so before the orga opens it.
+    """
+    if (
+        tournament.elimination_mode is not EliminationMode.ROUND_ROBIN
+        or (tournament.playoff_group_count or 0) < 2
+        or len(roster.ids) >= 4
+    ):
+        return None
+    msgid = (
+        PROBLEM_PLAYOFF_GROUPS_TEAMS
+        if _is_team_tournament(tournament)
+        else PROBLEM_PLAYOFF_GROUPS_PLAYERS
+    )
+    return msgid, {'n': len(roster.ids)}
 
 
 def _undersized_pools(
@@ -2545,6 +2590,7 @@ def _problems(
     lobby_minimum: int | None = None,
     stall: FfaDeadEnd | None = None,
     cut: int | None = None,
+    teams: bool = False,
 ) -> tuple[list[str], list[Mapping[str, Any]]]:
     msgids: list[str] = []
     params: list[Mapping[str, Any]] = []
@@ -2561,6 +2607,13 @@ def _problems(
         ):
             # A plain round robin is a single group by design.
             continue
+        elif msgid == domain.PROBLEM_FEW_GROUPS:
+            msgids.append(
+                PROBLEM_PLAYOFF_GROUPS_TEAMS
+                if teams
+                else PROBLEM_PLAYOFF_GROUPS_PLAYERS
+            )
+            params.append({'n': len(state.roster)})
         else:
             msgids.append(msgid)
             params.append({})

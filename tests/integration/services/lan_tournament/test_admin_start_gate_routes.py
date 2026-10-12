@@ -456,3 +456,32 @@ def test_start_gate_shows_no_shortfall_for_a_full_roster(
     html = client.get(_url(tournament)).get_data(as_text=True)
 
     assert 'instead of the configured' not in html
+
+
+def test_start_gate_names_the_minimum_for_the_playoff_groups(
+    client, make_tournament
+):
+    tournament = make_tournament(
+        (GameFormat.ONE_V_ONE, EliminationMode.ROUND_ROBIN),
+        playoff_game_format=GameFormat.ONE_V_ONE,
+        playoff_elimination_mode=EliminationMode.SINGLE_ELIMINATION,
+        playoff_group_count=4,
+        playoff_qualifiers_per_group=2,
+        playoff_release_mode=PlayoffReleaseMode.MANUAL,
+    )
+    db.session.execute(
+        text(
+            'DELETE FROM lan_tournament_participants WHERE id IN ('
+            'SELECT id FROM lan_tournament_participants'
+            ' WHERE tournament_id = :tournament_id OFFSET 3)'
+        ),
+        {'tournament_id': tournament.id},
+    )
+    db.session.commit()
+
+    html = client.get(_url(tournament)).get_data(as_text=True)
+
+    assert (
+        'Playoffs need at least 2 groups of 2, so at least 4 players. '
+        'Registered: 3. Add players or remove the playoff phase.'
+    ) in html

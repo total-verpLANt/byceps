@@ -17490,3 +17490,9 @@ msgstr "Die kleinste Gruppe hat %(size)s Teilnehmer, und %(per_group)s kommen we
 
 msgid "Fewer than 2 contestants qualified, so there are no playoffs to release."
 msgstr "Weniger als 2 Teilnehmer haben sich qualifiziert, daher gibt es keine Playoffs freizugeben."
+
+msgid "Playoffs need at least 2 groups of 2, so at least 4 teams. Registered: %(n)s. Add teams or remove the playoff phase."
+msgstr "Playoffs brauchen mindestens 2 Gruppen mit je 2 Teams, also mindestens 4 Teams. Angemeldet: %(n)s. Füge Teams hinzu oder entferne die Playoff-Phase."
+
+msgid "Playoffs need at least 2 groups of 2, so at least 4 players. Registered: %(n)s. Add players or remove the playoff phase."
+msgstr "Playoffs brauchen mindestens 2 Gruppen mit je 2 Spielern, also mindestens 4 Spieler. Angemeldet: %(n)s. Füge Spieler hinzu oder entferne die Playoff-Phase."

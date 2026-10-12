@@ -1724,3 +1724,95 @@ def test_undoing_the_separation_counts_and_logs_one_fix():
     # A reset can never log a negative count.
     data = svc._event_data(svc.ResetFixes(), prefill, undone, roster)
     assert data == {'dropped_fixes': 0}
+
+
+def _rr_playoff_tournament(**kw):
+    fields = {
+        'playoff_game_format': GameFormat.ONE_V_ONE,
+        'playoff_elimination_mode': EliminationMode.SINGLE_ELIMINATION,
+        'playoff_group_count': 4,
+        'playoff_qualifiers_per_group': 2,
+    }
+    fields.update(kw)
+    return _tournament(RR, **fields)
+
+
+# fmt: off
+@pytest.mark.parametrize(
+    ('n', 'teams', 'expected'),
+    [
+        (2, True, [svc.PROBLEM_PLAYOFF_GROUPS_TEAMS]),
+        (3, True, [svc.PROBLEM_PLAYOFF_GROUPS_TEAMS]),
+        (3, False, [svc.PROBLEM_PLAYOFF_GROUPS_PLAYERS]),
+        (4, True, []),
+        (4, False, []),
+    ],
+)
+# fmt: on
+def test_few_roster_for_playoff_groups_names_the_minimum(n, teams, expected):
+    ids = tuple(f'c{i}' for i in range(n))
+    state = domain.initial_state(
+        SeedingFormat.ROUND_ROBIN, 4, ids, tier_count=1, draw_seed=1
+    )
+    roster = svc._Roster(ids, {i: i for i in ids}, ())
+
+    msgids, params = svc._problems(state, roster, teams=teams)
+
+    assert msgids == expected
+    assert params == [{'n': n}] * len(expected)
+
+
+def test_plain_round_robin_is_never_refused_for_its_group_count():
+    ids = tuple(f'c{i}' for i in range(3))
+    state = domain.initial_state(
+        SeedingFormat.ROUND_ROBIN, 1, ids, tier_count=1, draw_seed=1
+    )
+    roster = svc._Roster(ids, {i: i for i in ids}, ())
+
+    assert svc._problems(state, roster, teams=True) == ([], [])
+
+
+# fmt: off
+@pytest.mark.parametrize(
+    ('n', 'contestant_type', 'expected'),
+    [
+        (2, ContestantType.TEAM, (svc.PROBLEM_PLAYOFF_GROUPS_TEAMS, {'n': 2})),
+        (0, ContestantType.TEAM, (svc.PROBLEM_PLAYOFF_GROUPS_TEAMS, {'n': 0})),
+        (3, ContestantType.SOLO,
+         (svc.PROBLEM_PLAYOFF_GROUPS_PLAYERS, {'n': 3})),
+        (4, ContestantType.TEAM, None),
+    ],
+)
+# fmt: on
+def test_start_notices_lead_with_the_playoff_group_blocker(
+    n, contestant_type, expected
+):
+    tournament = _rr_playoff_tournament(contestant_type=contestant_type)
+    ids = tuple(f'c{i}' for i in range(n))
+    roster = svc._Roster(ids, {i: i for i in ids}, ())
+
+    with patch.object(svc, '_roster', return_value=roster):
+        notices = svc.start_notices(tournament)
+
+    if expected is None:
+        assert all(msgid not in (
+            svc.PROBLEM_PLAYOFF_GROUPS_TEAMS,
+            svc.PROBLEM_PLAYOFF_GROUPS_PLAYERS,
+        ) for msgid, _ in notices)
+    else:
+        assert notices[0] == expected
+
+
+def test_start_notices_skip_the_blocker_without_playoff_groups():
+    plain = _tournament(RR)
+    roster = svc._Roster(('a', 'b'), {'a': 'a', 'b': 'b'}, ())
+
+    with patch.object(svc, '_roster', return_value=roster):
+        assert svc.start_notices(plain) == []
+
+    one_group = _rr_playoff_tournament(playoff_group_count=1)
+    with patch.object(svc, '_roster', return_value=roster):
+        msgids = [msgid for msgid, _ in svc.start_notices(one_group)]
+
+    assert svc.PROBLEM_PLAYOFF_GROUPS_TEAMS not in msgids
+    assert svc.PROBLEM_PLAYOFF_GROUPS_PLAYERS not in msgids
