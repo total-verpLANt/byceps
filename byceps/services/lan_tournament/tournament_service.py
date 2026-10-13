@@ -87,6 +87,10 @@ _STARTED_PLAYOFF_LOCK = frozenset(
     {'playoff_game_format', 'playoff_group_count'}
 )
 _STARTED_STATUSES = EDIT_LOCKED_STATUSES | {TournamentStatus.COMPLETED}
+LOCKED_FIELDS_ERROR = (
+    'Only description, image, and ruleset can be changed while the'
+    ' tournament is ongoing or paused. Attempted to change: %(fields)s.'
+)
 PLAYOFF_RELEASED_EDIT_ERROR = (
     'The playoffs are released, so their settings are locked.'
 )
@@ -136,7 +140,7 @@ def _validate_ffa_config(
     group_size_min: int | None,
     *,
     check_table_limits: bool = True,
-) -> Result[None, str]:
+) -> Result[None, str | ValidationMessage]:
     """Validate FFA-specific configuration fields.
 
     Returns ``Ok(None)`` when the format is not FFA or when all
@@ -154,18 +158,21 @@ def _validate_ffa_config(
     if check_table_limits:
         max_places = tournament_domain_service.MAX_POINT_TABLE_PLACES
         if len(point_table) > max_places:
-            return Err(TOO_MANY_PLACES_MSGID % {'max': max_places})
+            return Err(
+                ValidationMessage(
+                    TOO_MANY_PLACES_MSGID, (('max', max_places),)
+                )
+            )
         out_of_range = tournament_domain_service.check_point_values(
             point_table
         )
         if out_of_range is not None:
-            return Err(out_of_range.msgid % dict(out_of_range.params))
+            return Err(out_of_range)
     if group_size_max is None:
         return Err('FFA tournaments require group_size_max.')
     if group_size_min is not None and group_size_min > group_size_max:
         return Err(
-            f'group_size_min ({group_size_min}) must not exceed '
-            f'group_size_max ({group_size_max}).'
+            'The minimum group size must not exceed the maximum group size.'
         )
     # FFA+TEAM cross-validation
     if (
@@ -175,9 +182,8 @@ def _validate_ffa_config(
         and max_teams < group_size_min
     ):
         return Err(
-            'Cannot create FFA team tournament: '
-            f'max_teams ({max_teams}) < group_size_min '
-            f'({group_size_min}). Impossible to form valid groups.'
+            'Cannot create an FFA team tournament: the maximum number of'
+            ' teams is below the minimum group size.'
         )
     return Ok(None)
 
@@ -359,8 +365,7 @@ def create_tournament(
     if game_format is not None and elimination_mode is not None:
         if not is_valid_combination(game_format, elimination_mode):
             return Err(
-                f'Invalid combination: {game_format.name} + '
-                f'{elimination_mode.name}.'
+                'Invalid combination of game format and elimination mode.'
             )
 
     # FFA-specific validation
@@ -630,8 +635,7 @@ def update_tournament(
         if not is_valid_combination(game_format, elimination_mode):
             tournament_repository.rollback_session()
             return Err(
-                f'Invalid combination: {game_format.name} + '
-                f'{elimination_mode.name}.'
+                'Invalid combination of game format and elimination mode.'
             )
 
     # FFA-specific validation
@@ -741,12 +745,12 @@ def update_tournament(
         governed = playoff_fields(tournament)
         locked_changes = [n for n in locked_changes if n not in governed]
         if locked_changes:
-            fields_str = ', '.join(locked_changes)
             tournament_repository.rollback_session()
             return Err(
-                f'Tournament is {tournament.tournament_status.name.lower()}. '
-                f'Only description, image, and ruleset can be changed. '
-                f'Attempted to change: {fields_str}.'
+                ValidationMessage(
+                    LOCKED_FIELDS_ERROR,
+                    (('fields', ', '.join(locked_changes)),),
+                )
             )
 
     incoming = {

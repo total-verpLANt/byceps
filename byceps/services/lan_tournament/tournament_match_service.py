@@ -736,10 +736,9 @@ def _prepare_bracket_generation(
         member_counts = tournament_repository.get_team_member_counts(tournament_id)
         empty_teams = [t for t in teams if member_counts.get(t.id, 0) == 0]
         if empty_teams:
-            names = ', '.join(t.name for t in empty_teams)
             return Err(
-                f'Cannot generate bracket: the following teams have no'
-                f' members: {names}. Remove or fill them first.'
+                'Cannot generate bracket: some teams have no members.'
+                ' Remove or fill them first.'
             )
         contestant_ids = [str(team.id) for team in teams]
     else:
@@ -2261,7 +2260,7 @@ def _determine_loser(
 ) -> Result[TournamentMatchToContestant, str]:
     """Return the contestant that is NOT the winner."""
     if len(contestants) != 2:
-        return Err(f'Expected 2 contestants, got {len(contestants)}')
+        return Err('Expected exactly two contestants.')
     for contestant in contestants:
         if contestant.id != winner.id:
             return Ok(contestant)
@@ -2611,7 +2610,7 @@ def _validate_match_scores(
     for contestant in real_contestants:
         key = contestant.team_id or contestant.participant_id
         if key not in scores:
-            return Err(f'Missing score for contestant "{key}".')
+            return Err('All contestants must have scores.')
         score = scores[key]
         if score < 0:
             return Err('Score cannot be negative.')
@@ -4423,7 +4422,7 @@ def classify_result_correction(
 
     match = tournament_repository.find_match_fresh(match_id)
     if match is None:
-        return Err(f'Unknown match ID "{match_id}".')
+        return Err('Match not found.')
 
     # Index the tournament's matches once.
     matches_by_id = {
@@ -4675,7 +4674,7 @@ def correct_match_result(
 
     subject = tournament_repository.find_match(match_id)
     if subject is None:
-        return Err(f'Unknown match ID "{match_id}".')
+        return Err('Match not found.')
 
     # The whole cascade below is built on next_match_id, which a
     # free-for-all bracket does not use, so a correction here would
@@ -5533,24 +5532,18 @@ def _set_ffa_placements_impl(
 
     # Validate completeness.
     if len(placements) != len(contestants):
-        return Err(
-            f'Expected placements for {len(contestants)} contestants, '
-            f'got {len(placements)}.'
-        )
+        return Err('A placement is required for every contestant.')
 
     # Validate all contestant IDs are known.
     for cid in placements:
         if cid not in cid_to_contestant:
-            return Err(f'Unknown contestant ID: {cid}')
+            return Err('The placements contain an unknown contestant.')
 
     # Validate sequential 1..N.
     expected = set(range(1, len(contestants) + 1))
     actual = set(placements.values())
     if actual != expected:
-        return Err(
-            f'Placements must be sequential 1..{len(contestants)}. '
-            f'Got: {sorted(actual)}'
-        )
+        return Err('Placements must be sequential, starting at 1.')
 
     # Map placements to points. The tournament is already loaded by
     # the format guard above.
@@ -5665,10 +5658,7 @@ def _confirm_ffa_match_impl(
     # Validate all placements are set.
     missing = [c for c in contestants if c.placement is None]
     if missing:
-        return Err(
-            f'Not all placements are set. '
-            f'{len(missing)} contestant(s) lack placements.'
-        )
+        return Err('Not all placements are set.')
 
     tournament_repository.confirm_match(
         match.id, initiator_id, **_changed(changed_at)
@@ -6532,7 +6522,7 @@ def plan_ffa_advance(
     if pool == Bracket.LOSERS:
         return _plan_ffa_lb(tournament, all_matches, cut, decisions, next_round)
     if pool is not None:
-        return Err(f'Invalid pool for DE advancement: {pool}')
+        return Err('Invalid pool parameter. Use WB or LB.')
     return _plan_ffa_single(tournament, all_matches, cut, decisions, next_round)
 
 
@@ -6562,9 +6552,7 @@ def _plan_ffa_single(
     # Validate all matches in the round are confirmed.
     unconfirmed = [m for m in round_matches if m.confirmed_by is None]
     if unconfirmed:
-        return Err(
-            f'{len(unconfirmed)} match(es) in round {source} are not confirmed.'
-        )
+        return Err('Not all matches of the round are confirmed.')
 
     survivors_result = _round_standings(round_matches, cut, decisions)
     if survivors_result.is_err():
@@ -6615,8 +6603,7 @@ def _plan_ffa_wb(
     unconfirmed = [m for m in wb_round_matches if m.confirmed_by is None]
     if unconfirmed:
         return Err(
-            f'{len(unconfirmed)} WB match(es) in round {source} '
-            f'are not confirmed.'
+            'Not all winners bracket matches of the round are confirmed.'
         )
 
     # Select top N from each WB group; remainder drops to LB.
@@ -6718,8 +6705,7 @@ def _plan_ffa_lb(
     unconfirmed = [m for m in lb_round_matches if m.confirmed_by is None]
     if unconfirmed:
         return Err(
-            f'{len(unconfirmed)} LB match(es) in round {source} '
-            f'are not confirmed.'
+            'Not all losers bracket matches of the round are confirmed.'
         )
 
     # Select top N from each LB group; bottom eliminated entirely.

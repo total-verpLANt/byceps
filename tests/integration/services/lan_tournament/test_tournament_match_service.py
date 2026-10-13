@@ -465,9 +465,10 @@ def test_bracket_generation_rejects_empty_team(
     )
 
     assert result.is_err()
-    error_msg = result.unwrap_err()
-    assert 'Ghost Team' in error_msg
-    assert 'no members' in error_msg
+    assert result.unwrap_err() == (
+        'Cannot generate bracket: some teams have no members.'
+        ' Remove or fill them first.'
+    )
 
 
 def test_get_contestants_for_matches_is_bounded_and_grouped(

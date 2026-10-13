@@ -148,6 +148,12 @@ def test_update_allowed_fields_when_ongoing():
 # ------------------------------------------------------------------ #
 
 
+def _locked_fields(error):
+    """Return the fields of a locked-field refusal."""
+    assert error.msgid == tournament_service.LOCKED_FIELDS_ERROR
+    return dict(error.params)['fields']
+
+
 def test_update_locked_field_name_when_ongoing():
     """Changing name on an ONGOING tournament must be rejected."""
     tournament = _make_tournament(TournamentStatus.ONGOING)
@@ -156,8 +162,7 @@ def test_update_locked_field_name_when_ongoing():
         result = _call_update(tournament, name='New Name')
 
     assert result.is_err()
-    assert 'name' in result.unwrap_err()
-    assert 'ongoing' in result.unwrap_err().lower()
+    assert _locked_fields(result.unwrap_err()) == 'name'
 
 
 def test_update_locked_field_mode_when_ongoing():
@@ -170,7 +175,7 @@ def test_update_locked_field_mode_when_ongoing():
         )
 
     assert result.is_err()
-    assert 'elimination_mode' in result.unwrap_err()
+    assert _locked_fields(result.unwrap_err()) == 'elimination_mode'
 
 
 def test_update_locked_field_contestant_type_when_ongoing():
@@ -183,7 +188,7 @@ def test_update_locked_field_contestant_type_when_ongoing():
         )
 
     assert result.is_err()
-    assert 'contestant_type' in result.unwrap_err()
+    assert _locked_fields(result.unwrap_err()) == 'contestant_type'
 
 
 def test_update_locked_field_when_paused():
@@ -194,7 +199,7 @@ def test_update_locked_field_when_paused():
         result = _call_update(tournament, name='New Name')
 
     assert result.is_err()
-    assert 'paused' in result.unwrap_err().lower()
+    assert _locked_fields(result.unwrap_err()) == 'name'
 
 
 # ------------------------------------------------------------------ #
@@ -257,10 +262,8 @@ def test_update_multiple_locked_fields_lists_all():
         )
 
     assert result.is_err()
-    err = result.unwrap_err()
-    assert 'name' in err
-    assert 'game' in err
-    assert 'start_time' in err
+    fields = _locked_fields(result.unwrap_err()).split(', ')
+    assert {'name', 'game', 'start_time'} <= set(fields)
 
 
 # ------------------------------------------------------------------ #

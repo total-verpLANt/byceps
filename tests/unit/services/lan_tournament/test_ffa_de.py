@@ -868,7 +868,9 @@ def test_wb_advancement_rejects_unconfirmed(mock_repo):
     )
 
     assert result.is_err()
-    assert 'not confirmed' in result.unwrap_err().lower()
+    assert result.unwrap_err() == (
+        'Not all winners bracket matches of the round are confirmed.'
+    )
 
 
 # -------------------------------------------------------------------- #
@@ -902,7 +904,9 @@ def test_lb_advancement_rejects_unconfirmed(mock_repo):
     )
 
     assert result.is_err()
-    assert 'not confirmed' in result.unwrap_err().lower()
+    assert result.unwrap_err() == (
+        'Not all losers bracket matches of the round are confirmed.'
+    )
 
 
 # -------------------------------------------------------------------- #

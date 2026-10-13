@@ -129,7 +129,7 @@ def test_service_rejects_category_change_during_play(status):
             tournament.id, name=tournament.name, category=TournamentCategory.FUN
         )
         assert result.is_err()
-        assert 'category' in result.unwrap_err()
+        assert dict(result.unwrap_err().params)['fields'] == 'category'
         repository.update_tournament.assert_not_called()
 
 

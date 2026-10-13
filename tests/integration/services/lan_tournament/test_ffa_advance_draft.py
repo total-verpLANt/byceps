@@ -276,7 +276,7 @@ def test_prepare_refuses_while_the_round_is_open(ticketed, admin):
     result = _prepare(tournament, admin)
 
     assert isinstance(result, Err)
-    assert 'not confirmed' in result.unwrap_err()
+    assert result.unwrap_err() == 'Not all matches of the round are confirmed.'
 
 
 def test_generate_ffa_round_from_draft(ticketed, admin):

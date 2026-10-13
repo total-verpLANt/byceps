@@ -99,7 +99,9 @@ def test_natural_shortfall_does_not_bypass_source_confirmation(
             tournament.id, pool=Bracket.WINNERS, initiator_id=engine_admin.id
         )
     assert result.is_err()
-    assert 'not confirmed' in result.unwrap_err()
+    assert result.unwrap_err() == (
+        'Not all winners bracket matches of the round are confirmed.'
+    )
     assert calls and calls[0] == tournament.id
     assert not base.lobbies(tournament, Bracket.WINNERS, 2)
     assert not base.lobbies(tournament, Bracket.LOSERS, 1)

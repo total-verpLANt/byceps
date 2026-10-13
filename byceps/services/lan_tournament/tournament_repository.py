@@ -540,7 +540,7 @@ def set_tournament_winner(
     """Store the winner on the tournament row (flush only)."""
     db_tournament = db.session.get(DbTournament, tournament_id)
     if db_tournament is None:
-        return Err(f'Unknown tournament ID "{tournament_id}"')
+        return Err('Tournament not found.')
     db_tournament.winner_team_id = winner_team_id
     db_tournament.winner_participant_id = winner_participant_id
     db.session.flush()
@@ -577,7 +577,7 @@ def set_tournament_status_flush(
         DbTournament, tournament_id, populate_existing=True
     )
     if db_tournament is None:
-        return Err(f'Unknown tournament ID "{tournament_id}"')
+        return Err('Tournament not found.')
 
     at = (
         _naive_utc(changed_at)

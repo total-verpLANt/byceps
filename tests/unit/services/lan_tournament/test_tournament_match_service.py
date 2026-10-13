@@ -1213,7 +1213,7 @@ def test_determine_loser_returns_err_on_wrong_count():
     result = tournament_match_service._determine_loser([a, b, c], a)
 
     assert result.is_err()
-    assert 'Expected 2' in result.unwrap_err()
+    assert result.unwrap_err() == 'Expected exactly two contestants.'
 
 
 def test_determine_loser_returns_ok():

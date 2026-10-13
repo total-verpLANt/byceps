@@ -246,7 +246,9 @@ def test_set_ffa_placements_validates_complete(mock_repo):
     )
 
     assert result.is_err()
-    assert 'Expected placements for 3' in result.unwrap_err()
+    assert result.unwrap_err() == (
+        'A placement is required for every contestant.'
+    )
 
 
 @patch(
@@ -528,7 +530,7 @@ def test_advance_ffa_round_rejects_unconfirmed(mock_repo):
     )
 
     assert result.is_err()
-    assert 'not confirmed' in result.unwrap_err().lower()
+    assert result.unwrap_err() == 'Not all matches of the round are confirmed.'
 
 
 @patch(

@@ -17496,3 +17496,42 @@ msgstr "Playoffs brauchen mindestens 2 Gruppen mit je 2 Teams, also mindestens 4
 
 msgid "Playoffs need at least 2 groups of 2, so at least 4 players. Registered: %(n)s. Add players or remove the playoff phase."
 msgstr "Playoffs brauchen mindestens 2 Gruppen mit je 2 Spielern, also mindestens 4 Spieler. Angemeldet: %(n)s. Füge Spieler hinzu oder entferne die Playoff-Phase."
+
+msgid "Expected exactly two contestants."
+msgstr "Es werden genau zwei Teilnehmer erwartet."
+
+msgid "Match not found."
+msgstr "Partie nicht gefunden."
+
+msgid "A placement is required for every contestant."
+msgstr "Für jeden Teilnehmer ist eine Platzierung erforderlich."
+
+msgid "The placements contain an unknown contestant."
+msgstr "Die Platzierungen enthalten einen unbekannten Teilnehmer."
+
+msgid "Placements must be sequential, starting at 1."
+msgstr "Die Platzierungen müssen lückenlos bei 1 beginnen."
+
+msgid "Not all placements are set."
+msgstr "Es sind noch nicht alle Platzierungen gesetzt."
+
+msgid "Not all matches of the round are confirmed."
+msgstr "Nicht alle Partien der Runde sind bestätigt."
+
+msgid "Not all winners bracket matches of the round are confirmed."
+msgstr "Nicht alle Partien der Gewinnerrunde sind bestätigt."
+
+msgid "Not all losers bracket matches of the round are confirmed."
+msgstr "Nicht alle Partien der Verliererrunde sind bestätigt."
+
+msgid "Cannot generate bracket: some teams have no members. Remove or fill them first."
+msgstr "Der Turnierbaum kann nicht erzeugt werden: Einige Teams haben keine Mitglieder. Entferne sie oder fülle sie zuerst auf."
+
+msgid "The minimum group size must not exceed the maximum group size."
+msgstr "Die minimale Gruppengröße darf die maximale Gruppengröße nicht überschreiten."
+
+msgid "Cannot create an FFA team tournament: the maximum number of teams is below the minimum group size."
+msgstr "Ein Free-for-All-Teamturnier kann nicht erstellt werden: Die maximale Teamanzahl liegt unter der minimalen Gruppengröße."
+
+msgid "Only description, image, and ruleset can be changed while the tournament is ongoing or paused. Attempted to change: %(fields)s."
+msgstr "Solange das Turnier läuft oder pausiert ist, können nur Beschreibung, Bild und Regelwerk geändert werden. Versuchte Änderung: %(fields)s."
