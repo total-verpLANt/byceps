@@ -531,7 +531,7 @@ def join(tournament_id):
             flash_error(
                 gettext(
                     'Could not join: %(error)s',
-                    error=error_message,
+                    error=gettext(error_message),
                 )
             )
 
@@ -671,7 +671,7 @@ def create_team(tournament_id):
             flash_error(
                 gettext(
                     'Could not create team: %(error)s',
-                    error=error_message,
+                    error=gettext(error_message),
                 )
             )
             return redirect_to('.create_team_form', tournament_id=tournament.id)
@@ -1005,7 +1005,7 @@ def update_team(tournament_id, team_id):
             flash_error(
                 gettext(
                     'Could not update team: %(error)s',
-                    error=error_message,
+                    error=gettext(error_message),
                 )
             )
             return redirect_to(

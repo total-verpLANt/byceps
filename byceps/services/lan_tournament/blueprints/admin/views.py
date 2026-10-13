@@ -3694,7 +3694,7 @@ def create_team(tournament_id):
             flash_error(
                 gettext(
                     'Team creation failed: %(error)s',
-                    error=error_message,
+                    error=gettext(error_message),
                 )
             )
             return create_team_form(tournament.id, form)
@@ -3786,7 +3786,7 @@ def delete_team(team_id):
             flash_error(
                 gettext(
                     'Team deletion failed: %(error)s',
-                    error=error_message,
+                    error=gettext(error_message),
                 )
             )
 
@@ -3911,7 +3911,7 @@ def add_participant(tournament_id):
             flash_error(
                 gettext(
                     'Could not add participant: %(error)s',
-                    error=error_message,
+                    error=gettext(error_message),
                 )
             )
             return add_participant_form(tournament.id, form)
@@ -3941,7 +3941,7 @@ def remove_participant(tournament_id, participant_id):
             flash_error(
                 gettext(
                     'Could not remove participant: %(error)s',
-                    error=error_message,
+                    error=gettext(error_message),
                 )
             )
 
@@ -3993,7 +3993,10 @@ def remove_participants_without_tickets(tournament_id):
                 )
         case Err(error_message):
             flash_error(
-                gettext('Could not remove: %(error)s', error=error_message)
+                gettext(
+                    'Could not remove: %(error)s',
+                    error=gettext(error_message),
+                )
             )
 
     return redirect_to(
@@ -5398,7 +5401,12 @@ def delete_match_comment(match_id, comment_id):
         case Ok():
             flash_success(gettext('Comment has been deleted.'))
         case Err(e):
-            flash_error(gettext('Error deleting comment: %(error)s', error=e))
+            flash_error(
+                gettext(
+                    'Error deleting comment: %(error)s',
+                    error=gettext(e),
+                )
+            )
 
     return redirect_to('.view_match', match_id=match_id)
 
