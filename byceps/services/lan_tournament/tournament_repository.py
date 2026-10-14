@@ -1327,6 +1327,117 @@ def get_team_counts_for_tournaments(
     return dict(rows)
 
 
+def count_tournaments_by_party_and_status(
+    party_ids: list[PartyID],
+) -> dict[tuple[PartyID, str | None], int]:
+    """Return tournament counts per party and stored status name."""
+    if not party_ids:
+        return {}
+    rows = (
+        db.session.execute(
+            select(
+                DbTournament.party_id,
+                DbTournament.tournament_status,
+                db.func.count(DbTournament.id),
+            )
+            .where(DbTournament.party_id.in_(party_ids))
+            .group_by(DbTournament.party_id, DbTournament.tournament_status)
+        )
+        .tuples()
+        .all()
+    )
+    return {(party_id, status): n for party_id, status, n in rows}
+
+
+def count_matches_by_party_and_confirmation(
+    party_ids: list[PartyID],
+) -> dict[PartyID, tuple[int, int]]:
+    """Return `(confirmed, unconfirmed)` match counts per party."""
+    if not party_ids:
+        return {}
+    rows = (
+        db.session.execute(
+            select(
+                DbTournament.party_id,
+                db.func.count(DbTournamentMatch.id).filter(
+                    DbTournamentMatch.confirmed_by.is_not(None)
+                ),
+                db.func.count(DbTournamentMatch.id).filter(
+                    DbTournamentMatch.confirmed_by.is_(None)
+                ),
+            )
+            .join(
+                DbTournament,
+                DbTournamentMatch.tournament_id == DbTournament.id,
+            )
+            .where(DbTournament.party_id.in_(party_ids))
+            .group_by(DbTournament.party_id)
+        )
+        .tuples()
+        .all()
+    )
+    return {
+        party_id: (confirmed, unconfirmed)
+        for party_id, confirmed, unconfirmed in rows
+    }
+
+
+def count_active_participants_by_party(
+    party_ids: list[PartyID],
+) -> dict[PartyID, int]:
+    """Return active participant counts per party."""
+    if not party_ids:
+        return {}
+    rows = (
+        db.session.execute(
+            select(
+                DbTournament.party_id,
+                db.func.count(DbTournamentParticipant.id),
+            )
+            .join(
+                DbTournament,
+                DbTournamentParticipant.tournament_id == DbTournament.id,
+            )
+            .where(
+                DbTournament.party_id.in_(party_ids),
+                DbTournamentParticipant.removed_at.is_(None),
+            )
+            .group_by(DbTournament.party_id)
+        )
+        .tuples()
+        .all()
+    )
+    return dict(rows)
+
+
+def count_active_teams_by_party(
+    party_ids: list[PartyID],
+) -> dict[PartyID, int]:
+    """Return active team counts per party."""
+    if not party_ids:
+        return {}
+    rows = (
+        db.session.execute(
+            select(
+                DbTournament.party_id,
+                db.func.count(DbTournamentTeam.id),
+            )
+            .join(
+                DbTournament,
+                DbTournamentTeam.tournament_id == DbTournament.id,
+            )
+            .where(
+                DbTournament.party_id.in_(party_ids),
+                DbTournamentTeam.removed_at.is_(None),
+            )
+            .group_by(DbTournament.party_id)
+        )
+        .tuples()
+        .all()
+    )
+    return dict(rows)
+
+
 def _db_participant_to_participant(
     db_participant: DbTournamentParticipant,
 ) -> TournamentParticipant:

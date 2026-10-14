@@ -548,6 +548,15 @@ The party tab "Dashboard" (right after "Übersicht") links the list. It is shown
 - **Description**: Records that an orga checked the delay of a due match, for the current wait episode only. It restarts the alert interval, not the total wait
 - **Response**: see Orga Dashboard Reference (native `303`, JSON `200`, refusals)
 
+### Metrics (Admin)
+
+#### Prometheus Metrics
+- **URL**: `/lan-tournaments/metrics/`
+- **Endpoint**: `lan_tournament_admin.metrics`
+- **Method**: GET
+- **Permission**: none (unauthenticated, like core `/metrics/`); restrict it at the proxy. `404` unless `[metrics] enabled = true`
+- **Description**: Prometheus text format (`text/plain; version=0.0.4`). Aggregate counts per active party: `lan_tournament_tournaments_count{party,status}`, `lan_tournament_matches_confirmed_count{party}`, `lan_tournament_matches_unconfirmed_count{party}`, `lan_tournament_participants_count{party}`, `lan_tournament_teams_count{party}`
+
 ---
 
 ## Site URLs (User-Facing)

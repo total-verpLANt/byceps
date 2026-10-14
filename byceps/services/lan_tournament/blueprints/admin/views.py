@@ -18,6 +18,7 @@ from flask import (
     redirect,
     render_template,
     request,
+    Response,
     send_file,
     url_for,
 )
@@ -37,6 +38,7 @@ from markupsafe import Markup
 from werkzeug.exceptions import RequestEntityTooLarge
 
 from byceps.services.brand import brand_service
+from byceps.services.metrics import metrics_service
 from byceps.services.party import party_service
 from byceps.services.party.models import Party, PartyID
 from byceps.services.user import user_service
@@ -68,6 +70,7 @@ from byceps.services.lan_tournament import (
     tournament_image_service,
     tournament_maintenance_service,
     tournament_match_service,
+    tournament_metrics_service,
     tournament_notification_service,
     tournament_orga_service,
     tournament_participant_service,
@@ -6527,3 +6530,15 @@ def _dashboard_action_detail(error, kind, code, labels, row) -> str | None:
         return labels['ack_refused_detail']
 
     return None
+
+
+@blueprint.get('/metrics/')
+def metrics():
+    """Return Prometheus metrics for tournaments of active parties."""
+    if not current_app.byceps_feature_states.get('metrics', False):
+        abort(404)
+
+    metrics = tournament_metrics_service.collect_metrics()
+    lines = list(metrics_service.serialize(metrics))
+
+    return Response(lines, status=200, mimetype='text/plain; version=0.0.4')

@@ -1,13 +1,15 @@
-from flask import abort, g, request, url_for
+from flask import abort, current_app, g, request, Response, url_for
 from flask_babel import gettext
 
 from byceps.services.brand import brand_service
+from byceps.services.metrics import metrics_service
 from byceps.services.more.blueprints.admin import item_service
 from byceps.services.more.blueprints.admin.item_service import MoreItem
 from byceps.services.party import party_service
 from byceps.services.party.models import PartyID
 from byceps.services.pizza_delivery import (
     pizza_delivery_email_service,
+    pizza_delivery_metrics_service,
     pizza_delivery_service,
 )
 from byceps.services.pizza_delivery.models import PizzaDeliveryEntryID
@@ -290,3 +292,15 @@ def _get_party_or_404(party_id):
     if party is None:
         abort(404)
     return party
+
+
+@blueprint.get('/metrics/')
+def metrics():
+    """Return Prometheus metrics for pizza deliveries of active parties."""
+    if not current_app.byceps_feature_states.get('metrics', False):
+        abort(404)
+
+    metrics = pizza_delivery_metrics_service.collect_metrics()
+    lines = list(metrics_service.serialize(metrics))
+
+    return Response(lines, status=200, mimetype='text/plain; version=0.0.4')
