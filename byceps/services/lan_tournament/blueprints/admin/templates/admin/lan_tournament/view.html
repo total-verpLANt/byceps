@@ -720,8 +720,7 @@
       <p class="dimmed">{{ _('Reopening clears the recorded winner and returns the tournament to ongoing.') }}</p>
     {%- endif %}
 
-    {# Delete button (always available except for completed/ongoing) #}
-    {%- if tournament.tournament_status.name not in ('COMPLETED', 'ONGOING') %}
+    {%- if can_delete %}
       <form action="{{ url_for('.delete', tournament_id=tournament.id) }}" method="post" style="margin-left: auto;">
         <button type="submit" class="button color-danger" data-action="delete-tournament">{{ render_icon('delete') }} {{ _('Delete') }}</button>
       </form>

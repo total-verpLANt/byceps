@@ -522,6 +522,7 @@ def view(tournament_id):
         'participants_by_id': participants_by_id,
         'requires_bracket': tournament.game_format.requires_bracket_generation if tournament.game_format else False,
         'start_gate': start_gate(tournament),
+        'can_delete': tournament_service.can_delete_tournament(tournament),
         'is_team_tournament': is_team_tournament,
         'participant_count': participant_count,
         'team_count': team_count,
@@ -2930,7 +2931,12 @@ def delete(tournament_id):
     """Delete the tournament."""
     tournament = _get_tournament_or_404(tournament_id)
 
-    tournament_service.delete_tournament(tournament.id, g.user.id)
+    match tournament_service.delete_tournament_if_allowed(
+        tournament.id, g.user.id
+    ):
+        case Err(error_message):
+            flash_error(gettext(error_message))
+            return redirect_to('.view', tournament_id=tournament.id)
 
     flash_success(
         gettext(

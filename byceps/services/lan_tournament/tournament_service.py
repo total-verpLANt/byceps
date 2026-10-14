@@ -87,6 +87,11 @@ _STARTED_PLAYOFF_LOCK = frozenset(
     {'playoff_game_format', 'playoff_group_count'}
 )
 _STARTED_STATUSES = EDIT_LOCKED_STATUSES | {TournamentStatus.COMPLETED}
+# A delete in these statuses would destroy live or final results.
+DELETE_LOCKED_STATUSES = _STARTED_STATUSES
+DELETE_LOCKED_ERROR = (
+    'An ongoing, paused or completed tournament cannot be deleted.'
+)
 LOCKED_FIELDS_ERROR = (
     'Only description, image, and ruleset can be changed while the'
     ' tournament is ongoing or paused. Attempted to change: %(fields)s.'
@@ -863,6 +868,30 @@ def find_tournament_by_creation_token(
     )
 
 
+def can_delete_tournament(tournament: Tournament) -> bool:
+    """Tell whether the tournament's status allows a delete."""
+    return tournament.tournament_status not in DELETE_LOCKED_STATUSES
+
+
+def delete_tournament_if_allowed(
+    tournament_id: TournamentID,
+    initiator_id: UserID | None = None,
+) -> Result[None, str]:
+    """Delete the tournament unless its status forbids it.
+
+    The status is checked under the tournament row lock, so a
+    concurrent start cannot slip past the check.
+    """
+    tournament_repository.lock_tournament_for_update(tournament_id)
+    tournament = tournament_repository.get_tournament(tournament_id, fresh=True)
+    if not can_delete_tournament(tournament):
+        tournament_repository.rollback_session()
+        return Err(DELETE_LOCKED_ERROR)
+
+    delete_tournament(tournament_id, initiator_id)
+    return Ok(None)
+
+
 def delete_tournament(
     tournament_id: TournamentID,
     initiator_id: UserID | None = None,
@@ -871,7 +900,8 @@ def delete_tournament(
 
     SECURITY NOTE: Authorization must be checked at blueprint layer
     before calling this function (requires
-    'lan_tournament.delete' permission).
+    'lan_tournament.delete' permission). This does not check the
+    status; routes must call `delete_tournament_if_allowed`.
 
     Log entries are kept; a `tournament-deleted` entry records the
     tournament's name, party, game and status.
