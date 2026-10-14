@@ -54,3 +54,18 @@ class DbPizzaDeliveryEntry(db.Model):
         self.created_at = created_at
         self.updated_at = updated_at
         self.created_by_id = created_by_id
+
+
+class DbPizzaDeliveryPartyCounter(db.Model):
+    """The number of delivered pizza delivery entries deleted for a party."""
+
+    __tablename__ = 'pizza_delivery_party_counters'
+
+    party_id: Mapped[PartyID] = mapped_column(
+        db.UnicodeText,
+        db.ForeignKey('parties.id', ondelete='CASCADE'),
+        primary_key=True,
+    )
+    deleted_delivered_count: Mapped[int] = mapped_column(
+        db.Integer, default=0, server_default='0'
+    )

@@ -18,7 +18,7 @@ def metrics_enabled():
 
 
 @pytest.fixture()
-def client(metrics_enabled, make_admin_app):
+def client(metrics_enabled, make_admin_app, database):
     app = make_admin_app(SERVER_NAME, metrics_enabled=metrics_enabled)
     with app.app_context():
         yield app.test_client()
@@ -55,6 +55,12 @@ def _count_line(party_id, status, count):
     return (
         f'pizza_delivery_entries_count{{party="{party_id}", '
         f'status="{status}"}} {count}\n'
+    )
+
+
+def _consumed_line(party_id, count):
+    return (
+        f'pizza_delivery_pizzas_consumed_count{{party="{party_id}"}} {count}\n'
     )
 
 
@@ -113,3 +119,56 @@ def test_pizza_metrics_exposes_only_party_and_status_labels(
     label_names = set(LABEL_NAME_REGEX.findall(body))
     assert label_names
     assert label_names <= {'party', 'status'}
+
+
+@pytest.mark.parametrize('metrics_enabled', [True])
+def test_pizza_metrics_consumed_counts_delivered_entries(
+    client, metrics_party, make_entry
+):
+    make_entry('M-1')
+    make_entry('M-2', delivered=True)
+    make_entry('M-3', delivered=True)
+
+    body = client.get(URL).get_data(as_text=True)
+
+    assert _consumed_line(metrics_party.id, 2) in body
+
+
+@pytest.mark.parametrize('metrics_enabled', [True])
+def test_pizza_metrics_consumed_survives_deleting_delivered_entries(
+    client, metrics_party, make_entry
+):
+    pending = make_entry('M-1')
+    deleted_delivered = make_entry('M-2', delivered=True)
+    make_entry('M-3', delivered=True)
+
+    pizza_delivery_service.delete_entry(deleted_delivered.id).unwrap()
+    pizza_delivery_service.delete_entry(pending.id).unwrap()
+
+    body = client.get(URL).get_data(as_text=True)
+
+    assert _consumed_line(metrics_party.id, 2) in body
+    assert _count_line(metrics_party.id, 'delivered', 1) in body
+    assert _count_line(metrics_party.id, 'pending', 0) in body
+
+
+@pytest.mark.parametrize('metrics_enabled', [True])
+def test_pizza_metrics_consumed_drops_when_entry_is_undelivered(
+    client, metrics_party, make_entry
+):
+    entry = make_entry('M-1', delivered=True)
+
+    pizza_delivery_service.undeliver_entry(entry.id).unwrap()
+
+    body = client.get(URL).get_data(as_text=True)
+
+    assert _consumed_line(metrics_party.id, 0) in body
+
+
+@pytest.mark.parametrize('metrics_enabled', [True])
+def test_pizza_metrics_consumed_is_zero_for_party_without_entries(
+    client, metrics_party
+):
+    body = client.get(URL).get_data(as_text=True)
+
+    assert _consumed_line(metrics_party.id, 0) in body

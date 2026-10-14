@@ -6,7 +6,7 @@ from byceps.database import db
 from byceps.services.metrics.models import Label, Metric
 from byceps.services.party import party_service
 
-from .dbmodels import DbPizzaDeliveryEntry
+from .dbmodels import DbPizzaDeliveryEntry, DbPizzaDeliveryPartyCounter
 from .models import PizzaDeliveryStatus
 
 
@@ -31,6 +31,17 @@ def collect_metrics() -> Iterator[Metric]:
 
     counts = {(party_id, status): count for party_id, status, count in rows}
 
+    deleted_delivered_counts = dict(
+        db.session.execute(
+            select(
+                DbPizzaDeliveryPartyCounter.party_id,
+                DbPizzaDeliveryPartyCounter.deleted_delivered_count,
+            ).where(DbPizzaDeliveryPartyCounter.party_id.in_(party_ids))
+        )
+        .tuples()
+        .all()
+    )
+
     for party_id in party_ids:
         for status in _STATUSES:
             yield Metric(
@@ -38,3 +49,12 @@ def collect_metrics() -> Iterator[Metric]:
                 counts.get((party_id, status), 0),
                 labels=[Label('party', party_id), Label('status', status)],
             )
+
+        consumed_count = counts.get(
+            (party_id, PizzaDeliveryStatus.DELIVERED), 0
+        ) + deleted_delivered_counts.get(party_id, 0)
+        yield Metric(
+            'pizza_delivery_pizzas_consumed_count',
+            consumed_count,
+            labels=[Label('party', party_id)],
+        )

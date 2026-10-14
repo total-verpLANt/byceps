@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 
 from byceps.database import db
@@ -9,7 +10,7 @@ from byceps.services.user.models import User, UserID
 from byceps.util.result import Err, Ok, Result
 
 from . import pizza_delivery_domain_service, signals
-from .dbmodels import DbPizzaDeliveryEntry
+from .dbmodels import DbPizzaDeliveryEntry, DbPizzaDeliveryPartyCounter
 from .errors import (
     DuplicateDeliveryNumberError,
     PizzaDeliveryEntryAlreadyClaimedError,
@@ -99,8 +100,11 @@ def delete_entry(
 
     party_id = db_entry.party_id
     number = db_entry.number
+    was_delivered = db_entry.status == PizzaDeliveryStatus.DELIVERED
 
     db.session.delete(db_entry)
+    if was_delivered:
+        _increment_deleted_delivered_count(party_id)
     db.session.commit()
 
     event = PizzaDeliveryEntryDeletedEvent(
@@ -113,6 +117,22 @@ def delete_entry(
     signals.entry_deleted.send(None, event=event)
 
     return Ok(None)
+
+
+def _increment_deleted_delivered_count(party_id: PartyID) -> None:
+    """Count a delivered entry in the open transaction before its deletion."""
+    db.session.execute(
+        insert(DbPizzaDeliveryPartyCounter)
+        .values(party_id=party_id, deleted_delivered_count=1)
+        .on_conflict_do_update(
+            index_elements=[DbPizzaDeliveryPartyCounter.party_id],
+            set_={
+                'deleted_delivered_count': (
+                    DbPizzaDeliveryPartyCounter.deleted_delivered_count + 1
+                )
+            },
+        )
+    )
 
 
 def get_entries_for_party(
