@@ -1,4 +1,5 @@
-{%- set more = delivered_total - 31 -%}
+{%- set cap = 12 -%}
+{%- set more = delivered_total - cap -%}
 <!DOCTYPE html>
 <html lang="{{ g.current_locale.language|default('de') }}" data-theme="dark">
 <head>
@@ -13,47 +14,42 @@
 {% include 'site/pizza_delivery/_bote_pizza_beamer_style.html' %}
 </head>
 <body class="page-pizza_delivery_beamer">
-{%- macro len_class(number) -%}
-pz-len-{{ 's' if number|length <= 6 else ('m' if number|length <= 12 else 'l') }}
-{%- endmacro %}
-<div class="xb"><div class="xb-sheet">
-  <div class="xb-folio">
-    <span><b>{{ _('Canteen · Extra edition') }}</b></span>
-    <span>{{ _('The Rentenbote · Issue 36') }}</span>
-    <span>{{ _('As of %(time)s', time=now|timeformat('HH:mm')) }} · {{ _('new every 10 s') }}</span>
+<div class="hb"><div class="hb-band">
+  <div class="hb-label">
+    <b>{{ _('Pizza') }}</b>
+    <span>{{ _('Ready for pickup') }} · {{ _('newest first') }}</span>
   </div>
   {%- if not entries %}
-  <div class="xb-empty">
-    <h1>{{ _('No deliveries have been called yet.') }}</h1>
-    <p>{{ _('The first pizza is on its way.') }}</p>
-  </div>
-  <footer class="xb-foot">
-    <span>{{ _('All numbers: %(path)s', path=url_for('.board')[:-1]) }}</span>
-    <span>{{ _('✶ = fresh, under 10 minutes') }}</span>
-  </footer>
+  <p class="hb-empty"><span>{{ _('No deliveries have been called yet.') }}</span><span>{{ _('The first pizza is on its way.') }}</span></p>
   {%- else %}
-  {%- set lead = entries[0] %}
-  <div class="xb-lead {{ len_class(lead.number) }}">
-    <div>
-      <p class="xb-title">{{ _('Extra edition') }}<span>{{ _('Last called') }}</span></p>
-      <p class="xb-lead-no">{{ lead.number }}</p>
-    </div>
-    <div class="xb-when">
-      <time>{{ (lead.delivered_at or lead.updated_at)|timeformat('HH:mm') }}</time>
-      <p>{{ _('Please pick up at the food counter.') }}</p>
-    </div>
-  </div>
-  <div class="xb-reg-h"><span>{{ _('Called before · newest first') }}</span><span>{{ _('✶ = fresh, under 10 minutes') }}</span></div>
-  <ol class="xb-reg">
-    {%- for entry in entries[1:31] %}
-    <li class="{{ len_class(entry.number) }}"><i>{% if entry.id in fresh_ids %}&#10038;{% endif %}</i><b>{{ entry.number }}</b></li>
+  <ol class="hb-row">
+    {%- for entry in entries[:cap] %}
+    {%- set fresh = entry.id in fresh_ids %}
+    <li{% if fresh %} class="hb-fresh"{% endif %}>{% if fresh %}<i>&#10038;</i>{% endif %}<b>{{ entry.number }}</b></li>
     {%- endfor %}
   </ol>
-  <footer class="xb-foot">
-    <span>{% if more > 0 %}<b>{{ _('+ %(count)s more at %(path)s', count=more, path=url_for('.board')[:-1]) }}</b>{% else %}{{ ngettext('%(count)s number called', '%(count)s numbers called', delivered_total, count=delivered_total) }}{% endif %}</span>
-    <span>{{ _('Called = waiting at the food counter') }}</span>
-  </footer>
+  <div class="hb-more" data-more="{{ more }}"{% if more <= 0 %} hidden{% endif %}>
+    <b>+{{ [more, 0]|max }}</b>
+    <span><span>{{ _('more numbers') }}</span><span>{{ url_for('.board')[:-1] }}</span></span>
+  </div>
   {%- endif %}
 </div></div>
+<script>
+  // Numbers that wrapped out of the band count towards the plate.
+  document.fonts.ready.then(function () {
+    var row = document.querySelector('.hb-row');
+    var plate = document.querySelector('.hb-more');
+    if (!row || !plate) { return; }
+    var base = Number(plate.dataset.more);
+    plate.hidden = false;
+    var top = row.firstElementChild.offsetTop;
+    var cut = Array.from(row.children).filter(function (li) { return li.offsetTop > top; }).length;
+    if (base + cut > 0) {
+      plate.querySelector('b').textContent = '+' + (base + cut);
+    } else {
+      plate.hidden = true;
+    }
+  });
+</script>
 </body>
 </html>

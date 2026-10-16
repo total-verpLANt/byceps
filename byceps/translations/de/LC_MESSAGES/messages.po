@@ -17538,3 +17538,12 @@ msgstr "Solange das Turnier läuft oder pausiert ist, können nur Beschreibung, 
 
 msgid "An ongoing, paused or completed tournament cannot be deleted."
 msgstr "Ein laufendes, pausiertes oder abgeschlossenes Turnier kann nicht gelöscht werden."
+
+msgid "Pizza"
+msgstr "Pizza"
+
+msgid "newest first"
+msgstr "neueste zuerst"
+
+msgid "more numbers"
+msgstr "weitere"

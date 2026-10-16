@@ -1,39 +1,27 @@
 <style>
 /* ============================================================
-   Extrablatt (beamershow). .xb is the size container; --u is
-   1/100 of the 16:9 box that fits the screen, so 1920x1080 and
-   1280x720 are the same page. Standalone: loads no site layout.
+   Kopfband (beamershow): one line of called numbers, meant to be
+   embedded above a beamershow. .hb is the size container; every
+   size is in cqh, so the band scales with the height it is given,
+   capped at a 1920x110 ratio so a full window stays a headband.
+   Numbers that do not fit wrap out of sight, never half cut.
+   Standalone: loads no site layout.
    ============================================================ */
 html,body{margin:0;height:100%;background:var(--paper)}
 body{background-image:none;animation:none;transition:none;overflow:hidden}
-.xb-lead-no,.xb-reg b{font-family:var(--mono);font-weight:700;font-style:normal;font-feature-settings:"zero" 1;letter-spacing:.02em;overflow-wrap:anywhere}
-.xb :focus-visible{outline:3px solid var(--redDeep);outline-offset:3px}
-.xb{container-type:size;width:100%;height:100%;background:var(--paper);color:var(--ink);overflow:hidden}
-.xb-sheet{--u:min(1cqw,1.7778cqh);box-sizing:border-box;width:calc(var(--u)*100);height:calc(var(--u)*56.25);margin:auto;padding:calc(var(--u)*2) calc(var(--u)*3) calc(var(--u)*1.6);display:grid;grid-template-rows:auto auto auto minmax(0,1fr) auto;font-family:var(--body)}
-.xb-folio{display:flex;justify-content:space-between;gap:calc(var(--u)*2);border-top:1px solid var(--ink);border-bottom:3px double var(--ink);padding:calc(var(--u)*.5) 0 calc(var(--u)*.6);font-family:var(--mono);font-size:calc(var(--u)*.95);letter-spacing:.2em;text-transform:uppercase;color:var(--inkSoft)}
-.xb-folio b{color:var(--redDeep)}
-.xb-lead{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:calc(var(--u)*3);padding:calc(var(--u)*1.6) 0 calc(var(--u)*1.8);border-bottom:3px double var(--ink)}
-.xb-title{margin:0 0 calc(var(--u)*.6);font-family:var(--display);font-weight:900;font-style:italic;font-size:calc(var(--u)*2.6);line-height:1;color:var(--redDeep)}
-.xb-title span{font-family:var(--mono);font-style:normal;font-weight:700;font-size:calc(var(--u)*1.05);letter-spacing:.22em;text-transform:uppercase;color:var(--inkSoft);margin-left:calc(var(--u)*1.2);vertical-align:middle}
-.xb-lead-no{display:block;margin:0;line-height:.92;color:var(--ink)}
-.pz-len-s .xb-lead-no{font-size:calc(var(--u)*15)}
-.pz-len-m .xb-lead-no{font-size:calc(var(--u)*9.4)}
-.pz-len-l .xb-lead-no{font-size:calc(var(--u)*5.6)}
-.xb-when{text-align:right}
-.xb-when time{display:block;font-family:var(--display);font-weight:900;font-style:italic;font-size:calc(var(--u)*5.4);line-height:1;color:var(--redDeep)}
-.xb-when p{margin:calc(var(--u)*.6) 0 0;font-style:italic;font-size:calc(var(--u)*1.7);line-height:1.2;color:var(--inkSoft);max-width:18ch;margin-left:auto}
-.xb-reg-h{display:flex;justify-content:space-between;gap:calc(var(--u)*2);padding:calc(var(--u)*1) 0 calc(var(--u)*.4);font-family:var(--mono);font-size:calc(var(--u)*.95);font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--inkSoft)}
-.xb-reg-h b{color:var(--ink)}
-.xb-reg{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));grid-template-rows:repeat(6,minmax(0,1fr));column-gap:calc(var(--u)*2);min-height:0}
-.xb-reg li{display:flex;align-items:center;gap:calc(var(--u)*.6);border-bottom:1px dashed var(--inkMute);min-width:0;overflow:hidden}
-.xb-reg b{font-size:calc(var(--u)*2.5);line-height:1;white-space:nowrap}
-.xb-reg .pz-len-m b{font-size:calc(var(--u)*2)}
-.xb-reg .pz-len-l b{font-size:calc(var(--u)*1.2)}
-.xb-reg i{font-style:normal;font-size:calc(var(--u)*1.5);color:var(--redDeep);width:calc(var(--u)*1.2);flex:0 0 auto}
-.xb-reg li.pz-len-l{gap:calc(var(--u)*.3)}
-.xb-foot{display:flex;justify-content:space-between;gap:calc(var(--u)*2);border-top:3px double var(--ink);margin-top:calc(var(--u)*.8);padding-top:calc(var(--u)*.6);font-family:var(--mono);font-size:calc(var(--u)*1.05);font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--inkSoft)}
-.xb-foot b{color:var(--ink)}
-.xb-empty{grid-row:3/5;display:grid;place-content:center;text-align:center;border:1.5px dashed var(--inkSoft);margin:calc(var(--u)*2) 0;background:repeating-linear-gradient(135deg,var(--stripe) 0 12px,transparent 12px 24px)}
-.xb-empty h1{font-family:var(--display);font-weight:900;font-size:calc(var(--u)*6);line-height:1;margin:0}
-.xb-empty p{font-style:italic;font-size:calc(var(--u)*2.2);color:var(--inkSoft);margin:calc(var(--u)*1) 0 0}
+.hb{container-type:size;height:min(100%,5.75vw);overflow:hidden;background:var(--paper);color:var(--ink);font-family:var(--mono)}
+.hb-band{box-sizing:border-box;height:100%;display:flex;align-items:stretch;border-bottom:max(2px,3cqh) double var(--ink)}
+.hb-label{flex:0 0 auto;display:flex;flex-direction:column;justify-content:center;padding:0 12cqh;background:var(--red);color:var(--paper)}
+.hb-label b{font-family:var(--display);font-style:italic;font-weight:900;font-size:38cqh;line-height:1}
+.hb-label span{margin-top:3cqh;font-size:11cqh;font-weight:700;letter-spacing:.2em;text-transform:uppercase;white-space:nowrap}
+.hb-row{flex:1 1 auto;min-width:0;height:100%;list-style:none;margin:0;padding:0 0 0 12cqh;display:flex;flex-wrap:wrap;gap:0 20cqh;overflow:hidden}
+.hb-row li{flex:0 0 auto;height:100%;display:flex;align-items:center;gap:2cqh;white-space:nowrap}
+.hb-row i{font-style:normal;font-size:22cqh;color:var(--red)}
+.hb-row b{font-size:36cqh;line-height:1;font-weight:700;font-feature-settings:"zero" 1;letter-spacing:.02em;color:var(--inkSoft)}
+.hb-row .hb-fresh b{color:var(--ink)}
+.hb-more[hidden]{display:none}
+.hb-more{flex:0 0 auto;display:flex;align-items:center;gap:4cqh;margin:14cqh 8cqh 14cqh 6cqh;padding:0 6cqh;background:var(--ink);color:var(--paper)}
+.hb-more b{font-family:var(--display);font-weight:900;font-variant-numeric:lining-nums;font-size:44cqh;line-height:1;white-space:nowrap}
+.hb-more span{display:flex;flex-direction:column;gap:2cqh;font-size:10cqh;font-weight:700;letter-spacing:.16em;text-transform:uppercase;white-space:nowrap}
+.hb-empty{flex:1 1 auto;margin:0;padding:0 8cqh;display:flex;align-items:center;gap:0 .4em;font-family:var(--display);font-style:italic;font-weight:900;font-size:30cqh;white-space:nowrap;overflow:hidden}
 </style>

@@ -396,29 +396,36 @@ def test_claim_called_number_flashes_a_warning(reader, entries) -> None:
     assert 'color-warning' in html
 
 
-def test_beamershow_is_a_standalone_dark_sheet(anonymous, entries) -> None:
-    entries('BIG-1', called_minutes_ago=1)
-    entries('SMALL-1', called_minutes_ago=2)
+def test_beamershow_is_a_standalone_dark_headband(anonymous, entries) -> None:
+    entries('OLDER-1', called_minutes_ago=30)
+    entries('NEWER-1', called_minutes_ago=2)
 
     html = get_text(anonymous, '/pizza/beamershow')
 
     assert 'data-theme="dark"' in html
     assert '<meta http-equiv="refresh" content="10">' in html
-    assert 'Kantine · Extrablatt' in html
-    assert 'class="xb-lead-no">BIG-1<' in html
+    assert 'Abholbereit · neueste zuerst' in html
+    assert html.index('NEWER-1') < html.index('OLDER-1')
+    assert '<li class="hb-fresh"><i>&#10038;</i><b>NEWER-1</b></li>' in html
+    assert '<li><b>OLDER-1</b></li>' in html
+    assert '<div class="hb-more" data-more="-10" hidden>' in html
     assert 'class="page-header-fixed"' not in html
     assert 'localStorage' not in html
 
 
-def test_beamershow_counts_beyond_the_printed_grid(anonymous, entries) -> None:
+def test_beamershow_counts_the_numbers_beyond_the_band(
+    anonymous, entries
+) -> None:
     for i in range(205):
         entries(f'BM-{i:03}', called_minutes_ago=300 - i // 10)
 
     html = get_text(anonymous, '/pizza/beamershow')
 
-    assert html.count('<li class="pz-len-') == 30
-    # 205 delivered in total: one lead, 30 in the grid, the rest in the foot.
-    assert '+ 174 weitere unter /pizza' in html
+    # All numbers are the same size: twelve in the band, the rest as a count.
+    assert html.count('<b>BM-') == 12
+    assert '<div class="hb-more" data-more="193">' in html
+    assert '<b>+193</b>' in html
+    assert '<span>weitere</span><span>/pizza</span>' in html
 
 
 def test_beamershow_empty_state(anonymous) -> None:
@@ -426,3 +433,4 @@ def test_beamershow_empty_state(anonymous) -> None:
 
     assert 'Es wurden noch keine Lieferungen aufgerufen.' in html
     assert 'Die erste Pizza ist unterwegs.' in html
+    assert 'class="hb-row"' not in html
