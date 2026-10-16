@@ -17547,3 +17547,6 @@ msgstr "neueste zuerst"
 
 msgid "more numbers"
 msgstr "weitere"
+
+msgid "Replacement added"
+msgstr "Ersatz hinzugefügt"

@@ -3604,7 +3604,18 @@ def admin_add_team_member(team_id):
 
     user = form.user
 
-    result = tournament_team_service.admin_add_member(team.id, user.id)
+    # Both paths re-check registration under the tournament lock.
+    participants = (
+        tournament_participant_service.get_participants_for_tournament(
+            team.tournament_id
+        )
+    )
+    if any(p.user_id == user.id for p in participants):
+        result = tournament_team_service.admin_add_member(team.id, user.id)
+    else:
+        result = tournament_participant_service.admin_add_participant(
+            team.tournament_id, user.id, team_id=team.id, initiator=g.user
+        )
     match result:
         case Ok(_):
             flash_success(

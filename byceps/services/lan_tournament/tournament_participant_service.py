@@ -310,10 +310,29 @@ def admin_add_participant(
     team_id: TournamentTeamID | None = None,
     initiator: User | None = None,
 ) -> Result[tuple[TournamentParticipant, ParticipantJoinedEvent], str]:
-    """Add a participant by admin (no ticket check)."""
+    """Add a participant by admin (no ticket check).
+
+    A running team tournament takes a new participant only as a
+    replacement on a team. The team size limit applies, the tournament
+    limit does not, because the replaced player stays registered.
+    """
     tournament = tournament_repository.get_tournament_for_update(tournament_id)
 
-    if tournament.tournament_status not in (
+    is_team_tournament = (
+        tournament_domain_service.derive_contestant_type(
+            tournament.contestant_type,
+            tournament.max_players_in_team,
+            tournament.min_players_in_team,
+        )
+        == ContestantType.TEAM
+    )
+    is_replacement = (
+        is_team_tournament
+        and team_id is not None
+        and tournament.tournament_status
+        in (TournamentStatus.ONGOING, TournamentStatus.PAUSED)
+    )
+    if not is_replacement and tournament.tournament_status not in (
         TournamentStatus.REGISTRATION_OPEN,
         TournamentStatus.REGISTRATION_CLOSED,
     ):
@@ -325,16 +344,24 @@ def admin_add_participant(
     if existing is not None:
         return Err('User is already registered for this tournament.')
 
-    current_count = tournament_repository.get_participant_count(tournament_id)
-    count_result = tournament_domain_service.validate_participant_count(
-        tournament, current_count
-    )
-    if count_result.is_err():
-        return Err(count_result.unwrap_err())
+    if not is_replacement:
+        current_count = tournament_repository.get_participant_count(
+            tournament_id
+        )
+        count_result = tournament_domain_service.validate_participant_count(
+            tournament, current_count
+        )
+        if count_result.is_err():
+            return Err(count_result.unwrap_err())
 
     locked = _lock_optional_team_flush(tournament_id, team_id)
     if locked.is_err():
         return Err(locked.unwrap_err())
+    if team_id is not None and tournament.max_players_in_team is not None:
+        members = tournament_repository.get_participants_for_team(team_id)
+        if len(members) >= tournament.max_players_in_team:
+            return Err('Team is full.')
+    roster_before = tournament_repository.get_participant_count(tournament_id)
     participant = _create_or_reactivate_participant(
         tournament_id,
         user_id,
@@ -347,6 +374,17 @@ def admin_add_participant(
     if refreshed.is_err():
         return Err(refreshed.unwrap_err())
     pending = refreshed.unwrap()
+    if is_replacement:
+        _stage_participant_log_entry(
+            'participant-replacement-added',
+            tournament_id,
+            participant,
+            initiator.id if initiator is not None else None,
+            roster_before=roster_before,
+            roster_after=tournament_repository.get_participant_count(
+                tournament_id
+            ),
+        )
     tournament_repository.commit_session()
 
     event = ParticipantJoinedEvent(
@@ -370,7 +408,7 @@ def _stage_participant_log_entry(
     roster_before: int,
     roster_after: int,
 ) -> None:
-    """Stage an audit entry for a departed participant (no commit).
+    """Stage an audit entry for a roster change (no commit).
 
     The roster is the number of active participants.
     """

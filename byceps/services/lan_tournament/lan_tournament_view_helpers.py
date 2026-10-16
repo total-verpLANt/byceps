@@ -3005,6 +3005,7 @@ _SEEDING_EVENT_LABELS: dict[str, Callable[[], str]] = {
     ),
     'participant-left': lambda: gettext('Left'),
     'participant-removed': lambda: gettext('Removed'),
+    'participant-replacement-added': lambda: gettext('Replacement added'),
 }
 
 
