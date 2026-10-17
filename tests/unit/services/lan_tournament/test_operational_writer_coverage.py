@@ -400,6 +400,7 @@ NO_TIMING = {
     ('tournament_invitation_service.py', '_dispatch_batch'): 'notification work, not a match change',
     ('tournament_invitation_service.py', '_sweep_once'): 'notification work, not a match change',
     ('tournament_invitation_service.py', '_record_outcome'): 'notification work, not a match change',
+    ('tournament_lobby_mail_service.py', 'announce_ffa_lobbies'): 'notification work after the owner commit; it stages only a dedup audit entry, no match fact',
     ('tournament_log_service.py', 'persist_log_entry'): 'the audit log is no clock authority',
     ('tournament_request_service.py', 'submit_request'): 'tournament requests',
     ('tournament_request_service.py', 'update_request'): 'tournament requests',

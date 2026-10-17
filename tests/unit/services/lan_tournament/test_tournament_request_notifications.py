@@ -292,7 +292,7 @@ def test_email_skipped_when_proposer_has_no_address(
 @patch(f'{MODULE}.user_service')
 @patch(f'{MODULE}.email_config_service')
 @patch(f'{MODULE}.get_default_locale')
-def test_request_email_values_are_brace_escaped(
+def test_request_email_values_render_literally(
     mock_default_locale,
     mock_config_service,
     mock_user_service,
@@ -301,12 +301,9 @@ def test_request_email_values_are_brace_escaped(
     mock_email_service,
 ):
     """A request name or reason containing `{0}`/`{__class__}` renders
-    as inert, doubled-brace text and never raises (format-string
-    injection guard). `str.format()` never re-expands a substituted
-    *value*, so the escaped braces stay doubled in the final email
-    rather than collapsing back to single braces -- that is the same
-    (unchanged) behaviour as the match-ready path for a brace-bearing
-    opponent name.
+    as the literal text and never raises. `str.format()` never
+    re-parses a substituted *value*, so no escaping is needed (and
+    escaping would double the braces in the delivered mail).
     """
     mock_default_locale.return_value = Locale('en')
     mock_config_service.get_config.return_value = EMAIL_CONFIG
@@ -325,8 +322,9 @@ def test_request_email_values_are_brace_escaped(
 
     assert mock_email_service.enqueue_message.call_count == 1
     message = mock_email_service.enqueue_message.call_args[0][0]
-    assert 'Cup {{0}}' in message.body
-    assert 'Reason {{__class__.__mro__}}' in message.body
+    assert 'Cup {0}' in message.body
+    assert 'Reason {__class__.__mro__}' in message.body
+    assert '{{' not in message.body
     # Never raised into an attribute/index traversal on `{0.__class__}`.
     assert '.__mro__[' not in message.body
 
@@ -575,8 +573,8 @@ def test_match_ready_email_unchanged_after_helper_extraction(
 ):
     """Exact sender/recipient/subject/body for a fixed match-ready fixture.
 
-    This pins down `_send_email_to_user`'s observable behaviour so a
-    broken extraction of the shared tail (e.g. a dropped footer) fails
+    This pins down `_build_match_ready_message`'s observable behaviour so
+    a broken extraction of the shared tail (e.g. a dropped footer) fails
     this test. See guardrails for the mutation-test result.
     """
     from byceps.services.lan_tournament import (
@@ -591,7 +589,7 @@ def test_match_ready_email_unchanged_after_helper_extraction(
     mock_snippet_service.get_snippet_body.side_effect = _snippet_side_effect
     mock_footer_service.get_footer.return_value = Ok('-- Test Footer')
 
-    notif._send_email_to_user(
+    result = notif._build_match_ready_message(
         user_id=user_id,
         sender=SENDER,
         brand=BRAND,
@@ -602,8 +600,9 @@ def test_match_ready_email_unchanged_after_helper_extraction(
         your_seat='A1',
     )
 
-    assert mock_email_service.enqueue_message.call_count == 1
-    message = mock_email_service.enqueue_message.call_args[0][0]
+    assert result.is_ok()
+    message = result.unwrap()
+    mock_email_service.enqueue_message.assert_not_called()
 
     expected_body = BODY_TEMPLATE.format(
         tournament_name='CS2 Cup',
@@ -629,7 +628,7 @@ def test_match_ready_email_unchanged_after_helper_extraction(
 
 
 # --------------------------------------------------------------------- #
-# email_templates_exist / setup -- one source of truth for 12 pairs
+# email_templates_exist / setup -- one source of truth for 20 pairs
 # --------------------------------------------------------------------- #
 
 
@@ -638,7 +637,7 @@ def test_match_ready_email_unchanged_after_helper_extraction(
 def test_email_templates_exist_requires_every_pair(
     mock_snippet_service, missing_pair
 ):
-    """With exactly one of the 12 pairs missing, the brand is not configured."""
+    """With exactly one of the 20 pairs missing, the brand is not configured."""
     existing = [
         _fake_snippet(name, language_code)
         for name, language_code in _REQUIRED_SNIPPET_PAIRS
@@ -653,7 +652,7 @@ def test_email_templates_exist_requires_every_pair(
 def test_email_templates_exist_true_when_all_pairs_present(
     mock_snippet_service,
 ):
-    """With all 12 pairs present, the brand is fully configured."""
+    """With all 20 pairs present, the brand is fully configured."""
     existing = [
         _fake_snippet(name, language_code)
         for name, language_code in _REQUIRED_SNIPPET_PAIRS
@@ -691,7 +690,7 @@ def test_find_missing_snippets_uses_one_bulk_fetch_not_per_pair_lookups(
     mock_snippet_service,
 ):
     """The missing set is computed from a single scope-wide fetch; the
-    per-name finder (12 queries on every admin overview render) is
+    per-name finder (20 queries on every admin overview render) is
     never called.
     """
     from byceps.services.lan_tournament.tournament_notification_service import (

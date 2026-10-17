@@ -279,15 +279,3 @@ def test_returned_message_has_no_delivery_or_setup_side_effects(invitation, monk
     mocks['enqueue_message'].assert_not_called()
     mocks['send_email'].assert_not_called()
     create_snippet.assert_not_called()
-
-    # The old sender deliberately still enqueues all active recipients;
-    # its content is built through the same rendering tail, not a new one.
-    assert notif.send_match_ready_emails(TOURNAMENT_ID, MATCH_ID) is None
-    assert mocks['enqueue_message'].call_count == 3
-    legacy_message = next(
-        call.args[0] for call in mocks['enqueue_message'].call_args_list
-        if call.args[0].recipients == message.recipients
-    )
-    assert legacy_message == message
-    mocks['send_email'].assert_not_called()
-    create_snippet.assert_not_called()

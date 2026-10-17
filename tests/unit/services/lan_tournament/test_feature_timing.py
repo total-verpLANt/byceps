@@ -239,6 +239,10 @@ class _Repo:
         self._note('set_readiness_revision_flush', match_id, revision)
         self.match = replace(self.match, readiness_revision=revision)
 
+    def count_log_entries_with_data(self, tournament_id, event_type, data):
+        self._note('count_log_entries_with_data')
+        return 0
+
 
 @pytest.fixture
 def session():

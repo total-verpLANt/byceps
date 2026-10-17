@@ -148,6 +148,9 @@ class RepoStub:
     def set_readiness_revision_flush(self, match_id, revision):
         self.match = replace(self.match, readiness_revision=revision)
 
+    def count_log_entries_with_data(self, tournament_id, event_type, data):
+        return 0
+
 
 @pytest.fixture
 def repo(monkeypatch):

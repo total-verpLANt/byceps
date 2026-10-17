@@ -1,6 +1,6 @@
 import json
 import logging
-from collections.abc import Collection, Iterable, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import cast, NamedTuple, TYPE_CHECKING, TypeVar
@@ -3783,6 +3783,29 @@ def get_log_entries_with_prefixes(
         )
         for row in rows
     ]
+
+
+def count_log_entries_with_data(
+    tournament_id: TournamentID,
+    event_type: str,
+    data: Mapping[str, str],
+) -> int:
+    """Count audit entries of one type whose `data` holds these text values.
+
+    JSONB values compare as text, so pass numbers as their `str()`.
+    """
+    return db.session.execute(
+        select(func.count())
+        .select_from(DbTournamentLogEntry)
+        .where(
+            DbTournamentLogEntry.tournament_id == tournament_id,
+            DbTournamentLogEntry.event_type == event_type,
+            *(
+                DbTournamentLogEntry.data[key].astext == value
+                for key, value in data.items()
+            ),
+        )
+    ).scalar_one()
 
 
 def delete_log_entries_older_than(occurred_before: datetime) -> int:

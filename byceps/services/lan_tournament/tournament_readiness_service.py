@@ -3,6 +3,7 @@
 import logging
 from collections.abc import Collection
 from datetime import UTC, datetime
+from uuid import UUID
 
 from byceps.services.user.models import UserID
 from byceps.util.result import Err, Ok, Result
@@ -15,7 +16,7 @@ from .events import (
     MatchReadyRevokedEvent,
 )
 from .models.game_format import GameFormat
-from .models.match_readiness import derive_match_readiness
+from .models.match_readiness import ContestantIdentity, derive_match_readiness
 from .models.readiness_change import ReadinessChange
 from .models.tournament_match import MatchInvitationID, MatchSide, TournamentMatchID
 from .models.tournament_participant import TournamentParticipantID
@@ -177,6 +178,19 @@ def claim_ready_flush(
     now = datetime.now(UTC).replace(tzinfo=None)
     data = _audit_data(facts, side, role, now)
     data['ready_at'] = now.isoformat()
+    # Count before this claim's own audit entry exists.
+    first_claim = (
+        repository.count_log_entries_with_data(
+            facts[1].tournament_id,
+            'match-ready-claimed',
+            {
+                'match_id': str(match_id),
+                'side': side.value,
+                'pairing_generation': str(facts[1].pairing_generation),
+            },
+        )
+        == 0
+    )
     repository.set_side_ready_flush(match_id, side, now, initiator_id)
     repository.set_side_invitation_hold_flush(match_id, side, False)
     repository.set_readiness_revision_flush(
@@ -201,6 +215,9 @@ def claim_ready_flush(
         pairing_id=facts[3].id,
         pairing_generation=after.pairing_generation,
         readiness_revision=after.readiness_revision,
+        first_claim=first_claim,
+        contestant_kind=data['contestant_kind'],
+        contestant_id=data['contestant_id'],
     )
     both = MatchBothReadyEvent.from_transition(before, after, claim=event)
     return Ok(
@@ -397,6 +414,24 @@ def dispatch_pending_invitations(
     return Err('readiness_dispatch_failed')
 
 
+def _mail_opponent(event: MatchReadyClaimedEvent) -> None:
+    """Fire-and-forget; a lost mail never fails the dispatch."""
+    from . import tournament_notification_service
+
+    if event.contestant_kind is None or event.contestant_id is None:
+        return
+    try:
+        tournament_notification_service.send_opponent_ready_emails(
+            event.tournament_id,
+            event.match_id,
+            ContestantIdentity(
+                kind=event.contestant_kind, id=UUID(event.contestant_id)
+            ),
+        )
+    except Exception:
+        logger.exception('Post-commit opponent-ready mail failed')
+
+
 def dispatch_readiness_effects(change: ReadinessChange) -> Result[None, str]:
     """Call only after commit; attempt all events and durable invitation work."""
     failed = False
@@ -413,6 +448,13 @@ def dispatch_readiness_effects(change: ReadinessChange) -> Result[None, str]:
         except Exception:
             failed = True
             logger.exception('Post-commit readiness effect failed')
+    # The claim that makes both sides ready has no one left to wait for.
+    if not any(
+        isinstance(event, MatchBothReadyEvent) for event in change.events
+    ):
+        for event in change.events:
+            if isinstance(event, MatchReadyClaimedEvent) and event.first_claim:
+                _mail_opponent(event)
     if dispatch_pending_invitations(change.pending_invitation_ids).is_err():
         failed = True
     return Err('readiness_dispatch_failed') if failed else Ok(None)

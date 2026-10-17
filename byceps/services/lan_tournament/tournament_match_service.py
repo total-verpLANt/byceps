@@ -843,7 +843,7 @@ def dispatch_generation_events(
     """Send deleted, created and ready signals; call only after the commit."""
     from . import signals
 
-    from . import tournament_readiness_service
+    from . import tournament_lobby_mail_service, tournament_readiness_service
 
     try:
         for deleted in outcome.deleted_events:
@@ -863,6 +863,13 @@ def dispatch_generation_events(
         tournament_readiness_service.dispatch_pending_invitations(
             outcome.pending_invitation_ids,
         )
+        try:
+            tournament_lobby_mail_service.announce_ffa_lobbies(tournament_id)
+        except Exception:
+            logger.exception(
+                'FFA lobby announcement failed for tournament %s',
+                tournament_id,
+            )
 
 
 def _check_elimination_layout(

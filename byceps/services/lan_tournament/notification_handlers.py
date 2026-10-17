@@ -16,6 +16,7 @@ from .signals import (
 )
 from . import (
     tournament_invitation_service,
+    tournament_lobby_mail_service,
     tournament_notification_service,
     tournament_request_repository,
 )
@@ -58,6 +59,15 @@ def _on_tournament_status_changed(sender, *, event=None) -> None:
             'Invitation catch-up deferred',
             tournament_id=str(event.tournament_id),
             error='invitation_sweep_failed',
+        )
+    try:
+        tournament_lobby_mail_service.announce_ffa_lobbies(
+            event.tournament_id,
+        )
+    except Exception:
+        log.warning(
+            'FFA lobby announcement deferred',
+            tournament_id=str(event.tournament_id),
         )
 
 

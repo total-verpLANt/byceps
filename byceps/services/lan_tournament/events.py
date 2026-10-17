@@ -211,6 +211,9 @@ class MatchReadyClaimedEvent(_BaseMatchEvent):
     pairing_id: MatchPairingID
     pairing_generation: int
     readiness_revision: int
+    first_claim: bool = False
+    contestant_kind: str | None = None
+    contestant_id: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)

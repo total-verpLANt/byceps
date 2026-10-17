@@ -14,7 +14,14 @@ from byceps.util.uuid import uuid7
 
 
 @pytest.fixture
-def collaborators(monkeypatch):
+def lobbies(monkeypatch):
+    lobby_mail = MagicMock()
+    monkeypatch.setattr(handlers, 'tournament_lobby_mail_service', lobby_mail)
+    return lobby_mail
+
+
+@pytest.fixture
+def collaborators(monkeypatch, lobbies):
     repo, invitations, messages = MagicMock(), MagicMock(), MagicMock()
     # The handlers no longer import the repository; a stray use would hit this mock.
     monkeypatch.setattr(handlers, 'tournament_repository', repo, raising=False)
@@ -58,12 +65,13 @@ def test_both_ready_sends_no_second_email(collaborators):
     signals.match_both_ready.send(None, event=assignment())
     invitations.dispatch_match_invitations.assert_not_called()
     invitations.enqueue_invitation_dispatch.assert_not_called()
-    messages.send_match_ready_emails.assert_not_called()
+    assert messages.mock_calls == []
     repo.mark_matches_both_ready_notified.assert_not_called()
 
 
 def test_start_resume_enqueues_one_sweep_and_leaves_reconcile_to_the_owner(
     collaborators,
+    lobbies,
 ):
     repo, invitations, messages = collaborators
     event = status(TournamentStatus.ONGOING)
@@ -71,6 +79,7 @@ def test_start_resume_enqueues_one_sweep_and_leaves_reconcile_to_the_owner(
     invitations.enqueue_tournament_sweep.assert_called_once_with(
         event.tournament_id
     )
+    lobbies.announce_ffa_lobbies.assert_called_once_with(event.tournament_id)
     # `change_status` already reconciled every match and dispatches its ids.
     invitations.reconcile_match_invitations_flush.assert_not_called()
     invitations.dispatch_match_invitations.assert_not_called()
@@ -81,7 +90,7 @@ def test_start_resume_enqueues_one_sweep_and_leaves_reconcile_to_the_owner(
     repo.commit_session.assert_not_called()
     repo.get_both_ready_unnotified_match_ids.assert_not_called()
     repo.mark_matches_both_ready_notified.assert_not_called()
-    messages.send_match_ready_emails.assert_not_called()
+    assert messages.mock_calls == []
 
 
 @pytest.mark.parametrize(
@@ -107,6 +116,42 @@ def test_non_ongoing_status_is_inert(collaborators, new_status):
     repo.get_matches_for_tournament.assert_not_called()
     invitations.dispatch_match_invitations.assert_not_called()
     invitations.enqueue_tournament_sweep.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    'new_status',
+    [
+        TournamentStatus.PAUSED,
+        TournamentStatus.COMPLETED,
+        TournamentStatus.CANCELLED,
+    ],
+)
+def test_non_ongoing_status_announces_no_lobbies(
+    collaborators, lobbies, new_status
+):
+    handlers._on_tournament_status_changed(None, event=status(new_status))
+    lobbies.announce_ffa_lobbies.assert_not_called()
+
+
+def test_start_resume_announces_lobbies_even_when_the_sweep_fails(
+    collaborators, lobbies
+):
+    _, invitations, _ = collaborators
+    invitations.enqueue_tournament_sweep.side_effect = RuntimeError('boom')
+    event = status(TournamentStatus.ONGOING)
+    handlers._on_tournament_status_changed(None, event=event)
+    lobbies.announce_ffa_lobbies.assert_called_once_with(event.tournament_id)
+
+
+def test_start_resume_lobby_announcement_failure_is_swallowed(
+    collaborators, lobbies
+):
+    _, invitations, _ = collaborators
+    lobbies.announce_ffa_lobbies.side_effect = RuntimeError('boom')
+    handlers._on_tournament_status_changed(
+        None, event=status(TournamentStatus.ONGOING)
+    )
+    invitations.enqueue_tournament_sweep.assert_called_once()
 
 
 def test_missing_events_are_inert(collaborators):

@@ -16,7 +16,11 @@ from byceps.services.email import (
     email_footer_service,
     email_service,
 )
-from byceps.services.email.models import Message, NameAndAddress
+from byceps.services.email.models import (
+    EmailConfig,
+    Message,
+    NameAndAddress,
+)
 from byceps.services.party import party_service
 from byceps.services.snippet import snippet_service
 from byceps.services.snippet.models import SnippetScope
@@ -26,8 +30,9 @@ from byceps.util.l10n import get_default_locale
 from byceps.util.result import Err, Ok, Result
 
 from . import tournament_participant_service, tournament_repository
-from .models.tournament import TournamentID
-from .models.tournament_match import TournamentMatchID
+from .models.match_readiness import ContestantIdentity
+from .models.tournament import Tournament, TournamentID
+from .models.tournament_match import TournamentMatch, TournamentMatchID
 from .models.tournament_match_to_contestant import TournamentMatchToContestant
 from .models.tournament_request import TournamentRequest
 
@@ -45,90 +50,10 @@ SNIPPET_NAME_REQUEST_REJECTED_BODY = 'email_tournament_request_rejected_body'
 SNIPPET_NAME_REQUEST_REJECTED_SUBJECT = (
     'email_tournament_request_rejected_subject'
 )
-
-
-def send_match_ready_emails(
-    tournament_id: TournamentID,
-    match_id: TournamentMatchID,
-) -> None:
-    """Send email notifications to all participants in a match.
-
-    Resolves contestants to users, assembles personalised messages,
-    and enqueues them for delivery. Each recipient is isolated: an
-    unexpected error while sending to one recipient is logged and the
-    remaining recipients of the match still get their email.
-    """
-    # 1-4: Resolve tournament → party → brand → email config.
-    tournament = tournament_repository.get_tournament(tournament_id)
-    party = party_service.get_party(tournament.party_id)
-    brand = brand_service.get_brand(party.brand_id)
-    email_config = email_config_service.get_config(party.brand_id)
-
-    # 5-6: Get match and its contestants.
-    match = tournament_repository.get_match(match_id)
-    contestants = tournament_repository.get_contestants_for_match(match_id)
-
-    if len(contestants) < 2:
-        log.warning(
-            'Match has fewer than 2 contestants, skipping notifications',
-            match_id=str(match_id),
-        )
-        return
-
-    # For each contestant, build the set of user_ids to notify and
-    # track which contestant they belong to (needed for opponent lookup).
-    contestant_user_map: dict[
-        int, tuple[TournamentMatchToContestant, list[UserID]]
-    ] = {}
-    for idx, contestant in enumerate(contestants):
-        user_ids = _resolve_user_ids_for_contestant(contestant)
-        contestant_user_map[idx] = (contestant, user_ids)
-
-    # Collect all user_ids for seat lookup.
-    all_user_ids: set[UserID] = set()
-    for _, user_ids in contestant_user_map.values():
-        all_user_ids.update(user_ids)
-
-    # 10: Batch-fetch seat labels.
-    seats = tournament_participant_service.get_seats_for_users(
-        all_user_ids, tournament.party_id
-    )
-
-    # For each contestant side, send emails to its users.
-    for idx, (contestant, user_ids) in contestant_user_map.items():
-        # Determine opponent contestant (the other side).
-        opponent_idx = 1 - idx if len(contestants) == 2 else None
-        if opponent_idx is None:
-            continue
-        opponent_contestant = contestant_user_map[opponent_idx][0]
-
-        # 9: Build opponent display name.
-        opponent_name = _build_opponent_display_name(opponent_contestant)
-
-        # Opponent seat: for teams use captain's seat, for solo use
-        # the opponent user's seat.
-        opponent_seat = _get_opponent_seat(opponent_contestant, seats)
-
-        for user_id in user_ids:
-            try:
-                _send_email_to_user(
-                    user_id=user_id,
-                    sender=email_config.sender,
-                    brand=brand,
-                    tournament_name=tournament.name,
-                    match_round=match.round,
-                    opponent_name=opponent_name,
-                    opponent_seat=opponent_seat,
-                    your_seat=seats.get(user_id, '?'),
-                )
-            except Exception:
-                log.exception(
-                    'Unexpected error sending match-ready email, '
-                    'skipping recipient',
-                    tournament_id=str(tournament_id),
-                    match_id=str(match_id),
-                    user_id=str(user_id),
-                )
+SNIPPET_NAME_OPPONENT_READY_BODY = 'email_match_opponent_ready_body'
+SNIPPET_NAME_OPPONENT_READY_SUBJECT = 'email_match_opponent_ready_subject'
+SNIPPET_NAME_FFA_LOBBY_BODY = 'email_ffa_lobby_ready_body'
+SNIPPET_NAME_FFA_LOBBY_SUBJECT = 'email_ffa_lobby_ready_subject'
 
 
 def build_match_invitation_message(
@@ -244,13 +169,6 @@ def _get_opponent_seat(
         return seats.get(participant.user_id, '?')
 
     return '?'
-
-
-def _escape_format_braces(value: str) -> str:
-    """Escape curly braces so a user-controlled value cannot interfere
-    with `str.format()` placeholders (format string injection).
-    """
-    return value.replace('{', '{{').replace('}', '}}')
 
 
 def _fetch_email_content_for_language(
@@ -461,11 +379,11 @@ def _build_match_ready_message(
     round_display = str(match_round) if match_round is not None else '?'
 
     format_kwargs = {
-        'tournament_name': _escape_format_braces(tournament_name),
+        'tournament_name': tournament_name,
         'match_round': round_display,
-        'opponent_name': _escape_format_braces(opponent_name),
-        'opponent_seat': _escape_format_braces(opponent_seat),
-        'your_seat': _escape_format_braces(your_seat),
+        'opponent_name': opponent_name,
+        'opponent_seat': opponent_seat,
+        'your_seat': your_seat,
     }
 
     return _build_formatted_message(
@@ -479,32 +397,6 @@ def _build_match_ready_message(
     )
 
 
-def _send_email_to_user(
-    *,
-    user_id: UserID,
-    sender: NameAndAddress,
-    brand: Brand,
-    tournament_name: str,
-    match_round: int | None,
-    opponent_name: str,
-    opponent_seat: str,
-    your_seat: str,
-) -> None:
-    """Legacy match notification helper; enqueue only a successful build."""
-    result = _build_match_ready_message(
-        user_id=user_id,
-        sender=sender,
-        brand=brand,
-        tournament_name=tournament_name,
-        match_round=match_round,
-        opponent_name=opponent_name,
-        opponent_seat=opponent_seat,
-        your_seat=your_seat,
-    )
-    if result.is_ok():
-        email_service.enqueue_message(result.unwrap())
-
-
 def send_request_accepted_email(
     brand: Brand,
     request: TournamentRequest,
@@ -515,7 +407,7 @@ def send_request_accepted_email(
     email_config = email_config_service.get_config(brand.id)
 
     format_kwargs = {
-        'request_name': _escape_format_braces(request.name),
+        'request_name': request.name,
     }
 
     _send_formatted_email(
@@ -540,8 +432,8 @@ def send_request_rejected_email(
     email_config = email_config_service.get_config(brand.id)
 
     format_kwargs = {
-        'request_name': _escape_format_braces(request.name),
-        'reason': _escape_format_braces(request.rejection_reason or ''),
+        'request_name': request.name,
+        'reason': request.rejection_reason or '',
     }
 
     _send_formatted_email(
@@ -554,6 +446,226 @@ def send_request_rejected_email(
         notification_label='request-rejected',
         extra_log_fields={'request_id': str(request.id)},
     )
+
+
+def send_opponent_ready_emails(
+    tournament_id: TournamentID,
+    match_id: TournamentMatchID,
+    ready: ContestantIdentity,
+) -> None:
+    """Tell the other side of a match that the `ready` side is waiting.
+
+    Fire-and-forget: call only after the commit that recorded the claim.
+    Never raises; a failure is logged and the mail is lost.
+    """
+    try:
+        _send_opponent_ready_emails(tournament_id, match_id, ready)
+    except Exception:
+        log.exception(
+            'Opponent-ready email failed',
+            tournament_id=str(tournament_id),
+            match_id=str(match_id),
+        )
+
+
+def send_ffa_lobby_emails(
+    tournament_id: TournamentID,
+    match_id: TournamentMatchID,
+) -> None:
+    """Tell every member of a free-for-all lobby who else is in it.
+
+    Fire-and-forget: call only after the commit that made the lobby
+    current. Never raises; a failure is logged and the mail is lost.
+    """
+    try:
+        _send_ffa_lobby_emails(tournament_id, match_id)
+    except Exception:
+        log.exception(
+            'FFA lobby email failed',
+            tournament_id=str(tournament_id),
+            match_id=str(match_id),
+        )
+
+
+def _send_opponent_ready_emails(
+    tournament_id: TournamentID,
+    match_id: TournamentMatchID,
+    ready: ContestantIdentity,
+) -> None:
+    context = _load_match_mail_context(
+        tournament_id, match_id, 'match-opponent-ready'
+    )
+    if context is None:
+        return
+    tournament, match, brand, email_config = context
+
+    contestants = tournament_repository.get_contestants_for_match(match_id)
+    ready_indexes = [
+        index
+        for index, contestant in enumerate(contestants)
+        if _is_contestant(contestant, ready)
+    ]
+    if len(contestants) != 2 or len(ready_indexes) != 1:
+        log.warning(
+            'Ready contestant not found in a two-sided match, skipping '
+            'match-opponent-ready notification',
+            tournament_id=str(tournament_id),
+            match_id=str(match_id),
+        )
+        return
+    ready_contestant = contestants[ready_indexes[0]]
+    other_contestant = contestants[1 - ready_indexes[0]]
+
+    ready_user_ids = set(_resolve_user_ids_for_contestant(ready_contestant))
+    other_user_ids = set(_resolve_user_ids_for_contestant(other_contestant))
+    recipient_ids = other_user_ids - ready_user_ids
+    if not recipient_ids:
+        return
+
+    seats = tournament_participant_service.get_seats_for_users(
+        ready_user_ids | other_user_ids, tournament.party_id
+    )
+    opponent_name = _build_opponent_display_name(ready_contestant)
+    opponent_seat = _get_opponent_seat(ready_contestant, seats)
+
+    for user_id in sorted(recipient_ids, key=str):
+        try:
+            _send_formatted_email(
+                user_id=user_id,
+                sender=email_config.sender,
+                brand=brand,
+                body_snippet_name=SNIPPET_NAME_OPPONENT_READY_BODY,
+                subject_snippet_name=SNIPPET_NAME_OPPONENT_READY_SUBJECT,
+                format_kwargs={
+                    'tournament_name': tournament.name,
+                    'match_round': _round_display(match),
+                    'opponent_name': opponent_name,
+                    'opponent_seat': opponent_seat,
+                    'your_seat': seats.get(user_id, '?'),
+                },
+                notification_label='match-opponent-ready',
+                extra_log_fields={'match_id': str(match_id)},
+            )
+        except Exception:
+            log.exception(
+                'Opponent-ready email failed for one recipient',
+                match_id=str(match_id),
+                user_id=str(user_id),
+            )
+
+
+def _send_ffa_lobby_emails(
+    tournament_id: TournamentID,
+    match_id: TournamentMatchID,
+) -> None:
+    context = _load_match_mail_context(
+        tournament_id, match_id, 'ffa-lobby-ready'
+    )
+    if context is None:
+        return
+    tournament, match, brand, email_config = context
+
+    contestants = tournament_repository.get_contestants_for_match(match_id)
+    if len(contestants) < 2:
+        return
+
+    # A user is mailed once, on the side of their own contestant.
+    own_index_by_user_id: dict[UserID, int] = {}
+    for index, contestant in enumerate(contestants):
+        for user_id in _resolve_user_ids_for_contestant(contestant):
+            own_index_by_user_id.setdefault(user_id, index)
+    if not own_index_by_user_id:
+        return
+
+    seats = tournament_participant_service.get_seats_for_users(
+        set(own_index_by_user_id), tournament.party_id
+    )
+    member_lines = []
+    for contestant in contestants:
+        name = _build_opponent_display_name(contestant)
+        seat = _get_opponent_seat(contestant, seats)
+        member_lines.append(f'- {name} ({seat})')
+
+    for user_id, own_index in own_index_by_user_id.items():
+        try:
+            lobby_members = '\n'.join(
+                line
+                for index, line in enumerate(member_lines)
+                if index != own_index
+            )
+            _send_formatted_email(
+                user_id=user_id,
+                sender=email_config.sender,
+                brand=brand,
+                body_snippet_name=SNIPPET_NAME_FFA_LOBBY_BODY,
+                subject_snippet_name=SNIPPET_NAME_FFA_LOBBY_SUBJECT,
+                format_kwargs={
+                    'tournament_name': tournament.name,
+                    'match_round': _round_display(match),
+                    'lobby_members': lobby_members,
+                    'member_count': str(len(contestants)),
+                    'your_seat': seats.get(user_id, '?'),
+                },
+                notification_label='ffa-lobby-ready',
+                extra_log_fields={'match_id': str(match_id)},
+            )
+        except Exception:
+            log.exception(
+                'FFA lobby email failed for one recipient',
+                match_id=str(match_id),
+                user_id=str(user_id),
+            )
+
+
+def _load_match_mail_context(
+    tournament_id: TournamentID,
+    match_id: TournamentMatchID,
+    notification_label: str,
+) -> tuple[Tournament, TournamentMatch, Brand, EmailConfig] | None:
+    """Return what the match mails share, or `None` if they must not go
+    out (logged).
+    """
+    tournament = tournament_repository.get_tournament(tournament_id)
+    match = tournament_repository.get_match(match_id)
+    if match.tournament_id != tournament_id:
+        log.warning(
+            'Match belongs to another tournament, skipping %s notification',
+            notification_label,
+            tournament_id=str(tournament_id),
+            match_id=str(match_id),
+        )
+        return None
+
+    party = party_service.get_party(tournament.party_id)
+    brand = brand_service.get_brand(party.brand_id)
+    try:
+        email_config = email_config_service.get_config(party.brand_id)
+    except email_config_service.UnknownEmailConfigIdError:
+        log.warning(
+            'No email config for brand, skipping %s notification',
+            notification_label,
+            brand_id=str(party.brand_id),
+            match_id=str(match_id),
+        )
+        return None
+
+    return tournament, match, brand, email_config
+
+
+def _is_contestant(
+    contestant: TournamentMatchToContestant,
+    identity: ContestantIdentity,
+) -> bool:
+    """Return whether the match row stands for the identified contestant."""
+    contestant_id = {
+        'participant': contestant.participant_id,
+        'team': contestant.team_id,
+    }.get(identity.kind)
+    return contestant_id is not None and str(contestant_id) == str(identity.id)
+
+
+def _round_display(match: TournamentMatch) -> str:
+    return str(match.round) if match.round is not None else '?'
 
 
 # -- snippet setup ---------------------------------------------------
@@ -578,6 +690,14 @@ _REQUIRED_SNIPPET_PAIRS: tuple[tuple[str, str], ...] = (
     (SNIPPET_NAME_REQUEST_REJECTED_BODY,    'de'),
     (SNIPPET_NAME_REQUEST_REJECTED_SUBJECT, 'en'),
     (SNIPPET_NAME_REQUEST_REJECTED_SUBJECT, 'de'),
+    (SNIPPET_NAME_OPPONENT_READY_BODY,      'en'),
+    (SNIPPET_NAME_OPPONENT_READY_BODY,      'de'),
+    (SNIPPET_NAME_OPPONENT_READY_SUBJECT,   'en'),
+    (SNIPPET_NAME_OPPONENT_READY_SUBJECT,   'de'),
+    (SNIPPET_NAME_FFA_LOBBY_BODY,           'en'),
+    (SNIPPET_NAME_FFA_LOBBY_BODY,           'de'),
+    (SNIPPET_NAME_FFA_LOBBY_SUBJECT,        'en'),
+    (SNIPPET_NAME_FFA_LOBBY_SUBJECT,        'de'),
 )
 # fmt: on
 
@@ -590,7 +710,7 @@ def _find_missing_snippets(
     that don't yet exist for the brand.
 
     Fetches every snippet the brand's scope currently has in a single
-    call instead of one lookup per pair (12 pairs otherwise means 12
+    call instead of one lookup per pair (20 pairs otherwise means 20
     queries on every admin overview render).
     """
     scope = SnippetScope.for_brand(brand.id)
@@ -668,7 +788,8 @@ def create_match_ready_email_snippets(
     brand: Brand,
     creator: User,
 ) -> bool:
-    """Idempotently create default email snippets for match-ready notifications.
+    """Idempotently create default email snippets for the match-ready,
+    opponent-ready and FFA-lobby notifications.
 
     Returns True if snippets were created, False if they already exist.
     """
@@ -712,6 +833,90 @@ def create_match_ready_email_snippets(
         ),
         (SNIPPET_NAME_SUBJECT, 'de'): (
             '[{tournament_name}] Dein Match (Runde {match_round}) ist bereit! \U0001f3c1'
+        ),
+        (SNIPPET_NAME_OPPONENT_READY_BODY, 'en'): (
+            '━━━━━━━━━━━━━━━━━━━━━━\n'
+            '\U0001f514 OPPONENT READY\n'
+            '━━━━━━━━━━━━━━━━━━━━━━\n'
+            '\n'
+            'Your opponent in {tournament_name} is ready and waiting for you.\n'
+            '\n'
+            'Round: {match_round}\n'
+            '\n'
+            '\U0001f464 Opponent: {opponent_name}\n'
+            '\U0001fa91 Your seat: {your_seat}\n'
+            "\U0001f4cd Opponent's seat: {opponent_seat}\n"
+            '\n'
+            'Please get ready too and contact the tournament staff if you run into any problems.\n'
+            '\n'
+            '{footer}'
+        ),
+        (SNIPPET_NAME_OPPONENT_READY_BODY, 'de'): (
+            '━━━━━━━━━━━━━━━━━━━━━━\n'
+            '\U0001f514 GEGNER BEREIT\n'
+            '━━━━━━━━━━━━━━━━━━━━━━\n'
+            '\n'
+            'Dein Gegner in {tournament_name} ist bereit und wartet auf dich.\n'
+            '\n'
+            'Runde: {match_round}\n'
+            '\n'
+            '\U0001f464 Gegner: {opponent_name}\n'
+            '\U0001fa91 Dein Platz: {your_seat}\n'
+            '\U0001f4cd Platz deines Gegners: {opponent_seat}\n'
+            '\n'
+            'Mach dich bitte ebenfalls bereit und wende dich bei Problemen an die Turnier-Orga.\n'
+            '\n'
+            '{footer}'
+        ),
+        (SNIPPET_NAME_OPPONENT_READY_SUBJECT, 'en'): (
+            '[{tournament_name}] Your opponent is ready (round {match_round})'
+        ),
+        (SNIPPET_NAME_OPPONENT_READY_SUBJECT, 'de'): (
+            '[{tournament_name}] Dein Gegner ist bereit (Runde {match_round})'
+        ),
+        (SNIPPET_NAME_FFA_LOBBY_BODY, 'en'): (
+            '━━━━━━━━━━━━━━━━━━━━━━\n'
+            '\U0001f3ae LOBBY READY\n'
+            '━━━━━━━━━━━━━━━━━━━━━━\n'
+            '\n'
+            'Your lobby in {tournament_name} is ready.\n'
+            '\n'
+            'Round: {match_round}\n'
+            'Players in the lobby: {member_count}\n'
+            '\n'
+            '\U0001f464 The other players:\n'
+            '{lobby_members}\n'
+            '\n'
+            '\U0001fa91 Your seat: {your_seat}\n'
+            '\n'
+            'Contact the tournament staff if you run into any problems.\n'
+            '\n'
+            '{footer}'
+        ),
+        (SNIPPET_NAME_FFA_LOBBY_BODY, 'de'): (
+            '━━━━━━━━━━━━━━━━━━━━━━\n'
+            '\U0001f3ae LOBBY BEREIT\n'
+            '━━━━━━━━━━━━━━━━━━━━━━\n'
+            '\n'
+            'Deine Lobby in {tournament_name} ist jetzt bereit.\n'
+            '\n'
+            'Runde: {match_round}\n'
+            'Spieler in der Lobby: {member_count}\n'
+            '\n'
+            '\U0001f464 Die anderen Spieler:\n'
+            '{lobby_members}\n'
+            '\n'
+            '\U0001fa91 Dein Platz: {your_seat}\n'
+            '\n'
+            'Wende dich bei Problemen an die Turnier-Orga.\n'
+            '\n'
+            '{footer}'
+        ),
+        (SNIPPET_NAME_FFA_LOBBY_SUBJECT, 'en'): (
+            '[{tournament_name}] Your lobby is ready (round {match_round})'
+        ),
+        (SNIPPET_NAME_FFA_LOBBY_SUBJECT, 'de'): (
+            '[{tournament_name}] Deine Lobby ist bereit (Runde {match_round})'
         ),
     }
 
@@ -793,7 +998,8 @@ def create_tournament_request_email_snippets(
 
 def email_templates_exist(brand: Brand) -> bool:
     """Check whether every required tournament-notification email
-    snippet -- match-ready and request-decision, en and de -- exists
-    for the brand. A single missing pair makes this False.
+    snippet -- match-ready, opponent-ready, FFA-lobby and
+    request-decision, en and de -- exists for the brand. A single
+    missing pair makes this False.
     """
     return not _find_missing_snippets(brand)
