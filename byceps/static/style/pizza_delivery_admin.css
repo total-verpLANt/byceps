@@ -1,0 +1,38 @@
+.pizza-sort-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25em;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+
+.pizza-sort-button::after {
+  content: '\2195';
+  content: '\2195' / '';
+  opacity: 0.35;
+}
+
+th[aria-sort="ascending"] .pizza-sort-button::after {
+  content: '\25B2';
+  content: '\25B2' / '';
+  opacity: 1;
+}
+
+th[aria-sort="descending"] .pizza-sort-button::after {
+  content: '\25BC';
+  content: '\25BC' / '';
+  opacity: 1;
+}
+
+.pizza-sort-button:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}

@@ -107,3 +107,46 @@ def test_deliver_already_delivered_via_admin(
 
     # Clean up.
     pizza_delivery_service.delete_entry(entry.id)
+
+
+def test_index_for_party_renders_sort_hooks(
+    pizza_admin_client, party, pizza_admin
+) -> None:
+    """Index renders sort keys per column and loads the sort assets."""
+    linked = pizza_delivery_service.create_entry(
+        party.id, 'SORT-A9', pizza_admin.id, pizza_admin.id
+    ).unwrap()
+    unlinked = pizza_delivery_service.create_entry(
+        party.id, 'SORT-A10', None, pizza_admin.id
+    ).unwrap()
+    pizza_delivery_service.deliver_entry(linked.id)
+
+    try:
+        url = f'{BASE_URL}/pizza-deliveries/parties/{party.id}'
+        response = pizza_admin_client.get(url)
+        assert response.status_code == 200
+        body = response.get_data(as_text=True)
+
+        assert 'data-pizza-delivery-sortable' in body
+        assert body.count('data-sort-key=') == 5
+        for key in ('number', 'user', 'status', 'updated_at', 'created_by'):
+            assert f'data-sort-key="{key}"' in body
+        assert 'pizza-sort-button' not in body
+
+        assert 'data-sort-value="SORT-A9"' in body
+        assert 'data-sort-value="SORT-A10"' in body
+        assert f'data-sort-value="{pizza_admin.screen_name}"' in body
+        assert 'data-sort-value=""' in body
+        assert 'data-sort-value="1"' in body
+        assert 'data-sort-value="0"' in body
+
+        found = pizza_delivery_service.find_entry(linked.id)
+        assert found is not None
+        updated_at = found.updated_at.isoformat(timespec='microseconds')
+        assert f'data-sort-value="{updated_at}"' in body
+
+        assert 'behavior/pizza_delivery_admin_sort.js' in body
+        assert 'style/pizza_delivery_admin.css' in body
+    finally:
+        pizza_delivery_service.delete_entry(linked.id)
+        pizza_delivery_service.delete_entry(unlinked.id)

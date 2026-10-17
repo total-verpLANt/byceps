@@ -6,6 +6,10 @@
 {% set current_page_party = party %}
 {% set page_title = _('Pizza Deliveries') %}
 
+{% block head %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='style/pizza_delivery_admin.css') }}">
+{% endblock %}
+
 {% block body %}
 
   <div class="block row row--space-between">
@@ -33,37 +37,37 @@
   {%- endif %}
 
   {%- if entries %}
-  <table class="itemlist is-wide is-vcentered">
+  <table class="itemlist is-wide is-vcentered" data-pizza-delivery-sortable>
     <thead>
       <tr>
-        <th>{{ _('Number') }}</th>
-        <th>{{ _('Linked User') }}</th>
-        <th>{{ _('Status') }}</th>
-        <th>{{ _('Last changed') }}</th>
-        <th>{{ _('Created by') }}</th>
+        <th data-sort-key="number">{{ _('Number') }}</th>
+        <th data-sort-key="user">{{ _('Linked User') }}</th>
+        <th data-sort-key="status">{{ _('Status') }}</th>
+        <th data-sort-key="updated_at">{{ _('Last changed') }}</th>
+        <th data-sort-key="created_by">{{ _('Created by') }}</th>
         <th></th>
       </tr>
     </thead>
     <tbody>
       {%- for entry in entries %}
       <tr>
-        <td><strong>{{ entry.number }}</strong></td>
-        <td>
+        <td data-sort-value="{{ entry.number }}"><strong>{{ entry.number }}</strong></td>
+        <td data-sort-value="{{ users_by_id[entry.user_id].screen_name if entry.user_id and entry.user_id in users_by_id else '' }}">
           {%- if entry.user_id and entry.user_id in users_by_id %}
             {{ render_tag(users_by_id[entry.user_id].screen_name, class='color-success', icon='user') }}
           {%- else %}
             {{ render_tag(_('not linked'), class='color-disabled') }}
           {%- endif %}
         </td>
-        <td>
+        <td data-sort-value="{{ '1' if entry.status == 'delivered' else '0' }}">
           {%- if entry.status == 'delivered' %}
             {{ render_tag(_('Delivered'), class='color-success') }}
           {%- else %}
             {{ render_tag(_('Pending'), class='color-info') }}
           {%- endif %}
         </td>
-        <td>{{ entry.updated_at|dateformat }} {{ entry.updated_at|timeformat }}</td>
-        <td>
+        <td data-sort-value="{{ entry.updated_at.isoformat(timespec='microseconds') }}">{{ entry.updated_at|dateformat }} {{ entry.updated_at|timeformat }}</td>
+        <td data-sort-value="{{ users_by_id[entry.created_by_id].screen_name if entry.created_by_id in users_by_id else '' }}">
           {%- if entry.created_by_id in users_by_id %}
             {{ users_by_id[entry.created_by_id].screen_name }}
           {%- endif %}
@@ -93,6 +97,7 @@
 {%- endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='behavior/pizza_delivery_admin_sort.js') }}"></script>
 <script>
 onDomReady(() => {
   confirmed_post_on_click_then_reload('[data-action="pizza-delivery-deliver"]', '{{ _('Mark this entry as delivered?') }}');
