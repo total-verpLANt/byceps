@@ -1,0 +1,33 @@
+{#- Flashed messages: the core notification markup plus a mono caps label per category. -#}
+{%- from 'macros/icons.html' import render_icon %}
+{%- set notification_labels = {
+  'info': 'INFO',
+  'success': 'OK',
+  'warning': 'WARNUNG',
+  'danger': 'FEHLER',
+} -%}
+
+
+{%- with flashed_messages = get_flashed_messages() %}
+  {%- if flashed_messages %}
+    {%- for message in flashed_messages %}
+      {%- with text = message.text|safe if message.text_is_safe else message.text %}
+<div class="notification{% if message.category %} color-{{ message.category }}{% endif %} block-with-icon">
+  <div class="block-with-icon-icon">
+  {%- if message.icon %}
+    {{ render_icon(message.icon) }}
+  {%- else %}
+    <span class="icon"></span>
+  {%- endif %}
+  </div>
+  <div class="block-with-icon-body">
+  {%- if message.category in notification_labels %}
+    <span class="notification-label">{{ notification_labels[message.category] }}</span>
+  {%- endif %}
+    {{ text }}
+  </div>
+</div>
+      {%- endwith %}
+    {%- endfor %}
+  {%- endif %}
+{%- endwith %}

@@ -1,0 +1,454 @@
+/* ============================================================
+   Base layer
+   Document defaults, display type, and the re-seat of core
+   components onto the site tokens. Every core rule below repeats
+   the core selector and loads after it, so the later declaration
+   wins. Colours come from the tokens only.
+   ============================================================ */
+
+/* Core variables, pointed at the tokens. */
+:root {
+  --border-color: var(--line);
+  --border-radius: var(--radius-sm);
+  --dimmed-color: var(--muted);
+  --link-color: var(--accent-text);
+  --color-danger: var(--bad);
+  --color-disabled: var(--ctl);
+  --color-info: var(--info);
+  --color-success: var(--ok);
+  --color-warning: var(--warn);
+}
+:root[data-era="3"] {
+  --link-color: var(--info);
+}
+
+/* Custom properties that hold var() references resolve on the element
+   that declares them. The content well therefore derives them again. */
+:root:is([data-era="2"], [data-era="3"]) body:not(.page-home) .content-wrapper {
+  --border-color: var(--line);
+  --border-radius: var(--radius-sm);
+  --dimmed-color: var(--muted);
+  --link-color: var(--accent-text);
+  --color-danger: var(--bad);
+  --color-disabled: var(--ctl);
+  --color-info: var(--info);
+  --color-success: var(--ok);
+  --color-warning: var(--warn);
+}
+
+/* ---------- document ---------- */
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+html {
+  scroll-padding-top: 5.5rem;
+  scrollbar-color: var(--ctl) var(--bg);
+  accent-color: var(--accent);
+  caret-color: var(--accent-text);
+}
+
+body {
+  background-color: var(--bg);
+  background-image: var(--body-image, none);
+  background-size: var(--body-image-size, auto);
+  color: var(--fg);
+  font: 400 var(--body-size) / 1.55 var(--font-body);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  transition: background-color .25s ease, color .25s ease;
+}
+
+body,
+button,
+input,
+select,
+textarea {
+  font-family: var(--font-body);
+}
+
+a { text-underline-offset: 3px; }
+:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 3px; }
+img { max-width: 100%; }
+
+::selection { background: var(--selection-bg); color: var(--selection-fg); }
+
+.wrap {
+  width: 100%;
+  max-width: 1240px;
+  margin-inline: auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* era-gated extras */
+.era-ge2, .era-3 { display: none; }
+:root[data-era="2"] .era-ge2, :root[data-era="3"] .era-ge2 { display: block; }
+:root[data-era="3"] .era-3 { display: block; }
+:root[data-era="2"] .era-lt2, :root[data-era="3"] .era-lt2 { display: none; }
+:root[data-era="3"] .era-not3 { display: none; }
+
+/* ---------- display type ---------- */
+/* The margins stay with core: its h2 and h3 spacing carries the content pages. */
+h1, h2, h3 {
+  font-family: var(--font-display);
+  font-weight: var(--display-weight);
+  text-transform: var(--display-case);
+  text-wrap: balance;
+  line-height: 1.02;
+  letter-spacing: .005em;
+}
+h2 { font-size: clamp(1.6rem, 1.2rem + 1.6vw, 2.4rem); text-shadow: var(--glow); }
+h3 { font-size: 1.25rem; }
+
+/* ---------- surfaces ---------- */
+
+.box,
+.card,
+.notification {
+  background-color: var(--s1);
+  border-color: var(--line);
+}
+
+/* ---------- lists and tables ---------- */
+
+ol.itemlist {
+  --itemlist-border-color: var(--line);
+}
+
+ol.itemlist.is-linked > li > a:hover {
+  background-color: var(--s2);
+}
+
+table {
+  --table-border-color: var(--line);
+}
+
+table.itemlist > tbody > tr:nth-child(even) {
+  background-color: color-mix(in srgb, var(--s2) 50%, transparent);
+}
+
+table.itemlist > tbody > tr:hover {
+  background-color: var(--s2);
+}
+
+/* ---------- tabs ---------- */
+
+.tabs {
+  border-color: var(--line);
+}
+
+.tabs-tab {
+  color: var(--muted);
+}
+
+.tabs-tab:hover {
+  background-color: var(--s2);
+  border-color: var(--ctl);
+  color: var(--fg);
+}
+
+.tabs-tab--current,
+.tabs-tab--current:hover {
+  border-color: var(--accent);
+  color: var(--fg);
+}
+
+/* ---------- forms ---------- */
+
+input.form-control:not([type='checkbox']):not([type='radio']),
+select.form-control,
+textarea.form-control {
+  background-color: var(--s2);
+  border-color: var(--ctl);
+  color: var(--fg);
+}
+
+.form-control::placeholder {
+  color: var(--muted);
+  opacity: .8;
+}
+
+/* Core sets this with !important. */
+input.form-control[readonly] {
+  background-color: var(--s1) !important;
+}
+
+form .form-form-errors,
+form .invalid {
+  background-color: color-mix(in srgb, var(--bad) 14%, var(--s1));
+  border-color: var(--bad);
+  color: var(--fg);
+}
+
+/* ---------- buttons: square keys in corner ticks; primary is a lit key ---------- */
+
+.button {
+  --tick: var(--accent-text);
+  background-color: transparent;
+  background-image:
+    linear-gradient(var(--tick), var(--tick)),
+    linear-gradient(var(--tick), var(--tick)),
+    linear-gradient(var(--tick), var(--tick)),
+    linear-gradient(var(--tick), var(--tick)),
+    linear-gradient(var(--tick), var(--tick)),
+    linear-gradient(var(--tick), var(--tick)),
+    linear-gradient(var(--tick), var(--tick)),
+    linear-gradient(var(--tick), var(--tick));
+  background-repeat: no-repeat;
+  background-position: 0 0, 0 0, 100% 0, 100% 0, 0 100%, 0 100%, 100% 100%, 100% 100%;
+  background-size: 10px 2px, 2px 10px, 10px 2px, 2px 10px, 10px 2px, 2px 10px, 10px 2px, 2px 10px;
+  border-color: transparent;
+  border-radius: 0;
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: .8125rem;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.button--compact,
+.button.is-compact {
+  font-size: .75rem;
+}
+
+.button.button--clear:not(:hover),
+.button.is-clear:not(:hover) {
+  background-image: none;
+}
+
+.button.color-primary {
+  background-color: var(--accent);
+  background-image: none;
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+:is(.button, .notification).color-danger { --signal: var(--bad); }
+:is(.button, .notification).color-info { --signal: var(--info); }
+:is(.button, .notification).color-success { --signal: var(--ok); }
+:is(.button, .notification).color-warning { --signal: var(--warn); }
+
+:is(.button, .notification):is(.color-danger, .color-info, .color-success, .color-warning) {
+  background-color: var(--s1);
+  border-left-width: 4px;
+  color: var(--fg);
+}
+
+.button:is(.color-danger, .color-info, .color-success, .color-warning) {
+  --tick: var(--signal);
+  border-color: transparent;
+  border-left-color: var(--signal);
+}
+
+.notification:is(.color-danger, .color-info, .color-success, .color-warning) {
+  border-color: var(--line);
+  border-left-color: var(--signal);
+}
+
+.notification:is(.color-danger, .color-info, .color-success, .color-warning) .block-with-icon-icon {
+  color: var(--signal);
+}
+
+/* category label: the layout puts it first inside the notification body */
+.notification-label {
+  color: var(--signal, var(--muted));
+  display: block;
+  font-family: var(--font-mono);
+  font-size: .6875rem;
+  font-weight: 700;
+  letter-spacing: .12em;
+  line-height: 1.2;
+  margin-bottom: .25rem;
+  text-transform: uppercase;
+}
+
+.button:hover {
+  background-color: var(--s2);
+  box-shadow: none;
+}
+
+.button:active {
+  box-shadow: none;
+}
+
+.button.color-primary:hover {
+  background-color: color-mix(in srgb, var(--accent) 86%, white);
+}
+
+/* reaction chips keep their pill shape and drop the ticks */
+.button.button--reaction {
+  background-image: none;
+  border-color: var(--line);
+  border-radius: 1rem;
+  font-family: var(--font-body);
+  font-size: .875rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.button--reaction .symbol {
+  text-shadow: 0 0 2px var(--bg);
+}
+
+.button.button--reaction-active {
+  border-color: var(--accent);
+  box-shadow: var(--glow);
+}
+
+/* ---------- dropdowns ---------- */
+
+.dropdown-menu {
+  background-color: var(--s1);
+  border-color: var(--line);
+}
+
+.dropdown-item:hover {
+  background-color: var(--s2);
+}
+
+.dropdown-divider {
+  border-top-color: var(--line);
+}
+
+/* ---------- pagination ---------- */
+
+.pagination-item a,
+.pagination-item.pagination--current span {
+  border-color: var(--line);
+}
+
+.pagination-item a:hover {
+  background-color: var(--s2);
+}
+
+.pagination-item.pagination--current span {
+  background-color: var(--s2);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+/* ---------- progress ---------- */
+
+.progress {
+  background-color: var(--s2);
+}
+
+.progress--separated {
+  background-color: transparent;
+}
+
+.progress-bar {
+  background-color: var(--accent);
+}
+
+.progress-bar.color-light {
+  background-color: var(--ctl);
+}
+
+/* ---------- tags: outline chips in mono caps ---------- */
+
+.tag {
+  background-color: transparent;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm);
+  color: var(--accent-text);
+  font-family: var(--font-mono);
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-shadow: none;
+  text-transform: uppercase;
+}
+
+.tag.tag--outlined {
+  border-color: var(--ctl);
+}
+
+.tag:is(.color-danger, .color-danger--light) { background-color: transparent; color: var(--bad); }
+.tag:is(.color-info, .color-info--light) { background-color: transparent; color: var(--info); }
+.tag:is(.color-success, .color-success--light) { background-color: transparent; color: var(--ok); }
+.tag:is(.color-warning, .color-warning--light) { background-color: transparent; color: var(--warn); }
+.tag:is(.color-disabled, .color-disabled--light) { background-color: transparent; color: var(--muted); }
+
+/* Core sets these with !important. */
+.tag.order-payment-state--canceled,
+.tag.order-payment-state--canceled-before-paid,
+.tag.order-payment-state--canceled-after-paid {
+  background-color: transparent !important;
+  color: var(--muted);
+}
+
+.tag.order-payment-state--open {
+  background-color: transparent !important;
+  color: var(--warn);
+}
+
+.tag.order-payment-state--paid {
+  background-color: transparent !important;
+  color: var(--ok);
+}
+
+/* ---------- site components ---------- */
+
+.board-index-item-link {
+  --board-index-item-hover-bg-color: var(--s2);
+}
+
+.user-profile {
+  --header-bg-color: var(--s2);
+  --header-border-color: var(--line);
+}
+
+.event-icon-container {
+  background-color: var(--s2);
+}
+
+.event-icon-container > .icon {
+  fill: var(--muted);
+}
+
+.ticket-card {
+  border-color: var(--line);
+  border-radius: var(--radius);
+}
+
+.ticket-card-cell {
+  border-color: var(--line);
+}
+
+.ticket-card.ticket-used-by-me,
+.ticket-card.ticket-used-by-me .ticket-card-cell {
+  border-color: var(--ctl);
+}
+
+/* ---------- touch targets ---------- */
+
+@media (pointer: coarse) {
+  .button,
+  .dropdown-item,
+  .pagination-item a,
+  .pagination-item.pagination--current span,
+  input.form-control:not([type='checkbox']):not([type='radio']),
+  select.form-control {
+    min-height: 44px;
+  }
+
+  .button,
+  .pagination-item a,
+  .pagination-item.pagination--current span {
+    min-width: 44px;
+  }
+
+  .tabs-tab {
+    align-items: center;
+    display: flex;
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body { transition: none; }
+}

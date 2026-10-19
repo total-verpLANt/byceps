@@ -1,0 +1,23 @@
+{% extends 'layout/site/lan_tournament.html' %}
+{% set current_page = 'tournaments' %}
+{% set page_title = _('My tournaments') if overview_mode == 'personal' else _('Tournaments I supervise') %}
+
+{% block head %}
+  {{ super() }}
+  <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_category_filter.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_personal.css') }}">
+  <link rel="stylesheet" href="{{ url_for_site_file('style/gv-lt-requests.css') }}">
+{% endblock %}
+
+{% block body %}
+<div class="personal-tournaments">
+  <div class="gv-folio"><span class="gv-folio-path">{{ _('Tournaments') }} · {{ g.party.title }}</span><span aria-hidden="true">{{ page_title }}</span></div>
+  <header class="gv-pagehead"><h1>{{ page_title }}</h1></header>
+  {% include 'site/lan_tournament/_personal_overview.html' %}
+</div>
+{%- endblock %}
+
+{% block scripts %}
+  {{ super() }}
+  <script src="{{ url_for('static', filename='behavior/lan_tournament_category_filter.js') }}" defer></script>
+{% endblock %}

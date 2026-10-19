@@ -1,0 +1,1103 @@
+/* ============================================================
+   Tournament requests
+   The participant pages of the request flow: the overview of
+   one's own requests, the propose / edit / frozen form, and the
+   page head of "my tournaments".
+
+   The pages extend the tournament layout, so the body carries
+   the dark class and the bridge keeps them Owly dark in every
+   look and colour scheme. Colours are the site tokens only. The
+   module stylesheet and the look chrome both define a few of the
+   same class names (.seg, .seg-option, .opt, .opts, .facts,
+   .dimmed); every rule below is scoped under .request-page so it
+   wins on equal specificity, because this file loads last.
+
+   SECTIONS:
+     1. SHARED     page frame, header, status chips, buttons,
+                   history box.
+     2. FORM       sections, fields, segmented control, option
+                   list, error summary, notes, danger zone,
+                   timeline.
+     3. DASHBOARD  counts, request cards, tracker, win card,
+                   archive, empty state.
+     4. PERSONAL   page head of "my tournaments".
+   ============================================================ */
+
+
+/* ---------------------------------------------------------- */
+/* 1. SHARED                                                    */
+/* ---------------------------------------------------------- */
+
+.request-page {
+  margin-inline: auto;
+  max-width: 52rem;
+  padding-block: clamp(.5rem, 2vw, 1.5rem) 2.5rem;
+}
+
+/* Author rules for display values must not defeat the hidden attribute. */
+.request-page [hidden] { display: none; }
+
+/* ----- breadcrumbs ----- */
+.request-page .crumbs {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-size: .6875rem;
+  gap: .5rem;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+
+.request-page .crumbs a { color: var(--accent-text); text-decoration: none; }
+.request-page .crumbs a:hover { color: var(--fg); text-decoration: underline; }
+
+/* ----- page header ----- */
+.request-page .head {
+  align-items: flex-end;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 1.5rem;
+  justify-content: space-between;
+  padding: 1.75rem 0 1.1rem;
+}
+
+.request-page .head .kick {
+  color: var(--accent-text);
+  font-family: var(--font-mono);
+  font-size: .6875rem;
+  font-weight: 700;
+  letter-spacing: .2em;
+  margin-bottom: .5rem;
+  text-transform: uppercase;
+}
+
+.request-page .head h1 {
+  color: var(--fg);
+  font-size: clamp(1.75rem, 1.2rem + 2.4vw, 2.75rem);
+  line-height: 1.05;
+  margin: 0;
+}
+
+.request-page .head .sub {
+  color: var(--muted);
+  font-size: 1.0625rem;
+  margin-top: .5rem;
+  overflow-wrap: anywhere;
+}
+
+.request-page .head .tags {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .875rem;
+}
+
+.request-page .head + * { margin-top: 1.75rem; }
+
+@media (max-width: 47rem) {
+  .request-page .head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: .875rem;
+    padding: 1.25rem 0 .9rem;
+  }
+
+  /* the tags row stretches, so a full-width button fills the page */
+  .request-page .head .tags { width: 100%; }
+  .request-page .head .tags .btn-pri { width: 100%; }
+  .request-page .head + * { margin-top: 1.25rem; }
+}
+
+/* ----- status vocabulary: header chip and inline tag ----- */
+.request-page .st {
+  background-color: transparent;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm);
+  color: var(--fg);
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: .6875rem;
+  font-weight: 700;
+  letter-spacing: .12em;
+  padding: .2rem .5rem;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.request-page .st.st-lg {
+  font-size: .8125rem;
+  letter-spacing: .16em;
+  padding: .4rem .8rem;
+}
+
+.request-page .st.st-submitted { color: var(--warn); }
+.request-page .st.st-accepted { color: var(--info); }
+
+.request-page .st.st-tournament_created {
+  background-color: var(--ok);
+  border-color: var(--ok);
+  color: var(--on-accent);
+}
+
+.request-page .st.st-rejected { color: var(--bad); }
+
+.request-page .st:is(.st-withdrawn, .st-draft, .st-tournament_deleted) {
+  border-style: dashed;
+  color: var(--muted);
+}
+
+/* ----- buttons -----
+   The key look (corner ticks, mono caps) comes from the base layer.
+   This block sizes the keys and adds the page's own variants. */
+.request-page .btns {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .625rem;
+}
+
+.request-page .button {
+  align-items: center;
+  display: inline-flex;
+  gap: .5rem;
+  justify-content: center;
+  min-height: 2.75rem;
+  padding: .6rem 1.1rem;
+  text-align: center;
+  text-decoration: none;
+}
+
+.request-page .button.btn-pri {
+  background-color: var(--accent);
+  background-image: none;
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+.request-page .button.btn-pri:hover {
+  background-color: color-mix(in srgb, var(--accent) 86%, white);
+}
+
+.request-page .button.btn-ok {
+  background-color: var(--ok);
+  background-image: none;
+  border-color: var(--ok);
+  color: var(--on-accent);
+}
+
+.request-page .button.btn-ok:hover {
+  background-color: color-mix(in srgb, var(--ok) 86%, white);
+}
+
+.request-page .button.out-red {
+  background-color: transparent;
+  background-image: none;
+  border-color: var(--bad);
+  color: var(--bad);
+}
+
+.request-page .button.out-red:hover {
+  background-color: var(--bad);
+  color: var(--on-accent);
+}
+
+.request-page .button.btn-sm {
+  font-size: .6875rem;
+  padding: .45rem .8rem;
+}
+
+.request-page .button.btn-full { width: 100%; }
+
+.request-page .button:is([disabled], :disabled) {
+  background-color: transparent;
+  background-image: none;
+  border-color: var(--ctl);
+  border-style: dashed;
+  color: var(--muted);
+  cursor: not-allowed;
+  opacity: .6;
+}
+
+.request-page .lnk {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: .6875rem;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-decoration: underline;
+  text-transform: uppercase;
+  text-underline-offset: 3px;
+}
+
+.request-page .lnk:hover { color: var(--fg); }
+
+.request-page .hint {
+  color: var(--muted);
+  font-size: .9375rem;
+  line-height: 1.45;
+  margin: 0;
+}
+
+/* ----- history box ----- */
+.request-page .history-box {
+  background-color: var(--s1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  margin: 2.25rem 0 0;
+  overflow: hidden;
+}
+
+.request-page .history-h {
+  background-color: var(--s2);
+  border-bottom: 1px solid var(--line);
+  color: var(--accent-text);
+  font-family: var(--font-mono);
+  font-size: .6875rem;
+  font-weight: 700;
+  letter-spacing: .2em;
+  padding: .6rem 1.1rem;
+  text-transform: uppercase;
+}
+
+.request-page .history-b {
+  display: flex;
+  flex-direction: column;
+  gap: .875rem;
+  padding: 1.1rem;
+}
+
+@media (pointer: coarse) {
+  .request-page .button,
+  .request-page .button.btn-sm { min-height: 44px; }
+
+  .request-page .lnk {
+    align-items: center;
+    display: inline-flex;
+    min-height: 44px;
+    padding-inline: .25rem;
+  }
+}
+
+
+/* ---------------------------------------------------------- */
+/* 2. FORM (propose / edit / frozen request form)               */
+/* ---------------------------------------------------------- */
+
+/* ----- numbered sections and section heads ----- */
+.request-page .fs { margin: 0 0 2.25rem; }
+
+.request-page .sh {
+  align-items: baseline;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: .75rem;
+  justify-content: space-between;
+  margin: 0 0 1rem;
+  padding-bottom: .5rem;
+}
+
+.request-page .sh h2 {
+  font-size: clamp(1.1rem, 1rem + .6vw, 1.375rem);
+  margin: 0;
+  text-shadow: none;
+}
+
+.request-page .sh h2 em {
+  color: var(--accent-text);
+  font-family: var(--font-mono);
+  font-style: normal;
+  margin-right: .6rem;
+}
+
+.request-page .sh > span {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: .625rem;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.request-page .sh.sh-top { margin-top: 2rem; }
+
+/* ----- field chrome ----- */
+.request-page label.form-label {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-size: .6875rem;
+  gap: .25rem 0;
+  letter-spacing: .14em;
+  margin-bottom: .4rem;
+  text-transform: uppercase;
+}
+
+.request-page .lbl-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .25rem 0;
+  margin-bottom: .4rem;
+}
+
+.request-page .lbl-row label.form-label { margin-bottom: 0; }
+
+.request-page .opt-chip {
+  background-color: var(--s2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: .625rem;
+  font-style: normal;
+  letter-spacing: .12em;
+  margin-left: .5rem;
+  padding: .0625rem .4rem;
+  text-transform: uppercase;
+}
+
+.request-page .chg-t {
+  background-color: var(--warn);
+  color: var(--on-accent);
+}
+
+/* The doubled class lifts the selector above the base layer's
+   input.form-control rule, so no important flag is needed. */
+.request-page .form-control-block .form-control.form-control {
+  background-color: var(--s2);
+  border: 1px solid var(--ctl);
+  border-radius: var(--radius-sm);
+  color: var(--fg);
+  font: 400 1rem/1.3 var(--font-body);
+  height: 2.75rem;
+  padding: 0 .75rem;
+}
+
+.request-page .form-control-block textarea.form-control.form-control {
+  height: auto;
+  line-height: 1.45;
+  min-height: 6.5rem;
+  padding: .6rem .75rem;
+}
+
+.request-page .form-control-block .form-control.form-control::placeholder {
+  color: var(--muted);
+  font-style: italic;
+  opacity: .8;
+}
+
+.request-page .form-control-block .form-control.form-control:focus {
+  box-shadow: none;
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
+}
+
+/* changed since the last version: a warn edge on the field */
+.request-page .form-control-block.chg .form-control.form-control {
+  box-shadow: inset 4px 0 0 var(--warn);
+}
+
+.request-page input[type="number"].form-control { text-align: start; }
+
+/* datetime-local inputs keep a native width otherwise */
+.request-page .form-control-block input[type="datetime-local"].form-control.form-control {
+  width: 100%;
+}
+
+.request-page :is(.form-caption, .hn) {
+  color: var(--muted);
+  font-size: .8125rem;
+  line-height: 1.4;
+  margin: .35rem 0 0;
+}
+
+.request-page .fgrid { display: grid; gap: 1rem; }
+.request-page .two { display: grid; gap: 1rem; grid-template-columns: 1fr 1fr; }
+
+.request-page .fgrid .form-control-block,
+.request-page .two .form-control-block { margin: 0; }
+
+@media (max-width: 47rem) {
+  .request-page .two.st1 { grid-template-columns: 1fr; }
+}
+
+/* ----- error summary and ticket notice ----- */
+.request-page .warn {
+  background-color: color-mix(in srgb, var(--bad) 10%, var(--s1));
+  border: 1px solid var(--bad);
+  border-radius: var(--radius);
+  margin-bottom: 1.5rem;
+  overflow: hidden;
+}
+
+.request-page .warn-h {
+  background-color: var(--bad);
+  color: var(--on-accent);
+  font-family: var(--font-mono);
+  font-size: .6875rem;
+  font-weight: 700;
+  letter-spacing: .16em;
+  margin: 0;
+  padding: .5rem .875rem;
+  text-transform: uppercase;
+}
+
+.request-page .warn p { margin: 0; padding: .75rem .875rem; }
+.request-page .warn ul { margin: 0; padding: .5rem .875rem .875rem 2rem; }
+.request-page .warn ul a { color: var(--bad); text-decoration: underline; }
+
+/* ----- invalid field: the field carries the signal, not the block ----- */
+.request-page .form-control-block.invalid {
+  background-color: transparent;
+  border: 0;
+  margin-inline: 0;
+  padding: 0;
+}
+
+.request-page .form-control-block.invalid .form-control.form-control {
+  border-color: var(--bad);
+  box-shadow: inset 0 0 0 1px var(--bad);
+}
+
+.request-page .invalid .form-label { color: var(--bad); }
+
+.request-page .form-errors {
+  color: var(--bad);
+  font-family: var(--font-mono);
+  font-size: .6875rem;
+  font-weight: 700;
+  letter-spacing: .06em;
+  list-style: none;
+  margin: .4rem 0 0;
+  padding: 0;
+}
+
+.request-page .form-errors strong { display: none; }
+.request-page .invalid .form-errors li { margin-top: .4rem; }
+.request-page .form-errors li::before { content: "\25b2  "; }
+
+/* ----- segmented control (game format) -----
+   The look chrome styles .seg and its labels for the scheme switch
+   (mono caps, lit key on the checked label, per-look borders). The
+   era prefix lifts every rule below above those, so the control
+   stays Owly in every look. */
+:root[data-era] .request-page .seg {
+  background-color: var(--s2);
+  border: 1px solid var(--ctl);
+  border-radius: var(--radius-sm);
+  display: grid;
+  gap: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: .25rem;
+  overflow: hidden;
+  padding: 0;
+}
+
+:root[data-era] .request-page .seg .seg-option {
+  align-items: stretch;
+  background-color: transparent;
+  border-left: 1px solid var(--line);
+  border-radius: 0;
+  box-shadow: none;
+  color: var(--fg);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  font: 400 1rem/1.3 var(--font-body);
+  gap: .125rem;
+  justify-content: center;
+  letter-spacing: normal;
+  min-height: 3.5rem;
+  padding: .6rem .75rem;
+  position: relative;
+  text-align: start;
+  text-shadow: none;
+  text-transform: none;
+  white-space: normal;
+}
+
+:root[data-era] .request-page .seg .seg-option:first-child { border-left: 0; }
+
+.request-page .seg-option b {
+  font-family: var(--font-display);
+  font-size: 1.0625rem;
+  font-weight: var(--display-weight);
+  overflow-wrap: anywhere;
+  text-transform: var(--display-case);
+}
+
+.request-page .seg-option small {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: .625rem;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.request-page .seg-option input {
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  width: 1px;
+}
+
+:root[data-era] .request-page .seg .seg-option:is(.on, .is-selected, :has(input:checked)) {
+  background-color: var(--accent);
+  box-shadow: none;
+  color: var(--on-accent);
+  text-shadow: none;
+}
+
+:root[data-era] .request-page .seg .seg-option:is(.on, .is-selected, :has(input:checked)) small {
+  color: var(--on-accent);
+}
+
+:root[data-era] .request-page .seg .seg-option:has(input:focus-visible) {
+  outline: 2px solid var(--accent-text);
+  outline-offset: -3px;
+}
+
+@media (max-width: 47rem) {
+  :root[data-era] .request-page .seg .seg-option { padding: .6rem .5rem; }
+  .request-page .seg-option b { font-size: .9375rem; }
+}
+
+/* ----- elimination-mode option list -----
+   The script toggles on / is-selected and dis / is-disabled in
+   pairs; both spellings are styled the same. */
+.request-page .opts {
+  display: grid;
+  gap: .5rem;
+  grid-template-columns: 1fr 1fr;
+}
+
+.request-page .opt {
+  align-items: flex-start;
+  background-color: var(--s1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--fg);
+  cursor: pointer;
+  display: flex;
+  gap: .75rem;
+  padding: .7rem .8rem;
+}
+
+.request-page .opt input {
+  accent-color: var(--accent);
+  flex: 0 0 auto;
+  height: 1.25rem;
+  margin: .125rem 0 0;
+  width: 1.25rem;
+}
+
+.request-page .opt:is(.on, .is-selected, :has(input:checked)) {
+  background-color: color-mix(in srgb, var(--accent) 10%, var(--s1));
+  border-color: var(--accent);
+}
+
+.request-page .opt:has(input:focus-visible) {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
+}
+
+.request-page .opt:is(.dis, .is-disabled) {
+  color: var(--muted);
+  cursor: not-allowed;
+  opacity: 1;
+}
+
+.request-page .opt-label { flex: 1 1 auto; min-width: 0; }
+
+.request-page .opt-label b {
+  display: block;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.request-page .opt-label:is(.struck, .is-struck) b {
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
+.request-page .opt-label small {
+  color: var(--muted);
+  display: block;
+  font-size: .8125rem;
+  line-height: 1.35;
+}
+
+.request-page .opt-reason {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: .625rem;
+  font-style: normal;
+  letter-spacing: .1em;
+  max-width: 9rem;
+  padding-top: .25rem;
+  text-align: end;
+  text-transform: uppercase;
+}
+
+@media (max-width: 47rem) {
+  .request-page .opts { grid-template-columns: 1fr; }
+}
+
+/* ----- limit caption and over-limit state (script driven) ----- */
+.request-page [data-limit-caption][data-before]::before { content: attr(data-before); }
+
+.request-page [data-limit-caption].over {
+  color: var(--bad);
+  font-weight: 700;
+}
+
+.request-page .form-control-block input.form-control.over {
+  border-color: var(--bad);
+  color: var(--bad);
+}
+
+/* ----- request summary (frozen mode) ----- */
+.request-page .sup {
+  display: grid;
+  gap: 0 1.75rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 1.5rem 0 0;
+}
+
+.request-page .sup div {
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: .75rem;
+  justify-content: space-between;
+  padding: .55rem 0;
+}
+
+.request-page .sup dt {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: .625rem;
+  letter-spacing: .12em;
+  padding-top: .2rem;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.request-page .sup dd { margin: 0; min-width: 0; text-align: end; }
+
+@media (max-width: 47rem) {
+  .request-page .sup { grid-template-columns: 1fr; }
+}
+
+/* ----- note box (edit note, frozen lock note) ----- */
+.request-page .note-box {
+  background-color: var(--s1);
+  border: 1px solid var(--warn);
+  border-radius: var(--radius);
+  margin-bottom: 1.75rem;
+  overflow: hidden;
+}
+
+.request-page .note-box.lock { border-color: var(--info); }
+
+.request-page .note-h {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  color: var(--fg);
+  display: flex;
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-size: .6875rem;
+  font-weight: 700;
+  gap: .75rem;
+  letter-spacing: .14em;
+  padding: .65rem .875rem;
+  text-transform: uppercase;
+}
+
+.request-page .note-box p {
+  color: var(--fg);
+  line-height: 1.45;
+  margin: 0;
+  padding: .75rem .875rem .875rem;
+}
+
+/* ----- danger zone ----- */
+.request-page .danger-zone {
+  align-items: center;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: space-between;
+  margin-top: 2.25rem;
+  padding-top: 1rem;
+}
+
+.request-page .danger-zone b {
+  color: var(--fg);
+  font-family: var(--font-display);
+  font-size: 1.125rem;
+  font-weight: var(--display-weight);
+  text-transform: var(--display-case);
+}
+
+.request-page .danger-zone form { display: flex; }
+
+/* ----- history timeline ----- */
+.request-page .tl { list-style: none; margin: 0; padding: 0; }
+
+.request-page .tl li {
+  border-left: 1px solid var(--ctl);
+  color: var(--fg);
+  padding: 0 0 .875rem 1.25rem;
+  position: relative;
+}
+
+.request-page .tl li::before {
+  background-color: var(--fg);
+  content: "";
+  height: 9px;
+  left: -5px;
+  position: absolute;
+  top: .3rem;
+  width: 9px;
+}
+
+.request-page .tl li.now::before {
+  background-color: var(--warn);
+  outline: 2px solid var(--s1);
+}
+
+.request-page .tl li:last-child { border-left-color: transparent; padding-bottom: 0; }
+
+.request-page .tl .lbl {
+  color: var(--muted);
+  display: block;
+  font-family: var(--font-mono);
+  font-size: .625rem;
+  letter-spacing: .18em;
+  margin-bottom: .125rem;
+  text-transform: uppercase;
+}
+
+
+/* ---------------------------------------------------------- */
+/* 3. DASHBOARD (requests overview)                             */
+/* ---------------------------------------------------------- */
+
+/* ----- status counts: one tile per state ----- */
+.request-page .facts.cnt {
+  background: none;
+  border: 0;
+  border-radius: 0;
+  display: grid;
+  gap: .5rem;
+  grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+  margin: 0;
+  overflow: visible;
+  padding: 0;
+}
+
+.request-page .facts.cnt > div {
+  background-color: var(--s1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: .75rem .9rem .85rem;
+}
+
+.request-page .facts.cnt dt {
+  color: var(--muted);
+  display: block;
+  font-family: var(--font-mono);
+  font-size: .625rem;
+  letter-spacing: .14em;
+  margin-bottom: .4rem;
+  text-transform: uppercase;
+}
+
+.request-page .facts.cnt dd {
+  color: var(--fg);
+  font-family: var(--font-display);
+  font-size: 2.25rem;
+  font-weight: var(--display-weight);
+  line-height: 1.1;
+  margin: 0;
+}
+
+.request-page .facts.cnt dd.v-submitted { color: var(--warn); }
+.request-page .facts.cnt dd.v-accepted { color: var(--info); }
+.request-page .facts.cnt dd.v-tournament_created { color: var(--ok); }
+.request-page .facts.cnt dd.v-rejected { color: var(--bad); }
+.request-page .facts.cnt dd.v-withdrawn { color: var(--muted); }
+
+/* ----- request cards ("in progress") ----- */
+.request-page .cards.two-c {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0 0 2.25rem;
+}
+
+.request-page .req {
+  background-color: var(--s1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.request-page .req.card-open { border-top: 3px solid var(--warn); }
+.request-page .req.card-accepted { border-top: 3px solid var(--info); }
+
+.request-page .card-t {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  display: flex;
+  font-family: var(--font-mono);
+  font-size: .6875rem;
+  gap: .5rem;
+  justify-content: space-between;
+  letter-spacing: .1em;
+  padding: .6rem .9rem;
+  text-transform: uppercase;
+}
+
+.request-page .card-t b { color: var(--fg); }
+
+.request-page .card-b { flex: 1; padding: .9rem .9rem .25rem; }
+
+.request-page .card-b .nm,
+.request-page .win-b .nm {
+  color: var(--fg);
+  font-family: var(--font-display);
+  font-size: 1.375rem;
+  font-weight: var(--display-weight);
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+  text-transform: var(--display-case);
+}
+
+.request-page .card-b .gm,
+.request-page .win-b .gm {
+  color: var(--muted);
+  font-size: 1rem;
+  margin: 0 0 .75rem;
+  overflow-wrap: anywhere;
+}
+
+.request-page .card-b .hint { margin: .6rem 0 0; }
+.request-page .card-f { padding: .9rem; }
+
+/* ----- three-step tracker -----
+   The future step carries no class: only the dotted connector
+   shows that it is still ahead. */
+.request-page .trk {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  list-style: none;
+  margin: .9rem 0 0;
+  padding: 0;
+}
+
+.request-page .trk li {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: .625rem;
+  letter-spacing: .1em;
+  line-height: normal;
+  padding-top: 1.1rem;
+  position: relative;
+  text-transform: uppercase;
+}
+
+.request-page .trk li::after {
+  border-top: 1px dotted var(--ctl);
+  content: "";
+  left: 0;
+  position: absolute;
+  right: 0;
+  top: 5px;
+}
+
+.request-page .trk li i {
+  background-color: var(--s1);
+  border: 1px solid var(--ctl);
+  height: 11px;
+  left: 0;
+  position: absolute;
+  top: 0;
+  width: 11px;
+  z-index: 1;
+}
+
+.request-page .trk li.done { color: var(--fg); }
+
+.request-page .trk li.done i {
+  background-color: var(--fg);
+  border-color: var(--fg);
+}
+
+.request-page .trk li.done::after {
+  border-top-color: var(--fg);
+  border-top-style: solid;
+}
+
+.request-page .trk li.next { color: var(--warn); font-weight: 700; }
+.request-page .trk li.next i { border-color: var(--warn); }
+.request-page .trk li:last-child::after { display: none; }
+
+/* ----- "in the program" win card ----- */
+.request-page .req.win {
+  border-color: var(--ok);
+  display: grid;
+  gap: .4rem 1.25rem;
+  grid-template-columns: minmax(0, 1fr);
+  margin: .875rem 0;
+  padding: 0;
+}
+
+.request-page .sh + .req.win { margin-top: 0; }
+
+.request-page .win-h {
+  background-color: var(--ok);
+  color: var(--on-accent);
+  font-family: var(--font-mono);
+  font-size: .6875rem;
+  font-weight: 700;
+  letter-spacing: .2em;
+  padding: .5rem 1rem;
+  text-transform: uppercase;
+}
+
+/* one column: a name block, a stat list and a button do not fit two */
+.request-page .win-b {
+  align-items: center;
+  display: grid;
+  gap: .4rem 1.25rem;
+  grid-template-columns: minmax(0, 1fr);
+  padding: 1rem;
+}
+
+.request-page .win-b .gm { margin-bottom: 0; }
+
+.request-page .win-b .req-name {
+  color: var(--fg);
+  font-family: var(--font-display);
+  font-size: 1.125rem;
+  font-weight: var(--display-weight);
+  text-transform: var(--display-case);
+}
+
+.request-page .win-b .req-name.dimmed { color: var(--muted); }
+
+.request-page .mini {
+  display: grid;
+  gap: .25rem .75rem;
+  grid-template-columns: auto minmax(0, 1fr);
+  margin: 0;
+}
+
+.request-page .mini dt {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: .625rem;
+  letter-spacing: .14em;
+  padding-top: .25rem;
+  text-transform: uppercase;
+}
+
+.request-page .mini dd { color: var(--fg); margin: 0; }
+
+/* ----- empty state ----- */
+.request-page .empty-box {
+  background-color: var(--s1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 2.5rem 1.25rem 3rem;
+  text-align: center;
+}
+
+.request-page .empty-box h3 { font-size: 1.75rem; margin: 0 0 .6rem; }
+
+.request-page .empty-box p {
+  color: var(--muted);
+  font-size: 1.0625rem;
+  margin: 0 auto 1.5rem;
+  max-width: 30ch;
+}
+
+/* ----- archive list ----- */
+.request-page .dl-list { list-style: none; margin: 0; padding: 0; }
+
+.request-page .dl-list li {
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: .125rem .75rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: .75rem 0;
+}
+
+.request-page .dl-list b {
+  color: var(--fg);
+  font-size: 1.0625rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.request-page .dl-list .mt {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: .625rem;
+  grid-column: 1 / -1;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.request-page .why-sm {
+  color: var(--muted);
+  font-size: 1rem;
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 47rem) {
+  .request-page .req.win { margin-block: .75rem; }
+  .request-page .cards.two-c { gap: 1rem; grid-template-columns: 1fr; }
+  .request-page .win-b .nm { font-size: 1.25rem; }
+}
+
+
+/* ---------------------------------------------------------- */
+/* 4. PERSONAL (page head of "my tournaments")                  */
+/* ---------------------------------------------------------- */
+
+.personal-tournaments > .gv-folio {
+  align-items: baseline;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  display: flex;
+  font-family: var(--font-mono);
+  font-size: .6875rem;
+  gap: 1rem;
+  justify-content: space-between;
+  letter-spacing: .16em;
+  padding-bottom: .5rem;
+  text-transform: uppercase;
+}
+
+.personal-tournaments .gv-folio-path { color: var(--accent-text); }
+
+.personal-tournaments > .gv-pagehead { padding: 1.25rem 0 1rem; }
+
+.personal-tournaments > .gv-pagehead h1 {
+  color: var(--fg);
+  font-size: clamp(1.75rem, 1.2rem + 2.4vw, 2.75rem);
+  line-height: 1.05;
+  margin: 0;
+}

@@ -1,0 +1,7 @@
+<div class="tv-reminder chair-prompt">
+  <div class="tv-reminder__text">
+    <span class="tv-reminder__kicker">{{ _('Chair information') }}</span>
+    <p class="tv-reminder__head">{{ _('Not specified yet') }}</p>
+  </div>
+  <a class="button chair-information-link" href="{{ url_for('ticketing.index_mine', _anchor='ticket-' ~ chair_pending_ticket_id) }}">{{ render_icon('edit') }} <span>{{ _('Make selection') }}</span></a>
+</div>

@@ -1,0 +1,100 @@
+/* ============================================================
+   Self-hosted webfonts
+   Subset: latin
+   LAN '99 uses system fonts only, so it has no entry here.
+   ============================================================ */
+
+/* ---------- Reddit Sans Condensed (display) ---------- */
+@font-face {
+  font-family: 'Reddit Sans Condensed';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('reddit-sans-condensed/reddit-sans-condensed-latin-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Reddit Sans Condensed';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('reddit-sans-condensed/reddit-sans-condensed-latin-700.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Reddit Sans Condensed';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url('reddit-sans-condensed/reddit-sans-condensed-latin-800.woff2') format('woff2');
+}
+
+/* ---------- Reddit Sans (body) ---------- */
+@font-face {
+  font-family: 'Reddit Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('reddit-sans/reddit-sans-latin-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Reddit Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('reddit-sans/reddit-sans-latin-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Reddit Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('reddit-sans/reddit-sans-latin-600.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Reddit Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('reddit-sans/reddit-sans-latin-700.woff2') format('woff2');
+}
+
+/* ---------- JetBrains Mono ----------
+   No 600 face: a weight 600 request falls through to the 700 file. */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('jetbrains-mono/jetbrains-mono-latin-ext-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('jetbrains-mono/jetbrains-mono-latin-ext-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('jetbrains-mono/jetbrains-mono-latin-ext-700.woff2') format('woff2');
+}
+
+/* ---------- Black Ops One (Clan 2003 display) ---------- */
+@font-face {
+  font-family: 'Black Ops One';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('black-ops-one/black-ops-one-latin-400.woff2') format('woff2');
+}
+
+/* ---------- VT323 (terminal counters) ---------- */
+@font-face {
+  font-family: 'VT323';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('vt323/vt323-latin-400.woff2') format('woff2');
+}

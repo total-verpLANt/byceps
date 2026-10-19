@@ -1,0 +1,26 @@
+{#- Look overlays: LAN '99 marquee, hidden console and unlock toast. Included from layout/base.html before the header. -#}
+{% import 'layout/_topic.html' as tp with context %}
+{%- set has_sale_stats = ticket_sale_stats is defined and ticket_sale_stats.tickets_max is not none and ticket_sale_stats.tickets_max > 0 -%}
+<div class="ticker era-3">
+  <div class="ticker-track">+++ WILLKOMMEN AUF DER OFFIZIELLEN HOMEPAGE DER GENIAL VERPLANT +++ Netzwerkkabel (10 m, Cat5) und Mehrfachsteckdose mitbringen!!! +++ Kein Hub? Kein Problem, wir haben Switches +++ Trag dich ins Gästebuch ein +++ <span class="tp-tick">{% if tp.state == 'on' %}Das Thema ist raus: {{ tp.topic.name }}!!! +++{% elif tp.state == 'teaser' %}Das Thema kommt bald! +++{% endif %}</span></div>
+</div>
+
+<div class="con" id="con" role="dialog" aria-label="Konsole" data-party="{{ g.party.title if g.party else 'genial verpLANt' }}"
+  {%- if has_sale_stats %} data-sold="{{ ticket_sale_stats.tickets_sold }}" data-total="{{ ticket_sale_stats.tickets_max }}"{% endif %} hidden>
+  <div class="con-log" id="con-log" role="log" aria-live="polite"></div>
+  <label class="con-line"><span aria-hidden="true">]</span><input id="con-in" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Befehl eingeben"></label>
+  <p class="con-ver" aria-hidden="true">genial verpLANt</p>
+</div>
+
+<div class="unlock" id="unlock" role="status" hidden>
+  <span class="thumb t2" id="unlock-thumb" aria-hidden="true"></span>
+  <div class="unlock-txt">
+    <p class="unlock-kicker" id="unlock-kicker">Freigeschaltet</p>
+    <p class="unlock-title" id="unlock-title">Clan 2003</p>
+    <p class="unlock-sub" id="unlock-sub"></p>
+  </div>
+  <div class="unlock-act">
+    <button type="button" class="btn" id="unlock-later">Später</button>
+    <button type="button" class="btn btn-primary" id="unlock-go">Jetzt umschalten</button>
+  </div>
+</div>

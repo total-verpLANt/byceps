@@ -1,0 +1,54 @@
+{%- set cap = 12 -%}
+{%- set more = delivered_total - cap -%}
+<!DOCTYPE html>
+<html lang="{{ g.current_locale.language|default('de') }}" data-era="1" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="refresh" content="10">
+  <title>{{ _('Pizza Delivery') }}</title>
+  <link rel="stylesheet" href="{{ url_for_site_file('style/fonts/fonts.css') }}">
+  <link rel="stylesheet" href="{{ url_for_site_file('style/gv-tokens.css') }}">
+  <link rel="stylesheet" href="{{ url_for_site_file('style/gv-services-event.css') }}">
+  <link rel="icon" href="{{ url_for_site_file('style/favicon.ico') }}">
+</head>
+<body class="tv-beamer">
+<div class="hb"><div class="hb-band">
+  <div class="hb-label">
+    <b>{{ _('Pizza') }}</b>
+    <span>{{ _('Ready for pickup') }} · {{ _('newest first') }}</span>
+  </div>
+  {%- if not entries %}
+  <p class="hb-empty"><span>{{ _('No deliveries have been called yet.') }}</span><span>{{ _('The first pizza is on its way.') }}</span></p>
+  {%- else %}
+  <ol class="hb-row">
+    {%- for entry in entries[:cap] %}
+    {%- set fresh = entry.id in fresh_ids %}
+    <li{% if fresh %} class="hb-fresh"{% endif %}>{% if fresh %}<i>&#10038;</i>{% endif %}<b>{{ entry.number }}</b></li>
+    {%- endfor %}
+  </ol>
+  <div class="hb-more" data-more="{{ more }}"{% if more <= 0 %} hidden{% endif %}>
+    <b>+{{ [more, 0]|max }}</b>
+    <span><span>{{ _('more numbers') }}</span><span>{{ url_for('.board')[:-1] }}</span></span>
+  </div>
+  {%- endif %}
+</div></div>
+<script>
+  // Numbers that wrapped out of the band count towards the plate.
+  document.fonts.ready.then(function () {
+    var row = document.querySelector('.hb-row');
+    var plate = document.querySelector('.hb-more');
+    if (!row || !plate) { return; }
+    var base = Number(plate.dataset.more);
+    plate.hidden = false;
+    var top = row.firstElementChild.offsetTop;
+    var cut = Array.from(row.children).filter(function (li) { return li.offsetTop > top; }).length;
+    if (base + cut > 0) {
+      plate.querySelector('b').textContent = '+' + (base + cut);
+    } else {
+      plate.hidden = true;
+    }
+  });
+</script>
+</body>
+</html>

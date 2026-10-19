@@ -1,0 +1,379 @@
+/* ============================================================
+   Community and account services
+   Board, news, gallery, team, attendees, party history, timetable,
+   tourneys, badges, user groups, messages, profile, settings,
+   sign-up and account forms, login, password forms, consent.
+
+   Core sets most colours as literals (common.css, site.css) and a
+   few pages add inline style blocks. gv-base re-seats the shared
+   components; this file adds what these service pages need on top,
+   with tokens only. Inline style blocks load after this file, so a
+   selector that re-declares one of them carries a `body` prefix.
+
+   Inline style audit, colour-bearing selectors and their page:
+     .progress                           tourney_view
+     .progress-bar                       tourney_view
+     .progress-bar.color--available      tourney_view
+     .progress-bar.color--scarce         tourney_view
+     .progress-bar.color--full           tourney_view
+   The inline blocks of attendees, party_history view, tourney_index,
+   user_badge index and view, log_in_form and orga_team index hold
+   layout only, so they need no colour re-declaration.
+   ============================================================ */
+
+
+/* ---------- shared: the content box ---------- */
+/* Core leaves .main-body-box bare. Every service page wraps its content
+   in one, so it becomes the card. The news bleed image reads the hspace. */
+
+.main-body-box {
+  --main-body-box-hspace: 1.25rem;
+  background-color: var(--s1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: var(--main-body-box-hspace);
+}
+
+
+/* ---------- shared: status icons with literal fills ---------- */
+/* The settings partials pass two literal fills to the icon macro. They are
+   matched by value, without the hash, and swapped for the status tokens.
+   The inline style needs !important to lose. */
+
+svg.icon[style*="009900"] { fill: var(--ok) !important; }
+svg.icon[style*="cc0000"] { fill: var(--bad) !important; }
+
+
+/* ---------- board ---------- */
+
+.board-index-item-link:hover {
+  background-color: var(--board-index-item-hover-bg-color);
+}
+
+.board-category-tag {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  letter-spacing: .08em;
+}
+
+:is(.board-category-index, .board-topic-index) .bignumber {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* comments */
+
+.user-comment-main :is(header, .body) {
+  border-color: var(--line);
+}
+
+.user-comment-main header {
+  background-color: var(--s2);
+}
+
+.user-comment-main .body {
+  background-color: var(--s1);
+}
+
+.user-comment-actions :is(.dropdown:hover, .dropdown.open) .dropdown-toggle {
+  background-color: var(--line);
+}
+
+/* the permalink target lights up in the accent */
+.user-comment:target header {
+  border-color: var(--accent);
+}
+
+.user-comment:target .user-comment-main::before {
+  border-right-color: var(--accent);
+}
+
+.user-comment:target .user-comment-main .body {
+  border-bottom-color: var(--accent);
+  border-left-color: var(--accent);
+  border-right-color: var(--accent);
+}
+
+/* the edit note dims by colour, not by opacity, so it keeps its contrast */
+.user-comment footer {
+  color: var(--muted);
+  opacity: 1;
+}
+
+.user-comment :is(blockquote, pre code) {
+  background-color: var(--s2);
+  border-color: var(--line);
+}
+
+.user-comment pre code {
+  font-family: var(--font-mono);
+  font-size: .8125rem;
+  overflow-x: auto;
+}
+
+.tag.user-comment-hidden {
+  color: var(--warn);
+}
+
+.event-timestamp {
+  color: var(--muted);
+}
+
+
+/* ---------- news ---------- */
+
+.news-item {
+  overflow: hidden;
+}
+
+.news-item .meta {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  letter-spacing: .06em;
+  opacity: 1;
+}
+
+.news-item .featured-image figcaption {
+  color: var(--muted);
+  font-size: .75rem;
+  margin-top: .375rem;
+}
+
+.news-item h1 a:hover {
+  color: var(--accent-text);
+}
+
+
+/* ---------- gallery ---------- */
+
+.gallery-cover {
+  text-align: center;
+}
+
+.gallery-title {
+  font-weight: 700;
+}
+
+.gallery-cover:hover img.framed,
+.gallery-images a:hover img.framed {
+  border-color: var(--accent);
+}
+
+
+/* ---------- orga_team ---------- */
+/* The stock team list. Its inline block zeroes the item padding, so the
+   card padding is re-declared with the body prefix. */
+
+body .orga-overview li.orga {
+  background-color: var(--s1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: .875rem;
+}
+
+
+/* ---------- attendee ---------- */
+
+/* the seat and the check-in tag wrap instead of overflowing on a phone */
+.attendee-seats .row {
+  flex-wrap: wrap;
+  gap: .25rem .5rem;
+}
+
+
+/* ---------- party-history ---------- */
+/* Body class page-party_history. Dates read as mono labels. The inline
+   column list stays; an avatar and its name never split across columns. */
+
+body.page-party_history time {
+  font-family: var(--font-mono);
+  font-size: .875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+ol.attendees > li {
+  break-inside: avoid;
+}
+
+
+/* ---------- timetable ---------- */
+
+table.timetable td:first-child {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+table.timetable td {
+  vertical-align: top;
+}
+
+
+/* ---------- tourney ---------- */
+
+.tourney-icon {
+  color: var(--accent-text);
+}
+
+.tourney-category {
+  color: var(--accent-text);
+  font-family: var(--font-mono);
+  font-size: .75rem;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.tourney-subtitle {
+  color: var(--muted);
+  font-size: .875rem;
+}
+
+table:has(.tourney-title) td.bignumber {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* tourney_view: the fill bar and its three states, replacing the inline literals.
+   The separated variant keeps its transparent track. */
+body .progress:not(.progress--separated) {
+  background-color: var(--s2);
+}
+
+body .progress-bar {
+  box-shadow: none;
+}
+
+body .progress-bar.color--available {
+  background-color: var(--ok);
+}
+
+body .progress-bar.color--scarce {
+  background-color: var(--warn);
+}
+
+body .progress-bar.color--full {
+  background-color: var(--bad);
+}
+
+
+/* ---------- badge ---------- */
+
+.user-badge {
+  border-color: var(--line);
+}
+
+a.user-badge:hover {
+  border-color: var(--accent);
+}
+
+
+/* ---------- profile ---------- */
+
+/* the header band sits at z-index -1; its own stacking context keeps it
+   above the card background */
+.user-profile {
+  isolation: isolate;
+}
+
+.user-profile-header-cell-bottom {
+  color: var(--muted);
+  opacity: 1;
+}
+
+.user-profile .stats {
+  color: var(--accent-text);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.user-profile .stats-label {
+  font-family: var(--font-mono);
+  letter-spacing: .1em;
+}
+
+@media (max-width: 35.9375rem) {
+
+  .user-profile {
+    gap: 1.25rem;
+    padding: 1.25rem;
+  }
+
+}
+
+
+/* ---------- settings ---------- */
+/* Body class page-user. The overview rows wrap instead of overflowing. */
+
+body.page-user .main-body-box > .row {
+  flex-wrap: wrap;
+}
+
+
+/* ---------- narrow forms: user-group, user-message, settings, sign-up, email, avatar, password, consent ---------- */
+/* Pages that set the simple layout hold one form. A form at the full width
+   of the wrap makes the inputs unreadably wide, so it caps at a dialog width.
+   Hooks: the body page classes, and the form action where a page has none. */
+
+body:is(
+  .page-board,
+  .page-user_avatar,
+  .page-user_group,
+  .page-user_message,
+  [class~="page-user.create"],
+  [class*="page-user_email_address"],
+  [class*="page-authn_password"]
+) .content-wrapper > form,
+.content-wrapper > form:is(
+  [action*="/users/me/settings/"],
+  [action*="/consent/"]
+) {
+  max-width: 44rem;
+}
+
+
+/* ---------- login ---------- */
+
+.login-component-help {
+  color: var(--muted);
+}
+
+
+/* ---------- touch targets ---------- */
+
+@media (pointer: coarse) {
+
+  .user-comment-actions .dropdown-toggle {
+    align-items: center;
+    display: inline-flex;
+    justify-content: center;
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .user-badge:is(.size-24, .size-32) {
+    height: 44px;
+    width: 44px;
+  }
+
+  .form-check-label,
+  .form-radio-label {
+    align-items: center;
+    min-height: 44px;
+  }
+
+}
+
+
+/* ---------- motion ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+
+  body #login-failed-notice,
+  body #login-failed-notice.hidden {
+    transition: none;
+  }
+
+  textarea.collapsible {
+    transition: none;
+  }
+
+}

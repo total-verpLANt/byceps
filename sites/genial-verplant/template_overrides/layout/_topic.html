@@ -1,0 +1,19 @@
+{#- Party topic resolver. Import with: {% import 'layout/_topic.html' as tp with context %}
+    Exports `state` ('none', 'teaser', 'on'), `topic` (only when 'on'),
+    `teaser` (only `announce_label` and `text`, only when 'teaser') and `num`.
+    `now` and `datetime` are core context variables; `now` is naive UTC. -#}
+{%- from 'layout/_topics.html' import TOPICS -%}
+{%- set ns = namespace(entry=none, state='none') -%}
+{%- if g.party -%}
+  {%- for t in TOPICS if t.party_id == g.party.id -%}{%- set ns.entry = t -%}{%- endfor -%}
+{%- endif -%}
+{%- if ns.entry and now < g.party.ends_at -%}
+  {%- if now >= datetime(*ns.entry.announce_at) -%}{%- set ns.state = 'on' -%}
+  {%- elif now >= datetime(*ns.entry.teaser_at) -%}{%- set ns.state = 'teaser' -%}
+  {%- endif -%}
+{%- endif -%}
+{%- set state = ns.state -%}
+{%- set topic = ns.entry if ns.state == 'on' else none -%}
+{%- set teaser = {'announce_label': ns.entry.announce_at[2] ~ '.' ~ ns.entry.announce_at[1] ~ '.', 'text': ns.entry.get('teaser_text')} if ns.state == 'teaser' else none -%}
+{%- set num = (g.party.title.rpartition('#')[2]|trim if g.party and '#' in g.party.title else '') -%}
+{%- set num = num if num.isascii() and num.isdigit() else '' -%}

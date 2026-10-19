@@ -1,0 +1,22 @@
+{# LAN Tournament site layout for genial verpLANt.
+   Same blocks as the module layout. The bridge stylesheet loads after the
+   module stylesheets and maps the module tokens onto the Owly dark values,
+   so the tournament pages stay dark in every look and theme. The body
+   carries the dark class from the server, so the page needs no script. #}
+{% extends 'layout/base.html' %}
+
+{% block body_class %}lt-dark{% endblock %}
+
+{% block head %}
+  {{ super() }}
+  <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_bracket.css') }}">
+  <link rel="stylesheet" href="{{ url_for_site_file('style/gv-lan-tournament.css') }}">
+{%- endblock %}
+
+{% block scripts %}
+  {{ super() }}
+  {% block lt_theme %}<script>document.body.classList.add('lt-dark');</script>{% endblock %}
+  <script src="{{ url_for('static', filename='behavior/lan_tournament.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='behavior/lan_tournament_bracket.js') }}" defer></script>
+{%- endblock %}

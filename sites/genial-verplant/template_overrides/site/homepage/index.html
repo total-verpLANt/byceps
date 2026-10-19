@@ -1,0 +1,227 @@
+{% extends 'layout/base.html' %}
+{% set current_page = 'homepage' %}
+{% set page_title = _('Home') %}
+
+{% block body_class %}page-home{% endblock %}
+
+{% block head %}
+    <link rel="stylesheet" href="{{ url_for_site_file('style/gv-home.css') }}">
+{% endblock %}
+
+{% block body %}
+{%- import 'layout/_topic.html' as tp with context %}
+{#- Optional admin snippets. Each one renders its band only when the snippet exists and is not empty. -#}
+{%- set venue = render_snippet('homepage_venue', ignore_if_unknown=True) %}
+{%- set facts = render_snippet('homepage_facts', ignore_if_unknown=True) %}
+{%- set schedule = render_snippet('homepage_schedule', ignore_if_unknown=True) %}
+{%- set cards = lan_tournament_homepage_cards() if lan_tournament_homepage_cards is defined else [] %}
+{%- set teasers = news_teasers|default(none) %}
+
+<div class="era-3 uc-wrap">
+  <div class="uc" aria-hidden="true"></div>
+  <p class="uc-text">
+    {%- if tp.state == 'teaser' %}Das Thema kommt bald! Schau bald wieder rein!
+    {%- elif tp.state == 'on' %}NEU: Das Thema ist raus!
+    {%- else %}Diese Seite ist noch im Aufbau! Schau bald wieder rein!
+    {%- endif -%}
+  </p>
+</div>
+
+{% include 'site/homepage/_hero.html' %}
+
+<div class="layout">
+  <aside class="side" aria-label="Seitenleiste">
+    <div class="rbox era-ge2 side-nav">
+      <h3>Navigation</h3>
+      <nav aria-label="Seitenmenü">
+{% include 'layout/_navigation.html' %}
+      </nav>
+    </div>
+    {%- if teasers %}
+    <div class="rbox era-ge2">
+      <h3>Neuigkeiten</h3>
+      <ul>
+        {%- for item in teasers %}
+        <li><a href="{{ url_for('news.view', slug=item.slug) }}">{{ item.title }}</a></li>
+        {%- endfor %}
+      </ul>
+    </div>
+    {%- endif %}
+    {%- if cards %}
+    <div class="rbox era-ge2">
+      <h3>Turniere</h3>
+      <table>
+        <caption class="vh">Turniere und Belegung</caption>
+        {%- for c in cards %}
+        <tr><td><a href="{{ url_for('lan_tournament.view', tournament_id=c.tournament_id) }}">{{ c.name }}</a></td><td>{{ c.filled }}{% if c.capacity %}/{{ c.capacity }}{% endif %}</td></tr>
+        {%- endfor %}
+      </table>
+    </div>
+    {%- endif %}
+    <div class="rbox era-3">
+      <h3>LAN-Webring</h3>
+      <ul>
+        <li><a href="{{ url_for('party_history.index') }}">« Vorherige LANs</a></li>
+        <li><a href="/">Startseite</a></li>
+        {%- if cards %}
+        <li><a href="{{ url_for('lan_tournament.index') }}">Turniere »</a></li>
+        {%- endif %}
+      </ul>
+    </div>
+  </aside>
+
+  <div class="layout-main">
+    {%- if total > 0 %}
+    <section class="band" id="tickets" aria-labelledby="tickets-title">
+      <div class="band-head">
+        <div><h2 id="tickets-title">Plätze belegt</h2></div>
+        <a class="more" href="{{ url_for('shop_order.order_form') }}">Zum Ticketshop</a>
+      </div>
+      {%- set fill = [sold / total * 100, 100]|min|round(1) %}
+      {%- set cells = (fill / 100 * 20)|round|int %}
+      <div class="meter-card">
+        <div>
+          <div class="meter-top">
+            <span class="meter-count">{{ sold }} <small>/ {{ total }}</small></span>
+            {%- if is_nearly_sold_out %}
+            <span class="meter-note">
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5 15 14H1z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M8 6v3.5M8 11.5v.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+              {% if available > 0 %}Fast ausverkauft – nur noch {{ available }} {{ 'Platz' if available == 1 else 'Plätze' }} frei{% else %}Ausverkauft{% endif %}
+            </span>
+            {%- endif %}
+          </div>
+          <div class="bullet" role="img" aria-label="{{ sold }} von {{ total }} Plätzen belegt, {{ percentage|int }} Prozent. Ab 90 Prozent gilt: fast ausverkauft.">
+            <div class="bullet-fill" style="width:{{ fill }}%"></div>
+            <div class="bullet-mark"></div>
+          </div>
+          <div class="bullet-scale" aria-hidden="true"><span>0</span><span>Marke: 90 %</span><span>{{ total }}</span></div>
+          <div class="ascii" aria-hidden="true">[{{ '#' * cells }}{{ '-' * (20 - cells) }}] {{ percentage|int }}%</div>
+        </div>
+        {%- if available > 0 %}
+        <a class="btn btn-primary" href="{{ url_for('shop_order.order_form') }}">Tickets sichern</a>
+        {%- endif %}
+      </div>
+    </section>
+    {%- endif %}
+
+    {%- if facts|trim %}
+    <section class="band" id="eckdaten" aria-labelledby="eckdaten-title">
+      <div class="band-head">
+        <div><h2 id="eckdaten-title">Auf einen Blick</h2></div>
+      </div>
+      {{ facts|safe }}
+    </section>
+    {%- endif %}
+
+    {%- if schedule|trim %}
+    <section class="band" id="zeitplan" aria-labelledby="zeitplan-title">
+      <div class="band-head">
+        <div><h2 id="zeitplan-title">Zeitplan</h2></div>
+        <a class="more" href="/zeitplan">Kompletter Zeitplan</a>
+      </div>
+      {{ schedule|safe }}
+    </section>
+    {%- endif %}
+
+    {%- if cards %}
+    <section class="band" id="turniere" aria-labelledby="turniere-title">
+      <div class="band-head">
+        <div><h2 id="turniere-title">Wer zockt was</h2></div>
+        <a class="more" href="{{ url_for('lan_tournament.index') }}">Alle Turniere</a>
+      </div>
+      <div class="tgrid">
+        {%- for c in cards %}
+        {%- set status = c.status.name %}
+        <a class="tcard" href="{{ url_for('lan_tournament.view', tournament_id=c.tournament_id) }}">
+          {%- if status == 'ONGOING' %}
+          <span class="chip live"><span class="dot" aria-hidden="true"></span>Läuft</span>
+          {%- elif status == 'PAUSED' %}
+          <span class="chip live is-paused"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M4 2.5v7M8 2.5v7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>Pausiert</span>
+          {%- elif status == 'REGISTRATION_OPEN' %}
+          <span class="chip open"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6h8M6 2v8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>Anmeldung offen</span>
+          {%- elif status == 'REGISTRATION_CLOSED' %}
+          <span class="chip closed"><svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="5.5" width="7" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M4 5.5V4a2 2 0 0 1 4 0v1.5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>Anmeldung geschlossen</span>
+          {%- elif status == 'COMPLETED' %}
+          <span class="chip done"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.5 5 9l4.5-5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Beendet</span>
+          {%- endif %}
+          <h3>{{ c.name }}</h3>
+          {%- if c.game %}
+          <span class="fmt">{{ c.game }}</span>
+          {%- endif %}
+          <dl>
+            <dt>{{ 'Teams' if c.is_team_based else 'Plätze' }}</dt><dd>{{ c.filled }}{% if c.capacity %}/{{ c.capacity }}{% endif %}</dd>
+            {%- if c.starts_at %}
+            <dt>Start</dt><dd>{{ c.starts_at|datetimeformat('ccc HH:mm') }}</dd>
+            {%- endif %}
+          </dl>
+        </a>
+        {%- endfor %}
+      </div>
+    </section>
+    {%- endif %}
+
+    {%- if teasers %}
+    <section class="band" id="news" aria-labelledby="news-title">
+      <div class="band-head">
+        <div><h2 id="news-title">Neuigkeiten</h2></div>
+        <a class="more" href="{{ url_for('news.index') }}">Alle News</a>
+      </div>
+      <div class="news">
+        {%- for item in teasers %}
+        <article>
+          {%- if item.published_at %}
+          <time datetime="{{ item.published_at.strftime('%Y-%m-%d') }}">{{ item.published_at|dateformat('dd.MM.yyyy') }}</time>
+          {%- endif %}
+          <h3><a href="{{ url_for('news.view', slug=item.slug) }}">{{ item.title }}</a></h3>
+        </article>
+        {%- endfor %}
+      </div>
+    </section>
+    {%- endif %}
+
+    {%- set sponsors = [
+      {'name': 'Stadt Brake',            'base': 'brake',                 'href': 'https://www.brake.de/',             'line': 'Sport, Kultur und Vereinsleben'},
+      {'name': 'DEPA-Event',             'base': 'depa',                  'href': 'https://www.depa-event.de/',        'line': 'Fotobox, Licht- und Musiktechnik'},
+      {'name': 'Fahrrad Gruss',          'base': 'fahrrad_gruss',         'href': 'https://www.fahrradgruss.de/',      'line': 'Zweirad-Spezialist'},
+      {'name': 'Freundeskreis Zwiesel',  'base': 'Freundeskreis_Zwiesel', 'href': 'https://freundeskreis-zwiesel.de/', 'line': 'Aus dem Bayerischen Wald'},
+      {'name': 'HiScore',                'base': 'hiscore',               'href': 'https://hi-score.org/',             'line': 'Arcade- und Gaming-Events'},
+      {'name': 'Inter-Tech',             'base': 'Inter-tech',            'href': 'https://www.inter-tech.de/',        'line': 'PC-Komponenten und Gehäuse'},
+      {'name': 'Landbäckerei zur Horst', 'base': 'horst',                 'href': 'https://torbenzurhorst.de/',        'line': 'Brötchen für lange Nächte'},
+      {'name': 'Senchii',                'base': 'senchii',               'href': 'https://senchii.de/',               'line': 'Gaming-Drinks'},
+      {'name': 'Thermal Grizzly',        'base': 'thermalgrizzly',        'href': 'https://www.thermal-grizzly.com/',  'line': 'Wärmeleitpasten'},
+      {'name': 'Virtual Lounge',         'base': 'virtualounge',          'href': 'https://virtual-lounge.de/',        'line': 'VR-Erlebnisse in Bremen'},
+      {'name': 'Volt Cola',              'base': 'voltcola',              'href': 'https://voltcola.de/',              'line': 'Brennstoff für LAN-Nächte'},
+      {'name': 'Noctua',                 'base': 'noctua',                'href': 'https://noctua.at/',                'line': 'Lüfter und Kühler'}
+    ] %}
+    <section class="band" id="sponsoren" aria-labelledby="sponsors-title">
+      <div class="band-head">
+        <div><h2 id="sponsors-title">Sponsoren</h2></div>
+      </div>
+      <ul class="sponsors">
+        {%- for s in sponsors %}
+        <li>
+          <a class="sponsor" href="{{ s.href }}" target="_blank" rel="noopener">
+            <picture>
+              <source type="image/webp"
+                srcset="{{ url_for_site_file('style/sponsoren/' ~ s.base ~ '_167.webp') }} 167w,
+                        {{ url_for_site_file('style/sponsoren/' ~ s.base ~ '_334.webp') }} 334w"
+                sizes="(max-width: 720px) 50vw, 167px">
+              <img src="{{ url_for_site_file('style/sponsoren/' ~ s.base ~ '_600x250.png') }}"
+                   alt="" width="167" height="68" loading="lazy" decoding="async">
+            </picture>
+            <b>{{ s.name }}</b>
+            <span>{{ s.line }}</span>
+          </a>
+        </li>
+        {%- endfor %}
+      </ul>
+    </section>
+  </div>
+</div>
+
+{{ render_snippet('homepage', ignore_if_unknown=True)|safe }}
+{% endblock %}
+
+{% block scripts %}
+    <script src="{{ url_for_site_file('behavior/gv-home.js') }}" defer></script>
+{% endblock %}

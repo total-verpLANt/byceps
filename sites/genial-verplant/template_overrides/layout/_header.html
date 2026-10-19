@@ -1,0 +1,52 @@
+{#- Site header: brand, main menu, look picker, account area and phone menu. Included from layout/base.html inside header.site-head. -#}
+{%- from 'macros/user.html' import render_user_screen_name %}
+{%- import 'layout/_topic.html' as tp with context %}
+<style>
+  .acct { position: relative; }
+  .acct > summary { list-style: none; max-width: 14rem; }
+  .acct > summary::-webkit-details-marker { display: none; }
+  .acct[open] > summary { border-color: var(--accent); }
+  .acct-name { overflow: hidden; text-overflow: ellipsis; }
+  .acct-menu { position: absolute; right: 0; top: calc(100% + .35rem); z-index: 40; min-width: 14rem; display: grid; padding: .35rem; background: var(--s1); color: var(--fg); border: 1px solid var(--line); border-radius: var(--radius); }
+  .acct-menu a, .acct-menu button { display: flex; align-items: center; width: 100%; min-height: 44px; padding: 0 1rem; font: 600 .9375rem/1 var(--font-body); text-align: left; text-decoration: none; color: var(--fg); background: none; border: 0; border-radius: var(--radius-sm); cursor: pointer; }
+  .acct-menu a:hover, .acct-menu button:hover { background: var(--s2); }
+  .acct-menu form { margin: 0; border-top: 1px solid var(--line); }
+  @media (max-width: 720px) { .acct > summary { max-width: 7rem; } }
+</style>
+  <div class="wrap head-row">
+    <a class="brand" href="/" aria-label="genial verpLANt, Startseite">
+      <img id="egg-owl" class="owl egg" src="{{ url_for_site_file('style/owl.png') }}" alt="" width="40">
+      <span class="wordmark">
+        {%- if tp.state == 'on' -%}
+        genial {{ tp.topic.pun[0] }}<b class="tp-pun">{{ tp.topic.pun[1] }}</b>{{ tp.topic.pun[2] }}
+        {%- else -%}
+        genial verp<b>LAN</b>t
+        {%- endif -%}
+      </span>
+    </a>
+    <nav class="nav" aria-label="Hauptmenü">
+{% include 'layout/_navigation.html' %}
+    </nav>
+{% include 'layout/_look_picker.html' %}
+{%- if g.user.authenticated %}
+    <details class="acct">
+      <summary class="btn"><span class="acct-name">{{ render_user_screen_name(g.user.as_user()) }}</span></summary>
+      <div class="acct-menu">
+        <a href="{{ url_for('dashboard.index') }}">Übersicht</a>
+        <a href="{{ url_for('user_profile.view', user_id=g.user.id) }}">Profil</a>
+        <a href="{{ url_for('user_settings.view') }}">Einstellungen</a>
+        <a href="{{ url_for('ticketing.index_mine') }}">Meine Tickets</a>
+        <a href="{{ url_for('shop_orders.index') }}">Bestellungen</a>
+        <form method="post" action="{{ url_for('authn_login.log_out') }}"><button type="submit">Abmelden</button></form>
+      </div>
+    </details>
+{%- else %}
+    <a class="btn head-cta" href="{{ url_for('authn_login.log_in_form') }}">{{ _('Log in') }}</a>
+{%- endif %}
+    <details class="mnav" id="mnav">
+      <summary class="btn mnav-btn"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 5.5h14M3 10h14M3 14.5h14"/></svg><span class="mnav-lbl">Menü</span></summary>
+      <nav class="mnav-panel" aria-label="Hauptmenü">
+{% include 'layout/_navigation.html' %}
+      </nav>
+    </details>
+  </div>

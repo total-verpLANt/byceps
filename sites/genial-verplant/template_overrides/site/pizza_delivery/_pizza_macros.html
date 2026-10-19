@@ -1,0 +1,56 @@
+{#- Pieces shared by the board and the pickup slip page. Import with context. -#}
+
+{%- macro len_class(number) -%}
+pz-len-{{ 's' if number|length <= 6 else ('m' if number|length <= 12 else 'l') }}
+{%- endmacro -%}
+
+{%- macro num(number) -%}
+<b class="pz-num">{{ number }}</b>
+{%- endmacro -%}
+
+{#- Numbers as a German-style list: "A, B und C". -#}
+{%- macro and_list(numbers) -%}
+{%- for number in numbers -%}
+{{ num(number) }}{% if not loop.last %}{{ ', ' if loop.revindex > 2 else ' ' ~ _('and') ~ ' ' }}{% endif %}
+{%- endfor -%}
+{%- endmacro -%}
+
+{%- macro stamp(kind, small=false) -%}
+<span class="pz-stamp pz-stamp--{{ kind }}{% if small %} pz-stamp--sm{% endif %}">{{ _('Ready for pickup') if kind == 'ready' else _('On its way') }}</span>
+{%- endmacro -%}
+
+{#- mode: 'plain' (my_status with slips), 'lead' (my_status, nothing followed yet), 'side' (board column) -#}
+{%- macro claim_form(form_error=none, form_value='', mode='plain') -%}
+{%- set errors = {
+  'empty': _('Please enter a pizza number.'),
+  'too_long': _('Pizza number is too long.'),
+  'not_found': _('Pizza number not found.'),
+  'already_claimed': _('Someone is already following this number. If it is yours, the orga team at the food counter will sort it out.'),
+} -%}
+{%- set error = errors.get(form_error) if form_error else none -%}
+<form class="tv-pizza-claim" id="pz-claim" method="post" action="{{ url_for('pizza_delivery.claim') }}" novalidate>
+  {%- if mode == 'side' %}
+  <input type="hidden" name="next" value="board">
+  {%- endif %}
+  {%- if mode == 'lead' %}
+  <h2>{{ _('No delivery linked to your account yet') }}</h2>
+  <p class="pz-claim-sub">{{ _('Enter your pizza number below to track your order.') }}</p>
+  {%- elif mode == 'side' %}
+  <h2>{{ _('Follow a number') }}</h2>
+  <p class="pz-claim-sub">{{ _('Enter your pizza number. We will let you know as soon as it is called.') }}</p>
+  {%- else %}
+  <h2>{{ _('Fill in a pickup slip') }}</h2>
+  {%- endif %}
+  <div class="pz-fld{% if error %} pz-fld--err{% endif %}">
+    <label for="pz-number">{{ _('Pizza number') }}</label>
+    <input type="text" id="pz-number" name="number" value="{{ form_value|upper }}" placeholder="{{ _('e.g. A-12') }}" autocapitalize="characters" autocomplete="off" spellcheck="false"
+      {%- if error %} aria-invalid="true" aria-describedby="pz-number-err pz-number-hint"{% else %} aria-describedby="pz-number-hint"{% endif %}>
+    {%- if error %}
+    <p class="pz-err" id="pz-number-err">{{ error }}</p>
+    {%- endif %}
+    <p class="pz-hint" id="pz-number-hint">{{ _('On your order receipt. Up to 20 characters, upper or lower case.') }}</p>
+  </div>
+  <button class="button color-primary" type="submit">{{ _('Follow number') }}</button>
+  <p class="pz-fine">{{ _('Following only means we tell you when the number is called. It reserves nothing and does not prove the pizza is yours. Entered the wrong number? The orga team at the food counter will fix it.') }}</p>
+</form>
+{%- endmacro -%}

@@ -195,9 +195,13 @@ from .forms import (
     game_format_label,
     request_mode_label,
 )
+from .homepage_cards import get_homepage_tournament_cards
 
 
 blueprint = create_blueprint('lan_tournament', __name__)
+blueprint.add_app_template_global(
+    get_homepage_tournament_cards, 'lan_tournament_homepage_cards'
+)
 register_blueprints(
     blueprint, [('services.lan_tournament.blueprints.common', None)]
 )

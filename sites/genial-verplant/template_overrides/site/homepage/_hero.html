@@ -1,0 +1,71 @@
+{#- Homepage hero: title, event facts, topic line, countdown, calls to action and the CRT. Included from site/homepage/index.html.
+    Reads `venue` (rendered snippet text, optional) from the including template. Topic content renders only when the topic is revealed. -#}
+{%- import 'layout/_topic.html' as tp with context %}
+{%- if g.party -%}
+  {%- set party_name = ((g.party.title.rpartition('#')[0]|trim) if tp.num else g.party.title) or 'genial verpLANt' -%}
+{%- else -%}
+  {%- set party_name = 'genial verpLANt' -%}
+{%- endif -%}
+{%- set hero_venue = venue|default('')|trim -%}
+{%- if tp.state == 'on' -%}
+  {%- set crt_caption = 'CH ' ~ (tp.num or '01') ~ ' · THEMA: ' ~ (tp.topic.name|upper) -%}
+{%- elif tp.state == 'teaser' -%}
+  {%- set crt_caption = 'CH ' ~ (tp.num or '01') ~ ' · KEIN SIGNAL' -%}
+{%- else -%}
+  {%- set crt_caption = ('TV-' ~ tp.num if tp.num else 'TV') ~ ' · CH 01 · ONLINE' -%}
+{%- endif %}
+<section class="hero" aria-labelledby="hero-title">
+  <div class="hero-grid">
+    <div>
+      <h1 id="hero-title">
+        {%- if tp.state == 'on' -%}
+        <span class="tp-name">genial {{ tp.topic.pun[0] }}<span class="tp-pun">{{ tp.topic.pun[1] }}</span>{{ tp.topic.pun[2] }}</span>
+        {%- else -%}
+        <span class="tp-name">{{ party_name }}</span>
+        {%- endif -%}
+        {%- if tp.num %} <span class="num">#{{ tp.num }}</span>{% endif -%}
+        <span class="cursor" aria-hidden="true"></span>
+      </h1>
+      {%- if g.party or hero_venue %}
+      <dl class="hero-meta">
+        {%- if g.party %}
+        <dt>Wann</dt><dd class="when">{{ g.party.starts_at|datetimeformat('ccc dd.MM. HH:mm') }} – {{ g.party.ends_at|datetimeformat('ccc dd.MM.yyyy HH:mm') }} Uhr</dd>
+        {%- endif %}
+        {%- if hero_venue %}
+        {{ hero_venue|safe }}
+        {%- endif %}
+      </dl>
+      {%- endif %}
+      {%- if tp.state == 'on' %}
+      <p class="tp-line">{% if tp.num %}Thema der #{{ tp.num }}{% else %}Thema{% endif %}: <span class="tp-label">{{ tp.topic.name }}</span></p>
+      <div class="tp-frame" aria-hidden="true"><div class="tp-art">{% include tp.topic.art %}</div><span class="tp-new">NEU!</span></div>
+      {%- elif tp.state == 'teaser' %}
+      <p class="tp-line"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5 7V5a3 3 0 0 1 6 0v2"/></svg><span>Das Thema wird am {{ tp.teaser.announce_label }} verraten.{% if tp.teaser.text %} {{ tp.teaser.text }}{% endif %}</span></p>
+      {%- endif %}
+      {%- if g.party and g.party.starts_at > now %}
+      {%- set left = g.party.starts_at - now %}
+      <div class="countdown" role="group" data-start="{{ g.party.starts_at.isoformat() }}" aria-label="Countdown bis zum Start am {{ g.party.starts_at|datetimeformat('dd.MM.yyyy') }} um {{ g.party.starts_at|datetimeformat('HH:mm') }} Uhr">
+        <span class="countdown-label" aria-hidden="true">Bis zum Start</span>
+        <span class="cd-unit" aria-hidden="true"><b>{{ '%02d'|format(left.days) }}</b><span>Tage</span></span>
+        <span class="cd-unit" aria-hidden="true"><b>{{ '%02d'|format(left.seconds // 3600) }}</b><span>Std</span></span>
+        <span class="cd-unit" aria-hidden="true"><b>{{ '%02d'|format(left.seconds % 3600 // 60) }}</b><span>Min</span></span>
+      </div>
+      {%- endif %}
+      <div class="hero-cta">
+        {%- if total > 0 and available > 0 %}
+        <a class="btn btn-primary" href="{{ url_for('shop_order.order_form') }}">Tickets sichern</a>
+        {%- endif %}
+        <a class="btn" href="/zeitplan">Zeitplan ansehen</a>
+      </div>
+    </div>
+    <div class="crt" aria-hidden="true">
+      <img class="owl" src="{{ url_for_site_file('style/owl.png') }}" alt="" width="360" height="360" decoding="async">
+      <div class="tp-art">
+        {%- if tp.state == 'on' %}{% include tp.topic.art %}
+        {%- elif tp.state == 'teaser' %}<div class="tp-tease"><span class="tp-tease-a">KEIN SIGNAL</span><span class="tp-tease-b">Coming soon</span></div>
+        {%- endif %}
+      </div>
+      <span class="crt-caption">{{ crt_caption }}</span>
+    </div>
+  </div>
+</section>
