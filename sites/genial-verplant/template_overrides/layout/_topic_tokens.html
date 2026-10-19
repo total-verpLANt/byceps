@@ -1,0 +1,6 @@
+{#- Topic colour tokens for the document head. Renders nothing unless the topic is on. -#}
+{%- import 'layout/_topic.html' as tp with context -%}
+{%- if tp.state == 'on' -%}
+<style>:root{--tp:{{ tp.topic.colour }};--tp-on-dark:{{ tp.topic.on_dark }};--tp-on-light:{{ tp.topic.on_light }};--tp-glow:{{ tp.topic.glow }}}</style>
+{% if tp.topic.get('og_image') %}<meta property="og:image" content="{{ url_for_site_file(tp.topic.og_image, _external=True) }}">{% endif %}
+{%- endif -%}

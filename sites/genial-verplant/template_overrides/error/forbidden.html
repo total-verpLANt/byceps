@@ -1,0 +1,16 @@
+{% extends 'layout/base_auto.html' %}
+{% import 'layout/_topic.html' as tp with context %}
+{% set page_title = _('Access Denied') %}
+{% set current_page = 'error_forbidden' %}
+
+{% block body %}
+  <section class="err" aria-labelledby="err-title">
+    <div class="err-crt">
+      <div class="err-noise" aria-hidden="true"></div>
+      <p class="err-code">ZUGRIFF VERWEIGERT · 403</p>
+    </div>
+    <h1 class="err-title" id="err-title">{{ page_title }}</h1>
+    <p class="err-text">Für diese Seite fehlt dir die Berechtigung. Prüfe, ob du angemeldet bist, oder kehre zur Startseite zurück.</p>
+    <p class="err-actions"><a class="button color-primary" href="/">Zur Startseite</a></p>
+  </section>
+{%- endblock %}

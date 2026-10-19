@@ -1,0 +1,100 @@
+{% extends 'layout/base.html' %}
+{% from 'macros/icons.html' import render_icon %}
+{% from 'macros/misc.html' import render_progress_bar %}
+{% from 'macros/seating.html' import render_area %}
+{% from 'macros/subnav.html' import render_subnav_for_menu_id %}
+{% set current_page = 'seating' %}
+{% set page_title = [_('Seat management') if manage_mode else _('Seating plan'), area.title] %}
+
+{% block head %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='style/seating.css') }}">
+{%- endblock %}
+
+{% block subnav %}
+  {%- if subnav_menu_id|default %}
+{{ render_subnav_for_menu_id(subnav_menu_id, current_page) }}
+  {%- endif %}
+{% endblock %}
+
+{% block body %}
+
+  {%- if manage_mode %}
+  <nav class="breadcrumbs">
+    <ol>
+      <li><a href="{{ url_for('.view_area', slug=area.slug) }}">{{ _('Seating plan') }}</a></li>
+    </ol>
+  </nav>
+  {%- endif %}
+
+  <h1 class="title">{%- if manage_mode %}{{ _('Plätze') }} {{ _('verwalten') }}{%- else %}{{ _('Der') }} {{ _('Saalplan') }}{%- endif %}</h1>
+  <p>{{ _('Wer sitzt wo? Hier hängt der Hallenplan der %(area)s aus. Nach Mitgliedern suchen, freie Plätze finden — und mit gültiger Karte den eigenen Platz wählen.', area=area.title) }}</p>
+
+  <div class="block row row--space-between row--wrap">
+    <div>
+      <form action="{{ url_for('attendance.attendees') }}" class="single-row unobtrusive block">
+        <input type="search" name="search_term" placeholder="{{ _('Username') }}" class="form-control" style="width: 12rem;">
+        <button type="submit" class="button" title="{{ _('Search') }}">{{ render_icon('search') }}</button>
+      </form>
+    </div>
+    {%- if g.user.authenticated and seat_management_enabled %}
+    <div>
+      <div class="button-row is-right-aligned">
+        {%- if manage_mode %}
+        <a class="button" href="{{ url_for('.view_area', slug=area.slug) }}">{{ _('Leave seat management') }}</a>
+        {%- else %}
+        <a class="button" href="{{ url_for('.manage_seats_in_area', slug=area.slug) }}">{{ _('Manage seats') }}</a>
+        {%- endif %}
+      </div>
+    </div>
+    {%- endif %}
+  </div>
+
+  {%- if g.user.authenticated and seat_management_enabled and manage_mode %}
+{% include 'site/seating/_ticket_selector.html' %}
+  {%- endif %}
+
+  {%- set chair_pending_ticket_id = find_first_unanswered_chair_ticket_id() %}
+  {%- if chair_pending_ticket_id %}
+{% include 'site/seating/_chair_reminder.html' %}
+  {%- endif %}
+
+  <div class="main-body-box seatplan-frame">
+
+    <p><strong>{{ area.title }}</strong> <small class="dimmed">{{ _('Saalplan') }} · {{ _('nicht maßstabsgetreu') }}</small></p>
+
+    <div class="block">
+{{ render_area(area, seats) }}
+    </div>
+
+    <div class="row row--space-between">
+      <div>
+{% include 'site/seating/_legend.html' %}
+      </div>
+      <div>
+        <small>
+          <p><strong>{{ _('Utilization') }}</strong></p>
+          <div class="progress">
+            {{ render_progress_bar(seat_utilization.occupied, seat_utilization.total) }}
+          </div>
+          <strong>{{ seat_utilization.occupied|numberformat }}</strong> / {{ seat_utilization.total|numberformat }} {{ _('seats occupied') }}
+        </small>
+      </div>
+    </div>
+
+  </div>
+
+{%- endblock %}
+
+{% block scripts %}
+    <script src="{{ url_for('static', filename='behavior/seating.js') }}"></script>
+    <script>
+      onDomReady(() => {
+        {%- if g.user.authenticated and seat_management_enabled and manage_mode %}
+        const selected_ticket_id = {% if selected_ticket_id|default %}'{{ selected_ticket_id }}'{% else %}null{% endif %};
+        init_seat_management(selected_ticket_id);
+        {%- endif %}
+
+        init_seat_tooltips();
+      });
+    </script>
+{%- endblock %}

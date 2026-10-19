@@ -1,0 +1,17 @@
+{% extends 'layout/base_auto.html' %}
+{% import 'layout/_topic.html' as tp with context %}
+{% set page_title = _('Page Not Found') %}
+{% set current_page = 'error_not_found' %}
+
+{% block body %}
+  <section class="err" aria-labelledby="err-title">
+    <div class="err-crt">
+      <div class="err-noise" aria-hidden="true"></div>
+      <p class="err-code">KEIN SIGNAL · 404</p>
+    </div>
+    <h1 class="err-title" id="err-title">{{ page_title }}</h1>
+    <p class="err-text">Auf diesem Kanal läuft nichts. Die Seite wurde verschoben oder gelöscht, oder die Adresse stimmt nicht.</p>
+    {%- if tp.topic and tp.topic.get('error_line') %}<p class="tp-line">{{ tp.topic.get('error_line') }}</p>{% endif %}
+    <p class="err-actions"><a class="button color-primary" href="/">Zur Startseite</a></p>
+  </section>
+{%- endblock %}

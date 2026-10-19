@@ -1,0 +1,5 @@
+{#- Main menu links. Used twice by layout/_header.html: the inline menu and the phone menu panel. -#}
+{%- set active_page = current_page|default('') -%}
+{%- for item in get_nav_menu_items('main') %}
+<a href="{{ item.target }}"{% if active_page and active_page == item.current_page_id %} aria-current="page"{% endif %}>{{ item.label }}</a>
+{%- endfor %}

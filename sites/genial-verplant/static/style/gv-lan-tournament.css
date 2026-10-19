@@ -1,0 +1,189 @@
+/* ============================================================
+   Tournament bridge
+   The tournament module reads its own custom properties (--lt-*
+   in the module stylesheet, --ltd-* in the orga dashboard, --ls-*
+   in the seeding board, --personal-* in the personal overview).
+   This file points them at the Owly dark values. Tournament pages
+   stay dark in every look and every colour scheme, so the --lt-*
+   values are literals and never follow the theme tokens.
+
+   Every selector starts with :root[data-era] body.lt-dark. That
+   outranks the module rules (.lt-dark, .lt-dashboard.is-site,
+   .lt-seed-site, .personal-tournaments) whatever the load order,
+   because the module pages add their own stylesheets after this
+   one.
+   ============================================================ */
+
+/* ---------- 1. Module tokens (literal Owly dark values) ---------- */
+
+:root[data-era] body.lt-dark {
+  /* Brand */
+  --lt-brand-blue: #7fb6ff;
+  --lt-brand-orange: #f39200;
+  --lt-brand-success: #5bd68f;
+  --lt-brand-warning: #ffcf5a;
+  --lt-brand-danger: #ff7b72;
+
+  /* Backgrounds */
+  --lt-bg: #050403;
+  --lt-bg-2: #0e0b08;
+  --lt-panel: #0e0b08;
+  --lt-card: #17120c;
+  --lt-white: #f2e6d6;
+
+  /* Borders and lines */
+  --lt-border: #2b2219;
+  --lt-line: #2b2219;
+  --lt-line-strong: #7a6650;
+
+  /* Text */
+  --lt-text: #f2e6d6;
+  --lt-muted: #b09a80;
+  --lt-ink: #050403;
+
+  /* Geometry */
+  --lt-radius: 4px;
+  --lt-radius-sm: 3px;
+  --lt-shadow: none;
+
+  font-family: var(--font-body);
+}
+
+/* ---------- 2. Fonts ---------- */
+
+/* The module reads --display and --mono for its headings, scores and
+   labels. They are declared on the content area as well: in Clan 2003
+   and LAN '99 the content well redeclares the Owly font tokens there,
+   and a var() reference resolves on the element that declares it. */
+:root[data-era] body.lt-dark,
+:root[data-era] body.lt-dark .content-wrapper {
+  --display: var(--font-display);
+  --mono: var(--font-mono);
+}
+
+:root[data-era] body.lt-dark :is(
+  .match-score,
+  .contestant-score,
+  .hs-score,
+  .bracket-contestant-score,
+  .podium__score,
+  .lt-score-pill
+) {
+  font-family: var(--font-mono);
+}
+
+/* ---------- 3. Orga dashboard (--ltd-*, site block) ---------- */
+
+:root[data-era] body.lt-dark .lt-dashboard.is-site {
+  --ltd-r: var(--lt-radius);
+  --ltd-shadow: var(--lt-shadow);
+
+  --ltd-bg: var(--lt-bg);
+  --ltd-surf: var(--lt-bg-2);
+  --ltd-surf-2: var(--lt-card);
+  --ltd-field: var(--lt-bg);
+  --ltd-stale: var(--lt-bg);
+  --ltd-ink: var(--lt-text);
+  --ltd-soft: color-mix(in srgb, var(--lt-text) 60%, var(--lt-muted));
+  --ltd-mute: var(--lt-muted);
+  --ltd-line: var(--lt-line);
+  --ltd-line-s: var(--lt-line-strong);
+  --ltd-link: var(--accent-text);
+  --ltd-focus: var(--accent-text);
+  --ltd-acc: var(--lt-brand-orange);
+  --ltd-btn: var(--lt-card);
+  --ltd-btn-h: color-mix(in srgb, var(--lt-card) 88%, var(--lt-text));
+  --ltd-pri: var(--lt-brand-orange);
+  --ltd-pri-ink: var(--lt-ink);
+
+  --ltd-g-bg: color-mix(in srgb, var(--lt-brand-success) 16%, var(--lt-bg-2));
+  --ltd-g-ink: var(--lt-brand-success);
+  --ltd-y-bg: color-mix(in srgb, var(--lt-brand-warning) 16%, var(--lt-bg-2));
+  --ltd-y-ink: var(--lt-brand-warning);
+  --ltd-r-bg: color-mix(in srgb, var(--lt-brand-danger) 16%, var(--lt-bg-2));
+  --ltd-r-ink: var(--lt-brand-danger);
+
+  --ltd-ready: var(--lt-brand-blue);
+  --ltd-pin: color-mix(in srgb, var(--lt-brand-blue) 60%, var(--lt-brand-danger));
+  --ltd-conf: var(--lt-brand-orange);
+  --ltd-conf-bg: color-mix(in srgb, var(--lt-brand-orange) 14%, var(--lt-bg-2));
+  --ltd-rev: color-mix(in srgb, var(--lt-brand-danger) 65%, var(--lt-brand-blue));
+  --ltd-info: var(--lt-brand-blue);
+  --ltd-info-bg: color-mix(in srgb, var(--lt-brand-blue) 14%, var(--lt-bg-2));
+  --ltd-err: var(--lt-brand-danger);
+  --ltd-err-bg: color-mix(in srgb, var(--lt-brand-danger) 16%, var(--lt-bg-2));
+  --ltd-ok: var(--lt-brand-success);
+  --ltd-ok-bg: color-mix(in srgb, var(--lt-brand-success) 14%, var(--lt-bg-2));
+  --ltd-warn-ink: var(--lt-brand-warning);
+
+  /* Optional font tokens of the dashboard, plus the Owly key look. */
+  --ltd-font: var(--font-body);
+  --ltd-head: var(--font-display);
+  --ltd-meta: var(--font-mono);
+  --ltd-num: var(--font-mono);
+  --ltd-bfont: var(--font-mono);
+  --ltd-bs: .8125rem;
+  --ltd-bls: .1em;
+  --ltd-btt: uppercase;
+}
+
+/* ---------- 4. Seeding board (--ls-*, site block) ---------- */
+
+:root[data-era] body.lt-dark .lt-seed-site {
+  --ls-ink: var(--lt-text);
+  --ls-mute: var(--lt-muted);
+  --ls-paper: var(--lt-panel);
+  --ls-lite: var(--lt-card);
+  --ls-solid: var(--lt-bg-2);
+  --ls-accent: var(--lt-brand-orange);
+  --ls-ok: var(--lt-brand-success);
+  --ls-warn: var(--lt-brand-warning);
+  --ls-err: var(--lt-brand-danger);
+  --ls-display: var(--font-display);
+  --ls-body: var(--font-body);
+  --ls-mono: var(--font-mono);
+}
+
+/* ---------- 5. Personal overview (--personal-*) ---------- */
+
+:root[data-era] body.lt-dark .personal-tournaments {
+  --personal-border: var(--lt-line);
+  --personal-divider: var(--lt-line-strong);
+  --personal-surface: color-mix(in srgb, var(--lt-white) 4%, transparent);
+  --personal-accent: var(--lt-brand-orange);
+  --personal-open: var(--lt-brand-danger);
+  --personal-waiting: var(--lt-brand-warning);
+  --personal-confirmed: var(--lt-brand-success);
+  --personal-notice: var(--lt-muted);
+  --personal-radius: var(--lt-radius);
+}
+
+/* ---------- 6. Owly light: keep the whole page dark ----------
+   Header, footer and the core components outside the module markup
+   read the site tokens. With the light scheme those would sit on
+   the dark tournament background, so the tokens of the light block
+   are set back to their dark values while a tournament page is
+   shown. Clan 2003 and LAN '99 are dark looks already. */
+
+:root[data-era="1"][data-theme="light"]:has(body.lt-dark) {
+  --bg: #050403;
+  --s1: #0e0b08;
+  --s2: #17120c;
+  --fg: #f2e6d6;
+  --muted: #b09a80;
+  --line: #2b2219;
+  --ctl: #7a6650;
+  --accent-text: #ffb000;
+  --on-accent: #050403;
+  --ok: #5bd68f;
+  --warn: #ffcf5a;
+  --bad: #ff7b72;
+  --info: #7fb6ff;
+  --owl-outline: #f3eee6;
+  --glow: 0 0 8px rgba(255, 176, 0, .38);
+  --glow-strong: 0 0 14px rgba(255, 176, 0, .45), 0 0 2px rgba(255, 176, 0, .6);
+  --led-filter: drop-shadow(0 0 4px rgba(255, 176, 0, .5));
+  --led-glow: 0 0 6px currentColor;
+  --tp-text: var(--tp-on-dark);
+  color-scheme: dark;
+}

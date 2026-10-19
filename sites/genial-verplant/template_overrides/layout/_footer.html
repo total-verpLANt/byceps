@@ -1,0 +1,50 @@
+{#- Site footer: about, contact, community and legal links, the party topic line and the LAN '99 counter strip. Included from layout/base.html inside footer.site-foot. -#}
+{%- import 'layout/_topic.html' as tp with context %}
+  <div class="wrap">
+    <div class="foot-grid era-not3">
+      <div>
+        <p><strong style="color:var(--fg)">genial verpLANt</strong> – die größte LAN-Party der Wesermarsch. Eine Veranstaltung des total verpLANt e.V.</p>
+        <p class="mono">© <button type="button" class="egg egg-year" id="egg-year">{{ now.year }}</button> total verpLANt e.V.</p>
+{%- if tp.state == 'on' %}
+        <p class="tp-foot">
+          {%- set footer_line = tp.topic.get('footer_line') -%}
+          {%- if footer_line -%}
+          {{ footer_line }}
+          {%- elif tp.num -%}
+          Thema der #{{ tp.num }}: <span class="tp-label">{{ tp.topic.name }}</span>
+          {%- else -%}
+          Thema: <span class="tp-label">{{ tp.topic.name }}</span>
+          {%- endif -%}
+        </p>
+{%- endif %}
+      </div>
+      <div>
+        <h4>Kontakt</h4>
+        <p>total verpLANt e.V.<br>Saarlandstraße 3<br>26919 Brake<br><a href="mailto:info@total-verplant.de">info@total-verplant.de</a></p>
+      </div>
+      <div>
+        <h4>Community</h4>
+        <ul>
+          <li><a href="https://discord.gg/r6cC8GbDUf" target="_blank" rel="noopener noreferrer">Discord</a></li>
+          <li><a href="https://instagram.com/totalverplant.e.v" target="_blank" rel="noopener noreferrer">Instagram</a></li>
+          <li><a href="https://facebook.com/totalverplant/" target="_blank" rel="noopener noreferrer">Facebook</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Rechtliches</h4>
+        <ul>
+          <li><a href="/agb">AGB</a></li>
+          <li><a href="/privacy">Datenschutz</a></li>
+          <li><a href="/impressum">Impressum</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="retro-foot era-3">
+{%- if ticket_sale_stats is defined %}
+      <p>Angemeldet: <span class="counter" role="img" aria-label="{{ ticket_sale_stats.tickets_sold }}">
+        {%- for digit in '%07d'|format(ticket_sale_stats.tickets_sold) %}<span>{{ digit }}</span>{% endfor -%}
+      </span></p>
+{%- endif %}
+      <p class="small">Optimiert für 800×600 und 256 Farben · © 1999–{{ now.year }} total verpLANt e.V. · <a href="/impressum">Impressum</a></p>
+    </div>
+  </div>

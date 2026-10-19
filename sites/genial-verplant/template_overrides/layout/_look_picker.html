@@ -1,0 +1,49 @@
+{#- Look picker: trigger, offer hint and the Kampf select panel. Included once from layout/_header.html. -#}
+{%- set owl_src = url_for_site_file('style/owl.png') -%}
+<div class="look" id="look">
+  <button class="btn look-btn" id="look-btn" type="button" aria-expanded="false" aria-controls="look-panel" aria-label="Look der Seite ändern">
+    <span class="trg-ico" id="trg-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8h10a4 4 0 0 1 4 4v2a3 3 0 0 1-5.2 2L14 14h-4l-1.8 2A3 3 0 0 1 3 14v-2a4 4 0 0 1 4-4z"/><path d="M8 10.5v3M6.5 12h3M15.5 11h.01M17 13h.01"/></svg></span>
+    <span class="vh">Look</span>
+    <span class="look-cur vh" id="look-cur"></span>
+  </button>
+  <div class="look-hint" id="look-hint" role="note" hidden>
+    <p id="offer-text"></p>
+    <div class="offer-act">
+      <button type="button" id="offer-yes">Kämpfer wählen</button>
+      <button type="button" id="look-hint-ok" class="offer-no">Passt so</button>
+    </div>
+  </div>
+  <div class="look-panel" id="look-panel" hidden>
+    <div class="pk pk-fight">
+      <p class="fx-title" aria-hidden="true">Wähle deinen Look</p>
+      <div class="fx-stage" aria-hidden="true">
+        <span class="port fx-big" id="fx-big" data-p="1"><img alt="" src="{{ owl_src }}"></span>
+        <div class="fx-info">
+          <p class="fx-name" id="fx-name">Owly</p>
+          <p class="fx-move"><span>Spezial:</span> <b id="fx-move"></b></p>
+          <div class="fx-stats" id="fx-stats"></div>
+        </div>
+        <p class="fx-flash" id="fx-flash">Ausgewählt!</p>
+      </div>
+      <fieldset>
+        <legend class="vh">Look der Seite</legend>
+        <div class="fx-roster">
+          <label class="fx-slot" data-v="1"><input class="era-in" type="radio" name="era-f" value="1"><span class="port" data-p="1" aria-hidden="true"><img alt="" src="{{ owl_src }}"></span><span class="vh">Owly<span class="lk-state"></span></span><span class="fx-slot-name" aria-hidden="true"></span><span class="new-tag" aria-hidden="true">Neu</span></label>
+          <label class="fx-slot" data-v="2"><input class="era-in" type="radio" name="era-f" value="2"><span class="port" data-p="2" aria-hidden="true"><img alt="" src="{{ owl_src }}"></span><span class="vh">Clan 2003<span class="lk-state"></span></span><span class="fx-slot-name" aria-hidden="true"></span><span class="new-tag" aria-hidden="true">Neu</span></label>
+          <label class="fx-slot" data-v="3"><input class="era-in" type="radio" name="era-f" value="3"><span class="port" data-p="3" aria-hidden="true"><img alt="" src="{{ owl_src }}"></span><span class="vh">LAN '99<span class="lk-state"></span></span><span class="fx-slot-name" aria-hidden="true"></span><span class="new-tag" aria-hidden="true">Neu</span></label>
+        </div>
+      </fieldset>
+    </div>
+    <p class="lock-note" id="lock-note"></p>
+    <p class="look-desc" id="look-desc" aria-live="polite"></p>
+    <div class="schemes" id="schemes" role="radiogroup" aria-labelledby="scheme-lbl">
+      <span class="legend" id="scheme-lbl">Farbschema</span>
+      <span class="seg">
+        <span class="seg-thumb" id="seg-thumb" aria-hidden="true"></span>
+        <label><input type="radio" name="scheme" value="dark"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 10.2A6 6 0 0 1 5.8 2.5a6 6 0 1 0 7.7 7.7z" fill="currentColor"/></svg>Dunkel</label>
+        <label><input type="radio" name="scheme" value="light"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="3" fill="currentColor"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3 3l1.4 1.4M11.6 11.6 13 13M3 13l1.4-1.4M11.6 4.4 13 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Hell</label>
+      </span>
+      <p class="scheme-note" id="scheme-note" hidden>Clan 2003 und LAN '99 haben einen festen Look.</p>
+    </div>
+  </div>
+</div>

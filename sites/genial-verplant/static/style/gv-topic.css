@@ -1,0 +1,85 @@
+/* Party topic: the same slots in every look. The server renders each slot only
+   when the topic state allows it; these rules style what exists and gate the
+   look-specific parts on html[data-topic-state]. */
+
+/* neutral defaults; the topic colours replace them from a later :root block */
+:root {
+  --tp: #8a8f98;
+  --tp-on-dark: #c9cdd4;
+  --tp-on-light: #50555e;
+  --tp-glow: rgba(138, 143, 152, .38);
+  --tp-text: var(--tp-on-dark);
+  --tp-ink: var(--fg);
+  --tp-acc: var(--accent);
+  --tp-shadow: rgba(128, 128, 128, .28);
+}
+
+/* ---------- pun in the wordmark and the hero title ---------- */
+.tp-pun { color: var(--tp-text); }
+:root[data-era] .wordmark .tp-pun { color: var(--tp-text); }
+:root[data-era="3"] .wordmark .tp-pun { color: var(--tp-on-light); }
+:root[data-era="1"] .tp-pun { text-shadow: 0 0 14px var(--tp-glow); }
+:root[data-era="3"] .hero h1 .tp-pun { color: transparent; }
+
+/* ---------- topic line under the hero text ---------- */
+.tp-line { margin: .9rem 0 0; display: inline-flex; align-items: center; gap: .55rem; font-weight: 600; color: var(--muted); }
+.tp-line .tp-label { color: var(--tp-text); }
+.tp-line svg { width: 16px; height: 16px; flex: none; }
+:root[data-era="1"] .tp-line { font: 700 .8125rem/1.2 var(--font-mono); letter-spacing: .12em; text-transform: uppercase; }
+:root[data-era="1"] .tp-line::before { content: ""; width: 9px; height: 9px; flex: none; box-sizing: border-box; border: 2px solid var(--tp-text); }
+:root[data-era="1"][data-topic-state="on"] .tp-line::before { background: var(--tp-text); box-shadow: 0 0 8px var(--tp-glow); }
+:root[data-era="1"] .tp-line svg { display: none; }
+:root[data-era="2"] .tp-line { font: 700 .8125rem/1 Verdana, Tahoma, sans-serif; text-transform: uppercase; letter-spacing: .06em; color: #fff; background: linear-gradient(#4a4f56, #2c2f34); border: 1px solid #5c626a; padding: .55rem .8rem; }
+:root[data-era="2"] .tp-line::before { content: "\00BB"; color: var(--tp-on-dark); }
+:root[data-era="3"] .tp-line { font: 700 1.125rem/1.3 "Comic Sans MS", "Comic Neue", cursive; color: #ffff66; }
+
+/* ---------- art: inside the monitor in Owly and Clan 2003, framed in LAN '99 ---------- */
+.tp-art { display: none; }
+.tp-art svg { display: block; width: 100%; height: auto; overflow: visible; }
+.crt { --tp-ink: #f3eee6; }
+:root:is([data-era="1"], [data-era="2"]):is([data-topic-state="on"], [data-topic-state="teaser"]) .crt .owl { display: none; }
+:root:is([data-era="1"], [data-era="2"])[data-topic-state="on"] .crt .tp-art { display: block; width: 66%; }
+:root[data-era="1"][data-topic-state="on"] .crt .tp-art { filter: grayscale(1) sepia(1) saturate(4.5) hue-rotate(-10deg) brightness(1.08) drop-shadow(0 0 10px rgba(255, 176, 0, .45)); }
+:root:is([data-era="1"], [data-era="2"])[data-topic-state="teaser"] .crt .tp-art { display: block; position: absolute; inset: 0; }
+
+/* ---------- teaser: no signal until the announcement ---------- */
+.tp-tease { position: absolute; inset: 0; display: grid; place-items: center; }
+.tp-tease span { display: none; }
+:root[data-era="1"] .tp-tease {
+  background-color: #0b0805;
+  background-image:
+    repeating-radial-gradient(circle at 17% 32%, rgba(255, 255, 255, .16) 0 1px, transparent 1px 3px),
+    repeating-radial-gradient(circle at 73% 61%, rgba(255, 255, 255, .11) 0 1px, transparent 1px 2px),
+    repeating-radial-gradient(circle at 41% 83%, rgba(255, 176, 0, .1) 0 1px, transparent 1px 4px);
+  animation: tp-noise .3s steps(3) infinite;
+}
+:root[data-era="1"] .tp-tease .tp-tease-a { display: block; font: 700 1rem/1 var(--font-mono); letter-spacing: .2em; color: #ffb000; text-shadow: 0 0 12px rgba(255, 176, 0, .7); background: rgba(0, 0, 0, .65); padding: .5rem .8rem; }
+@keyframes tp-noise { 33% { background-position: 7px 3px, -5px 9px, 3px -6px; } 66% { background-position: -4px 6px, 8px -3px, -7px 2px; } }
+:root[data-era="2"] .tp-tease { background: repeating-linear-gradient(45deg, #2a2d31 0 12px, #23262a 12px 24px); }
+:root[data-era="2"] .tp-tease .tp-tease-b { display: block; font: 400 clamp(1.3rem, 1rem + 1.2vw, 2rem)/1 "Black Ops One", Impact, sans-serif; color: #ffb000; text-shadow: 2px 2px 0 #000; text-transform: uppercase; }
+
+/* ---------- LAN '99: picture frame with the blinking flag ---------- */
+.tp-frame { display: none; position: relative; width: min(280px, 100%); margin: 1.2rem auto 0; padding: 10px; background: #ffffff; border: 4px ridge #c0c0c0; --tp-ink: #111111; }
+:root[data-era="3"][data-topic-state="on"] .tp-frame { display: block; }
+.tp-frame .tp-art { display: block; }
+.tp-new { position: absolute; top: -14px; right: -16px; padding: .25rem .45rem; background: #ffff00; color: #000; border: 2px solid #000; font: 700 .875rem/1 Arial, sans-serif; transform: rotate(8deg); animation: blink 1s steps(1) infinite; }
+
+/* ---------- footer line ---------- */
+.tp-foot { margin: .5rem 0 0; }
+.tp-foot .tp-label { color: var(--tp-text); font-weight: 600; }
+
+/* ---------- reveal moment, one per look (gv-topic.js sets html.tp-reveal) ---------- */
+@keyframes tp-rise { from { opacity: 0; transform: translateY(.3em); filter: blur(6px); } to { opacity: 1; transform: none; filter: none; } }
+@keyframes tp-crt { 0% { transform: scale(1, .02); opacity: .3; } 35% { transform: scale(1, 1); opacity: 1; } 50% { opacity: .55; } 65%, 100% { opacity: 1; } }
+@keyframes tp-flash { 0%, 40% { background: #ffb000; color: #111; } 100% { } }
+.tp-reveal .tp-pun { display: inline-block; animation: tp-rise .9s cubic-bezier(.2, .8, .2, 1) both; }
+:root[data-era="1"].tp-reveal .crt .tp-art { animation: tp-crt .8s ease-out both; }
+:root[data-era="2"].tp-reveal .tp-line { animation: tp-flash 1.1s ease-out both; }
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-era="1"] .tp-tease,
+  .tp-new,
+  .tp-reveal .tp-pun,
+  :root[data-era="1"].tp-reveal .crt .tp-art,
+  :root[data-era="2"].tp-reveal .tp-line { animation: none; }
+}

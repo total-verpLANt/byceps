@@ -1,0 +1,144 @@
+{% extends 'layout/base.html' %}
+{% from 'site/pizza_delivery/_pizza_macros.html' import and_list, claim_form, len_class, num, stamp with context %}
+{%- set current_page = 'pizza_delivery' %}
+{%- set ready = my_entries|selectattr('status', 'equalto', 'delivered')|list %}
+{%- set waiting = my_entries|rejectattr('status', 'equalto', 'delivered')|list %}
+{%- set mine = ready|map(attribute='number')|list %}
+{%- set refreshing = request.args.get('refresh') != '0' %}
+{%- if ready %}
+  {%- set page_title = [_('Called: %(number)s', number=mine|join(', ')), _('Pizza Delivery Board')] %}
+{%- else %}
+  {%- set page_title = _('Pizza Delivery Board') %}
+{%- endif %}
+
+{% block head %}
+{%- if refreshing %}
+<meta http-equiv="refresh" content="30">
+{%- endif %}
+{%- endblock %}
+
+{% block body %}
+{#- The title stays a direct child of the content area: the site page-title rule matches `.content-wrapper > h1.title`. #}
+<p class="pz-kicker">{{ _('Canteen · Food counter') }}</p>
+<h1 class="title">{{ _('The <em>pizza board</em>')|safe }}</h1>
+
+<div class="pizza-page">
+
+  <p>{{ _('Called pizza numbers from the canteen. If your number is listed, your pizza is waiting at the food counter.') }}</p>
+  <p>
+    <span>{{ _('As of %(time)s', time=now|timeformat('HH:mm')) }}</span>
+    <span aria-hidden="true">&middot;</span>
+    {%- if refreshing %}
+    <span title="{{ _('This page auto-refreshes every 30 seconds.') }}">{{ _('Refreshes every 30 s') }}</span>
+    <a class="pz-link" href="{{ url_for('.board', refresh=0) }}">{{ _('Stop refreshing') }}</a>
+    {%- else %}
+    <span>{{ _('Refreshing paused') }}</span>
+    <a class="pz-link" href="{{ url_for('.board') }}">{{ _('Resume refreshing') }}</a>
+    {%- endif %}
+  </p>
+
+  {#- ===== reader strip: only ever about the logged-in reader ===== #}
+  {%- if not g.user.authenticated %}
+  <div class="pz-reader pz-reader--jump">
+    <p><b>{{ _('Waiting for a pizza?') }}</b> {{ _('Log in and enter your pizza number. We will let you know as soon as it is called.') }}</p>
+    <a class="pz-link" href="{{ url_for('authn_login.log_in_form') }}">{{ _('Log in') }} &rarr;</a>
+  </div>
+  {%- elif not my_entries %}
+  <div class="pz-reader pz-reader--jump">
+    <p>{{ _('No delivery linked to your account yet') }}.</p>
+    <a class="pz-link" href="#pz-claim">{{ _('Enter number') }} &darr;</a>
+  </div>
+  {%- else %}
+    {%- if ready %}
+  <section class="pz-flash" role="status" aria-labelledby="pz-flash-title">
+    <div class="pz-flash-h">
+      <span>{{ _('Stop press') }}</span>
+      <span>{{ _('%(time)s h', time=(ready[0].delivered_at or ready[0].updated_at)|timeformat('HH:mm')) }}</span>
+    </div>
+    <div class="pz-flash-b">
+      <h2 id="pz-flash-title">{% if ready|length > 1 %}{{ _('Your numbers have been called!') }}{% else %}{{ _('Your number has been called!') }}{% endif %}</h2>
+      <ul class="pz-flash-nos">
+        {%- for entry in ready %}
+        <li class="pz-flash-no">{{ entry.number }}</li>
+        {%- endfor %}
+      </ul>
+      <p>{{ _('Your pizza is waiting at the food counter. Please pick it up.') }}</p>
+    </div>
+  </section>
+    {%- endif %}
+    {%- if waiting %}
+  <div class="pz-reader">
+    {%- if waiting|length == 1 %}
+    <p>{{ _('%(number)s has not been called yet.', number=num(waiting[0].number)) }} {{ _('You will also get an email.') }}</p>
+    {%- else %}
+    <p>{{ _('Not called yet: %(numbers)s.', numbers=and_list(waiting|map(attribute='number'))) }} {{ _('You will get an email for each.') }}</p>
+    {%- endif %}
+    {{ stamp('wait', true) }}
+    <a class="pz-link" href="{{ url_for('.my_status') }}">{{ _('My pickup slip') }} &rarr;</a>
+  </div>
+    {%- endif %}
+  {%- endif %}
+
+  <div class="pz-board">
+
+    <section class="pz-draw" aria-label="{{ _('Ready for pickup · newest first') }}">
+      <header class="pz-draw-h">
+        <h2>{{ _('Ready for pickup · newest first') }}</h2>
+        <span>{{ ngettext('%(count)s number called', '%(count)s numbers called', entries|length, count=entries|length) }}</span>
+      </header>
+      {%- if not entries %}
+      <div class="pz-empty">
+        <h3>{{ _('No deliveries have been called yet.') }}</h3>
+        <p>{{ _('As soon as the first pizza reaches the counter, its number appears here.') }}</p>
+      </div>
+      {%- else %}
+      {%- set lead = entries[0] %}
+      <div class="pz-lead {{ len_class(lead.number) }}{% if lead.number in mine %} is-mine{% endif %}">
+        <div>
+          <p class="pz-kicker">{{ _('Last called') }} · <time>{{ _('%(time)s h', time=(lead.delivered_at or lead.updated_at)|timeformat('HH:mm')) }}</time></p>
+          <p class="pz-lead-no">{{ lead.number }}</p>
+        </div>
+        <div class="pz-tags">
+          {%- if lead.id in fresh_ids %}<span class="pz-tag pz-tag--fresh">{{ _('Fresh from the oven') }}</span>{% endif %}
+          {%- if lead.number in mine %}<span class="pz-tag pz-tag--mine">{{ _('Your number') }}</span>{% endif %}
+        </div>
+      </div>
+      {%- if entries|length > 1 %}
+      <div class="pz-reg-h"><h3>{{ _('Called before') }}</h3><span>{{ _('✶ = fresh, under 10 minutes') }}</span></div>
+      <ol class="pz-reg">
+        {%- for entry in entries[1:] %}
+        {%- set fresh = entry.id in fresh_ids %}
+        {%- set is_mine = entry.number in mine %}
+        <li class="pz-no{% if fresh %} pz-no--fresh{% endif %}{% if is_mine %} pz-no--mine{% endif %}"><b>{{ entry.number }}</b><time>{{ (entry.delivered_at or entry.updated_at)|timeformat('HH:mm') }}</time>{% if is_mine %}<i>{{ _('Your number') }}</i>{% elif fresh %}<i>{{ _('fresh') }}</i>{% endif %}</li>
+        {%- endfor %}
+      </ol>
+      {%- else %}
+      <p class="pz-one">{{ _('Only this one so far.') }}</p>
+      {%- endif %}
+      {%- if entries|length >= 200 %}
+      <p class="pz-cap">{{ _('Only the 200 most recent numbers are printed. Older calls are left out. If yours is missing, ask at the food counter.') }}</p>
+      {%- endif %}
+      {%- endif %}
+    </section>
+
+    <aside class="pz-side" aria-label="{{ _('Follow a number') }}">
+      {%- if not g.user.authenticated %}
+      <div class="tv-pizza-claim">
+        <h2>{{ _('Follow a number') }}</h2>
+        <p class="pz-claim-sub">{{ _('Log in and enter your pizza number. We will let you know as soon as it is called.') }}</p>
+        <a class="button color-primary pz-side-btn" href="{{ url_for('authn_login.log_in_form') }}">{{ _('Log in') }}</a>
+      </div>
+      {%- else %}
+      <a class="pz-dash" href="{{ url_for('.my_status') }}">
+        <span class="pz-kicker">{{ _('Your status') }}</span>
+        <b>{{ _('My pickup slip') }}</b>
+        <span>{% if my_entries %}{{ ngettext('%(count)s number followed', '%(count)s numbers followed', my_entries|length, count=my_entries|length) }}{% else %}{{ _('No number followed yet') }}{% endif %} &rarr;</span>
+      </a>
+      {{ claim_form(mode='side') }}
+      {%- endif %}
+    </aside>
+
+  </div>
+
+</div>
+{%- endblock %}

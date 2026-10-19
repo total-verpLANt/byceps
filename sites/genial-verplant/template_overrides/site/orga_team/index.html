@@ -1,0 +1,91 @@
+{% extends 'layout/base.html' %}
+{% from 'macros/user.html' import render_user_avatar_image, render_user_screen_name %}
+{% set current_page = 'orga_team' %}
+{% set page_title = _('Orga Team') %}
+
+{% block head %}
+{%- endblock %}
+
+{% block body %}
+
+  <h1 class="title">{{ page_title }}</h1>
+
+  {# ===== ORGA CREW — grouped by department (Abteilung) =====
+     `teams` is [(None, merged_orgas)] (GROUP_BY_TEAM off in read-only core), so
+     each PublicOrga is merged per person: .team_name and .duties are ', '-joined
+     across the teams that person belongs to. We split .team_name on ', ' and file
+     each card under EVERY department it names — a multi-team face appears once per
+     department. Departments render in a fixed priority order; any department not
+     in that list is appended alphabetically, so no member is ever dropped.
+     Each card shows the Funktion for ITS department: core joins team_name over
+     all of a person's teams but joins duties only over non-empty ones, so when
+     the two counts match the lists are position-aligned and we map them; when
+     they differ a blank was dropped and we hide the ambiguous Funktion. #}
+  {%- set priority = ['Projektleitung', 'Catering', 'Cocktailbar', 'Sicherheit und Ordnung', 'Turniere', 'Technik', 'PR'] %}
+
+  {# flatten the (already screen-name sorted) merged orgas into one list #}
+  {%- set all_orgas = [] %}
+  {%- for _team_name, _orgas in teams %}
+    {%- for _o in _orgas %}{% set _ = all_orgas.append(_o) %}{%- endfor %}
+  {%- endfor %}
+
+  {# collect every department actually present, in first-seen order #}
+  {%- set seen = [] %}
+  {%- for orga in all_orgas %}
+    {%- for d in (orga.team_name.split(', ') if orga.team_name else []) %}
+      {%- if d not in seen %}{% set _ = seen.append(d) %}{%- endif %}
+    {%- endfor %}
+  {%- endfor %}
+
+  {# render order: priority departments present in data, then the rest alphabetically #}
+  {%- set ordered = [] %}
+  {%- for d in priority %}{% if d in seen %}{% set _ = ordered.append(d) %}{% endif %}{%- endfor %}
+  {%- for d in seen|sort %}{% if d not in priority %}{% set _ = ordered.append(d) %}{% endif %}{%- endfor %}
+
+  {%- if all_orgas %}
+  {%- for department in ordered %}
+    {%- set members = [] %}
+    {%- for orga in all_orgas %}
+      {%- if department in (orga.team_name.split(', ') if orga.team_name else []) %}{% set _ = members.append(orga) %}{%- endif %}
+    {%- endfor %}
+    {%- if members %}
+  <section class="tv-dept">
+    <div class="tv-dept__head">
+      <h2>{{ department }}</h2>
+      <span class="tv-dept__count">{{ ngettext('%(num)d Mitglied', '%(num)d Mitglieder', members|length) }}</span>
+    </div>
+    <ol class="tv-dept__grid">
+    {%- for orga in members %}
+    {%- set departments = orga.team_name.split(', ') if orga.team_name else [] %}
+    {%- set duty_list = orga.duties.split(', ') if orga.duties else [] %}
+    {# Funktion for THIS department: a single-team person shows their duty as-is.
+       For a multi-team person, core joins team_name over ALL teams but joins
+       duties only over NON-EMPTY ones (views.py:77-78). So when duty count ==
+       team count, nothing was dropped and the two lists are position-aligned —
+       we can show the duty for this department. When they differ, a blank duty
+       was dropped and the mapping is ambiguous, so we hide it (unrecoverable
+       from the template; would require read-only core's un-merged records). #}
+    {%- set duty = '' %}
+    {%- if departments|length <= 1 %}{% set duty = orga.duties %}
+    {%- elif duty_list|length == departments|length %}{% set duty = duty_list[departments.index(department)] %}
+    {%- endif %}
+    <li class="tv-dept__card">
+      <div class="avatar size-64">{{ render_user_avatar_image(orga.user) }}</div>
+      <div class="tv-dept__body">
+        <h3 class="tv-dept__name">{{ render_user_screen_name(orga.user) }}</h3>
+        <p class="tv-dept__real">{% if orga.full_name %}{{ orga.full_name }}{% else %}&nbsp;{% endif %}</p>
+        {%- if duty %}
+        <span class="tv-dept__role" title="{{ _('Funktion') }}">{{ duty }}</span>
+        {%- endif %}
+      </div>
+    </li>
+    {%- endfor %}
+    </ol>
+  </section>
+    {%- endif %}
+  {%- endfor %}
+  {%- else %}
+  <div class="tv-dept__empty">{{ _('Noch keine Mannschaft eingetragen.') }}</div>
+  {%- endif %}
+
+{%- endblock %}

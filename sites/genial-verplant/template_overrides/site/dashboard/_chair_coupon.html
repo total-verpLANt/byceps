@@ -1,0 +1,11 @@
+{% from 'macros/icons.html' import render_icon %}
+<aside class="tv-coupon dashboard-chair-coupon" aria-label="{{ _('Chair information') }}">
+  <div class="tv-coupon__body">
+    <span class="tv-coupon__kicker">{{ _('Chair information') }}</span>
+    <p class="tv-coupon__head">{{ _('Not specified yet') }}</p>
+    {%- if pending_chair_ticket_ids|length > 1 %}
+    <p class="tv-coupon__meta">{{ pending_chair_ticket_ids|length|numberformat }} {{ _('tickets') }}</p>
+    {%- endif %}
+  </div>
+  <a class="tv-coupon__cta" href="{{ url_for('ticketing.index_mine', _anchor='ticket-' ~ pending_chair_ticket_ids[0]) }}">{{ render_icon('edit') }} <span>{{ _('Make selection') }}</span></a>
+</aside>
