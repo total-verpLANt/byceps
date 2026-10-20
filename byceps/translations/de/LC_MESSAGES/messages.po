@@ -17550,3 +17550,59 @@ msgstr "weitere"
 
 msgid "Replacement added"
 msgstr "Ersatz hinzugefügt"
+
+msgid "Tournament restarted"
+msgstr "Turnier neu gestartet"
+
+#, python-format
+msgid "%(n)s result deleted"
+msgid_plural "%(n)s results deleted"
+msgstr[0] "%(n)s Ergebnis gelöscht"
+msgstr[1] "%(n)s Ergebnisse gelöscht"
+
+#, python-format
+msgid "New team %(name)s"
+msgstr "Neues Team %(name)s"
+
+msgid "Please give a reason for the restart."
+msgstr "Bitte gib einen Grund für den Neustart an."
+
+msgid "Confirm that the tournament will be restarted."
+msgstr "Bestätige, dass das Turnier neu gestartet wird."
+
+msgid "Only a running or paused tournament can be restarted."
+msgstr "Nur ein laufendes oder pausiertes Turnier kann neu gestartet werden."
+
+msgid "Only a team tournament can be restarted for a new team."
+msgstr "Nur ein Teamturnier kann für ein neues Team neu gestartet werden."
+
+msgid "I understand that the tournament will be restarted."
+msgstr "Mir ist klar, dass das Turnier neu gestartet wird."
+
+msgid "Restart tournament and create team"
+msgstr "Turnier neu starten und Team anlegen"
+
+#, python-format
+msgid "Tournament restarted. Team \"%(name)s\" has been created. Re-seed and start the tournament again."
+msgstr "Turnier neu gestartet. Team „%(name)s” wurde erstellt. Setze neu und starte das Turnier erneut."
+
+msgid "Creating this team restarts the tournament. All matches are deleted, the tournament returns to \"Registration closed\" and has to be seeded and started again."
+msgstr "Wenn du dieses Team anlegst, wird das Turnier neu gestartet. Alle Partien werden gelöscht, das Turnier kehrt zu „Anmeldung geschlossen” zurück und muss neu gesetzt und gestartet werden."
+
+#, python-format
+msgid "%(n)s match will be deleted."
+msgid_plural "%(n)s matches will be deleted."
+msgstr[0] "%(n)s Partie wird gelöscht."
+msgstr[1] "%(n)s Partien werden gelöscht."
+
+#, python-format
+msgid "%(n)s confirmed result will be lost."
+msgid_plural "%(n)s confirmed results will be lost."
+msgstr[0] "%(n)s bestätigtes Ergebnis geht verloren."
+msgstr[1] "%(n)s bestätigte Ergebnisse gehen verloren."
+
+msgid "The playoffs have been released. They are deleted as well and have to be released again."
+msgstr "Die Playoffs wurden freigegeben. Sie werden ebenfalls gelöscht und müssen erneut freigegeben werden."
+
+msgid "Restart the tournament and create this team? All matches and results will be deleted."
+msgstr "Turnier neu starten und dieses Team anlegen? Alle Partien und Ergebnisse werden gelöscht."

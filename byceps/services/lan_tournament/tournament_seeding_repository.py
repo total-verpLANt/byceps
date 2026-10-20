@@ -171,6 +171,18 @@ def delete_seedings_for_tournament(tournament_id: TournamentID) -> None:
     db.session.flush()
 
 
+def delete_seedings_for_tournament_except(
+    tournament_id: TournamentID, *, keep_target: str
+) -> None:
+    """Delete the seeding drafts of that tournament but one, without committing."""
+    db.session.execute(
+        delete(DbTournamentSeeding)
+        .filter_by(tournament_id=tournament_id)
+        .filter(DbTournamentSeeding.target != keep_target)
+    )
+    db.session.flush()
+
+
 def _db_entity_to_seeding(
     db_seeding: DbTournamentSeeding,
 ) -> TournamentSeeding:

@@ -80,6 +80,7 @@ from byceps.services.lan_tournament import (
     tournament_request_domain_service,
     tournament_request_repository,
     tournament_request_service,
+    tournament_restart_service,
     tournament_score_service,
     tournament_seeding_service,
     tournament_service,
@@ -284,6 +285,7 @@ from .forms import (
     MatchCorrectionForm,
     MatchUnconfirmForm,
     TeamCreateForm,
+    TeamCreateRestartForm,
     TeamUpdateForm,
     TransferCaptainForm,
     TournamentCreateForm,
@@ -3661,12 +3663,30 @@ def create_team_form(tournament_id, erroneous_form=None):
     tournament = _get_tournament_or_404(tournament_id)
     party = party_service.get_party(tournament.party_id)
 
-    form = erroneous_form if erroneous_form else TeamCreateForm()
+    restart_required = tournament_restart_service.is_restart_required(
+        tournament
+    )
+    restart_impact = None
+    if restart_required:
+        if not g.user.has_permission('lan_tournament.administrate'):
+            abort(403)
+        restart_impact = tournament_restart_service.get_restart_impact(
+            tournament.id
+        )
+
+    if erroneous_form:
+        form = erroneous_form
+    elif restart_required:
+        form = TeamCreateRestartForm()
+    else:
+        form = TeamCreateForm()
 
     return {
         'party': party,
         'tournament': tournament,
         'form': form,
+        'restart_required': restart_required,
+        'restart_impact': restart_impact,
     }
 
 
@@ -3676,7 +3696,18 @@ def create_team(tournament_id):
     """Create a team."""
     tournament = _get_tournament_or_404(tournament_id)
 
-    form = TeamCreateForm(request.form)
+    restart_required = tournament_restart_service.is_restart_required(
+        tournament
+    )
+    if restart_required and not g.user.has_permission(
+        'lan_tournament.administrate'
+    ):
+        abort(403)
+
+    if restart_required:
+        form = TeamCreateRestartForm(request.form)
+    else:
+        form = TeamCreateForm(request.form)
 
     if not form.validate():
         return create_team_form(tournament.id, form)
@@ -3690,6 +3721,37 @@ def create_team(tournament_id):
     join_code = form.join_code.data.strip() if form.join_code.data else None
 
     captain_user_id = form.captain_user.id
+
+    if restart_required:
+        match tournament_restart_service.create_team_with_restart(
+            tournament.id,
+            name,
+            captain_user_id,
+            reason=form.reason.data,
+            confirm_restart=bool(form.confirm_restart.data),
+            initiator_id=g.user.id,
+            tag=tag,
+            description=description,
+            image_url=image_url,
+            join_code=join_code,
+        ):
+            case Ok((team, _event)):
+                flash_success(
+                    gettext(
+                        'Tournament restarted. Team "%(name)s" has been'
+                        ' created. Re-seed and start the tournament again.',
+                        name=team.name,
+                    )
+                )
+                return redirect_to('.seeding', tournament_id=tournament.id)
+            case Err(error_message):
+                flash_error(
+                    gettext(
+                        'Team creation failed: %(error)s',
+                        error=gettext(error_message),
+                    )
+                )
+                return create_team_form(tournament.id, form)
 
     match tournament_team_service.create_team(
         tournament.id,

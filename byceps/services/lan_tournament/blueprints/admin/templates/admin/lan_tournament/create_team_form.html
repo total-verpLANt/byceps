@@ -1,10 +1,15 @@
 {% extends 'layout/admin/lan_tournament.html' %}
 {% from 'admin/lan_tournament/_subnav.html' import render_admin_subnav %}
 {% from 'macros/admin.html' import render_backlink %}
-{% from 'macros/forms.html' import form_buttons, form_field %}
+{% from 'macros/forms.html' import form_buttons, form_field, form_field_check %}
+{% from 'macros/icons.html' import render_icon %}
 {% set current_page_party = party %}
 {% set current_tab = 'tournaments' %}
 {% set page_title = _('Create team') %}
+
+{% block head %}{{ super() }}
+  <link rel="stylesheet" href="{{ url_for('static', filename='style/lan_tournament_match_admin.css') }}">
+{%- endblock %}
 
 {% block before_body %}
 {{ super() }}
@@ -17,7 +22,19 @@
 
   {{ render_admin_subnav(tournament, 'teams') }}
 
-  <form action="{{ url_for('.create_team', tournament_id=tournament.id) }}" method="post">
+  {%- if restart_required %}
+  <div class="notification color-danger">{{ render_icon('warning') }}
+    {{ _('Creating this team restarts the tournament. All matches are deleted, the tournament returns to "Registration closed" and has to be seeded and started again.') }}
+    {{ ngettext('%(n)s match will be deleted.', '%(n)s matches will be deleted.', restart_impact.match_count, n=restart_impact.match_count) }}
+    {{ ngettext('%(n)s confirmed result will be lost.', '%(n)s confirmed results will be lost.', restart_impact.confirmed_result_count, n=restart_impact.confirmed_result_count) }}
+    {%- if restart_impact.playoffs_released %}
+    {{ _('The playoffs have been released. They are deleted as well and have to be released again.') }}
+    {%- endif %}
+  </div>
+  {%- endif %}
+
+  <form action="{{ url_for('.create_team', tournament_id=tournament.id) }}" method="post"
+    {%- if restart_required %} data-confirm="{{ _('Restart the tournament and create this team? All matches and results will be deleted.') }}" onsubmit="return confirm(this.dataset.confirm)"{% endif %}>
     <div class="box">
       {{ form_field(form.captain) }}
       {{ form_field(form.name, autofocus='autofocus') }}
@@ -25,9 +42,19 @@
       {{ form_field(form.description) }}
       {{ form_field(form.image_url) }}
       {{ form_field(form.join_code, type='password') }}
+    {%- if restart_required %}
+      {{ form_field(form.reason, maxlength='500', required='required') }}
+      <div class="lt-correct__consent">
+        {{ form_field_check(form.confirm_restart) }}
+      </div>
+    {%- endif %}
     </div>
 
+    {%- if restart_required %}
+    {{ form_buttons(_('Restart tournament and create team'), icon='warning', color='danger', cancel_url=url_for('.teams_for_tournament', tournament_id=tournament.id)) }}
+    {%- else %}
     {{ form_buttons(_('Create'), cancel_url=url_for('.teams_for_tournament', tournament_id=tournament.id)) }}
+    {%- endif %}
   </form>
 
 {%- endblock %}

@@ -536,6 +536,17 @@ class TeamCreateForm(LocalizedForm):
         form.captain_user = user  # stash resolved User on the form
 
 
+class TeamCreateRestartForm(TeamCreateForm):
+    confirm_restart = BooleanField(
+        lazy_gettext('I understand that the tournament will be restarted.'),
+        [DataRequired()],
+    )
+    reason = TextAreaField(
+        lazy_gettext('Reason'),
+        [InputRequired(), Length(max=500), storable_text],
+    )
+
+
 class AddParticipantForm(LocalizedForm):
     screen_name = StringField(
         lazy_gettext('Screen name'),

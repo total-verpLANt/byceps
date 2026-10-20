@@ -3006,6 +3006,7 @@ _SEEDING_EVENT_LABELS: dict[str, Callable[[], str]] = {
     'participant-left': lambda: gettext('Left'),
     'participant-removed': lambda: gettext('Removed'),
     'participant-replacement-added': lambda: gettext('Replacement added'),
+    'tournament-restarted': lambda: gettext('Tournament restarted'),
 }
 
 
@@ -3321,6 +3322,24 @@ def _dropped_fixes_text(count: int) -> str:
     )
 
 
+def _restart_event_details(data: Mapping[str, Any]) -> str:
+    parts: list[str] = []
+    reason = _audit_reason(data)
+    if reason is not None:
+        parts.append(f"{gettext('Reason')}: {reason}")
+    lost = data.get('confirmed_result_count')
+    if _is_count(lost) and lost > 0:
+        parts.append(
+            ngettext(
+                '%(n)s result deleted', '%(n)s results deleted', lost, n=lost
+            )
+        )
+    team_name = data.get('team_name')
+    if isinstance(team_name, str):
+        parts.append(gettext('New team %(name)s', name=team_name))
+    return ' \u00b7 '.join(parts)
+
+
 def _participant_event_details(data: Mapping[str, Any]) -> str:
     before = data.get('roster_before')
     after = data.get('roster_after')
@@ -3343,6 +3362,8 @@ def _seeding_event_details(
         )
     if event_type.startswith('participant-'):
         return _participant_event_details(data)
+    if event_type == 'tournament-restarted':
+        return _restart_event_details(data)
     if event_type.startswith('seeding-'):
         action = _seeding_action_details(event_type, data, names or {})
         if action:
@@ -3397,7 +3418,13 @@ def _seeding_event_details(
     return gettext('Seed code %(code)s', code=short)
 
 
-SEEDING_LOG_PREFIXES = ('seeding-', 'bracket-', 'qualification-', 'playoffs-')
+SEEDING_LOG_PREFIXES = (
+    'seeding-',
+    'bracket-',
+    'qualification-',
+    'playoffs-',
+    'tournament-restarted',
+)
 SEEDING_AUDIT_LIMIT = 200
 
 

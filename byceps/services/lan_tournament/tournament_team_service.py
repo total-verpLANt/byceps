@@ -25,7 +25,7 @@ from .events import (
     TeamMemberJoinedEvent,
     TeamMemberLeftEvent,
 )
-from .models.tournament import TournamentID
+from .models.tournament import Tournament, TournamentID
 from .models.tournament_match import TournamentMatchID
 from .models.tournament_participant import (
     TournamentParticipant,
@@ -137,28 +137,25 @@ def _validate_image_url(image_url: str | None) -> Result[None, str]:
     return Ok(None)
 
 
-@_rollback_roster_on_failure
-def create_team(
-    tournament_id: TournamentID,
+def _validate_new_team(
+    tournament: Tournament,
     name: str,
+    tag: str | None,
+    image_url: str | None,
     captain_user_id: UserID,
-    *,
-    tag: str | None = None,
-    description: str | None = None,
-    image_url: str | None = None,
-    join_code: str | None = None,
-) -> Result[tuple[TournamentTeam, TeamCreatedEvent], str]:
-    """Create a team in a tournament."""
-    # Validate image URL
+) -> Result[tuple[str | None, TournamentParticipant | None], str]:
+    """Check a new team against the tournament it is created in.
+
+    Read-only. Return the upper-cased tag and the locked captain
+    participant, or `None` for a captain who is not registered. The caller
+    holds the tournament lock and decides what a missing captain means.
+    """
     validation_result = _validate_image_url(image_url)
     if validation_result.is_err():
         return Err(validation_result.unwrap_err())
 
-    # Use SELECT FOR UPDATE to prevent race conditions
-    tournament = tournament_repository.get_tournament_for_update(tournament_id)
-
     current_count = len(
-        tournament_repository.get_teams_for_tournament(tournament_id)
+        tournament_repository.get_teams_for_tournament(tournament.id)
     )
     count_result = tournament_domain_service.validate_team_count(
         tournament, current_count
@@ -171,7 +168,7 @@ def create_team(
 
     # Check for duplicate team name
     existing = tournament_repository.find_active_team_by_name(
-        tournament_id, name
+        tournament.id, name
     )
     if existing is not None:
         return Err('A team with this name already exists in this tournament.')
@@ -179,22 +176,18 @@ def create_team(
     # Check for duplicate team tag
     if tag:
         existing = tournament_repository.find_active_team_by_tag(
-            tournament_id, tag
+            tournament.id, tag
         )
         if existing is not None:
             return Err(
                 'A team with this tag already exists in this tournament.'
             )
 
-    # Captain must be a registered participant in this tournament
     captain_participant = tournament_repository.find_participant_by_user(
-        tournament_id, captain_user_id
+        tournament.id, captain_user_id
     )
     if captain_participant is None:
-        return Err(
-            'The team captain must be a registered participant'
-            ' in this tournament.'
-        )
+        return Ok((tag, None))
 
     captain_participant = tournament_repository.get_participant_for_update(
         captain_participant.id
@@ -205,6 +198,23 @@ def create_team(
             'The team captain is already assigned to a team.'
         )
 
+    return Ok((tag, captain_participant))
+
+
+def _create_team_flush(
+    tournament_id: TournamentID,
+    name: str,
+    captain: TournamentParticipant,
+    *,
+    tag: str | None,
+    description: str | None,
+    image_url: str | None,
+    join_code: str | None,
+) -> Result[TournamentTeam, str]:
+    """Insert the team and seat its captain (flush only).
+
+    The caller owns the commit, the rollback on `Err` and the signal.
+    """
     now = datetime.now(UTC)
     team_id = TournamentTeamID(generate_uuid7())
 
@@ -215,7 +225,7 @@ def create_team(
         tag=tag,
         description=description,
         image_url=image_url,
-        captain_user_id=captain_user_id,
+        captain_user_id=captain.user_id,
         join_code=join_code,
         created_at=now,
     )
@@ -236,19 +246,60 @@ def create_team(
         raise
 
     # Auto-assign captain to the new team
-    updated_captain = dataclasses.replace(captain_participant, team_id=team_id)
-    try:
-        tournament_repository.update_participant_flush(updated_captain)
-        tournament_repository.commit_session()
-    except Exception:
-        db.session.rollback()
-        raise
+    tournament_repository.update_participant_flush(
+        dataclasses.replace(captain, team_id=team_id)
+    )
+    return Ok(team)
+
+
+@_rollback_roster_on_failure
+def create_team(
+    tournament_id: TournamentID,
+    name: str,
+    captain_user_id: UserID,
+    *,
+    tag: str | None = None,
+    description: str | None = None,
+    image_url: str | None = None,
+    join_code: str | None = None,
+) -> Result[tuple[TournamentTeam, TeamCreatedEvent], str]:
+    """Create a team in a tournament."""
+    # Use SELECT FOR UPDATE to prevent race conditions
+    tournament = tournament_repository.get_tournament_for_update(tournament_id)
+
+    validated = _validate_new_team(
+        tournament, name, tag, image_url, captain_user_id
+    )
+    if validated.is_err():
+        return Err(validated.unwrap_err())
+    tag, captain_participant = validated.unwrap()
+
+    # Captain must be a registered participant in this tournament
+    if captain_participant is None:
+        return Err(
+            'The team captain must be a registered participant'
+            ' in this tournament.'
+        )
+
+    created = _create_team_flush(
+        tournament_id,
+        name,
+        captain_participant,
+        tag=tag,
+        description=description,
+        image_url=image_url,
+        join_code=join_code,
+    )
+    if created.is_err():
+        return Err(created.unwrap_err())
+    team = created.unwrap()
+    tournament_repository.commit_session()
 
     event = TeamCreatedEvent(
-        occurred_at=now,
+        occurred_at=team.created_at,
         initiator=None,
         tournament_id=tournament_id,
-        team_id=team_id,
+        team_id=team.id,
     )
     signals.team_created.send(None, event=event)
 

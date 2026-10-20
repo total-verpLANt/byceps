@@ -144,6 +144,48 @@ def test_playoffs_unreleased_shows_the_reason_and_the_suspension():
     )
 
 
+def test_tournament_restarted_shows_reason_results_and_team():
+    many = _row(
+        'tournament-restarted',
+        {
+            'reason': 'Late team',
+            'confirmed_result_count': 3,
+            'team_name': 'Falcons',
+        },
+    )
+    one = _row(
+        'tournament-restarted',
+        {
+            'reason': 'Late team',
+            'confirmed_result_count': 1,
+            'team_name': 'Falcons',
+        },
+    )
+
+    assert many['label'] == 'Tournament restarted'
+    assert many['details'] == (
+        'Reason: Late team · 3 results deleted · New team Falcons'
+    )
+    assert one['details'] == (
+        'Reason: Late team · 1 result deleted · New team Falcons'
+    )
+
+
+def test_tournament_restarted_without_lost_results_shows_only_the_reason():
+    row = _row(
+        'tournament-restarted',
+        {'reason': 'Late team', 'confirmed_result_count': 0},
+    )
+
+    assert row['details'] == 'Reason: Late team'
+
+
+def test_tournament_restarted_belongs_on_the_seeding_audit_log():
+    entry = SimpleNamespace(event_type='tournament-restarted', data={})
+
+    assert helpers.is_seeding_audit_entry(entry)
+
+
 def test_leaderboard_closed_names_the_leaderboard():
     row = _row('qualification-leaderboard-closed', {})
 
