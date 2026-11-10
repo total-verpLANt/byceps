@@ -2,7 +2,7 @@
 {%- set owl_src = url_for_site_file('style/owl.png') -%}
 <div class="look" id="look">
   <button class="btn look-btn" id="look-btn" type="button" aria-expanded="false" aria-controls="look-panel" aria-label="Look der Seite ändern">
-    <span class="trg-ico" id="trg-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8h10a4 4 0 0 1 4 4v2a3 3 0 0 1-5.2 2L14 14h-4l-1.8 2A3 3 0 0 1 3 14v-2a4 4 0 0 1 4-4z"/><path d="M8 10.5v3M6.5 12h3M15.5 11h.01M17 13h.01"/></svg></span>
+    <span class="trg-ico" id="trg-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8h10a4 4 0 0 1 4 4v2a3 3 0 0 1-5.2 2L14 14h-4l-1.8 2A3 3 0 0 1 3 14v-2a4 4 0 0 1 4-4z"/><path d="M8 10.5v3M6.5 12h3M15.5 11h.01M17 13h.01"/></svg></span>
     <span class="vh">Look</span>
     <span class="look-cur vh" id="look-cur"></span>
   </button>
@@ -15,7 +15,7 @@
   </div>
   <div class="look-panel" id="look-panel" hidden>
     <div class="pk pk-fight">
-      <p class="fx-title" aria-hidden="true">Wähle deinen Look</p>
+      <p class="fx-title" aria-hidden="true">Wähle deinen Kämpfer</p>
       <div class="fx-stage" aria-hidden="true">
         <span class="port fx-big" id="fx-big" data-p="1"><img alt="" src="{{ owl_src }}"></span>
         <div class="fx-info">
@@ -23,7 +23,7 @@
           <p class="fx-move"><span>Spezial:</span> <b id="fx-move"></b></p>
           <div class="fx-stats" id="fx-stats"></div>
         </div>
-        <p class="fx-flash" id="fx-flash">Ausgewählt!</p>
+        <p class="fx-flash" id="fx-flash">Ausgewählt</p>
       </div>
       <fieldset>
         <legend class="vh">Look der Seite</legend>

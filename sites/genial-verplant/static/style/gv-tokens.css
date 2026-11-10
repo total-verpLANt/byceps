@@ -23,9 +23,9 @@
   --bad: #ff7b72;
   --info: #7fb6ff;
   --owl-outline: #f3eee6;
-  --glow: 0 0 8px rgba(255, 176, 0, .38);
-  --glow-strong: 0 0 14px rgba(255, 176, 0, .45), 0 0 2px rgba(255, 176, 0, .6);
-  --led-filter: drop-shadow(0 0 4px rgba(255, 176, 0, .5));
+  --glow: none;
+  --glow-strong: none;
+  --led-filter: none;
   --led-glow: 0 0 6px currentColor;
   --scan-opacity: .55;
   --radius: 4px;
@@ -38,6 +38,11 @@
   --body-size: 1rem;
   --selection-bg: color-mix(in srgb, var(--accent) 40%, transparent);
   --selection-fg: var(--fg);
+  --ease: cubic-bezier(.22, 1, .36, 1);
+  --dur-1: .15s;
+  --dur-2: .2s;
+  --dur-3: .4s;
+  --shadow-pop: 0 16px 40px rgba(0, 0, 0, .45);
   color-scheme: dark;
 }
 
@@ -160,9 +165,9 @@
   --bad: #ff7b72;
   --info: #7fb6ff;
   --owl-outline: #f3eee6;
-  --glow: 0 0 8px rgba(255, 176, 0, .38);
-  --glow-strong: 0 0 14px rgba(255, 176, 0, .45), 0 0 2px rgba(255, 176, 0, .6);
-  --led-filter: drop-shadow(0 0 4px rgba(255, 176, 0, .5));
+  --glow: none;
+  --glow-strong: none;
+  --led-filter: none;
   --led-glow: 0 0 6px currentColor;
   --scan-opacity: .55;
   --radius: 4px;

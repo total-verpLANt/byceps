@@ -55,7 +55,7 @@ body {
   color: var(--fg);
   font: 400 var(--body-size) / 1.55 var(--font-body);
   padding-bottom: env(safe-area-inset-bottom, 0px);
-  transition: background-color .25s ease, color .25s ease;
+  transition: background-color var(--dur-2) var(--ease), color var(--dur-2) var(--ease);
 }
 
 body,
@@ -97,10 +97,11 @@ h1, h2, h3 {
   text-transform: var(--display-case);
   text-wrap: balance;
   line-height: 1.02;
-  letter-spacing: .005em;
+  letter-spacing: 0;
 }
-h2 { font-size: clamp(1.6rem, 1.2rem + 1.6vw, 2.4rem); text-shadow: var(--glow); }
+h2 { font-size: clamp(1.5rem, 1.2rem + 1.2vw, 2rem); }
 h3 { font-size: 1.25rem; }
+:root[data-era="1"] h3 { font-weight: 700; }
 
 /* ---------- surfaces ---------- */
 
@@ -198,15 +199,16 @@ form .invalid {
     linear-gradient(var(--tick), var(--tick));
   background-repeat: no-repeat;
   background-position: 0 0, 0 0, 100% 0, 100% 0, 0 100%, 0 100%, 100% 100%, 100% 100%;
-  background-size: 10px 2px, 2px 10px, 10px 2px, 2px 10px, 10px 2px, 2px 10px, 10px 2px, 2px 10px;
+  background-size: 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px;
   border-color: transparent;
   border-radius: 0;
   color: var(--fg);
   font-family: var(--font-mono);
   font-size: .8125rem;
   font-weight: 700;
-  letter-spacing: .1em;
+  letter-spacing: .08em;
   text-transform: uppercase;
+  transition: background-color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
 }
 
 .button--compact,
@@ -257,12 +259,11 @@ form .invalid {
   color: var(--signal, var(--muted));
   display: block;
   font-family: var(--font-mono);
-  font-size: .6875rem;
-  font-weight: 700;
-  letter-spacing: .12em;
+  font-size: .75rem;
+  font-weight: 500;
+  letter-spacing: .02em;
   line-height: 1.2;
   margin-bottom: .25rem;
-  text-transform: uppercase;
 }
 
 .button:hover {
@@ -296,7 +297,6 @@ form .invalid {
 
 .button.button--reaction-active {
   border-color: var(--accent);
-  box-shadow: var(--glow);
 }
 
 /* ---------- dropdowns ---------- */
@@ -357,10 +357,9 @@ form .invalid {
   border-radius: var(--radius-sm);
   color: var(--accent-text);
   font-family: var(--font-mono);
-  font-weight: 700;
-  letter-spacing: .1em;
+  font-weight: 500;
+  letter-spacing: .02em;
   text-shadow: none;
-  text-transform: uppercase;
 }
 
 .tag.tag--outlined {

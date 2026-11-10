@@ -19,13 +19,13 @@
   var STAT_NAMES = ['Glow', 'Lesbarkeit', 'Nostalgie'];
   var PICKER_CTA = 'Kämpfer wählen';
   var KICKER = 'Ein neuer Herausforderer!';
-  var TRIGGER_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
+  var TRIGGER_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">'
     + '<path d="M7 8h10a4 4 0 0 1 4 4v2a3 3 0 0 1-5.2 2L14 14h-4l-1.8 2A3 3 0 0 1 3 14v-2a4 4 0 0 1 4-4z"/>'
     + '<path d="M8 10.5v3M6.5 12h3M15.5 11h.01M17 13h.01"/></svg>';
   var OFFERS = {
-    '1': '<strong>&gt; Signal OK.</strong> Auf diesem Fernseher laufen noch mehr Kanäle.',
+    '1': '<strong>&gt; Signal OK.</strong> Im Roster dieser Seite warten noch mehr Kämpfer.',
     '2': '<strong>Zu viel Metall?</strong> Diese Seite hat noch mehr Skins.',
-    '3': '<strong>Wusstest du?</strong> Diese Homepage gibt es auch in modern!!!'
+    '3': '<strong>Wusstest du?</strong> Diese Homepage gibt es in drei Versionen!!!'
   };
   var SOURCES = {
     owl: 'Headshot. Die Eule hat genug.',
@@ -33,7 +33,7 @@
     konami: '↑ ↑ ↓ ↓ ← → ← → B A. Respekt.',
     console: 'sv_cheats 1. Wir haben nichts gesehen.'
   };
-  var LOCK_SVG = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5 7V5a3 3 0 0 1 6 0v2"/></svg>';
+  var LOCK_SVG = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5 7V5a3 3 0 0 1 6 0v2"/></svg>';
 
   var root = document.documentElement;
   var look = document.getElementById('look');
@@ -137,10 +137,10 @@
     var l = lockedEras();
     if (l.length) {
       lockNote.classList.remove('is-done');
-      lockNote.innerHTML = LOCK_SVG + '<span>' + (l.length === 1 ? 'Ein Look ist noch versteckt.' : l.length + ' Looks sind noch versteckt.') + ' Tipp: ' + ERAS[l[0]].hint + '</span>';
+      lockNote.innerHTML = LOCK_SVG + '<span>' + (l.length === 1 ? 'Ein Kämpfer ist noch gesperrt.' : l.length + ' Kämpfer sind noch gesperrt.') + ' Tipp: ' + ERAS[l[0]].hint + '</span>';
     } else {
       lockNote.classList.add('is-done');
-      lockNote.textContent = 'Alle Looks gefunden. Respekt.';
+      lockNote.textContent = 'Alle Kämpfer freigeschaltet. Respekt.';
     }
     btn.classList.toggle('has-new', btnDot && fresh.length > 0);
   }
@@ -263,7 +263,7 @@
   var offerTimer = 0;
   function lockedSentence() {
     var n = lockedEras().length;
-    return n === 2 ? ' Zwei davon sind noch versteckt.' : n === 1 ? ' Einer ist noch versteckt.' : '';
+    return n === 2 ? ' Zwei davon sind noch gesperrt.' : n === 1 ? ' Einer davon ist noch gesperrt.' : '';
   }
   function showOffer() {
     if (isOpen || load('tv-offer') === 'seen') return;
@@ -320,7 +320,7 @@
   function unlockMany(vs, src) {
     var added = vs.filter(addUnlock);
     if (added.length === 1) showToast(added[0], 'Freigeschaltet', ERAS[added[0]].name, SOURCES[src]);
-    else showToast(null, added.length ? 'Freigeschaltet' : 'Schon freigeschaltet', 'Alle Looks', SOURCES[src]);
+    else showToast(null, added.length ? 'Freigeschaltet' : 'Schon freigeschaltet', 'Alle Kämpfer', SOURCES[src]);
   }
   toastGo.addEventListener('click', function () { var v = toastEra; hideToast(); setEra(v, true); });
   toastLater.addEventListener('click', hideToast);

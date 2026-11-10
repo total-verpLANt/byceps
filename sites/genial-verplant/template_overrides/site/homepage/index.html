@@ -85,7 +85,7 @@
             <span class="meter-count">{{ sold }} <small>/ {{ total }}</small></span>
             {%- if is_nearly_sold_out %}
             <span class="meter-note">
-              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5 15 14H1z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M8 6v3.5M8 11.5v.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5 15 14H1z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M8 6v3.5M8 11.5v.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
               {% if available > 0 %}Fast ausverkauft – nur noch {{ available }} {{ 'Platz' if available == 1 else 'Plätze' }} frei{% else %}Ausverkauft{% endif %}
             </span>
             {%- endif %}
@@ -97,9 +97,6 @@
           <div class="bullet-scale" aria-hidden="true"><span>0</span><span>Marke: 90 %</span><span>{{ total }}</span></div>
           <div class="ascii" aria-hidden="true">[{{ '#' * cells }}{{ '-' * (20 - cells) }}] {{ percentage|int }}%</div>
         </div>
-        {%- if available > 0 %}
-        <a class="btn btn-primary" href="{{ url_for('shop_order.order_form') }}">Tickets sichern</a>
-        {%- endif %}
       </div>
     </section>
     {%- endif %}
@@ -136,13 +133,13 @@
           {%- if status == 'ONGOING' %}
           <span class="chip live"><span class="dot" aria-hidden="true"></span>Läuft</span>
           {%- elif status == 'PAUSED' %}
-          <span class="chip live is-paused"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M4 2.5v7M8 2.5v7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>Pausiert</span>
+          <span class="chip live is-paused"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M4 2.5v7M8 2.5v7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Pausiert</span>
           {%- elif status == 'REGISTRATION_OPEN' %}
-          <span class="chip open"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6h8M6 2v8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>Anmeldung offen</span>
+          <span class="chip open"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6h8M6 2v8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Anmeldung offen</span>
           {%- elif status == 'REGISTRATION_CLOSED' %}
           <span class="chip closed"><svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="5.5" width="7" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M4 5.5V4a2 2 0 0 1 4 0v1.5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>Anmeldung geschlossen</span>
           {%- elif status == 'COMPLETED' %}
-          <span class="chip done"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.5 5 9l4.5-5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Beendet</span>
+          <span class="chip done"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.5 5 9l4.5-5.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Beendet</span>
           {%- endif %}
           <h3>{{ c.name }}</h3>
           {%- if c.game %}

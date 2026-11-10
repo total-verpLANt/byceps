@@ -40,7 +40,7 @@
       <p class="tp-line">{% if tp.num %}Thema der #{{ tp.num }}{% else %}Thema{% endif %}: <span class="tp-label">{{ tp.topic.name }}</span></p>
       <div class="tp-frame" aria-hidden="true"><div class="tp-art">{% include tp.topic.art %}</div><span class="tp-new">NEU!</span></div>
       {%- elif tp.state == 'teaser' %}
-      <p class="tp-line"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5 7V5a3 3 0 0 1 6 0v2"/></svg><span>Das Thema wird am {{ tp.teaser.announce_label }} verraten.{% if tp.teaser.text %} {{ tp.teaser.text }}{% endif %}</span></p>
+      <p class="tp-line"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5 7V5a3 3 0 0 1 6 0v2"/></svg><span>Das Thema wird am {{ tp.teaser.announce_label }} verraten.{% if tp.teaser.text %} {{ tp.teaser.text }}{% endif %}</span></p>
       {%- endif %}
       {%- if g.party and g.party.starts_at > now %}
       {%- set left = g.party.starts_at - now %}
